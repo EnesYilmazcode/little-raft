@@ -1,7 +1,7 @@
 # Little Raft progression sim results
 
 Tool: `tools/sim-progression.mjs` (node, no dependencies, seeded PRNG). Run it with
-`node tools/sim-progression.mjs --runs 200` (`--seed`, `--skill`, `--dist DIR`, `--strict`, `--max-tiles`, `--json`).
+`node tools/sim-progression.mjs --runs 200` (`--seed`, `--skill`, `--dist DIR`, `--no-luck`, `--strict`, `--max-tiles`, `--json`).
 
 ## Method
 
@@ -17,66 +17,84 @@ Tool: `tools/sim-progression.mjs` (node, no dependencies, seeded PRNG). Run it w
 - Research happens as soon as a needed kind is held. The grill and smelter run through `StationModel`, with leaf or seaweed fuel first and spare planks after.
 - Tools wear by `wearPerUse` and are repaired at 20 % (hook) or 5 % (hammer, rod) by `repairCost`.
 - Surplus planks and plastic become floor tiles, up to the 400-tile game cap. Spare leaves become rope (up to 12) and spare scrap becomes nails (up to 12).
-- Barrels use `rollBarrel()`, not game.js's fixed `LOOT.barrel`.
+- Barrels use `rollBarrel(rand, luck)` with one luck object per run (the per-world state `progression-hooks.js` keeps), not game.js's fixed `LOOT.barrel`. `--no-luck` passes null.
 - "Dry spell" = at least 5 min in which every open goal waits only on raw income. "Stall" = the head goal has been blocked on one single material for at least 5 min.
 
 ## Results (200 seeds, skill 1, median min [p10-p90], runs that missed it within 120 min)
 
-| Milestone | Plan | Current `dist/items.js` | Proposed |
+"Before" is `dist/items.js` at a96ba07 with the old plan minutes. "After" is the shipped tuning (below) with the per-world luck object passed to `rollBarrel`.
+
+| Milestone | Plan before -> after | Before | After |
 |---|---|---|---|
-| Research table | 30 | 17.4 | 17.3 |
-| Nets | 40 | 26.4 | 26.6 |
-| First brick | 50 | 21.7 | 21.7 |
-| Smelter placed | 75 | 47.1 [33-66], 2 missed | **68.3** [52-86], 0 missed |
-| First metal ingot | 80 | 48.0 | 69 |
-| Metal hook | 92 | 60.3 [42-never], 23 missed | **81.0** [66-104], 7 missed |
-| Glass + copper | 105 | 56.3 | 75.7 |
-| Binoculars | 115 | 74.7 [52-never], 46 missed | **103.5** [79-never], 44 missed |
-| Barrels opened at smelter / hook / binoculars | | 25 / 34 / 44 | 44 / 55 / 74 |
-| Bag full (min of 120), median (p90) | | 29.6 (49.2) | 0 (0) |
-| Bag first full at minute, median | | 84.7 | never |
-| Longest dry spell per run, median (p90) | | 14.9 (56.5) | 20.9 (39.1) |
+| Research table | 30 -> 20 | 17.4 | 17.4 [13.9-20.4] |
+| Nets | 40 -> 27 | 26.4 | 26.3 [22.8-31.0] |
+| First brick | 50 -> 30 | 21.7 | 22.1 |
+| Smelter placed | 75 -> 70 | 47.1 [33-66], 2 missed | **66.0** [55.6-79.3], 0 missed |
+| First metal ingot | 80 -> 72 | 48.0 | 66.7 |
+| Metal hook | 92 -> 85 | 60.3 [42-never], 23 missed | **74.1** [62.5-88.3], 5 missed |
+| Glass + copper | 105 -> 100 | 56.3 | 72.8 |
+| Binoculars | 115 -> 110 | 74.7 [52-never], 46 missed | **81.1** [67.9-98.3], 7 missed (3.5 %) |
+| Barrels opened at smelter / hook / binoculars | | 25 / 34 / 44 | 42 / 46 / 50 |
+| Bag full (min of 120), median (p90) | | 29.6 (49.2) | 20.5 (39.0) |
+| Bag first full at minute, median | | 84.7 | 93.0 |
+| Longest dry spell per run, median (p90) | | 14.9 (56.5) | 6.5 (16.4) |
 
-Income: barrels average 0.5/min early and about 0.7-0.8/min once the raft is large and the player is skipping surplus debris. That is above the 0.35-0.4 the design notes assume, and it is why the current numbers run about 40 % fast.
+Income: barrels average about 0.5/min (0.5 in the first 30 min). That is above the 0.35-0.4 the old design notes assumed, and it is why the old numbers ran about 40 % fast.
 
-## Verdict on current numbers
+## Shipped `dist/items.js` changes
 
-The ~2 h loop does not land.
+1. `STACK` stays 20 (lead decision).
+2. smelter `hand({ wood: 6, brick: 6, stone: 4, nail: 6 })` -> `brick: 10, stone: 7`.
+3. metalhook `metalingot: 2` -> `metalingot: 6`.
+4. binoculars `hinge: 1` -> `hinge: 2` (bolt stays 1, see below).
+5. `BARREL_LOOT` treasure weights: clay 28 -> 18, stone 20 -> 12, metal ore 13 -> 10, scrap filler 13 -> 30. Sand 12, seaweed 8 and copper ore 6 are unchanged (total 96).
+6. New `BARREL_PITY` = clay 4, stone 5, metal ore 5, sand 8, copper ore 12, used by `rollBarrel(rand, luck)`.
+7. `PROGRESSION_PLAN` early minutes moved earlier (table 20, nets 27), late minutes smelter 70, ingot 72, bolts 75, metal hook 85, glass 100, binoculars 110.
 
-- The smelter comes at about 47 min, the metal hook at about 60 and the binoculars at about 75.
-- From about minute 65-85 the bag fills up (28 slots of 20-stacks), mostly with planks, leaves and scrap. After that, hooks and nets cannot open barrels, so in a quarter to a half of runs the late game stalls completely.
-- The early game (rope to nets) runs about 1.6x faster than the plan. That is driven by leaves and rope, not planks; raising plank costs moved it by less than 1 min.
+## How the numbers were chosen
 
-## Proposed `dist/items.js` changes (verified, variant C)
+The brief was variant C without the stack change (smelter 8 brick / 6 stone, metal hook 6 ingots, binoculars 2 hinges / 7 bolts, metal ore 20, scrap filler 30), then iterate.
 
-1. `const STACK = 20;` -> `const STACK = 40;`
-2. smelter `recipe: hand({ wood: 6, brick: 6, stone: 4, nail: 6 })` -> `brick: 8, stone: 6`
-3. metalhook `hand({ metalingot: 2, bolt: 2, rope: 2, wood: 2 })` -> `metalingot: 6`
-4. binoculars `hand({ glass: 2, copperingot: 1, hinge: 1, bolt: 1 })` -> `hinge: 2, bolt: 7`
-5. `BARREL_LOOT` treasure `metalore` `weight: 13` -> `weight: 20`
-6. `BARREL_LOOT` treasure filler `scrap` `weight: 13` -> `weight: 30`
+| Variant (all with luck unless noted) | Smelter | Metal hook | Binoculars, missed of 200 |
+|---|---|---|---|
+| C at STACK 20, luck limits clay 5 / stone 6 / ore 6 | 57.8 | 70.8 | never (median), 119 |
+| C at STACK 20, `--no-luck` | 68.8 | 89.3 | never, 145 |
+| C, binoculars 3 bolts (10 ore in all), limits clay 8 / stone 9 | 66.4 | 73.3 | 84.2, 35 |
+| same, binoculars 1 bolt (9 ore in all) | 66.7 | 75.0 | 79.9, 12 |
+| 1 bolt, tight limits (4/5/5/8/12), low weights clay 12 / stone 8 / ore 8, brick 10 | 67.0 | 74.3 | 81.5, 10 |
+| same, metal hook 7 ingots | 67.0 | 80.8 | 90.5, 26 |
+| same, metal hook 8 ingots | 67.0 | 91.8 | 101.8, 66 |
+| tight-limits row with seaweed instead of scrap as the filler | 68.7 | 76.1 | 82.0, 17 |
+| **shipped**: tight limits, weights clay 18 / stone 12 / ore 10, brick 10, stone 7 | **66.0** | **74.1** | **81.1, 7** |
+| shipped, `--no-luck` | 95.5, 75 missed | never | never, 172 |
 
-Points 5-6 make the treasure pool total 124. Each barrel now gives clay .23, stone .16, metal ore .16, sand .10, seaweed .06 (x1.5) and copper ore .05. The docs table and the comment on `BARREL_LOOT` need updating to match.
+- 7 binocular bolts means 4 more ingots after the metal hook, and the bag-full cliff (below) arrives before those ore barrels do. One bolt keeps the binoculars 2 ore after the hook.
+- Low weights with tight pity limits give the lowest spread: the limits, not the dice, set the pace.
 
-Alternatives tried:
+## The binoculars cannot land at 105-120 with STACK 20
 
-| Variant | Smelter | Metal hook | Binoculars | Notes |
-|---|---|---|---|---|
-| A: metalhook 6, binoculars bolt 5, metal ore weight 16 | 66 | 88 | 113, 78/200 missed | longest dry spell median 28 min |
-| B: metalhook 4, binoculars bolt 4, metal ore weight 13 | 64 | 83 | 99, 50 missed | |
-| D: metalhook 7, binoculars hinge 4 / bolt 7, metal ore weight 20 | | 87 | median never | |
+The bag fills from about minute 75-95 (p10 75, median 93). After that, barrel income nearly stops, because loot is added atomically and a full bag rejects it. Every variant whose binoculars median passed about 85 min missed them in 13-58 % of runs.
 
-C has the best balance of median timings, tail and dry spells.
+As a check, the "metal hook 7 ingots, binoculars 3 bolts" tuning with `STACK = 40` gives smelter 58, metal hook 76, binoculars 88 with 3/200 missed. At `STACK = 20` the same tuning misses the metal hook in 35 runs and the binoculars in 115.
+
+So the shipped numbers keep the miss rate under 10 % and accept binoculars at about 81 min. Moving them to 105-120 needs a bag-pressure fix: a friendlier net (only top up existing stacks), a discard/burn action, crate storage, or a bigger stack. That is out of scope for this lane.
 
 ## Sensitivity and caveats
 
-- **Skill matters a lot.** With the proposed numbers, skill 0.7 gives smelter 77, metal hook 98 and binoculars after 120 min in 51 % of runs. Skill 1.3 gives 60 / 71 / 93.
-- **Player who stops building floors (`--max-tiles 49`).** Nets keep pouring planks and plastic into the bag. It is full from about minute 56 (current) or 67 (proposed), and most runs never reach the metal hook. No `items.js` number fixes this.
+- **Skill matters.** With the shipped numbers:
+
+  | Skill | Smelter | Metal hook | Binoculars | Binoculars missed |
+  |---|---|---|---|---|
+  | 0.7 | 78.5 [66-97], 3 missed | 87.8, 14 missed | 96.8 | 31/200 (16 %) |
+  | 1 | 66.0 | 74.1 | 81.1 | 7/200 |
+  | 1.3 | 58.5 | 66.2 | 71.3 | 6/200 |
+
+  A slow player gets the paced 2-hour loop, but about one in six misses the binoculars within 2 hours. A fast player finishes the chain at about 70 min.
+- **The luck state is load-bearing.** With `--no-luck` (`rollBarrel(rand, null)`) the smelter median is 95 min and 172/200 runs miss the binoculars. Without the progression hooks, game.js passes `undefined`, which is the same as null, so barrels fall back to the plain odds.
+- **Player who stops building floors (`--max-tiles 49`).** Nets keep pouring planks and plastic into the bag. With the shipped numbers it is full from about minute 55, 162/200 runs never place the smelter and none reach the binoculars (before: full from about minute 56, most runs never reached the metal hook). No `items.js` number fixes this.
   - Recommended follow-up for the engine lane: nets should only collect what tops up an existing stack (or only barrels), or the player needs a discard/burn action, or crates need storage.
-- **The tail comes from one treasure pick per barrel.** Metal ore is the single post-smelter gate, so dry spells of about 20 min remain in the median run.
-  - Number changes cannot fix both the medians and the tail.
-  - A structural fix would be bad-luck protection in `rollBarrel`, for example a weighted shuffle-bag carried in a small state object the caller passes in.
-- **Early milestones stay about 40 % ahead of the plan.** The sim player is greedy and knows the UI. Consider moving the early `PROGRESSION_PLAN` minutes earlier (table about 20, nets about 30) rather than slowing them down.
+- **The tail from one treasure pick per barrel is handled by the luck state.** The longest dry spell per run is now 6.5 min median (16.4 p90), down from 14.9 (56.5). The remaining tail is bag-full time, not dice.
+- **Early milestones.** The sim player is greedy and knows the UI. The early `PROGRESSION_PLAN` minutes were moved earlier (table 20, nets 27) rather than slowing the early game down.
 - **Head-goal stalls:**
   - Leaf stalls on the fishing rod (8 rope = 16 leaves) and on nets are frequent but short, because other goals keep progressing.
   - Clay and stone stalls before the smelter are expected collecting time; bricks and decor fill that window.

@@ -164,7 +164,7 @@ The early minutes were moved earlier to match what the simulator measures (they 
 The bag is 28 slots of 20-stacks (`STACK` stays 20: other fleets and the survival tests depend on it). From about minute 75-95 it is full in most simulated runs, mostly with planks, scrap, leaves and rope that nets keep pouring in. A full bag cannot take a barrel (loot is added atomically), so barrel income nearly stops.
 
 - That is a cliff for the late game: any tuning that puts the binoculars' median past about 85 min makes 15-35 % of runs miss them within 2 hours. That is why the shipped numbers land the binoculars at about 81 min, not 105-120.
-- With `STACK = 40` the same tuning reaches the binoculars in about 97 % of runs even at an 88 min median.
+- As a check, with `STACK = 40` a slower tuning (metal hook 7 ingots, binoculars 3 bolts) reaches the binoculars in 97 % of runs at an 88 min median; with `STACK = 20` that tuning misses them in 58 % of runs.
 - A friendlier net, a discard/burn action or crate storage would move the cliff. That is out of scope for this lane and is left for the engine lane.
 
 ## Rationale vs Raft
