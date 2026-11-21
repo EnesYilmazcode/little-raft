@@ -34,7 +34,7 @@ export function setIconRenderer(r) { if (r === hostGL) return; if (gl && gl !== 
 
 // Per-kind display pose (radians) so long tools read diagonally like a hotbar icon.
 export const POSE = {
-  hook: [0, 0.7, -0.2], hammer: [0, 1.57, -0.75], fishingrod: [0, 1.57, -0.75], // hammer head and rod reel side-on
+  hook: [0, 0.64, -0.95], hammer: [0, 1.57, -0.75], fishingrod: [0, 1.57, -0.75], // hammer head and rod reel side-on
   plastic: [0, 0.4, 0.5], fish: [0, -0.4, 0.15], rope: [0.9, 0, 0.2],
   wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
@@ -44,13 +44,16 @@ export const POSE = {
 export const ICON_FATTEN = { hammer: 1.4, fishingrod: 2.2 };
 // models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
 const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
+// Kinds whose icon must match the held viewmodel (hook.js teal J), not the models.js prop.
+const OWN_FIRST = new Set(['hook']);
+const EXPOSURE = 0.95;
 // Per-kind framing for models.js items: pose, view direction, crop of the projected bounds
 // ([x0, x1, y0, y1] as fractions) and exposure, so thin or dark items still read in a slot.
 const FRAME = {
-  hammer: { pose: [-0.75, 0, 0], view: [1, 0.3, 0.2], exp: 1.5 },           // head in profile
-  lantern: { view: [0.35, 0.3, 1], crop: [0.5, 1, 0.48, 0.96], exp: 1.7 },  // the lamp, not the post
-  fishingrod: { crop: [0, 0.7, 0, 0.7], exp: 1.5 },                          // grip, reel and float
-  net: { view: [0.3, 0.45, 1], exp: 1.6 },
+  hammer: { pose: [-0.75, 0, 0], view: [1, 0.3, 0.2], exp: 1.2 },           // head in profile
+  lantern: { view: [0.35, 0.3, 1], crop: [0.5, 1, 0.48, 0.96], exp: 1.35 },  // the lamp, not the post
+  fishingrod: { crop: [0, 0.7, 0, 0.7], exp: 1.2 },                          // grip, reel and float
+  net: { view: [0.3, 0.45, 1], exp: 1.3 },
 };
 
 // ---------- fallback models ----------
@@ -112,13 +115,15 @@ function ensureGL() {
     gl.setSize(SIZE, SIZE, false);
     gl.setClearColor(0x000000, 0);
     gl.toneMapping = T.ACESFilmicToneMapping;
-    gl.toneMappingExposure = 1.15;
+    gl.toneMappingExposure = EXPOSURE;
   } catch (e) { failed = true; gl = null; console.warn('item icons: no WebGL, using flat icons', e); return false; }
   if (!scene) {
     scene = new T.Scene();
-    scene.add(new T.HemisphereLight(0xfff3dc, 0x3b2a1a, 1.5));
-    const key = new T.DirectionalLight(0xfff0d8, 2.6); key.position.set(3, 5, 4); scene.add(key);
-    const rim = new T.DirectionalLight(0x9fd8ff, 1.3); rim.position.set(-4, 2, -3); scene.add(rim);
+    // Low flat fill + strong warm key from the camera side so materials keep their colour and form.
+    scene.add(new T.HemisphereLight(0xfff6e6, 0x4a3420, 0.8));
+    const key = new T.DirectionalLight(0xfff0d8, 3.4); key.position.set(2.5, 5, 4); scene.add(key);
+    const fill = new T.DirectionalLight(0xd8e8ff, 0.9); fill.position.set(-4, 1, 3); scene.add(fill);
+    const rim = new T.DirectionalLight(0x9fd8ff, 1.6); rim.position.set(-4, 2, -3); scene.add(rim);
     camera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
   }
   return true;
@@ -146,6 +151,7 @@ function freeModel(root) {
  *  fallback lacks (cup, seed, water). own = true when the caller must free it. */
 export function resolveIconModel(kind) {
   let model = null;
+  if (OWN_FIRST.has(kind)) { try { model = buildFallbackModel(kind); } catch (e) { console.warn('item icon model failed', kind, e); } if (model) return { model, own: true }; }
   if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
   if (model) return { model, own: false };
   try { model = buildFallbackModel(kind); } catch (e) { console.warn('item icon model failed', kind, e); }
@@ -181,7 +187,7 @@ function renderKind(kind) {
     x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x); y0 = Math.min(y0, _v.y); y1 = Math.max(y1, _v.y);
   }
   if (f.crop) { const w = x1 - x0, h = y1 - y0, c = f.crop; x1 = x0 + w * c[1]; x0 += w * c[0]; y1 = y0 + h * c[3]; y0 += h * c[2]; }
-  const half = Math.max(x1 - x0, y1 - y0) * 0.5 * 1.06, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const half = Math.max(x1 - x0, y1 - y0) * 0.5 * 1.12, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   camera.left = cx - half; camera.right = cx + half; camera.top = cy + half; camera.bottom = cy - half;
   camera.near = r; camera.far = r * 7;
   camera.updateProjectionMatrix();
@@ -192,7 +198,7 @@ function renderKind(kind) {
     if (gl === hostGL) {
       const prevRT = gl.getRenderTarget(), prevExp = gl.toneMappingExposure, prevTM = gl.toneMapping, prevAlpha = gl.getClearAlpha(), prevClear = gl.getClearColor(_clear), prevAuto = gl.autoClear, prevShadow = gl.shadowMap.enabled;
       try {
-        gl.toneMapping = T.ACESFilmicToneMapping; gl.toneMappingExposure = f.exp || 1.15; gl.autoClear = true; gl.shadowMap.enabled = false;
+        gl.toneMapping = T.ACESFilmicToneMapping; gl.toneMappingExposure = f.exp || EXPOSURE; gl.autoClear = true; gl.shadowMap.enabled = false;
         // A fresh target per icon (a few dozen, once): a reused one looks like a per-frame pass to frame-skipping probes.
         rt = new T.WebGLRenderTarget(SIZE * 2, SIZE * 2); // no MSAA (the XR flag below skips its resolve): supersample 2x instead
         rt.texture.colorSpace = T.SRGBColorSpace;
@@ -207,13 +213,42 @@ function renderKind(kind) {
       const big = document.createElement('canvas'); big.width = big.height = N; big.getContext('2d').putImageData(img, 0, 0);
       const ctx = out.getContext('2d'); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(big, 0, 0, SIZE, SIZE);
     } else {
-      gl.toneMappingExposure = f.exp || 1.15;
+      gl.toneMappingExposure = f.exp || EXPOSURE;
       gl.render(scene, camera);
       out.getContext('2d').drawImage(gl.domElement, 0, 0);       // GPU copy; the PNG encode happens later, async
     }
+    out = stylize(out);
   } catch (e) { out = null; console.warn('item icon render failed', kind, e); }
   scene.remove(pivot);
   if (own) freeModel(model);
+  return out;
+}
+
+// 2D finish (Raft-style slot icon): saturation/contrast boost, a ~1.5px dark-brown outline stamped
+// from the alpha mask, and a soft drop shadow. A few 128px canvas ops per icon, once.
+const OUTLINE = '#3a2614', SAT = 1.45, CON = 1.12;
+const OFFS = [[1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5], [1.1, 1.1], [-1.1, 1.1], [1.1, -1.1], [-1.1, -1.1]];
+function stylize(src) {
+  const ctx = src.getContext('2d'), img = ctx.getImageData(0, 0, SIZE, SIZE), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (!d[i + 3]) continue;
+    const r = d[i], g = d[i + 1], b = d[i + 2], l = 0.299 * r + 0.587 * g + 0.114 * b;
+    for (let c = 0; c < 3; c++) {
+      const v = l + (d[i + c] - l) * SAT;               // saturate around luma
+      d[i + c] = (v - 128) * CON + 128;                  // contrast (Uint8Clamped clamps)
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const mask = document.createElement('canvas'); mask.width = mask.height = SIZE;
+  const m = mask.getContext('2d');
+  for (const [x, y] of OFFS) m.drawImage(src, x, y);
+  m.globalCompositeOperation = 'source-in'; m.fillStyle = OUTLINE; m.fillRect(0, 0, SIZE, SIZE);
+  const out = document.createElement('canvas'); out.width = out.height = SIZE;
+  const o = out.getContext('2d');
+  o.shadowColor = 'rgba(30, 18, 8, 0.45)'; o.shadowOffsetY = 2; o.shadowBlur = 3;
+  o.drawImage(mask, 0, 0);
+  o.shadowColor = 'transparent';
+  o.drawImage(src, 0, 0);
   return out;
 }
 
