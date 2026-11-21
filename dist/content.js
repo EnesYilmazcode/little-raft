@@ -32,6 +32,8 @@
 // running, physics, elapsed, options, localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
 // esc(s), mat(color), rebuildRaft(), deckY(), uiOpen(), building (piece grid/tint, may be null early), brush (held
 // brush model), woodMat(hex) (cached procedural wood material), aim() (this frame's aim {point, dir} or null).
+// seabed ({gx, gz} displayed seabed offset, null before sailing starts), addBlocker(b)/removeBlocker(b) (raft
+// grounding circle {x, z, rad}: see sailing-world.js; addBlocker returns false until sailing exists).
 
 import { createIslands } from './islands.js?build=v3-survival-ae77fa84ac2b';
 import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';

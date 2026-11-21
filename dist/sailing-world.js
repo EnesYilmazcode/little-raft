@@ -98,6 +98,18 @@ export function createSailing(T, ctx) {
     if (d.r) { d.b = { x: obj.position.x, z: obj.position.z, r: d.r + GROUND_CLEAR + raftR }; stepOpts.blockers.push(d.b); }
     drifters.push(d); return obj;
   }
+  // A moving blocker owned by someone else (islands): b = {x, z, rad, r}; the owner keeps x, z (scene units,
+  // raft at the origin) and rad (shore radius, 0 = none) current, and sailing fills in the stop distance r.
+  const extBlockers = [];
+  function addBlocker(b) {
+    if (!b || typeof b !== 'object' || extBlockers.includes(b)) return !!b;
+    extBlockers.push(b); stepOpts.blockers.push(b); syncBlocker(b); return true;
+  }
+  function removeBlocker(b) {
+    let i = extBlockers.indexOf(b); if (i >= 0) extBlockers.splice(i, 1);
+    i = stepOpts.blockers.indexOf(b); if (i >= 0) stepOpts.blockers.splice(i, 1);
+  }
+  function syncBlocker(b) { b.r = b.rad > 0 ? b.rad + GROUND_CLEAR + raftR : 0; }
   function moveDrifters() {
     for (let i = 0; i < drifters.length; i++) {
       const d = drifters[i], p = d.obj.position;
@@ -265,6 +277,7 @@ export function createSailing(T, ctx) {
     stepOpts.nSails = nSails; stepOpts.host = !guest;
     steer(dt);
     stepOpts.push.x = stepOpts.push.z = 0; ctx.getPush?.(state, stepOpts.push); // engine: motor push (same synced data on every peer)
+    for (let i = 0; i < extBlockers.length; i++) syncBlocker(extBlockers[i]);
     stepSailing(state, dt, stepOpts, out);
     flow.x = dt > 0 ? -out.dwx / dt : 0; flow.z = dt > 0 ? -out.dwz / dt : 0;
     const fz = BASE_FLOW_Z + flow.z, f2 = flow.x * flow.x + fz * fz;
@@ -353,9 +366,11 @@ export function createSailing(T, ctx) {
     for (const k in G) G[k].dispose();
     for (const k in M) M[k].dispose();
     for (const r of rolls) r.parent?.remove(r);
-    rolls.length = 0; lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0;
+    rolls.length = 0; lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0; extBlockers.length = 0;
   }
-  return { update, onRaftBuilt, addDrifter, itemFlow, respawned, outOfRange, interact, grab, release, apply, debug, dispose,
+  return { update, onRaftBuilt, addDrifter, addBlocker, removeBlocker, itemFlow,
+    respawned, outOfRange, interact, grab, release, apply, debug, dispose,
+    ground: disp, // displayed seabed offset {gx, gz, ...}: live object, read only (guest: smoothed like the scenery)
     get steering() { return steering; } };
 }
 
