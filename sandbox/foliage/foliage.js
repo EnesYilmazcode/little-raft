@@ -76,7 +76,7 @@ const DEFAULT_PARAMS = {
   bush:      { base: 0,    height: 0.9, bend: 0.12, flutter: 0.35, fade: [34, 46] },
   fern:      { base: 0,    height: 0.7, bend: 0.18, flutter: 0.9, fade: [24, 34] },
   broadleaf: { base: 0,    height: 1.0, bend: 0.16, flutter: 0.8, fade: [28, 40] },
-  grass:     { base: 0,    height: 0.4, bend: 0.45, flutter: 0.9, fade: [13, 21] },
+  grass:     { base: 0,    height: 0.4, bend: 0.45, flutter: 0.9, fade: [17, 27] },
 };
 
 export function createFoliage(T, options = {}) {

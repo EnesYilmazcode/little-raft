@@ -32,6 +32,9 @@ if quick:
 if only:
     cases = [c for c in cases if c['view'] in only]
 
+# changed-pixel fraction between t and t+0.6 s in these screen rects (ocean excluded where possible)
+MOTION = {'raft': {'craftPalm': [0.7, 0.1, 1.0, 0.55], 'island': [0.3, 0.25, 0.7, 0.6]},
+          'beach': {'frame': [0, 0, 1, 1]}, 'canopy': {'frame': [0, 0, 1, 1]}}
 report = {'errors': [], 'runs': []}
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/opt/pw-browsers/chromium-1243/chrome-linux64/chrome', headless=True,
@@ -45,9 +48,16 @@ with sync_playwright() as p:
         page.goto(f'http://127.0.0.1:{port}/sandbox/foliage/index.html?{qs}')
         page.wait_for_function('window.lab && window.lab.ready', timeout=60000)
         r = page.evaluate('lab.probe(20)')
-        name = '-'.join(f'{v}' for k, v in c.items() if k != 't' or c.get('wind')) + '.png'
+        name = '-'.join([c['view']] + [f'{k}{v}' for k, v in c.items() if k not in ('view', 't')] + ([f't{c["t"]}'] if 'wind' in c else [])) + '.png'
         page.screenshot(path=str(out / name))
-        report['runs'].append({**c, **r, 'shot': name, 'hero': page.evaluate('lab.counts')})
+        run = {**c, **r, 'shot': name, 'hero': page.evaluate('lab.counts')}
+        if c.get('foliage') != '0':
+            run['ab'] = page.evaluate('lab.ab(10)')
+            if len(c) == 2:
+                run['abShadow'] = page.evaluate("lab.ab(10, 'shadow')")
+        if c['view'] in MOTION and (len(c) == 2 or c.get('foliage') == '0'):  # wind motion vs the no-plant baseline
+            run['motion'] = {k: page.evaluate(f'lab.motion({T}, {T + 0.6}, {rect})') for k, rect in MOTION[c['view']].items()}
+        report['runs'].append(run)
     b.close()
 srv.shutdown()
 errs = {}

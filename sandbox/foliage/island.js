@@ -119,8 +119,8 @@ export function buildIsland(T, F, kit, { seed = 1, radius = 7, top = 0.9, densit
   if (broad.length) add(F.instanced('broadleaf', kit.broadleaf, broad), 40 + radius);
   const grass = scatter({ count: Math.round(520 * D), radius, seed: seed * 17 + 6, minDist: 0.16, accept: (px, pz, q, rn) => grassy(px, pz) || (rr(px, pz) < 0.92 && rn() < 0.06), heightAt, scale: [0.7, 1.4] });
   const beach = grass.filter(p => !grassy(p.x, p.z)), lawn = grass.filter(p => grassy(p.x, p.z));
-  if (lawn.length) add(F.instanced('grass', kit.grass, lawn), 21 + radius);
-  if (beach.length) add(F.instanced('grass', kit.beachGrass, beach), 21 + radius);
+  if (lawn.length) add(F.instanced('grass', kit.grass, lawn), 27 + radius);
+  if (beach.length) add(F.instanced('grass', kit.beachGrass, beach), 27 + radius);
 
   g.userData = { heightAt, radius, palms, counts: { palms: palms.length, bushes: bushes.length, ferns: ferns.length, broadleaf: broad.length, grass: grass.length } };
   return g;

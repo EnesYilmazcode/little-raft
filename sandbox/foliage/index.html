@@ -131,8 +131,40 @@ window.lab = {
       ms.push(performance.now() - t0);
     }
     step(fixedT ?? 0); renderer.render(scene, camera);
-    const avg = ms.reduce((a, b) => a + b, 0) / n;
-    return { avg: +avg.toFixed(2), worst: +Math.max(...ms).toFixed(2), ...info() };
+    const avg = ms.reduce((a, b) => a + b, 0) / n, med = [...ms].sort((a, b) => a - b)[n >> 1];
+    return { avg: +avg.toFixed(2), median: +med.toFixed(2), worst: +Math.max(...ms).toFixed(2), ...info() };
+  },
+  // interleaved A/B under a noisy machine: alternate frames with every foliage mesh shown / hidden
+  ab(n = 12, mode = 'hide') {
+    this.busy = true;
+    const gl = renderer.getContext(), px = new Uint8Array(4), on = [], off = [];
+    const fol = []; scene.traverse(o => { if (o.name.startsWith('foliage_')) fol.push(o); });
+    for (let i = 0; i < 2 * n + 2; i++) {
+      step((fixedT ?? 0) + i / 60);
+      const show = i % 2 === 0;
+      if (mode === 'hide' && !show) fol.forEach(o => { o.visible = false; });
+      if (mode === 'shadow') fol.forEach(o => { o.castShadow = show && o.name !== 'foliage_grass'; });
+      const t0 = performance.now();
+      renderer.render(scene, camera);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      if (i >= 2) (show ? on : off).push(performance.now() - t0);
+    }
+    step(fixedT ?? 0); renderer.render(scene, camera);
+    const med = a => [...a].sort((x, y) => x - y)[a.length >> 1];
+    return { mode, on: +med(on).toFixed(1), off: +med(off).toFixed(1), deltaMs: +(med(on) - med(off)).toFixed(1), meshes: fol.length };
+  },
+  // fraction of pixels in rect [x0, y0, x1, y1] (0..1, y down) that change between two wind times
+  motion(t1, t2, rect = [0, 0, 1, 1]) {
+    this.busy = true;
+    const gl = renderer.getContext(), W = gl.drawingBufferWidth, Hh = gl.drawingBufferHeight;
+    const x = Math.round(rect[0] * W), w = Math.round((rect[2] - rect[0]) * W);
+    const y = Math.round((1 - rect[3]) * Hh), h = Math.round((rect[3] - rect[1]) * Hh);
+    const grab = t => { step(t); renderer.render(scene, camera); const b = new Uint8Array(w * h * 4); gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, b); return b; };
+    const a = grab(t1), b = grab(t2);
+    let c = 0;
+    for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 30) c++;
+    step(fixedT ?? 0); renderer.render(scene, camera);
+    return +(c / (w * h)).toFixed(4);
   },
 };
 frame();
