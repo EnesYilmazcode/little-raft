@@ -21,7 +21,7 @@ import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
-import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
@@ -1118,10 +1118,10 @@ export function mount(transfer = null) {
     return {world:w, host:bags.host.snapshot(), guest:bags.guest.snapshot(), physics:null};
   }
   function restoreOwnRaft() {
-    const newer = storedRev() > saveRev; // another tab (e.g. the host in this browser) saved since we joined: never restore over it
-    const b = (newer ? null : normaliseBackup(ownWorldBackup)) ?? savedOwnRaft(); ownWorldBackup = null; remoteBag = null;
-    if (newer) { saveRev = storedRev(); saveBlocked = false; }
+    const plan = guestLeavePlan(storedRev(), saveRev); // another tab (e.g. the host in this browser) saved since we joined: never restore over it
+    const b = (plan.useBackup ? normaliseBackup(ownWorldBackup) : null) ?? savedOwnRaft(); ownWorldBackup = null; remoteBag = null;
     loadRaft(b);
+    if (plan.block) blockSave(); // keep our old rev: that tab keeps saving; Continue from the title adopts its save
   }
   function loadRaft(b) { // b: {world, host, guest, physics|null}
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();

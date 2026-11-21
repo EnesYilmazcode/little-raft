@@ -114,3 +114,14 @@ test('NET-3: host state carries its held tokens, the guest filters them, and a g
   assert.match(g, /hook\.update\(dt, \{hand:handPos, items:hookableItems\(world\.items, \{isPending, otherHeld:otherHeldTokens\(\), ownHeld:ownHeldTokens\(\)\}\)/);
   assert.match(g, /if \(actor === 'guest' && !a\.net && ownHeldTokens\(\)\.has\(it\.token\)\) return;/);
 });
+
+test('NET-4: a guest leaving while the host tab saved newer stays blocked and keeps its old rev', () => {
+  assert.deepEqual(S.guestLeavePlan(13, 5), {useBackup:false, block:true, saveRev:5});
+  assert.deepEqual(S.guestLeavePlan(5, 5), {useBackup:true, block:false, saveRev:5});
+  // With the old rev kept, this tab can never write over the host tab's save, so the host is never blocked by it.
+  assert.equal(S.planSave(raw(14), S.guestLeavePlan(13, 5).saveRev).ok, false);
+  const g = src('game.js'), body = g.slice(g.indexOf('function restoreOwnRaft()'), g.indexOf('function loadRaft('));
+  assert.match(body, /guestLeavePlan\(storedRev\(\), saveRev\)/);
+  assert.match(body, /if \(plan\.block\) blockSave\(\);/);
+  assert.doesNotMatch(body, /saveBlocked = false|saveRev = storedRev\(\)/);
+});

@@ -50,6 +50,13 @@ export function adoptOnStart({running, role, storedRev, saveRev}) {
   return !running && role !== 'guest' && storedRev > saveRev;
 }
 
+// A guest going back to its own raft. If another tab (e.g. the host in this browser) saved since we joined,
+// show that save read-only and stay blocked: adopting its rev would race that tab's autosave and block it.
+export function guestLeavePlan(storedRev, saveRev) {
+  const newer = storedRev > saveRev;
+  return {useBackup:!newer, block:newer, saveRev};
+}
+
 // The save line on the title card, or '' when there is nothing to warn about.
 export function titleSaveNote({available = true, blocked = false, storedRev = 0, saveRev = 0} = {}) {
   if (!available) return 'Browser storage is unavailable. This raft will not be saved.';
