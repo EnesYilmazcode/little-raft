@@ -241,10 +241,31 @@ export function loadItemIcon(kind) {
 export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-/** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */
+/** Render kinds right now (not in idle time) and cache them as data URLs, so a slot never shows the
+ *  flat SVG first and then swaps to a different-looking 3D icon. Call it at a loading moment (play start),
+ *  never per frame. Returns the kinds rendered. */
+export function renderIconsNow(kinds) {
+  const done = [];
+  for (const kind of new Set(kinds || [])) {
+    if (!kind || failed || (cache.has(kind) && !queued.has(kind))) continue; // done (or failed), unless a re-render is pending
+    queued.delete(kind); encoding.delete(kind); // a pending idle render or encode is superseded
+    const canvas = renderKind(kind);
+    let url = '';
+    if (canvas) { try { url = canvas.toDataURL('image/png'); } catch {} }
+    finish(kind, url);
+    done.push(kind);
+  }
+  if (done.length && gl && !queued.size && !releaseTimer) releaseTimer = setTimeout(release, RELEASE_MS);
+  return done;
+}
+/** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far, keeping
+ *  each old icon on screen until its new one is ready (a slot never goes blank). Same provider: no-op. */
 export function setModelProvider(fn) {
-  provider = typeof fn === 'function' ? fn : null;
-  const kinds = [...cache.keys(), ...encoding.keys()];
-  cache.clear(); encoding.clear();
-  warmIcons(kinds);
+  const next = typeof fn === 'function' ? fn : null;
+  if (next === provider) return;
+  provider = next;
+  const kinds = [...cache.keys(), ...encoding.keys(), ...queued];
+  encoding.clear(); // in-flight encodes from the old provider are dropped
+  for (const k of kinds) { if (!cache.get(k)) cache.delete(k); queued.add(k); }
+  if (queued.size) schedule();
 }

@@ -2,7 +2,7 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js'; // [progression-hook]
-import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { iconURL, warmIcons, onIconReady, setModelProvider, renderIconsNow } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, craftButtonText, holdDelay, holdHint, ringOffset, ringCount, RING_LEN, recipeOrder, moreBelow, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv6'; // bumped: hold-to-craft ring replaces the fill bar
@@ -1305,6 +1305,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     update() { render(false); },
     open,
     close,
+    /** Render the 3D icons for everything in the bag now (call as play starts), so no icon pops in later. */
+    primeIcons() {
+      const snap = readSnap(bagNow());
+      const kinds = (snap?.slots || []).map(s => s?.kind).filter(Boolean);
+      try { return renderIconsNow(kinds); } catch (e) { console.error(e); return []; }
+    },
     destroy() {
       if (!alive) return;
       stopHold();

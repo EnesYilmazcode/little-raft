@@ -81,3 +81,22 @@ test('UX3-4: the detail card leaves the list the whole column, and hidden rows s
   assert.match(ui, /wideBag\?\.matches \? dlg\.querySelector\('\.sv-bag'\)/, 'wide layout docks the detail card under the backpack');
   assert.doesNotMatch(ui, /sv-hint\{[^}]*width:\$\{HB \* 62/, 'hint width follows the slot size, so the bag fits 900px');
 });
+
+// ---------------------------------------------------------------- UX3-5 no icon pop-in
+
+test('UX3-5: bag icons are rendered before play starts, and a provider swap never blanks a slot', async () => {
+  const icons = await import(new URL('item-icons.js', base));
+  assert.equal(typeof icons.renderIconsNow, 'function');
+  assert.deepEqual(icons.renderIconsNow([]), []);
+  assert.doesNotThrow(() => icons.renderIconsNow(['wood', 'scrap'])); // no WebGL in node: flat sprites, no throw
+  const fn = () => null;
+  icons.setModelProvider(fn);
+  assert.doesNotThrow(() => icons.setModelProvider(fn), 'same provider again is a no-op');
+  const itemSrc = src('item-icons.js');
+  const swap = itemSrc.slice(itemSrc.indexOf('export function setModelProvider'));
+  assert.doesNotMatch(swap.slice(0, swap.indexOf('\n}')), /cache\.clear\(\)/, 'old icons stay until the new ones are ready');
+  assert.match(swap, /if \(next === provider\) return;/);
+  const ui = src('survival-ui.js'), game = src('game.js');
+  assert.match(ui, /primeIcons\(\) \{[\s\S]{0,300}renderIconsNow\(kinds\)/, 'survival UI primes the bag kinds');
+  assert.match(game, /function start\(\) \{[\s\S]{0,300}survivalUI\?\.primeIcons\?\.\(\);[^\n]*\n\s*running = true;/, 'before the first play frame');
+});

@@ -1183,6 +1183,7 @@ export function mount(transfer = null) {
 
   function start() {
     if (adoptOnStart({running, role, storedRev:storedRev(), saveRev})) adoptStoredSave();
+    survivalUI?.primeIcons?.(); // bag and hotbar show their final 3D icons from the first frame, no pop-in
     running = true; const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false;
     if (!saveAvailable) setText('#saveStatus', 'Browser storage is unavailable. This session will not be saved.');
     refreshPointerUI(true);
