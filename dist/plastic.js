@@ -136,7 +136,7 @@ export function createPlastic(T) {
   root.name = 'plastic';
   const body = new T.Mesh(jug.solidGeo, jug.solidMat);
   body.name = 'jugBody';
-  body.castShadow = true; body.receiveShadow = true;
+  body.castShadow = false; body.receiveShadow = true; // perf: floating jug shadows never land on the water
   const creases = new T.Mesh(jug.creaseGeo, jug.creaseMat);
   creases.castShadow = false; creases.receiveShadow = true;
   root.add(body, creases);

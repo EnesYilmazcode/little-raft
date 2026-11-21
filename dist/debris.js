@@ -65,7 +65,7 @@ function place(T, g, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = 1) {
   return g;
 }
 
-function mesh(T, geo, mat, parent, castShadow = true) {
+function mesh(T, geo, mat, parent, castShadow = false) {
   const m = new T.Mesh(geo, mat);
   m.castShadow = castShadow;
   m.receiveShadow = true;

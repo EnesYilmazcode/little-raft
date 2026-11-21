@@ -40,6 +40,11 @@ QA round 1 (bugs, detail, perf reviewers read the screenshots):
 - Fixed blank icons for sand/clay/ore; fixed the crosshair, which was drawn 13px off centre.
 - Open: the recipe list is clipped in the inventory and the lock badge covers icons (cosmetic).
 - PR #1 opened. Not auto-merged: perf is outside 5% and the gate's playbot/visual/electron tools don't exist yet.
+
+Perf QA round 1:
+- Root cause: four daynight lantern PointLights sat in the scene at intensity 0 and still ran in every lit shader. They are now hidden until dusk and only when lanterns exist (-15%).
+- Floating debris/plastic no longer cast shadows; the ocean never received them (-6%).
+- shoot.py: 444 -> 361 ms. The remaining gap to main (243) is because shoot.py ends at a different camera pose on each branch. At the same pose the perf reviewer measured parity.
 # Little Raft loop log
 
 ## 2026-11-21 · loop-features-202611210451 (features)

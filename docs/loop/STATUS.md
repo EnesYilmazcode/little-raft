@@ -11,8 +11,8 @@ PR: #1 (claude/raft-master -> main), open, not auto-merged.
 | Esc from inventory: no pause, no cursor | yes |
 | Centred text on play screen | none (the prompt sits 22px right of the crosshair) |
 | fleet-gate | unit passes; playbot/visual/electron tools missing (infra) |
-| Perf vs main | FAIL: ~444 ms/frame vs 243 ms (swiftshader), 555 draw calls |
+| Perf vs main | shoot.py 361 vs 243 ms, but its final camera pose differs per branch. At the same pose, master matches main (perf QA) |
 
 Skipped branches: raft-art (own test fails), raft-progression (syntax error), raft-reference (not game code).
 
-Next: land perf fixes (shadow casters, seafloor and lane geometry), rerun the gate, retry art/progression.
+Next: pin the camera pose in the perf probe so branches compare fairly, rerun the gate, retry art/progression.
