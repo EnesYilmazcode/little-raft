@@ -32,11 +32,11 @@ export const PRESETS = {
 // the horizon so the sea melts into the sky. Distances in metres. sky* = optional gradient dome (sky.js),
 // ocean* = ocean.js uniforms retinted by applyOceanLook().
 export const LIGHTING = {
-  background: '#cde6f2', fog: '#cde6f2', fogNear: 35, fogFar: 150,
+  background: '#cde6f2', fog: '#cde6f2', fogNear: 45, fogFar: 150,
   hemiSky: '#bfe3ff', hemiGround: '#86b6bc', hemiIntensity: 1.1,
-  sun: '#ffeccc', sunIntensity: 3.2, exposure: 1.05,
+  sun: '#ffe7c2', sunIntensity: 3.2, exposure: 1.05,
   skyDome: true, skyZenith: '#6fb4e6', skyCloudLit: '#ffffff', skyCloudShade: '#d3e3ee', skyCoverage: 0.42,
-  oceanDeep: '#064f78', oceanShallow: '#13a0b0', oceanZenith: '#4f9fd6',
+  oceanDeep: '#05497a', oceanShallow: '#13a0b0', oceanZenith: '#4f9fd6',
 };
 
 // Game palette hex -> preset. Explicit, so avatars, UI ghosts and the hook keep their own materials.
