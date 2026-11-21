@@ -44,6 +44,7 @@ import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, st
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
+import { poolCap } from './daynight.js?build=v3-survival-ae77fa84ac2b'; // shader warm-up: lantern light count per graphics preset
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
@@ -56,7 +57,7 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, wheelDelta, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
-import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
+import { getModel, modelMaterials } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, onIconReady, setIconRenderer } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b'; // loop-ux: saved sound toggle, drag-look sensitivity, first-run hints
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
@@ -441,7 +442,7 @@ export function mount(transfer = null) {
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
-    quality = createQuality({sun, preset:options.graphics, onChange:() => { applyUserGraphics(); warmBeforeShadowsOff(); }}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
+    quality = createQuality({sun, preset:options.graphics, onChange:() => { applyUserGraphics(); warmAhead(); }}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#a6e9f2', fadeNear:28, fadeFar:190}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
@@ -471,6 +472,7 @@ export function mount(transfer = null) {
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
       getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getMods:out => content?.diveMods?.(out)}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    renderer.shadowMap.autoUpdate = true; diving?.onChange?.(d => { renderer.shadowMap.autoUpdate = !d.underwater; if (!d.underwater) renderer.shadowMap.needsUpdate = true; }); // nothing underwater shows the sun's shadow: skip the shadow pass (sun.castShadow, and so every program, stays as quality set it)
     initShark(); // shark lane
     rebuildRaft(); fitShadow();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
@@ -575,32 +577,77 @@ export function mount(transfer = null) {
     const d = Math.hypot(...SUN_OFFSET), cam = sun.shadow.camera;
     Object.assign(cam, {left:-r, right:r, top:r, bottom:-r, near:Math.max(.5, d - r - 6), far:d + r + 6}); cam.updateProjectionMatrix();
   }
-  // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
-  // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
+  // Shader warm-up. A program is linked per material and per scene state: the point-light count (daynight.js adds
+  // poolCap lantern lights at the first lantern), sun.castShadow (quality's shadows-off levels) and the sea's OCEAN_LOW
+  // define. Linking (and the first use that waits for it) is the hitch, so the title's first frames link only what they
+  // show; then, in idle slices: the base pass (renderer.compile walks hidden objects too: viewmodels, hook, ghosts,
+  // seafloor; plus every models.js material, whose decor is built only when placed), the lantern-light variant, and,
+  // one quality step ahead, the variant the next level switches to. start() runs the base pass on the spot if needed.
+  const warmDone = new Set(), warmJobs = []; let warmAt = 0, warmBase = false, warmFrames = 0, warmGeo = null;
+  const lampLights = () => scene.children.filter(o => o.isPointLight && o.name === 'daynight-lantern-light');
+  const warmKey = (lamps, shadow, low) => lamps + (shadow ? 's' : '') + (low ? 'l' : '');
+  function warmPass(lamps, shadow, low) {
+    const key = warmKey(lamps, shadow, low);
+    if (warmDone.has(key) || !scene || typeof renderer?.compileAsync !== 'function') return;
+    warmDone.add(key);
+    const pool = lampLights(), temp = [], cast = sun.castShadow, wasLow = !!ocean?.lowDetail, deco = new T.Group();
+    warmGeo ??= new T.BoxGeometry(.01, .01, .01);
+    try {
+      for (const m of modelMaterials()) deco.add(new T.Mesh(warmGeo, m));
+      for (let i = pool.length; i < lamps; i++) { const l = new T.PointLight('#ffb35c', 0, 8, 2); temp.push(l); scene.add(l); }
+      for (let i = lamps; i < pool.length; i++) scene.remove(pool[i]);
+      sun.castShadow = shadow; ocean?.setDetail?.(low); scene.add(deco);
+      renderer.compileAsync(scene, camera).then(() => queueWarm(touchPrograms), e => console.warn('shader warm-up failed', e));
+    } catch (e) { console.warn('shader warm-up failed', e); }
+    finally {
+      scene.remove(deco); sun.castShadow = cast; ocean?.setDetail?.(wasLow);
+      for (const l of temp) { scene.remove(l); l.dispose(); }
+      for (let i = lamps; i < pool.length; i++) scene.add(pool[i]);
+    }
+  }
+  // Link status is first read on a program's first use (and blocks until linked): do that here, between frames,
+  // for programs that report ready (always, without KHR_parallel_shader_compile), a few per idle slice.
+  function touchPrograms(deadline) {
+    let left = false;
+    for (const p of renderer.info.programs || []) {
+      if (p.warmTouched) continue;
+      if (!p.isReady()) { left = true; continue; }
+      p.warmTouched = true; p.getUniforms();
+      if (!(deadline?.timeRemaining?.() > 4)) { left = true; break; }
+    }
+    if (left && !warmJobs.includes(touchPrograms)) queueWarm(touchPrograms);
+  }
   function warmShaders() {
-    if (typeof renderer.compileAsync !== 'function') return;
+    if (warmBase || !scene) return;
+    warmBase = true;
     hands?.preload(['hammer', 'fishingrod', 'spear']);
-    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
-    catch (e) { console.warn('shader warm-up failed', e); }
+    const lamps = lampLights().length;
+    warmPass(lamps, !!sun?.castShadow, !!ocean?.lowDetail);
+    if (!lamps) queueWarm(() => warmPass(poolCap(options.graphics), !!sun?.castShadow, !!ocean?.lowDetail)); // the first lantern
+    warmAhead();
   }
-  // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
-  // Warm it only when the scaler is one step from turning shadows off, so fast machines never pay for the extra programs.
-  let noShadowWarmed = false;
-  function warmBeforeShadowsOff() {
-    if (noShadowWarmed || !quality) return;
-    const L = quality.levels, i = quality.level;
-    if (L[i]?.shadows && L[i + 1] && !L[i + 1].shadows) { noShadowWarmed = true; warmNoShadow(); }
+  // The scaler steps one level at a time with a cooldown between: compile the next level's variant ahead of it
+  // (only then, so fast machines never pay for programs they will not use).
+  function warmAhead() {
+    if (!warmBase || !quality) return;
+    const L = quality.levels, i = quality.level, next = L[i + 1];
+    if (!next) return;
+    const shadow = options.shadows !== false && next.shadows, low = i + 1 >= L.length - 2, lamps = lampLights().length;
+    queueWarm(() => warmPass(lamps, shadow, low));
+    if (!lamps) queueWarm(() => warmPass(poolCap(options.graphics), shadow, low));
   }
-  function warmNoShadow() {
-    if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
-    sun.castShadow = false;
-    try { renderer.compileAsync(scene, camera).catch(() => {}); } catch {}
-    sun.castShadow = true;
+  function queueWarm(job) { warmJobs.push(job); scheduleWarm(); }
+  function scheduleWarm() {
+    if (warmAt || disposed) return;
+    const run = deadline => { warmAt = 0; if (disposed || !scene) return; try { if (!warmBase) warmShaders(); else warmJobs.shift()?.(deadline); } catch (e) { console.warn('shader warm-up failed', e); } if (warmJobs.length) scheduleWarm(); };
+    if (typeof requestIdleCallback === 'function') warmAt = requestIdleCallback(run, {timeout:2000});
+    else warmAt = later(run, 300);
   }
   // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
   // (ghosts are shown for the call: renderer.compile skips hidden meshes), so the first switch never links programs mid-play.
   const warmedKinds = new Set();
   function warmKinds() {
+    if (!running && !warmBase) return; // the title's first frames only link what they show
     if (!hands || !ghosts || typeof renderer?.compileAsync !== 'function') return;
     const slots = localBag().slots; let fresh = false;
     for (let i = 0; i < slots.length; i++) {
@@ -1342,6 +1389,7 @@ export function mount(transfer = null) {
   function start() {
     if (adoptOnStart({running, role, storedRev:storedRev(), saveRev})) adoptStoredSave();
     running = true; const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false;
+    warmShaders(); // New Game before the idle warm-up ran: link now, not in the first gameplay frames
     if (!saveAvailable) setText('#saveStatus', 'Browser storage is unavailable. This session will not be saved.');
     refreshPointerUI(true);
   }
@@ -1353,10 +1401,14 @@ export function mount(transfer = null) {
     const pr = l ? Math.max(.5, l.pixelRatio * sc) : null;
     if (pr != null && renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr); // each call resizes the canvas and its MSAA buffers
     if (sun) sun.castShadow = options.shadows !== false && !!l?.shadows;
+    renderer.shadowMap.needsUpdate = true; // one refresh even while the shadow pass is paused underwater
+    ocean?.setDetail?.(quality.level >= quality.levels.length - 2); // bottom two levels: cheaper sea shader (warmed by warmAhead)
   }
   function applyOptions(next) {
+    const prevCap = poolCap(options?.graphics);
     options = next; applyVolume(); soundLabel(); // loop-ux: label notes a 0% volume
     if (quality && quality.info.preset !== next.graphics) quality.setCap(next.graphics);
+    if (warmBase && poolCap(next.graphics) !== prevCap && !lampLights().length) queueWarm(() => warmPass(poolCap(options.graphics), !!sun?.castShadow, !!ocean?.lowDetail)); // the lantern light count follows the preset
     applyUserGraphics();
   }
   // Pause menu "quit to title": save, leave any crew, show the title. The world stays loaded for Continue.
@@ -1627,6 +1679,7 @@ export function mount(transfer = null) {
   function frame() {
     const now = performance.now(), rawMs = now - last, realDt = rawMs / 1000, dt = Math.min(realDt, .05); last = now; elapsed += dt;
     if (running && !diveWarmed && ++playFrames > 2) scheduleDiveWarm();
+    if (!warmBase && ++warmFrames > 2) scheduleWarm(); // the first frames link only what is on screen
     const dialog = uiBlocked();
     if (running && !dialog && !document.hidden && !PIN_QUALITY) quality.tick(rawMs);
     checkPeerStale(now);
@@ -2245,6 +2298,7 @@ export function mount(transfer = null) {
     if (!scene) return;
     try { building?.dispose(); } catch {} building = null; // building-pieces lane hook
     if (diveWarmAt && typeof cancelIdleCallback === 'function') { try { cancelIdleCallback(diveWarmAt); } catch {} } diveWarmAt = 0; // a later() fallback is cleared with the other timers
+    if (warmAt && typeof cancelIdleCallback === 'function') { try { cancelIdleCallback(warmAt); } catch {} } warmAt = 0; warmJobs.length = 0; warmGeo?.dispose(); warmGeo = null; // shader warm-up
     try { diving?.dispose(); } catch {} diving = null; // diving lane hook
     try { sky?.dispose(); } catch {} sky = null; // frees the sky noise texture on hot swap
     try { shark?.dispose(); } catch {} shark = null; try { sharkFx?.dispose(); } catch {} sharkFx = null; // shark lane
@@ -2309,7 +2363,6 @@ export function mount(transfer = null) {
     pickupFeed.setIconProvider(k => iconURL(k) || feedSprite(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar; sprite while a render is pending
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
-    warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
     // onboarding/prompts hook (docs/cloud/onboarding.md): lets dist/prompts.js raycast with the live camera.
     try { window.raftMount = {T, scene, camera, debug:debugApi}; window.dispatchEvent(new CustomEvent('raft:mount', {detail:window.raftMount})); } catch {}
