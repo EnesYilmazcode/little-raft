@@ -189,7 +189,7 @@ export function mount(transfer = null) {
     if (raw) { try { const v = cleanWorld(JSON.parse(raw)); if (v) world = v; } catch {} }
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
-  let building = null; // building-pieces lane hook
+  let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
   let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
@@ -632,7 +632,7 @@ export function mount(transfer = null) {
     }
     if ((a.kind === 'piece' || a.kind === 'unpiece') && building) { // building-pieces lane hook
       const r = building.apply(a, bag, world);
-      if (r.ok) { rebuildRaft(); emit({kind:'build', text:r.text}, 'all'); } else if (r.text) emit({kind:'notice', text:r.text}, actor);
+      if (r.ok) emit({kind:'build', text:r.text}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor);
       return;
     }
     if (a.kind === 'gather') { // diving lane hook: seafloor node, validated by id + diver distance
@@ -899,7 +899,7 @@ export function mount(transfer = null) {
   function hostState() {
     const c = guestBag.counts();
     return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
-      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, pieces:world.pieces, sailing:world.sailing}}; // content hook: ext
+      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}}; // content hook: ext
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
   function frame() {
@@ -1112,7 +1112,7 @@ export function mount(transfer = null) {
     listen(c, 'open', () => {
       if (conn !== c) return;
       if (isHost) {
-        lastGuestMessage = performance.now(); guestAck = 0; wornCasts.guest = null;
+        lastGuestMessage = performance.now(); guestAck = 0; wornCasts.guest = null; sentPieces = null;
         networkReady = true; setStatus('Connected! Your brother is aboard.'); setConnectionLabel(`TWO ABOARD · ${room.toUpperCase()}`);
         $('#crew')?.close(); start(); toast('Your brother joined the raft!'); send(hostState());
       } else setStatus('Connected. Loading your brother’s raft…'); // ready only after the first valid state
@@ -1132,7 +1132,8 @@ export function mount(transfer = null) {
         lastHostMessage = performance.now();
         const w = cleanWorld(data.world, true); if (!w) return;
         const first = !networkReady;
-        const changed = first || JSON.stringify([world.tiles, world.decor, world.pieces]) !== JSON.stringify([w.tiles, w.decor, w.pieces]); // building-pieces lane hook
+        if (!Array.isArray(data.world.pieces) && !first) w.pieces = world.pieces; // building-pieces lane hook: host omits unchanged pieces
+        const changed = first || JSON.stringify([world.tiles, world.decor]) !== JSON.stringify([w.tiles, w.decor]), piecesChanged = w.pieces !== world.pieces;
         world = w; other = validPose(data.other);
         if (data.bag) { // canonical bag once the host has applied all of our sent actions
           const acked = first || !isInt(data.ack) || data.ack >= seq || performance.now() - lastSeqSent > ACK_TIMEOUT;
@@ -1142,7 +1143,7 @@ export function mount(transfer = null) {
           const b = Bag.fromCounts(w.stock, {tools:['hook', 'hammer', 'fishingrod']}); if (remoteBag) b.select(remoteBag.selectedIndex); remoteBag = b;
         }
         content?.load(w.ext, 'net'); // content hook
-        syncItems(); if (changed && scene) rebuildRaft();
+        syncItems(); if (changed && scene) rebuildRaft(); else if (piecesChanged && scene) building?.sync(world); // building-pieces lane hook
         if (first) {
           networkReady = true; joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
           setStatus('Connected! You are aboard your brother’s raft.'); setConnectionLabel(`TWO ABOARD · ${room.toUpperCase()}`);
