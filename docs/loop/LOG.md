@@ -699,3 +699,55 @@ Left for later:
 - slow bounded GL buffer creep (+52 buffers over minutes 2-8 of play)
 - "Discover at a Tinker's Desk" heading squeezed to 3 px (pre-existing UI bug)
 - `ocean.sampleAt` to remove double-argument boxing in `updateItems`
+
+## 2026-11-21 · loop-features-202611210855 (features)
+Base: origin/claude/raft-master (16aedaa; it now includes rounds 0548 and 0703, but not 0749).
+Not redone this round: everything from earlier rounds, plus the other branches' juicer, cookpot, goats, spyglass, decor pickup, raft flag and sitting.
+
+Features (research in docs/features, specs in docs/specs):
+
+- **Crop variety**
+  - Garden Bed (wood 4, sand 2, leaf 2) grows Sea Flax, Blushbell and Sweet Tuber, each in 3 stages.
+  - A dry bed pauses but never dies. Fresh-water cups and rain water it.
+  - E plants, waters and harvests: 2 produce plus the seed back, +1 produce near a beehive.
+  - Fibre makes rope and petals make Coral paint pots (both learned at the Tinker's Desk). Tuber is grilled into Roast Tuber.
+  - Seeds come from the island bush band (pinned rates unchanged) and from barrels; scrap weight drops from 30 to 27 so the total and pity tests stay the same.
+  - State is `world.ext.crops`.
+  - Files: dist/crops.js, crops-rules.js, crops-models.js.
+- **Night light**
+  - Hand Lantern (no fuel), Glass Jar, and Firefly Jar (catch at dusk or night near an island with E, then place it).
+  - Firefly swarm: one Points object with 40 points, no lights.
+  - The carried light and the partner's light use the existing daynight light pool through `planPool`, so no new lights and no shader relink when equipping (program counts checked before and after).
+  - `'handlantern'` is appended to coop HELD. coop.js `lastPose` now carries `held`, so the partner's light works.
+  - Files: dist/nightlight.js, nightlight-models.js.
+- **Zipline**
+  - Zipline Post (wood 4, rope 1) goes on the deck or on upper floors with a green or red ghost.
+  - Link two posts by pressing E on each while holding rope. Rides use a shared parabola, at 4–5.2 m/s.
+  - Space lets go. The rider's feet stay above floors, the rope stays clear of the eye, and arriving on a higher floor is eased.
+  - Host-side reach checks. Refunds are all-or-nothing, and overflow goes to the partner.
+  - State is `world.ext.zipline`, with a rev counter.
+  - Files: dist/zipline.js, zipline-rules.js, zipline-models.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (13 agents).
+
+Review/QA fixes:
+- Zipline: no reach check on guest actions; full-bag refund loss; rope across the top of the view; pop when arriving on a higher floor; guest rev after a host save load; ride and sleep at the same time.
+- Night light: a shader relink when the partner equipped a lantern (the light pool now attaches on join); swarm texture leak on hot swap; lantern flame hidden behind its glass (new viewOrder in hands.js); lantern sitting behind the hotbar.
+- Crops: the prompt provider deep-copied debug state 10 times a second; the bed prompt promised E while a palm in reach took it; shared meshes were disposed on every raft rebuild; long prompts overflowed at 390 px.
+- General: seeds and cups showed as a cloth bundle in hand; the phone pickup feed wrapped one word per line.
+
+Checks: `npm test` 946/946; shoot.py `errors: []`; `node --check` clean on dist/*.js.
+
+Known limits:
+- On medium graphics (2 light slots) the held lantern takes a slot from a placed lantern, so the raft can look darker near placed lanterns. `planPool` needs distances to decide well.
+- The carried light is weak.
+- Lantern hand pose: the fingers stay open.
+- Held zippost and gardenbed show a bundle.
+- The hook hint stays visible while riding.
+- Co-op loopback was not run for crops or zipline.
+
+Next ideas:
+- Merge 0749 into master.
+- Distance-aware `planPool`.
+- A sprinkler for beds.
+- A riding pose for the partner's avatar.
