@@ -718,7 +718,7 @@ export function mount(transfer = null) {
   const farmNotify = text => notice(text); // farming hints: one hook for the notification feed
   function farmUse(aim, interacting) {
     const kind = selectedKind(), d = farmPlot(aim);
-    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { farmNotify(Farm.promptFor(d.farm, kind)); return true; } }
+    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { const t = Farm.promptFor(d.farm, kind); farmNotify(t.startsWith('E  ') ? 'Press E: ' + t.slice(3) : t); return true; } if (interacting) return true; }
     if (interacting || kind !== 'cup') return false;
     const p = aim?.point; if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2)) || Math.hypot(p.x - physics.x, p.z - physics.z) > 6) { farmNotify('Point at the sea next to the raft to fill the cup'); return true; }
     swing = .6; action({kind:'farm', op:'fill'}); return true;
