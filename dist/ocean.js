@@ -100,18 +100,26 @@ void ripple(vec2 d, float a, float k, float w, vec2 p, inout vec2 g) {
 void main() {
   vec3 toCam = cameraPosition - vWorld;
   float dist = length(toCam.xz);
+  // From uFadeFar on the final fade is exactly 1, so the pixel is pure uSky: skip all shading.
+  if (dist >= uFadeFar) {
+    gl_FragColor = vec4(uSky, 1.0);
+    #include <colorspace_fragment>
+    return;
+  }
   vec3 V = normalize(toCam);
   vec3 L = normalize(uSunDir);
   vec2 p = vWorld.xz;
 
   // Detail ripples fade with distance to avoid shimmering.
   vec2 g = vec2(0.0);
-  ripple(vec2(0.8, 0.6), 0.012, 2.10, 1.30, p, g);
-  ripple(vec2(-0.48564, 0.87416), 0.009, 2.90, 1.70, p, g);
-  ripple(vec2(0.95448, -0.29827), 0.007, 4.30, 2.10, p, g);
-  ripple(vec2(-0.91192, -0.41036), 0.005, 6.70, 2.60, p, g);
-  ripple(vec2(0.19612, 0.98058), 0.0035, 9.10, 3.10, p, g);
-  g *= 1.0 - smoothstep(8.0, 60.0, dist);
+  if (dist < 60.0) { // the fade below is exactly 0 from 60 on, so the gradient would be zeroed
+    ripple(vec2(0.8, 0.6), 0.012, 2.10, 1.30, p, g);
+    ripple(vec2(-0.48564, 0.87416), 0.009, 2.90, 1.70, p, g);
+    ripple(vec2(0.95448, -0.29827), 0.007, 4.30, 2.10, p, g);
+    ripple(vec2(-0.91192, -0.41036), 0.005, 6.70, 2.60, p, g);
+    ripple(vec2(0.19612, 0.98058), 0.0035, 9.10, 3.10, p, g);
+    g *= 1.0 - smoothstep(8.0, 60.0, dist);
+  }
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
 
   float ndv = max(dot(n, V), 0.0);
@@ -136,30 +144,33 @@ void main() {
   col += uSunColor * spec * (1.0 - smoothstep(40.0, 120.0, dist) * 0.6);
 
   // Foam: one lace pattern, revealed by crests, the raft edge and floating items.
-  vec2 fp = p + vec2(uTime * 0.3, uTime * 0.1);
-  float lace = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
-  float crest = smoothstep(0.12, 0.21, vHeight) * 0.45 * (1.0 - smoothstep(12.0, 40.0, dist));
-  float edge = 0.0;
-  if (dist < 45.0) {
-    // Raft collar: CPU-built falloff field, filtered by hand so it is smooth on every GPU.
-    vec2 t = p / ${TEXEL.toFixed(2)} + ${(GRID / 2 - 0.5).toFixed(1)};
-    vec2 i0 = floor(t), fr = t - i0;
-    i0 = (i0 + 0.5) / ${GRID.toFixed(1)};
-    float k = 1.0 / ${GRID.toFixed(1)};
-    float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
-                  mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
-    edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + p.x * 2.0 + p.y * 1.3));
-    for (int i = 0; i < ${MAX_FOAM}; i++) {
-      vec4 f = uFoamPts[i];
-      if (f.z <= 0.0) break;  // live points are packed first
-      float d = length(p - f.xy) / f.z;  // thin broken ring hugging the item's waterline
-      edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.35);
+  // The foam factor is zeroed from 90 m on (smoothstep(30, 90) below), so skipped there.
+  if (dist < 90.0) {
+    vec2 fp = p + vec2(uTime * 0.3, uTime * 0.1);
+    float lace = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
+    float crest = smoothstep(0.12, 0.21, vHeight) * 0.45 * (1.0 - smoothstep(12.0, 40.0, dist));
+    float edge = 0.0;
+    if (dist < 45.0) {
+      // Raft collar: CPU-built falloff field, filtered by hand so it is smooth on every GPU.
+      vec2 t = p / ${TEXEL.toFixed(2)} + ${(GRID / 2 - 0.5).toFixed(1)};
+      vec2 i0 = floor(t), fr = t - i0;
+      i0 = (i0 + 0.5) / ${GRID.toFixed(1)};
+      float k = 1.0 / ${GRID.toFixed(1)};
+      float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
+                    mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
+      edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + p.x * 2.0 + p.y * 1.3));
+      for (int i = 0; i < ${MAX_FOAM}; i++) {
+        vec4 f = uFoamPts[i];
+        if (f.z <= 0.0) break;  // live points are packed first
+        float d = length(p - f.xy) / f.z;  // thin broken ring hugging the item's waterline
+        edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.35);
+      }
     }
+    float amount = max(crest, edge);
+    float foam = smoothstep(1.0 - amount, 1.0 - amount * 0.55, lace) * min(1.0, amount * 1.4);
+    foam *= 1.0 - smoothstep(30.0, 90.0, dist);
+    col = mix(col, uFoam, foam * 0.85);
   }
-  float amount = max(crest, edge);
-  float foam = smoothstep(1.0 - amount, 1.0 - amount * 0.55, lace) * min(1.0, amount * 1.4);
-  foam *= 1.0 - smoothstep(30.0, 90.0, dist);
-  col = mix(col, uFoam, foam * 0.85);
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
