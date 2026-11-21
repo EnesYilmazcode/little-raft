@@ -140,7 +140,7 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
   const list = dlg.querySelector('.lb-notes');
   const grid = dlg.querySelector('.lb-grid');
   const taskBox = dlg.querySelector('.lb-tasks');
-  const taskTab = tabs.find(t => t.dataset.tab === 'tasks');
+  const taskTab = tabs.find(t => t.dataset?.tab === 'tasks');
   let taskSig = null;
 
   // ---------- [tasks] crew tasks tab ----------
