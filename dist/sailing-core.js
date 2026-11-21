@@ -24,6 +24,7 @@ export const SAIL = Object.freeze({
   GROUND_WRAP: 105000,      // 350 * 2*ISLAND_WRAP, so wrapped islands never jump
   ISLAND_WRAP: 150,
   MAX_SAILS: 3,
+  TARGET_CAP: 2.0,          // sail + engine target cap (m/s)
 });
 
 const DEFAULTS = Object.freeze({
@@ -105,7 +106,8 @@ export function windVector(state, out) {
 const _t = { x: 0, z: 0 }; // module scratch: no per-call allocation
 
 /**
- * Advance the state by dt. opts = {nSails, host, rng, blockers}. out receives
+ * Advance the state by dt. opts = {nSails, host, rng, blockers, push}. push = optional {x,z} engine target (m/s)
+ * added to the sail target (ignored while anchored; the sum is capped at SAIL.TARGET_CAP). out receives
  * dwx,dwz (water-relative raft displacement) and dgx,dgz (seabed displacement) for this step.
  */
 export function stepSailing(state, dt, opts, out) {
@@ -136,6 +138,12 @@ export function stepSailing(state, dt, opts, out) {
 
   // Velocity eases toward the sail target (framerate independent).
   sailTarget(state, o.nSails, _t);
+  const p = o.push;
+  if (p && !state.anchored && fin(p.x) && fin(p.z) && (p.x || p.z)) {
+    _t.x += p.x; _t.z += p.z;
+    const m2 = _t.x * _t.x + _t.z * _t.z, C = SAIL.TARGET_CAP;
+    if (m2 > C * C) { const s = C / Math.sqrt(m2); _t.x *= s; _t.z *= s; }
+  }
   const up = _t.x * _t.x + _t.z * _t.z > state.vx * state.vx + state.vz * state.vz;
   const k = 1 - Math.exp(-dt / (up ? SAIL.TAU_UP : SAIL.TAU_DOWN));
   state.vx += (_t.x - state.vx) * k;

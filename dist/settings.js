@@ -4,6 +4,8 @@
 // In the desktop app the main process claims Escape and calls window.raftEscape() with a user gesture,
 // so closing a menu can relock the mouse without a click.
 
+import { createEscGate } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+
 const STORAGE_KEY = 'little-raft-settings';
 const DIALOG_ID = 'options';
 const STYLE_ID = 'little-raft-settings-style';
@@ -187,8 +189,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   const owns = () => !destroyed && dialog.dataset.owner === token;
   const guard = (fn) => (event) => { if (owns()) fn(event); };
   const sig = { signal: ac.signal };
-  let lockLostAt = -Infinity;   // when pointer lock was released while the game was active
-  let escHandledAt = -Infinity; // last time a keydown Escape was handled (to avoid double handling on keyup)
+  const esc = createEscGate(); // Escape keydown/keyup/lock-loss bookkeeping (lock-rules.js)
   let returnToPause = null;     // sub-menu (help/crew) opened from the pause menu
 
   // Hot creation: the live controls are the freshest truth; otherwise storage.
@@ -272,7 +273,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   // One Escape press. Returns true when something consumed it.
   function escape() {
     if (!owns()) return false;
-    escHandledAt = performance.now();
+    esc.keydown(performance.now(), { handled: true });
     const inv = document.getElementById('inventory');
     if (inv?.open) { inv.dispatchEvent(new Event('cancel', { cancelable: true })); return true; } // survival UI closes and relocks
     if (dialog.open) { if (panelOpen()) { setPanel(false); form.querySelector('[data-act="settings"]')?.focus({ preventScroll: true }); } else close(true); return true; }
@@ -296,26 +297,28 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   // Browser: Escape arrives as a normal keydown when the pointer is free.
   window.addEventListener('keydown', guard((event) => {
     if (event.key !== 'Escape') return;
-    if (event.repeat) { if (dialog.open) event.preventDefault(); return; }
+    const now = performance.now();
+    // Held Escape: repeats keep this press "handled" so its late keyup never opens the pause menu.
+    if (event.repeat) { esc.keydown(now, { repeat: true }); if (dialog.open) event.preventDefault(); return; }
     // Other dialogs (inventory/crew/help) close natively through their own cancel; we only remember it.
-    if (dialog.open || !otherDialogs().length) { if (escape()) event.preventDefault(); }
-    else escHandledAt = performance.now();
+    // The build wheel closes through the game's own key handler; that press is still handled, so its keyup never pauses.
+    if (dialog.open || !otherDialogs().length) { const wheel = buildWheelOpen(); if (escape()) event.preventDefault(); else esc.keydown(now, { handled: wheel }); }
+    else esc.keydown(now, { handled: true });
   }), { capture: true, signal: ac.signal });
 
   // Browsers often swallow the keydown that ends pointer lock; the keyup still arrives.
   window.addEventListener('keyup', guard((event) => {
     if (event.key !== 'Escape') return;
-    const now = performance.now();
-    if (now - escHandledAt < 600) return;
-    if (now - lockLostAt > 1500) return; // only pause for the Escape that just released the lock
-    lockLostAt = -Infinity;
+    // Only pause for an unhandled Escape that just released the lock.
+    if (!esc.keyupOpensPause(performance.now())) return;
     if (!dialog.open && !otherDialogs().length && !buildWheelOpen() && gameActive()) { event.preventDefault(); open(); }
   }), { capture: true, signal: ac.signal });
 
   // Remember lock loss only; never pause from lock loss alone (build mode, menus release it on purpose).
   document.addEventListener('pointerlockchange', guard(() => {
     if (document.pointerLockElement) document.body.classList.remove('relock');
-    else if (gameActive() && !dialog.open) lockLostAt = performance.now();
+    // A release caused by the page opening a menu (inventory, crew, help) is not an Escape.
+    else if (gameActive() && !dialog.open) esc.lockLost(performance.now(), { selfCaused: otherDialogs().length > 0 });
   }), sig);
 
   // A menu closed while playing but the browser refused to relock (Escape is not a user gesture):
@@ -324,7 +327,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     const d = event.target;
     if (!(d instanceof HTMLDialogElement)) return;
     // Help returns to the menu on the title too; crew may close because a game is starting.
-    if (d !== dialog && d === returnToPause) { returnToPause = null; if (gameActive() || d.id === 'help') { open(); return; } }
+    if (d !== dialog && d === returnToPause) { delete d.dataset.fromPause; returnToPause = null; if (gameActive() || d.id === 'help') { open(); return; } }
     if (d.id !== 'inventory' && d !== dialog) return;
     setTimeout(guard(() => {
       if (gameActive() && !document.pointerLockElement && !document.querySelector('dialog[open]')) document.body.classList.add('relock');
@@ -335,7 +338,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   // Native dialog Escape: route through our escape so the engine resumes.
   dialog.addEventListener('cancel', guard((event) => {
     event.preventDefault();
-    if (performance.now() - escHandledAt < 100) return; // already handled by keydown
+    if (performance.now() - esc.handledAt < 100) return; // already handled by keydown
     escape();
   }), sig);
 
@@ -370,6 +373,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
       if (!(target instanceof HTMLDialogElement)) return;
       close(false); // stay paused; Escape or close returns to this menu
       returnToPause = target;
+      target.dataset.fromPause = '1'; // game.js: do not relock when this closes
       try { target.showModal(); } catch { target.setAttribute('open', ''); }
     }
   }), sig);

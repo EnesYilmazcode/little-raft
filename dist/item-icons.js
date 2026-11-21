@@ -13,6 +13,7 @@ import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84a
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
+import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
 // Item ids whose name differs from the models.js kind.
@@ -131,12 +132,21 @@ function freeModel(root) {
   });
 }
 
-// Renders kind and returns a 2D canvas copy of the pixels (null when it cannot be drawn).
+/** Model for an icon: the provider, then the procedural fallback, then models.js for kinds the
+ *  fallback lacks (cup, seed, water). own = true when the caller must free it. */
+export function resolveIconModel(kind) {
+  let model = null;
+  if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
+  if (model) return { model, own: false };
+  try { model = buildFallbackModel(kind); } catch (e) { console.warn('item icon model failed', kind, e); }
+  if (model) return { model, own: true };
+  try { model = getLibraryModel(kind); } catch (e) { console.warn('item icon library model failed', kind, e); }
+  return { model: model || null, own: false };   // getModel clones share cached geometry: never free
+}
+
 function renderKind(kind) {
   if (!ensureGL()) return null;
-  let model = null, own = false;
-  if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
-  if (!model) { try { model = buildFallbackModel(kind); own = true; } catch (e) { console.warn('item icon model failed', kind, e); } }
+  const { model, own } = resolveIconModel(kind);
   if (!model) return null;
   const pivot = new T.Group();
   pivot.add(model);

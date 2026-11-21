@@ -160,9 +160,9 @@ body.playing header{opacity:.9}
 }
 body:not(.playing) #crosshair{opacity:0}
 
-/* Resume hint sits below the reticle, never on it */
+/* Resume hint sits at the top edge, away from the reticle */
 #resumeHint{
-  position:fixed;left:50%;top:calc(50% + 56px);transform:translateX(-50%);z-index:3;
+  position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:3;
   padding:9px 18px;border-radius:4px;white-space:nowrap;
   background:var(--plate-strong);color:var(--cream);
   font:600 12px/1.2 var(--ui-font);letter-spacing:2px;text-transform:uppercase;
@@ -295,7 +295,7 @@ header{z-index:6}
   #durability,.durability-meter{left:12px;bottom:178px;width:150px;padding:8px 10px 10px}
   body.build #durability,body.build .durability-meter{bottom:290px}
 
-  #resumeHint{font-size:11px;letter-spacing:1.4px;top:calc(50% + 44px)}
+  #resumeHint{font-size:11px;letter-spacing:1.4px;top:10px}
 
   .welcome-card p{font-size:13px}
   dialog{padding:26px 20px}
@@ -310,8 +310,6 @@ header{z-index:6}
   .progress i,.durability-track>i,#toast{transition:none}
 }
 
-#repairButton{margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:8px;background:#20363de8;color:#fff0ce;border:1px solid #aa85594d;border-radius:3px;font-size:12px;flex-wrap:wrap}
-#repairButton .icon{width:20px;height:20px}#repairButton small{width:100%;font-size:10px;color:#b9c9c4}#repairButton kbd{font:600 10px sans-serif;opacity:.6}#conditionBar{width:100%}
 /* Throw charge: an unlabeled 2px arc around the reticle, filled clockwise by --c (0..1) */
 #chargeMeter{position:fixed;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;pointer-events:none;z-index:4;background:conic-gradient(#fffe calc(var(--c,0) * 360deg),#ffffff2e 0);-webkit-mask:radial-gradient(closest-side,transparent calc(100% - 2.5px),#000 calc(100% - 2px));mask:radial-gradient(closest-side,transparent calc(100% - 2.5px),#000 calc(100% - 2px));filter:drop-shadow(0 0 1px #0008)}
 .close .icon{width:20px;height:20px}.guide-note{font-size:12px}#resumeHint{max-width:90vw;white-space:normal;text-align:center}
@@ -333,3 +331,7 @@ body.playing header,body.playing .goal,body.playing #toast,body.playing .control
 /* live-qa */
 
 /* live-qa */
+/* Throw power sits just above the hotbar; the guide reads cream on navy */
+@media(max-width:760px){#chargeMeter{bottom:66px}}
+.guide li{color:var(--cream-dim)}.guide b{color:var(--cream)}.guide-note{color:var(--cream-dim)}
+.guide kbd{background:linear-gradient(180deg,#2a3a47,#16232e);color:var(--cream);border-color:rgba(201,164,107,.45)}

@@ -4,12 +4,12 @@
 import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js';
 import { createSailingUI } from './sailing-ui.js';
 
-const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22;
+const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22, WHEEL_Y = 1.05, WHEEL_R = .5;
 const CLOTH_R = 1.2, CLOTH_Y0 = 1, CLOTH_Y1 = 3.4; // raised cloth hit volume around the mast axis (cheap approximation)
 const FURL = .04, FURL_Z = .3, ROLL_AT = .3, ROLL_R = .07, BASE_FLOW_Z = .22, ITEM_MARGIN = 26, ROPE_DOWN = 3.4, ROPE_UP = .07, GROUND_CLEAR = 2.5, OP_GAP = 250, SNAP2 = 36;
 const CLOTH_NAMES = new Set(['sailCloth', 'sailSeams', 'sailPatch', 'sailStitches']);
 const LIMITED_OPS = new Set(['toggle', 'raise', 'lower', 'anchor', 'unanchor', 'toggleAnchor']);
-const P_STEER = 'Steering the sail — look where to go', P_RAISE = '<kbd>E</kbd>Raise sail · hold <kbd>R</kbd> to steer',
+const P_STEER = 'Steering the sail — look where to go', P_WHEEL = 'Steering — look where to go', P_RAISE = '<kbd>E</kbd>Raise sail · hold <kbd>R</kbd> to steer',
   P_LOWER = '<kbd>E</kbd>Lower sail · hold <kbd>R</kbd> to steer', P_DROP = '<kbd>E</kbd>Drop anchor', P_WEIGH = '<kbd>E</kbd>Raise anchor';
 const HW = SAIL.WATER_WRAP / 2, HG = SAIL.GROUND_WRAP / 2;
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
@@ -19,8 +19,8 @@ export function createSailing(T, ctx) {
   const abort = new AbortController();
   const ui = createSailingUI({ signal: abort.signal });
   const out = { dwx: 0, dwz: 0, dgx: 0, dgz: 0 };
-  const flow = { x: 0, z: 0 }, info = { running: false, yaw: 0, windDir: 0, windStr: 0, heading: 0, raised: false, anchored: false, nSails: 0, speed: 0, travelDir: 0 };
-  const stepOpts = { nSails: 0, host: true, rng: Math.random, blockers: [] };
+  const flow = { x: 0, z: 0 }, info = { running: false, yaw: 0, windDir: 0, windStr: 0, heading: 0, raised: false, anchored: false, nSails: 0, speed: 0, travelDir: 0, motor: 0 };
+  const stepOpts = { nSails: 0, host: true, rng: Math.random, blockers: [], push: { x: 0, z: 0 } };
   const localAct = { kind: 'sail', op: 'heading', heading: 0 };
   const drifters = [], sails = [], rolls = [];
   const vA = new T.Vector3(), vO = new T.Vector3(), vD = new T.Vector3(), ndc = new T.Vector2(), caster = new T.Raycaster();
@@ -29,7 +29,7 @@ export function createSailing(T, ctx) {
   const lastOp = new Map();
   let state = defaultSailing(), speed = 0, travelDir = 0, nSails = 0, raftR = 3.5, halfDiag = 3, dispOk = false;
   let steering = false, grabYaw = 0, grabHeading = 0, steerHeading = 0, predicted = 0, predictUntil = 0, sentHeading = NaN, sendClock = 0, clock = 0;
-  let aimKind = 0, aimIndex = -1, lastPrompt = undefined, anchorShown = 0, disposed = false;
+  let aimKind = 0, aimIndex = -1, grabKind = 0, lastPrompt = undefined, anchorShown = 0, disposed = false;
   const anchorPos = { x: 0, z: 0, ok: false };
 
   // ---------- shared geometry / materials (created once) ----------
@@ -147,7 +147,7 @@ export function createSailing(T, ctx) {
     for (const t of tiles) if (Array.isArray(t) && (!best || t[1] > best[1] || (t[1] === best[1] && t[0] < best[0]))) best = t;
     anchorPos.ok = !!best; anchorRoot.visible = !!best;
     if (best) { anchorPos.x = best[0] * 2 - .7; anchorPos.z = best[1] * 2 + .7; anchorRoot.position.set(anchorPos.x, .2, anchorPos.z); }
-    if (!sails.length) steering = false;
+    if (grabLost()) steering = false; // a wheel grab survives a raft with no sail, and the other way round
   }
   function restoreSails() {
     for (const e of sails) {
@@ -219,21 +219,30 @@ export function createSailing(T, ctx) {
       raft.localToWorld(vA.set(anchorPos.x, 1.15, anchorPos.z)); vA.sub(vO);
       const t = Math.min(REACH, Math.max(0, vA.dot(vD)));
       const dx = vD.x * t - vA.x, dy = vD.y * t - vA.y, dz = vD.z * t - vA.z;
-      if (dx * dx + dy * dy + dz * dz < ANCHOR_R * ANCHOR_R && t < best) { aimKind = 2; aimIndex = -1; }
+      if (dx * dx + dy * dy + dz * dz < ANCHOR_R * ANCHOR_R && t < best) { best = t; aimKind = 2; aimIndex = -1; }
+    }
+    const wheels = ctx.steerTargets?.() || []; // engine: steering wheels (raft-local x,z), a second hold-R grab point
+    for (let i = 0; i < wheels.length; i++) {
+      const w = wheels[i]; if (!w) continue;
+      raft.localToWorld(vA.set(w.x, WHEEL_Y, w.z)); vA.sub(vO);
+      const t = Math.min(REACH, Math.max(0, vA.dot(vD)));
+      const dx = vD.x * t - vA.x, dy = vD.y * t - vA.y, dz = vD.z * t - vA.z;
+      if (dx * dx + dy * dy + dz * dz < WHEEL_R * WHEEL_R && t < best) { best = t; aimKind = 3; aimIndex = i; }
     }
   }
   function updatePrompt() {
     let p = null;
     if (ctx.isRunning() && ctx.canInput() && !ctx.isBusy?.()) { // busy: the player's own hook/rope is out
-      if (steering) p = P_STEER;
+      if (steering) p = grabKind === 3 ? P_WHEEL : P_STEER; // aimKind 3 (wheel): the engine module's prompt covers E and R
       else if (aimKind === 1) p = state.raised ? P_LOWER : P_RAISE;
       else if (aimKind === 2) p = state.anchored ? P_WEIGH : P_DROP;
     }
     if (p !== lastPrompt) { lastPrompt = p; ui.setPrompt(p); }
   }
+  function grabLost() { return grabKind === 3 ? !(ctx.steerTargets?.()?.length) : !sails.length; } // the grabbed kind is gone
   function steer(dt) {
     if (!steering) return;
-    if (!ctx.isRunning() || !sails.length) { release(); return; }
+    if (!ctx.isRunning() || grabLost()) { release(); return; }
     const target = grabHeading + angDiff(ctx.getYaw(), grabYaw), d = angDiff(target, steerHeading), lim = STEER_RATE * dt;
     steerHeading += Math.max(-lim, Math.min(lim, d));
     const h = Math.atan2(Math.sin(steerHeading), Math.cos(steerHeading));
@@ -251,6 +260,7 @@ export function createSailing(T, ctx) {
     const guest = ctx.getRole() === 'guest';
     stepOpts.nSails = nSails; stepOpts.host = !guest;
     steer(dt);
+    stepOpts.push.x = stepOpts.push.z = 0; ctx.getPush?.(state, stepOpts.push); // engine: motor push (same synced data on every peer)
     stepSailing(state, dt, stepOpts, out);
     flow.x = dt > 0 ? -out.dwx / dt : 0; flow.z = dt > 0 ? -out.dwz / dt : 0;
     const fz = BASE_FLOW_Z + flow.z, f2 = flow.x * flow.x + fz * fz;
@@ -269,7 +279,7 @@ export function createSailing(T, ctx) {
     updateAim(); updatePrompt();
     info.running = !!ctx.isRunning(); info.yaw = ctx.getYaw(); info.windDir = state.windDir; info.windStr = state.windStr;
     info.heading = shownHeading(); info.raised = state.raised; info.anchored = state.anchored; info.nSails = nSails;
-    info.speed = speed; info.travelDir = travelDir;
+    info.speed = speed; info.travelDir = travelDir; info.motor = Math.hypot(stepOpts.push.x, stepOpts.push.z);
     ui.update(info);
   }
   // Host/solo show the state directly. The guest advances its display copies by this step's deltas and eases them
@@ -300,8 +310,8 @@ export function createSailing(T, ctx) {
   function grab() {
     if (!ctx.canInput()) return false;
     updateAim();
-    if (aimKind !== 1) return false;
-    steering = true; grabYaw = ctx.getYaw(); grabHeading = steerHeading = predicted = state.heading; sentHeading = state.heading; sendClock = 0; updatePrompt();
+    if (aimKind !== 1 && aimKind !== 3) return false;
+    grabKind = aimKind; steering = true; grabYaw = ctx.getYaw(); grabHeading = steerHeading = predicted = state.heading; sentHeading = state.heading; sendClock = 0; updatePrompt();
     return true;
   }
   function release() {
@@ -328,7 +338,7 @@ export function createSailing(T, ctx) {
   function debug() {
     const s = ensureState(), t = { x: 0, z: 0 }, w = { x: 0, z: 0 };
     sailTarget(s, nSails, t); windVector(s, w);
-    return { ...s, nSails, steering, speed, travelDir, sails: sails.length, flow: { ...flow }, flowDir: { ...flowDir }, target: t, wind: w,
+    return { ...s, nSails, steering, speed, push: { ...stepOpts.push }, motor: info.motor, grabKind, travelDir, sails: sails.length, flow: { ...flow }, flowDir: { ...flowDir }, target: t, wind: w,
       raftR, centre: { ...centre }, halfDiag, itemRange: halfDiag + ITEM_MARGIN, display: { ...disp },
       anchorPos: anchorPos.ok ? { x: anchorPos.x, z: anchorPos.z } : null, drifters: drifters.length, current: [SAIL.CURRENT_X, SAIL.CURRENT_Z] };
   }
