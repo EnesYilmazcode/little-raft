@@ -1,5 +1,5 @@
 // Progression station models (ES module, no imports, no textures).
-// Usage: import { createSmelterModel, setSmelterGlow } from './smelter-model.js';
+// Usage: import { createSmelterModel, setSmelterGlow } from './smelter-model.js?build=v3-survival-ae77fa84ac2b';
 //        const g = createSmelterModel(THREE); g.position.set(x, .22, z);  // same origin rule as crafts.js
 // Local origin = centre of the 2x2 raft floor top surface; everything builds upward from y = 0 inside a
 // ~1.3 x 1.3 footprint. Meshes are merged per material (flat-shaded, vertex coloured, low poly).

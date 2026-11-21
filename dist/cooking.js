@@ -1,5 +1,5 @@
 // Cooking: driftwood grill state + model + pooled smoke (ES module, no imports, no textures).
-// Usage: import { GrillState, createGrillModel, createSmoke } from './cooking.js';
+// Usage: import { GrillState, createGrillModel, createSmoke } from './cooking.js?build=v3-survival-ae77fa84ac2b';
 //
 // Pure (Node-safe, no THREE at import time):
 //   COOK_TUNING                         tuning constants (see below)

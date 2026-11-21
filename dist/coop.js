@@ -14,12 +14,12 @@
 //   {type:'Δ', ...}                            delta-encoded 'cp' pose snapshots (15 Hz moving / 4 Hz idle) and
 //                                              host 'state' (items throttled to 2 Hz unless the set changes)
 // The legacy guest 'move' message is replaced by 'cp' (decoded back into a 'move' for game.js on the host).
-import './coop-loopback.js';
-import { SnapshotBuffer } from './coop-interp.js';
-import { DeltaEncoder, DeltaDecoder, quantize } from './coop-delta.js';
-import { createRemoteAvatar } from './coop-avatar.js';
-import { createPings, createRemoteRope, createRemoteGhost } from './coop-fx.js';
-import { createFeed } from './coop-feed.js';
+import './coop-loopback.js?build=v3-survival-ae77fa84ac2b';
+import { SnapshotBuffer } from './coop-interp.js?build=v3-survival-ae77fa84ac2b';
+import { DeltaEncoder, DeltaDecoder, quantize } from './coop-delta.js?build=v3-survival-ae77fa84ac2b';
+import { createRemoteAvatar } from './coop-avatar.js?build=v3-survival-ae77fa84ac2b';
+import { createPings, createRemoteRope, createRemoteGhost } from './coop-fx.js?build=v3-survival-ae77fa84ac2b';
+import { createFeed } from './coop-feed.js?build=v3-survival-ae77fa84ac2b';
 
 export const COOP_VERSION = 1;
 const HELD = [null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];

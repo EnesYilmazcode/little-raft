@@ -9,7 +9,7 @@
 //   materialForColor(T, '#bb8a53')              -> game palette hex -> textured material (or null)
 //   applyLighting(scene, renderer)              -> recommended warm tropical rig (LIGHTING)
 //   artEnabled()                                -> true when the page URL has ?art (temporary hook gate)
-import { getAtlas } from './textures.js';
+import { getAtlas } from './textures.js?build=v3-survival-ae77fa84ac2b';
 
 // Tuned against the research notes (sandbox/art/notes/research.md). roughness scales the map's roughness.
 // repeat = tiles per UV unit. normalScale = strength of the baked normal.

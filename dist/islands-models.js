@@ -1,6 +1,6 @@
 // Islands: cached geometries and materials (built once per game, shared by every island).
 // Everything uses vertex colours so instance colours (setColorAt) can tint a node when it drains.
-import { ISLAND, SHORE_U, shape, hash3, heightU } from './islands-layout.js';
+import { ISLAND, SHORE_U, shape, hash3, heightU } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
