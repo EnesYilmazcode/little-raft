@@ -113,9 +113,9 @@ void main() {
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
 
   float ndv = max(dot(n, V), 0.0);
-  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.6);
+  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.45);
   vec3 R = reflect(-V, n);
-  vec3 skyRefl = mix(uSky, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.3));
+  vec3 skyRefl = mix(uSky, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.25));
 
   // Water body: looking steeply down near the raft you see clear turquoise; grazing and far
   // away the light path is long, so it sinks to deep blue. Crests glow where sun passes through.
@@ -136,7 +136,7 @@ void main() {
   // Foam: one lace pattern, revealed by crests, the raft edge and floating items.
   vec2 fp = p + vec2(uTime * 0.3, uTime * 0.1);
   float lace = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
-  float crest = smoothstep(0.07, 0.18, vHeight) * 0.6;
+  float crest = smoothstep(0.12, 0.21, vHeight) * 0.45 * (1.0 - smoothstep(12.0, 40.0, dist));
   float edge = 0.0;
   if (dist < 45.0) {
     // Raft collar: CPU-built falloff field, filtered by hand so it is smooth on every GPU.
@@ -149,9 +149,9 @@ void main() {
     edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + p.x * 2.0 + p.y * 1.3));
     for (int i = 0; i < ${MAX_FOAM}; i++) {
       vec4 f = uFoamPts[i];
-      if (f.z <= 0.0) continue;
+      if (f.z <= 0.0) break;  // live points are packed first
       float d = length(p - f.xy) / f.z;  // thin broken ring hugging the item's waterline
-      edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.5);
+      edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.35);
     }
   }
   float amount = max(crest, edge);
@@ -176,7 +176,7 @@ export function createOcean(T, options = {}) {
   const sun = options.sunDirection ?? new T.Vector3(-15, 28, 12);
   const maskData = new Uint8Array(GRID * GRID);
   const mask = new T.DataTexture(maskData, GRID, GRID, T.RedFormat, T.UnsignedByteType);
-    const foamPts = Array.from({ length: MAX_FOAM }, () => new T.Vector4());
+  const foamPts = Array.from({ length: MAX_FOAM }, () => new T.Vector4());
   const uniforms = {
     uTime: { value: 0 },
     uCamera: { value: new T.Vector3() },
@@ -184,8 +184,8 @@ export function createOcean(T, options = {}) {
     uSunColor: { value: new T.Color('#fff3d6') },
     uSky: { value: new T.Color(options.skyColor ?? '#d6ecf2') },
     uZenith: { value: new T.Color(options.zenith ?? '#5aa3dc') },
-    uDeep: { value: new T.Color('#07476b') },
-    uShallow: { value: new T.Color('#1fb3b5') },
+    uDeep: { value: new T.Color('#0a4a85') },
+    uShallow: { value: new T.Color('#14b4c4') },
     uFoam: { value: new T.Color('#f4fbfb') },
     uFadeNear: { value: options.fadeNear ?? 52 },
     uFadeFar: { value: options.fadeFar ?? 135 },
@@ -239,11 +239,13 @@ export function createOcean(T, options = {}) {
   // Children of this group (floating items) each get a foam collar, read every update.
   function trackFoam(group) { foamGroup = group; }
   function syncFoam() {
-    const kids = foamGroup ? foamGroup.children : null;
+    const kids = foamGroup ? foamGroup.children : null, cam = uniforms.uCamera.value;
     let n = 0;
     if (kids) for (let i = 0; i < kids.length && n < MAX_FOAM; i++) {
       const c = kids[i];
       if (!c.visible) continue;
+      const cx = c.position.x - cam.x, cz = c.position.z - cam.z;
+      if (cx * cx + cz * cz > 2304) continue; // the shader only draws collars within 45 m
       const r = c.userData.foamRadius ?? 0.7;
       foamPts[n++].set(c.position.x, c.position.z, r * c.scale.x, 0);
     }
@@ -253,7 +255,6 @@ export function createOcean(T, options = {}) {
   function update(t, camera) {
     time = t;
     uniforms.uTime.value = t;
-    syncFoam();
     if (camera) {
       uniforms.uCamera.value.copy(camera.position);
       if (options.followCamera) {
@@ -262,6 +263,7 @@ export function createOcean(T, options = {}) {
         mesh.position.z = Math.round(camera.position.z / step) * step;
       }
     }
+    syncFoam();
   }
 
   // CPU mirror of the vertex shader (inverts horizontal Gerstner shift with 2 iterations).
