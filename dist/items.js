@@ -35,9 +35,9 @@
 //
 // Economy reference (game.js): 30 floating items drift past at .22 m/s (~3 min per
 // item lane), SPAWN_TABLE is 3 wood : 3 plastic : 3 leaf : 1 scrap : 1 barrel.
-// An attentive player hooks ~4-5 items/min, i.e. ~0.4 barrels/min, more once nets
-// (auto-collect within 4 m) are out. New raw materials only come from barrels, so
-// BARREL_LOOT is tuned for ~25 barrels -> smelter (~75 min) and ~35 -> metal hook (~90 min).
+// An attentive player hooks ~4-5 items/min, i.e. ~0.5 barrels/min (hook + nets; see
+// docs/cloud/progression-sim.md). New raw materials only come from barrels, so BARREL_LOOT
+// plus BARREL_PITY is tuned for ~43 barrels -> smelter (~66 min) and ~48 -> metal hook.
 
 const STACK = 20;
 const SLOT_COUNT = 28;   // mirrors inventory-state.js
@@ -177,7 +177,7 @@ const LIST = [
     recipe: hand({ wood: 6, scrap: 1, rope: 3 }), unlock: discover('fish'),
     tip: 'Grills fish into snacks and fires clay into bricks. Feed it planks or leaves.' }),
   item('smelter', 'Smelter', 'station', { iconTint: '#b5533c', stack: 5, placeable: true,
-    recipe: hand({ wood: 6, brick: 10, stone: 6, nail: 6 }), unlock: research('clay', 'stone'),
+    recipe: hand({ wood: 6, brick: 10, stone: 7, nail: 6 }), unlock: research('clay', 'stone'),
     tip: 'A toasty brick furnace. Melts ore into ingots and sand into glass, one at a time.' }),
 ];
 
@@ -230,23 +230,23 @@ export const LEGACY_ALIASES = deepFreeze({
  */
 export const PROGRESSION_PLAN = deepFreeze([
   { minute: 0, goal: 'Hook the first planks, leaves and plastic', ids: ['hook'] },
-  { minute: 3, goal: 'Twist rope from palm leaves', ids: ['rope'] },
-  { minute: 6, goal: 'Craft a hammer and add the first floor tiles', ids: ['hammer'] },
-  { minute: 10, goal: 'A bench and a palm planter make it home', ids: ['bench', 'palm'] },
-  { minute: 15, goal: 'Turn scrap into nails; lantern and crate unlock', ids: ['nail'] },
-  { minute: 20, goal: 'Craft a fishing rod and catch a fish', ids: ['fishingrod'] },
-  { minute: 25, goal: 'Raise a sail', ids: ['sail'] },
-  { minute: 30, goal: 'Build the Research Table', ids: ['researchtable'] },
-  { minute: 35, goal: 'Place a grill and grill a fish for the seagull', ids: ['grill', 'cookedfish'] },
-  { minute: 40, goal: 'Put out collection nets to catch more barrels', ids: ['net'] },
-  { minute: 50, goal: 'Find clay and stone in barrels; fire the first bricks', ids: ['brick'] },
-  { minute: 65, goal: 'Research clay and stone to learn the smelter', ids: [] },
-  { minute: 75, goal: 'Build and fuel the smelter', ids: ['smelter'] },
-  { minute: 80, goal: 'Smelt the first metal ingot', ids: ['metalingot'] },
-  { minute: 85, goal: 'Research the ingot; craft bolts and hinges', ids: ['bolt', 'hinge'] },
-  { minute: 92, goal: 'Craft the Metal Hook (3x longer lasting)', ids: ['metalhook'] },
-  { minute: 105, goal: 'Melt sand into glass and smelt copper', ids: ['glass', 'copperingot'] },
-  { minute: 115, goal: 'Craft binoculars and go barrel spotting', ids: ['binoculars'] },
+  { minute: 2, goal: 'Twist rope from palm leaves', ids: ['rope'] },
+  { minute: 4, goal: 'Craft a hammer and add the first floor tiles', ids: ['hammer'] },
+  { minute: 6, goal: 'A bench and a palm planter make it home', ids: ['bench', 'palm'] },
+  { minute: 8, goal: 'Turn scrap into nails; lantern and crate unlock', ids: ['nail'] },
+  { minute: 12, goal: 'Craft a fishing rod and catch a fish', ids: ['fishingrod'] },
+  { minute: 16, goal: 'Raise a sail', ids: ['sail'] },
+  { minute: 20, goal: 'Build the Research Table', ids: ['researchtable'] },
+  { minute: 24, goal: 'Place a grill and grill a fish for the seagull', ids: ['grill', 'cookedfish'] },
+  { minute: 27, goal: 'Put out collection nets to catch more barrels', ids: ['net'] },
+  { minute: 30, goal: 'Find clay and stone in barrels; fire the first bricks', ids: ['brick'] },
+  { minute: 35, goal: 'Research clay and stone to learn the smelter', ids: [] },
+  { minute: 70, goal: 'Build and fuel the smelter', ids: ['smelter'] },
+  { minute: 72, goal: 'Smelt the first metal ingot', ids: ['metalingot'] },
+  { minute: 75, goal: 'Research the ingot; craft bolts and hinges', ids: ['bolt', 'hinge'] },
+  { minute: 85, goal: 'Craft the Metal Hook (3x longer lasting)', ids: ['metalhook'] },
+  { minute: 100, goal: 'Melt sand into glass and smelt copper', ids: ['glass', 'copperingot'] },
+  { minute: 110, goal: 'Craft binoculars and go barrel spotting', ids: ['binoculars'] },
   { minute: 120, goal: 'A cosy, well-equipped raft', ids: [] },
 ]);
 
@@ -254,8 +254,11 @@ export const PROGRESSION_PLAN = deepFreeze([
  * Barrel loot: BARREL_ROLLS.basic picks from the 'basic' pool (min..max each)
  * plus BARREL_ROLLS.treasure picks from the 'treasure' pool (always 1 of the
  * kind, so mid-game materials trickle in steadily with low variance).
- * Picks of the same kind add up. Expected per barrel: ~5.3 basics plus
- * clay .28, stone .20, metal ore .13, sand .12, seaweed .12, copper ore .06.
+ * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 96): ~5.3
+ * basics plus clay .19, stone .13, metal ore .10, sand .13, seaweed .08 (x1.5), copper ore
+ * .06, scrap .31. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
+ * least every 5-13 barrels (a few more when two are overdue at once), so the real rates are
+ * clay .24, stone .19, metal ore .18, sand .14, copper ore .09, seaweed .05 (x1.5).
  */
 export const BARREL_ROLLS = deepFreeze({ basic: 3, treasure: 1 });
 export const BARREL_LOOT = deepFreeze([
@@ -263,9 +266,9 @@ export const BARREL_LOOT = deepFreeze([
   { kind: 'leaf', min: 1, max: 3, weight: 22, pool: 'basic' },
   { kind: 'plastic', min: 1, max: 2, weight: 22, pool: 'basic' },
   { kind: 'scrap', min: 1, max: 2, weight: 16, pool: 'basic' },
-  { kind: 'clay', min: 1, max: 1, weight: 12, pool: 'treasure' },
-  { kind: 'stone', min: 1, max: 1, weight: 8, pool: 'treasure' },
-  { kind: 'metalore', min: 1, max: 1, weight: 8, pool: 'treasure' },
+  { kind: 'clay', min: 1, max: 1, weight: 18, pool: 'treasure' },
+  { kind: 'stone', min: 1, max: 1, weight: 12, pool: 'treasure' },
+  { kind: 'metalore', min: 1, max: 1, weight: 10, pool: 'treasure' },
   { kind: 'sand', min: 1, max: 1, weight: 12, pool: 'treasure' },
   { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
   { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },

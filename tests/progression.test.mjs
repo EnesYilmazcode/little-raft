@@ -289,6 +289,77 @@ test('rollBarrel: treasure materials appear at sane rates', () => {
   for (const k of ['clay', 'stone', 'metalore', 'sand', 'seaweed', 'copperore']) assert.ok(tot[k] / N > 0.03, `${k} rate ${tot[k] / N}`);
 });
 
+test('rollBarrel luck: null/undefined/junk luck keeps the plain roll', () => {
+  const plain = rng(5), a = rng(5), b = rng(5);
+  for (let i = 0; i < 300; i++) {
+    const want = rollBarrel(plain);
+    assert.deepEqual(rollBarrel(a, null), want);
+    assert.deepEqual(rollBarrel(b, undefined), want);
+  }
+  // unusable luck states never throw and roll like null
+  for (const junk of [42, 'x', Object.freeze({ misses: {} }), true]) {
+    assert.deepEqual(rollBarrel(rng(9), junk), rollBarrel(rng(9)));
+  }
+});
+
+test('rollBarrel luck: a pity kind is guaranteed after its miss limit', () => {
+  const P = I.BARREL_PITY, kinds = Object.keys(P);
+  assert.ok(kinds.includes('metalore') && kinds.includes('clay') && kinds.includes('stone'));
+  for (const k of kinds) assert.ok(Number.isInteger(P[k]) && P[k] >= 1, k);
+  // rand = 1 always rolls the treasure filler (scrap), so only the pity can give mid-game kinds
+  const luck = { misses: {}, note: 'kept' }, seen = Object.fromEntries(kinds.map((k) => [k, []]));
+  for (let i = 0; i < 400; i++) {
+    const out = rollBarrel(() => 1, luck);
+    const got = kinds.filter((k) => out[k] > 0);
+    assert.ok(got.length <= I.BARREL_ROLLS.treasure, 'one forced pick per treasure roll');
+    for (const k of got) seen[k].push(i);
+    for (const k of kinds) assert.equal(luck.misses[k], out[k] > 0 ? 0 : luck.misses[k], k);
+  }
+  assert.equal(luck.note, 'kept', 'other fields of the luck object are left alone');
+  for (const k of kinds) {
+    assert.ok(seen[k].length > 0, `${k} forced at least once`);
+    let prev = -1;
+    for (const i of seen[k]) { assert.ok(i - prev - 1 <= P[k] + kinds.length, `${k} gap ${i - prev - 1}`); prev = i; }
+  }
+  // one overdue kind: the very next barrel has it and its counter resets
+  const one = { misses: { metalore: P.metalore } };
+  const out = rollBarrel(() => 1, one);
+  assert.equal(out.metalore, 1);
+  assert.equal(one.misses.metalore, 0);
+  assert.equal(one.misses.clay, 1, 'missing counters are created and counted');
+  // a natural hit resets the counter too (rand 0 = clay)
+  const c = { misses: { clay: P.clay - 1 } };
+  rollBarrel(() => 0, c);
+  assert.equal(c.misses.clay, 0);
+  // junk counters are sanitised in place
+  const j = { misses: { metalore: 'x', clay: -5, stone: Infinity } };
+  rollBarrel(() => 1, j);
+  for (const k of kinds) assert.ok(Number.isInteger(j.misses[k]) && j.misses[k] >= 0, `${k} ${j.misses[k]}`);
+  const m = { misses: null };
+  rollBarrel(() => 1, m);
+  assert.equal(typeof m.misses, 'object');
+});
+
+test('rollBarrel luck: deterministic for the same rand and luck state, and real gaps stay short', () => {
+  const a = rng(42), b = rng(42), la = { misses: {} }, lb = { misses: {} };
+  for (let i = 0; i < 500; i++) {
+    assert.deepEqual(rollBarrel(a, la), rollBarrel(b, lb));
+    assert.deepEqual(la, lb);
+  }
+  // round-trips through JSON (the save) without changing the next roll
+  const c = rng(3), d = rng(3), lc = { misses: {} };
+  for (let i = 0; i < 40; i++) { rollBarrel(c, lc); rollBarrel(d); }
+  const ld = JSON.parse(JSON.stringify(lc));
+  for (let i = 0; i < 40; i++) assert.deepEqual(rollBarrel(rng(100 + i), lc), rollBarrel(rng(100 + i), ld));
+  // with normal odds, no pity kind is ever missing for long
+  const r = rng(11), luck = { misses: {} }, last = {}, worst = {};
+  for (let i = 0; i < 20000; i++) {
+    const out = rollBarrel(r, luck);
+    for (const k of Object.keys(I.BARREL_PITY)) if (out[k]) { worst[k] = Math.max(worst[k] ?? 0, i - (last[k] ?? -1) - 1); last[k] = i; }
+  }
+  for (const [k, n] of Object.entries(I.BARREL_PITY)) assert.ok(worst[k] <= n + 3, `${k} worst gap ${worst[k]}`);
+});
+
 // ============================================================ migration
 
 test('migrate: aliases, unknown kinds, durability, selected', () => {
@@ -523,14 +594,15 @@ test('progression: full unlock chain with the real catalogue (start -> metal hoo
   assert.ok(bag.remove('grill', 1));
   const placedGrill = p.notePlaced('grill');
   assert.ok(placedGrill.includes('brick') && placedGrill.includes('cookedfish'));
-  give('clay', 6); give('stone', 4);
+  const smelterCost = ITEMS.smelter.recipe.cost, hookCost = ITEMS.metalhook.recipe.cost;
+  give('clay', smelterCost.brick); give('stone', smelterCost.stone);
   assert.equal(p.isUnlocked('smelter'), false);
   assert.equal(p.research('clay', bag).ok, true);
   assert.equal(p.isUnlocked('smelter'), false, 'needs stone too');
   assert.deepEqual(p.research('stone', bag).unlocked, ['smelter']);
-  assert.equal(bag.count('clay'), 6, 'research kept the clay');
-  station('grill', 'clay', 6, 'wood', 3);
-  assert.equal(bag.count('brick'), 6);
+  assert.equal(bag.count('clay'), smelterCost.brick, 'research kept the clay');
+  station('grill', 'clay', smelterCost.brick, 'wood', Math.ceil(smelterCost.brick / 2));
+  assert.equal(bag.count('brick'), smelterCost.brick);
 
   // smelter -> ingots -> bolts -> metal hook
   make('nail'); make('nail');
@@ -539,9 +611,10 @@ test('progression: full unlock chain with the real catalogue (start -> metal hoo
   make('smelter');
   assert.ok(bag.remove('smelter', 1));
   assert.ok(p.notePlaced('smelter').includes('metalingot'));
-  give('metalore', 4);
-  station('smelter', 'metalore', 4, 'wood', 4);
-  assert.equal(bag.count('metalingot'), 4);
+  const ore = hookCost.metalingot + 1; // + 1 ingot for the bolt craft
+  give('metalore', ore);
+  station('smelter', 'metalore', ore, 'wood', ore);
+  assert.equal(bag.count('metalingot'), ore);
   assert.equal(p.isUnlocked('bolt'), false);
   assert.equal(craft(bag, 'metalhook', p).locked, true);
   assert.ok(p.research('metalingot', bag).unlocked.includes('bolt'));
@@ -555,7 +628,7 @@ test('progression: full unlock chain with the real catalogue (start -> metal hoo
   assert.equal(bag.count('metalhook'), 1);
   assert.equal(bag.slots.find((s) => s && s.kind === 'metalhook').durability, 100);
   assert.deepEqual({ ingot: bag.count('metalingot'), bolt: bag.count('bolt'), rope: bag.count('rope'), wood: bag.count('wood') },
-    { ingot: before.ingot - 2, bolt: before.bolt - 2, rope: before.rope - 2, wood: before.wood - 2 });
+    { ingot: before.ingot - hookCost.metalingot, bolt: before.bolt - hookCost.bolt, rope: before.rope - hookCost.rope, wood: before.wood - hookCost.wood });
   assert.equal(toolRole('metalhook'), 'hook');
   // progression snapshot survives a reload mid-chain
   assert.ok(new Progression(JSON.parse(JSON.stringify(p.snapshot()))).isUnlocked('metalhook'));
