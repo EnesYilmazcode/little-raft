@@ -3,6 +3,7 @@ import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createSky, SKY } from './sky.js?build=v3-survival-ae77fa84ac2b';
+import { createFarIslands } from './far-islands.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
@@ -41,7 +42,7 @@ const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12});
 const SAVE = 'little-raft-v1';
-const THROW_LOFT = .2, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
+const THROW_LOFT = .12, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
@@ -73,7 +74,6 @@ export function mount(transfer = null) {
   function later(fn, ms) { const id = setTimeout(() => { timers.delete(id); if (!disposed) fn(); }, ms); timers.add(id); return id; }
   function cancelTimer(id) { if (id) { clearTimeout(id); timers.delete(id); } return 0; }
   const guard = fn => (...a) => (disposed ? undefined : fn(...a));
-  let seed = 20240917; const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 
   // ---------- Bags ----------
   const snapBag = s => { if (!s || typeof s !== 'object') return null; try { return new Bag(s); } catch { return Bag.salvage(s); } }; // one bad slot never wipes a bag
@@ -192,6 +192,7 @@ export function mount(transfer = null) {
   let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : 0;
   let walking = false, walkPhase = Number.isFinite(X?.walkPhase) ? X.walkPhase : 0, swing = 0;
   const pointer = new T.Vector2(), ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), -.22);
+  let ghostHold = null; // just-placed spot: the ghost stays hidden there until the aim moves off it
   let hover = null, mouse = {x:0, y:0, inside:false}, frameAim = null, pickTarget = null;
   const raftPose = {y:X?.raftPose?.y ?? 0, rx:X?.raftPose?.rx ?? 0, rz:X?.raftPose?.rz ?? 0};
   let physics = makePhysics(X);
@@ -340,7 +341,7 @@ export function mount(transfer = null) {
     const assetBuild = new URL(import.meta.url).searchParams.get('build') || 'dev'; document.querySelectorAll('use[href*="icons.svg"]').forEach(el => el.setAttribute('href', 'icons.svg?build=' + assetBuild + '#' + el.getAttribute('href').split('#')[1]));
     prepareDom();
     scene = new T.Scene(); scene.background = new T.Color(SKY.horizon); scene.fog = new T.Fog(SKY.horizon, 40, 140);
-    camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
+    camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 260); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:true});
     renderer.setPixelRatio(baseRatio * resScale); renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
@@ -357,9 +358,7 @@ export function mount(transfer = null) {
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
     buildViewmodels();
-    const scenery = new T.Group(); scenery.name = 'scenery'; // far islands (clouds live in the sky shader), baked to a handful of draw calls
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scenery.add(g); }
-    scene.add(scenery); bakeStatic(scenery, {castShadow:false}); // islands sit far outside the shadow camera anyway
+    scene.add(createFarIslands(T, {haze:SKY.horizon, sunDirection:sun.position})); // open horizon: two or three hazy islands far out (clouds live in the sky shader)
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); singlePass(scene); refreshPointerUI(true);
@@ -402,11 +401,6 @@ export function mount(transfer = null) {
     if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
 
-  function palm(parent, x, y, z, s = 1) {
-    const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
-    for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
-    parent.add(g);
-  }
   // Incremental: only parts whose key changed are built or disposed, so placing one thing never rebuilds the raft.
   const raftParts = new Map();
   function rebuildRaft() {
@@ -719,7 +713,7 @@ export function mount(transfer = null) {
       const v = placementFor(kind, aim?.local ?? null);
       if (!v || (!v.ok && kind !== 'hammer')) { play('deny', .6); return; }
       if (!v.ok) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
-      swing = 1; action({kind:'build', recipe:v.kind, x:v.x, z:v.z, rot:v.rot}); return;
+      swing = 1; ghostHold = {kind:v.kind, x:v.x, z:v.z, rot:v.rot}; action({kind:'build', recipe:v.kind, x:v.x, z:v.z, rot:v.rot}); return;
     }
     if (kind === 'fishingrod') {
       if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to fish'); return; }
@@ -960,7 +954,8 @@ export function mount(transfer = null) {
   function updateGhost() {
     const kind = heldKind();
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook ? placementFor(kind, frameAim.local) : null;
-    if (hover) ghosts.show(hover.kind, hover.kind === 'floor' ? hover.x * 2 : hover.x, hover.kind === 'floor' ? .015 : .22, hover.kind === 'floor' ? hover.z * 2 : hover.z, hover.rot, hover.ok, elapsed);
+    if (!hover || ghostHold && (hover.kind !== ghostHold.kind || hover.rot !== ghostHold.rot || Math.hypot(hover.x - ghostHold.x, hover.z - ghostHold.z) > (hover.kind === 'floor' ? 0 : .3))) ghostHold = null;
+    if (hover && !ghostHold) ghosts.show(hover.kind, hover.kind === 'floor' ? hover.x * 2 : hover.x, hover.kind === 'floor' ? .015 : .22, hover.kind === 'floor' ? hover.z * 2 : hover.z, hover.rot, hover.ok, elapsed);
     else ghosts.hide();
   }
   function hostState() {
@@ -1071,7 +1066,7 @@ export function mount(transfer = null) {
     const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
     if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat) interact();
-    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else repair(); }
+    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : ROT_STEP); else repair(); }
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => { keys[e.code] = false; });

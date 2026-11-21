@@ -6,7 +6,7 @@
 // Clouds are lit from the sun side (white tops, pale blue-grey bellies), never dark smudges.
 
 export const SKY = Object.freeze({
-  horizon: '#d6ecf2', // pale haze; also scene.background, fog and the ocean's distance fade
+  horizon: '#c4dfeb', // soft haze; also scene.background, fog and the ocean's distance fade
   zenith: '#3d8fd6',
   sun: '#fff6df',
 });
