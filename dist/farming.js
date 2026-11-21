@@ -94,8 +94,16 @@ export function promptFor(p, heldKind) {
   if (p.s === EMPTY) return heldKind === 'seed' ? 'Click to plant a palm seed' : 'Empty planter: plant a Palm Seed';
   if (p.s >= MATURE) return 'E  Harvest the palm';
   const name = STAGE_NAMES[p.s], pct = Math.round(progress(p) * 100);
-  if (p.w > 0) return heldKind === 'water' && p.w < WATER_SECONDS * .5 ? `${name} ${pct}%: click to water` : `${name} ${pct}%: growing`;
+  if (p.w > 0) return heldKind === 'water' ? (p.w < WATER_SECONDS * .5 ? `${name} ${pct}%: click to water` : `${name} ${pct}%: soil still wet`) : `${name} ${pct}%: growing`;
   return heldKind === 'water' ? `${name} ${pct}%: click to water` : `${name} ${pct}%: dry soil, needs fresh water`;
+}
+
+// Feed note for a click with a seed or water that did nothing. p is the plot in reach, or null.
+// Never carries the prompt's 'E  ' key prefix, which only the crosshair prompt renders as a key.
+export function useNote(p, heldKind) {
+  if (!p) return heldKind === 'water' ? 'Point at a palm planter to water it' : 'Point at a palm planter to plant the seed';
+  const t = promptFor(p, heldKind);
+  return t.startsWith('E  ') ? 'Press E to ' + t.charAt(3).toLowerCase() + t.slice(4) : t;
 }
 
 // Gives every item in loot to bag atomically (all or nothing). bag is a Bag.

@@ -42,3 +42,26 @@ test('SURV-3: harvest and cup-fill rewards are emitted as loot for the pickup fe
   assert.equal(F.farmEffect({ ok: false, text: 'Not ready yet', effect: 'notice' }).loot, undefined);
   assert.equal(F.farmEffect({ ok: false, text: '' }), null);
 });
+
+test('SURV-4: a seed or water click with no planter in reach explains itself', () => {
+  assert.match(F.useNote(null, 'seed'), /^Point at a palm planter/);
+  assert.match(F.useNote(null, 'water'), /^Point at a palm planter/);
+});
+
+test('SURV-4: water on still-wet soil says so, in the prompt and the note', () => {
+  const p = { s: F.SEEDLING, g: 10, w: F.WATER_SECONDS * .8, h: 0 };
+  assert.equal(F.plotAction(p, 'water'), null);
+  assert.match(F.promptFor(p, 'water'), /soil still wet$/);
+  assert.match(F.useNote(p, 'water'), /soil still wet$/);
+  assert.match(F.promptFor(p, 'seed'), /growing$/, 'other held items still read growing');
+});
+
+test('SURV-4: feed notes never carry the raw "E  " key prefix', () => {
+  const mature = { s: F.MATURE, g: 0, w: 0, h: 0 };
+  assert.ok(F.promptFor(mature, 'seed').startsWith('E  '), 'the crosshair prompt keeps its key marker');
+  for (const kind of ['seed', 'water']) {
+    const note = F.useNote(mature, kind);
+    assert.equal(note, 'Press E to harvest the palm');
+    assert.ok(!note.startsWith('E '));
+  }
+});
