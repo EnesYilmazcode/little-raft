@@ -8,6 +8,7 @@
 // guest only renders the snapshots the host sends ({kind:'prog:sync'} effects) and sends
 // 'prog:*' actions. Limits: guest progression is tied to the host's save (a guest starts fresh on
 // another host's raft), and guest station/research views lag by one sync (~0.3 s).
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS, FUEL_VALUE, toolRole } from './items.js?build=v3-survival-ae77fa84ac2b';
 import { Progression } from './progression.js?build=v3-survival-ae77fa84ac2b';
 import { StationModel } from './smelter.js?build=v3-survival-ae77fa84ac2b';
@@ -216,7 +217,7 @@ export function attachProgression(ctx) {
       document.body.append(research);
     }
     ctx.pause?.();
-    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+    exitLock(document); // marked page-initiated (lock-rules.js), so the game does not pause on it
     if (!research.open) { try { research.showModal(); } catch { research.setAttribute('open', ''); } }
     renderResearch(true);
   }
@@ -256,7 +257,7 @@ export function attachProgression(ctx) {
     if (!show) { if (hud) hud.hidden = true; return; }
     if (!hud) {
       hud = document.createElement('div'); hud.id = 'binocularsHud'; hud.setAttribute('role', 'status');
-      hud.style.cssText = 'position:fixed;left:16px;top:56px;padding:4px 12px;border-radius:8px;background:rgba(8,22,36,.6);color:#f6ecd6;font:700 15px/1.3 system-ui,sans-serif;pointer-events:none;z-index:30;white-space:nowrap';
+      hud.style.cssText = 'position:fixed;left:calc(50% + 34px);top:calc(50% + 2px);transform:none;color:#f6ecd6;opacity:.88;font:500 13px/1.25 var(--ui-font,system-ui,sans-serif);text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);pointer-events:none;z-index:30;white-space:nowrap;text-align:left'; // muted line atop the crosshair-side prompt column, never a centred panel
       document.body.append(hud);
     }
     const me = ctx.pose(); let best = null, bd = Infinity;

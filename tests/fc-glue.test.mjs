@@ -192,6 +192,19 @@ test('forceCatch records the journal and gives a bag fish', () => {
   assert.equal(globalThis.window.raftFC, undefined);
 });
 
+test('caught-fish viewmodel expires on wall-clock time even when game dt crawls', () => {
+  mem.clear();
+  const h = mount({ role: 'host' }), realNow = performance.now.bind(performance); let skew = 0;
+  performance.now = () => realNow() + skew;
+  try {
+    globalThis.window.raftFC.forceCatch('mackerel');
+    assert.equal(h.camera.children.length, 1);
+    step(h, 0.1, 0.05); assert.equal(h.camera.children.length, 1, 'still held after 0.1 s of game time');
+    skew = 2300; step(h, 0.05, 0.05); // a slow-frame stretch: 2.3 s of wall time, almost no game time
+    assert.equal(h.camera.children.length, 0);
+  } finally { performance.now = realNow; h.api.dispose(); }
+});
+
 test('rod fishing: press/release casts, bite then reel to a catch', () => {
   mem.clear();
   const h = mount();

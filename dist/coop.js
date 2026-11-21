@@ -25,7 +25,7 @@ import { loadLook, cleanLook, createLookGate, PARTNER_DEFAULT } from './look.js?
 
 export const COOP_VERSION = 1;
 export const HELD = Object.freeze([null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate',
-  'drum', 'pipes', 'bells', 'spade', 'finder', 'spear', 'metalspear']); // append only: index is the wire format ([instruments] 14-16, [treasure] 17-18, [spear-repair] 19-20)
+  'drum', 'pipes', 'bells', 'spade', 'finder', 'spear', 'metalspear', 'paddle', 'axe']); // append only: index is the wire format ([instruments] 14-16, [treasure] 17-18, [spear-repair] 19-20, [paddle] 21, [axe] 22)
 const STAGES = ['flying', 'floating', 'reeling', 'done', 'fishing'];
 const SEND_MS = 1000 / 15, IDLE_MS = 250, ITEMS_MS = 500;
 const SILENCE_MS = 3000, RECONNECT_WINDOW_MS = 30000, ATTEMPT_MS = 12000; // an attempt in flight gets 12 s (ICE can be slow)
@@ -224,7 +224,7 @@ export function createCoop(ctx, saved = null) {
   ctx.canvas?.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); }, {signal:ac.signal});
   addEventListener('keydown', e => {
     const kind = EMOTE_KEYS[e.code];
-    if (!kind || e.repeat || ctx.blocked() || e.target?.matches?.('input, textarea, select')) return;
+    if (!kind || !peer || e.repeat || ctx.blocked() || e.target?.matches?.('input, textarea, select')) return; // emotes only with a crewmate aboard (X/Z alone did nothing useful)
     if (kind === 'point') ping();
     if (peer) event('emote', {e:kind});
     feed.push(kind === 'wave' ? 'You wave.' : 'You point.', 'emote');

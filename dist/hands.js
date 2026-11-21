@@ -110,6 +110,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   };
   const skin = keyShade(mat(0xc89068, 0.6, { emissive: 0x1c0e06, map: tx.skin }));
   const skinPalm = keyShade(mat(0xc08562, 0.64, { emissive: 0x1c0e06, map: tx.skin }));
+  const skinTip = keyShade(mat(0xcc8e6c, 0.6, { emissive: 0x1c0e06, map: tx.skin })); // finger ends a touch pinker: fingers read as fingers
   const nail = keyShade(mat(0xe0b294, 0.38, { emissive: 0x120806 }));
   const crease = mat(0x8e5a3c, 0.8);
   const sleeveMat = keyShade(mat(0x5a7462, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
@@ -122,7 +123,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   // carries the base, so setLook() recolours every baked hand and sleeve by setting one material colour.
   const BODY_SKIN = new T.Color('#f2c29b');           // avatar.js default skin (dist/look.js PALETTE.skin[0])
   const toneOf = (m) => { const c = m.color.clone(); return new T.Color(c.r / BODY_SKIN.r, c.g / BODY_SKIN.g, c.b / BODY_SKIN.b); };
-  const skinTones = [skin, skinPalm, nail, crease].map((m) => [m, toneOf(m)]);
+  const skinTones = [skin, skinPalm, skinTip, nail, crease].map((m) => [m, toneOf(m)]);
   const SLEEVE_BASE = sleeveMat.color.clone();
   const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin })); skinV.color.copy(BODY_SKIN);
   const clothV = keyShade(mat(0xffffff, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); clothV.color.copy(SLEEVE_BASE);
@@ -191,8 +192,9 @@ export function createHands(T, { modelFactory = null } = {}) {
       const mcp = P(-12, R + 0.003, f.y);
       const curl = new T.Group(), ext = new T.Group(), tight = new T.Group();
       const pip = P(f.a1, R, f.y), tip = P(f.a2, R * 0.97, f.y + (i === 0 ? 0.001 : 0));
-      seg(curl, skin, mcp, pip, f.r * 1.05, f.r * 0.96);
-      seg(curl, skin, pip, tip, f.r * 0.96, f.r * 0.78);
+      // slightly slimmer than the finger spacing, so a thin shadow line separates the fingers
+      seg(curl, skin, mcp, pip, f.r * 0.97, f.r * 0.90);
+      seg(curl, skinTip, pip, tip, f.r * 0.90, f.r * 0.74);
       if (i < 3) {
         const c = P(f.a1 + 3, R + f.r * 0.9, f.y);
         seg(curl, crease, c.clone().setY(f.y - 0.0052), c.clone().setY(f.y + 0.0052), 0.0013, 0.0013, 6);
@@ -201,12 +203,12 @@ export function createHands(T, { modelFactory = null } = {}) {
       const r2 = 0.012 + f.r, k0 = P(-12, r2 + 0.012, f.y), k1 = P(70, r2, f.y), k2 = P(165, r2 * 0.9, f.y);
       seg(tight, skin, mcp, k0.lerp(k1, 0.5), f.r * 1.05, f.r);
       seg(tight, skin, k0, k1, f.r, f.r * 0.92);
-      seg(tight, skin, k1, k2, f.r * 0.92, f.r * 0.78);
+      seg(tight, skinTip, k1, k2, f.r * 0.92, f.r * 0.78);
       // straight finger: slight natural curl toward the palm, small fan spread
       const e1 = mcp.clone().add(V(-0.010, f.spread * 0.6, -f.len * 0.52));
       const e2 = e1.clone().add(V(-0.012, f.spread * 0.4, -f.len * 0.46));
       seg(ext, skin, mcp, e1, f.r * 1.05, f.r * 0.95);
-      seg(ext, skin, e1, e2, f.r * 0.95, f.r * 0.78);
+      seg(ext, skinTip, e1, e2, f.r * 0.95, f.r * 0.78);
       ellipsoid(ext, nail, e2.clone().add(V(0.0045, 0, 0.004)), 0.0035, f.r * 0.62, 0.008);
       seg(ext, crease, e1.clone().add(V(f.r * 0.85, -0.0052, 0)), e1.clone().add(V(f.r * 0.85, 0.0052, 0)), 0.0013, 0.0013, 6);
       parent.add(curl, ext, tight);
@@ -215,13 +217,13 @@ export function createHands(T, { modelFactory = null } = {}) {
     const thumbCurl = new T.Group(), thumbExt = new T.Group(), thumbTuck = new T.Group();
     const t0 = V(0.0, 0.032, 0.055 * k), t1 = V(-0.036 * k, 0.047, 0.028 * k), t2 = V(-0.047 * k, 0.045, -0.008 * k);
     seg(thumbCurl, skin, t0, t1, 0.0135, 0.0118);
-    seg(thumbCurl, skin, t1, t2, 0.0118, 0.0094);
+    seg(thumbCurl, skinTip, t1, t2, 0.0118, 0.0094);
     const u1 = V(-0.026 * k, 0.062, 0.030 * k), u2 = V(-0.040 * k, 0.083, 0.004 * k);
     seg(thumbExt, skin, t0, u1, 0.0135, 0.0118);
-    seg(thumbExt, skin, u1, u2, 0.0118, 0.0094);
+    seg(thumbExt, skinTip, u1, u2, 0.0118, 0.0094);
     const w1 = V(-0.024 * k, 0.030, 0.026 * k), w2 = V(-0.026 * k, 0.012, 0.004 * k);   // tucked over the curled middle finger
     seg(thumbTuck, skin, t0, w1, 0.0135, 0.0118);
-    seg(thumbTuck, skin, w1, w2, 0.0118, 0.0094);
+    seg(thumbTuck, skinTip, w1, w2, 0.0118, 0.0094);
     parent.add(thumbCurl, thumbExt, thumbTuck);
     // Each pose is baked into one mesh (palm + its finger and thumb variants): one draw call per hand.
     const poses = {
@@ -263,7 +265,17 @@ export function createHands(T, { modelFactory = null } = {}) {
     const forearm = seg(frame, skin, at(0), at(0.24), 0.031, 0.042, 12);
     const cuff = seg(frame, cuffMat, at(0.19), at(0.225), 0.047, 0.050, 14);    // rolled cuff
     const sleeve = seg(frame, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 14); // sleeve (runs off-screen)
-    bake(frame, [forearm], skinV); bake(frame, [cuff, sleeve], clothV);
+    const fa = bake(frame, [forearm], skinV); bake(frame, [cuff, sleeve], clothV);
+    {   // soft forearm shading: darker toward the elbow and on the underside (baked into vertex colours)
+      const pos = fa.geometry.attributes.position, col = fa.geometry.attributes.color, d = V();
+      const down = toLocal(V(0, -1, 0)); down.addScaledVector(Fl, -down.dot(Fl)).normalize();
+      for (let i = 0; i < pos.count; i++) {
+        d.fromBufferAttribute(pos, i).sub(W);
+        const s = clamp01(d.dot(Fl) / 0.24), under = clamp01(d.addScaledVector(Fl, -d.dot(Fl)).normalize().dot(down));
+        const m = (1 - 0.20 * s) * (1 - 0.16 * under);
+        col.setXYZ(i, col.getX(i) * m, col.getY(i) * m * 0.98, col.getZ(i) * m * 0.98);
+      }
+    }
     for (const o of [forearm, cuff, sleeve]) o.removeFromParent();
 
     return { pose, frame, wrist, hand, H, qBase, toLocal, basePos: basePos.clone(), r, u, f };
@@ -369,15 +381,14 @@ export function createHands(T, { modelFactory = null } = {}) {
   // ---------------- animation state (weights only; transforms are rebuilt every frame) ----------------
   // dip: 0 = arms up, 1 = lowered out of view. A swap lowers, switches model/pose at the bottom, raises.
   const REEL_HZ = 2.5;
-  const st = { hookOut: false, walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
-    shown: null, target: null, poseOverride: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
+  const st = { hookOut: false, leftW: 0, walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
+    shown: null, target: null, poseOverride: null, pendingPose: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
   const last = { lag: [0, 0] };
   setPose(L.H, 'grip');
 
   // Resolved pose of the shown item ('point' | 'throw' | 'grip' | 'open') and which hand points.
   const poseOf = (kind) => st.poseOverride || (kind ? holdFor(kind).pose : 'grip');
-  const usesLeft = (kind) => kind === 'hook' || holdFor(kind).hand === 'left';
   const handPoses = { R: '', L: '' };
   function applyFingers(pose, ropeGrip, leftRope) {
     const pointer = pose !== 'point' || !st.shown ? null : holdFor(st.shown).hand === 'left' ? 'R' : 'L';
@@ -392,6 +403,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     st.shown = st.target;
     const next = st.shown && mountFor(st.shown);
     if (next) next.pivot.visible = st.shown !== 'hook' || st.outW < 0.5;
+    st.poseOverride = st.pendingPose;  // the new item comes up in its own pose
     st.raise = 0; st.lowering = false;
   }
 
@@ -423,7 +435,11 @@ export function createHands(T, { modelFactory = null } = {}) {
       if (!st.lowering) { st.lowering = true; st.dip = Math.sqrt(clamp01(st.down)); }
       st.dip = Math.min(1, st.dip + dt / 0.13);
       if (st.dip >= 1) swapNow();
+    } else if (st.lowering) {  // swap cancelled (switched back mid-lower): ease back up from where the arms stopped
+      st.dip = Math.max(0, st.dip - dt / 0.13);
+      if (st.dip <= 0) { st.lowering = false; st.raise = 1; }
     } else if (st.raise < 1) st.raise = Math.min(1, st.raise + dt / 0.26);
+    if (st.shown === st.target) st.poseOverride = st.pendingPose;  // a pose for the next item waits for its swap
     const down = st.down = st.shown === null ? 1 : st.lowering ? st.dip * st.dip : 1 - easeOutBack(st.raise);
     root.visible = st.shown !== null || st.target !== null;
     // Own fixed 60 degree projection: undo the world camera's FOV in camera-space x/y (depth untouched), so
@@ -436,8 +452,13 @@ export function createHands(T, { modelFactory = null } = {}) {
     // pointing blends in; a left hand that only shows up to point slides in from below
     st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * smoothK(12, dt);
     st.ptL += ((pointer === 'L' ? 1 : 0) - st.ptL) * smoothK(12, dt);
-    const leftNeeded = usesLeft(st.shown), lIn = leftNeeded ? 1 : st.ptL;
-    L.pose.visible = st.shown !== null && (leftNeeded || st.ptL > 0.02);
+    // The left hand (rope coil) only rises while the hook is busy: winding up, casting, out or reeling.
+    // Idle it stays tucked below the frame, so one right hand shows and nothing sits over the hotbar.
+    const leftBusy = !!st.shown && (holdFor(st.shown).hand === 'left' ||
+      (isHook && (charge0 > 0.02 || casting > 0 || hasHookOut || reeling)));
+    st.leftW += ((leftBusy ? 1 : 0) - st.leftW) * smoothK(leftBusy ? 14 : 4, dt);
+    const lIn = Math.max(st.leftW, st.ptL);
+    L.pose.visible = st.shown !== null && lIn > 0.02;
     const rightIdle = !!st.shown && holdFor(st.shown).hand === 'left', rIn = rightIdle ? st.ptR : 1;   // empty right hand stays down
     R.pose.visible = st.shown !== null && (!rightIdle || st.ptR > 0.02);
     coil.visible = lead.visible = isHook && pointer !== 'L' && !leftRope;
@@ -552,7 +573,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   return {
     group: root, handTip, update, dispose, state: last,
     setHeld(kind) { st.target = kind ? String(kind) : null; },
-    setPose(pose) { st.poseOverride = POSES.includes(pose) ? pose : null; },
+    setPose(pose) { st.pendingPose = POSES.includes(pose) ? pose : null; },
     setModelFactory(fn) {
       factory = typeof fn === 'function' ? fn : null;
       const shown = st.shown; dropMounts();

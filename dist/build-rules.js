@@ -18,6 +18,7 @@ export const BLOCK_TEXT = Object.freeze({
   brother: 'Your brother is in the way',
   nofloor: 'Place it on the raft floor',
   net: 'A collection net hangs there',
+  trapedge: 'Fish traps hang on an edge tile, next to open water', // [fishtrap]
 });
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];

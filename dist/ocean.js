@@ -61,7 +61,7 @@ const MAX_FOAM = 8;      // nearest floating items that leave a foam collar
 const FOAM_NEAR = 12, FOAM_FAR = 15; // collars fade out over this camera distance (only readable up close)
 const GRID = 128;        // raft foam field: 0.5 m texels covering 64 m, centred on the origin
 const TEXEL = 0.5;
-const COLLAR = 1.4;      // metres of foam beyond the deck edge
+const COLLAR = 1.1;      // metres of foam beyond the deck edge
 
 const fragmentShader = /* glsl */`
 uniform float uTime;
@@ -69,6 +69,7 @@ uniform vec2 uFlow; // [sailing] raft travel relative to the water (sailing-worl
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform vec3 uSky;
+uniform vec3 uFarSea; // far water colour: the sea darkens to this at the horizon, under a lighter sky
 uniform vec3 uZenith;
 uniform vec3 uDeep;
 uniform vec3 uShallow;
@@ -101,9 +102,9 @@ void ripple(vec2 d, float a, float k, float w, vec2 p, inout vec2 g) {
 void main() {
   vec3 toCam = cameraPosition - vWorld;
   float dist = length(toCam.xz);
-  // Beyond uFadeFar the fade below is exactly 1, so the pixel is pure uSky: skip all shading.
+  // Beyond uFadeFar the fade below is exactly 1, so the pixel is pure uFarSea: skip all shading.
   if (dist >= uFadeFar) {
-    gl_FragColor = vec4(uSky, 1.0);
+    gl_FragColor = vec4(uFarSea, 1.0);
     #include <colorspace_fragment>
     return;
   }
@@ -125,7 +126,7 @@ void main() {
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
 
   float ndv = max(dot(n, V), 0.0);
-  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.5);
+  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.32);
   vec3 R = reflect(-V, n);
   vec3 skyRefl = mix(uSky, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.25));
 
@@ -163,9 +164,19 @@ void main() {
     vec2 i0 = floor(t), fr = t - i0;
     i0 = (i0 + 0.5) / ${GRID.toFixed(1)};
     float k = 1.0 / ${GRID.toFixed(1)};
-    float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
-                  mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
-    float edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + wp.x * 2.0 + wp.y * 1.3));
+    vec2 m = mix(mix(texture2D(uRaftMask, i0).rg, texture2D(uRaftMask, i0 + vec2(k, 0.0)).rg, fr.x),
+                 mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).rg, texture2D(uRaftMask, i0 + vec2(k)).rg, fr.x), fr.y);
+    // G: shade under and just around the deck. Water seen through the board gaps stays dark navy.
+    float under = m.y;
+    col *= mix(1.0, 0.35, under);
+    foam *= 1.0 - under;
+    float cl = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
+    // R: raft collar, a thin broken line hugging the outside of the deck edge (none underneath).
+    float re = m.x * (0.85 + 0.15 * sin(uTime * 1.7 + wp.x * 2.0 + wp.y * 1.3));
+    float lacy = cl * 0.7 + vnoise(fp * 9.0 + uTime * 0.3) * 0.3;
+    float collar = smoothstep(0.9 - re * 0.45, 0.98 - re * 0.45, lacy) * min(1.0, re * 1.6) * 0.6;
+    collar *= 1.0 - smoothstep(0.55, 0.85, under);
+    float edge = 0.0;
     // Foam points live within FOAM_FAR (15 m) of the camera, rings are under 1 m: skip the loop beyond.
     if (dist < ${(FOAM_FAR + 2).toFixed(1)}) for (int i = 0; i < ${MAX_FOAM}; i++) {
       vec4 f = uFoamPts[i];
@@ -175,15 +186,14 @@ void main() {
       float d = length(dv) / f.z;  // thin broken ring hugging the item's waterline
       edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.35 * f.w);
     }
-    float cl = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
-    float collar = smoothstep(1.0 - edge, 1.0 - edge * 0.55, cl) * min(1.0, edge * 1.4) * 0.85;
+    collar = max(collar, smoothstep(1.0 - edge, 1.0 - edge * 0.55, cl) * min(1.0, edge * 1.4) * 0.85);
     col = mix(col, uFoam, max(foam, collar));
   }
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
-  // Fade toward the (untonemapped) sky colour after tone mapping so the horizon matches the background.
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, uSky, smoothstep(uFadeNear, uFadeFar, dist));
+  // Fade toward the (untonemapped) far-sea colour after tone mapping: a darker sea meets the sky at a crisp horizon.
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, uFarSea, smoothstep(uFadeNear, uFadeFar, dist));
   #include <colorspace_fragment>
 }
 `;
@@ -239,8 +249,8 @@ export function createOcean(T, options = {}) {
   const geometry = gridGeometry(T, axis, size);
 
   const sun = options.sunDirection ?? new T.Vector3(-15, 28, 12);
-  const maskData = new Uint8Array(GRID * GRID);
-  const mask = new T.DataTexture(maskData, GRID, GRID, T.RedFormat, T.UnsignedByteType);
+  const maskData = new Uint8Array(GRID * GRID * 2); // RG: collar foam, depth under the deck
+  const mask = new T.DataTexture(maskData, GRID, GRID, T.RGFormat, T.UnsignedByteType);
   const foamPts = Array.from({ length: MAX_FOAM }, () => new T.Vector4());
   const foamD2 = new Float64Array(MAX_FOAM); // squared camera distance per packed point, kept sorted
   const uniforms = {
@@ -248,7 +258,8 @@ export function createOcean(T, options = {}) {
     uFlow: { value: new T.Vector2() }, // [sailing] wave-field offset written by sailing-world.js
     uSunDir: { value: sun.clone().normalize() },
     uSunColor: { value: new T.Color('#fff3d6') },
-    uSky: { value: new T.Color(options.skyColor ?? '#a6e9f2') },
+    uSky: { value: new T.Color(options.skyColor ?? '#86dcef') },
+    uFarSea: { value: new T.Color(options.farSeaColor ?? '#3d97c8') },
     uZenith: { value: new T.Color(options.zenith ?? '#2a8fd6') },
     uDeep: { value: new T.Color('#08355f') },
     uShallow: { value: new T.Color('#1a78b0') },
@@ -277,26 +288,49 @@ export function createOcean(T, options = {}) {
   let foamGroup = null;
   const camPos = new T.Vector3(); // last camera passed to update(); collars beyond 48 m are skipped
 
-  // Raft tiles ([x, z], 2 m squares centred on x*2, z*2) -> foam falloff around the deck edge.
+  // Raft tiles ([x, z], 2 m squares centred on x*2, z*2) -> signed distance to the deck edge
+  // (negative under the deck). R: foam collar, a thin band hugging the edge outside the raft.
+  // G: depth under the deck, used as a cheap contact shadow so board gaps show dark water.
   // Runs only when the raft changes; only texels near the raft are visited.
   function setRaftTiles(tiles) {
     maskData.fill(0);
     if (tiles.length) {
       let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-      for (const [x, z] of tiles) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+      const set = new Set();
+      for (const [x, z] of tiles) {
+        x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+        set.add(x + ',' + z);
+      }
+      const has = (x, z) => set.has(x + ',' + z);
       const pad = 1 + COLLAR, half = GRID / 2;
       const toI = (w) => Math.max(0, Math.min(GRID - 1, Math.floor(w / TEXEL + half)));
       for (let j = toI(z0 * 2 - pad); j <= toI(z1 * 2 + pad); j++) {
         const wz = (j + 0.5 - half) * TEXEL;
         for (let i = toI(x0 * 2 - pad); i <= toI(x1 * 2 + pad); i++) {
           const wx = (i + 0.5 - half) * TEXEL;
-          let d = Infinity;
-          for (const [x, z] of tiles) {
-            const dx = Math.max(Math.abs(wx - x * 2) - 1, 0), dz = Math.max(Math.abs(wz - z * 2) - 1, 0);
-            d = Math.min(d, Math.hypot(dx, dz));
+          const tx = Math.round(wx / 2), tz = Math.round(wz / 2);
+          let d;
+          if (has(tx, tz)) {
+            // Inside: distance to the nearest tile edge that is not shared with a neighbour.
+            const lx = wx - tx * 2, lz = wz - tz * 2;
+            d = Infinity;
+            if (!has(tx - 1, tz)) d = Math.min(d, lx + 1);
+            if (!has(tx + 1, tz)) d = Math.min(d, 1 - lx);
+            if (!has(tx, tz - 1)) d = Math.min(d, lz + 1);
+            if (!has(tx, tz + 1)) d = Math.min(d, 1 - lz);
+            d = -Math.min(d, 2);
+          } else {
+            d = Infinity;
+            for (const [x, z] of tiles) {
+              const dx = Math.max(Math.abs(wx - x * 2) - 1, 0), dz = Math.max(Math.abs(wz - z * 2) - 1, 0);
+              d = Math.min(d, Math.hypot(dx, dz));
+            }
           }
+          const o = (j * GRID + i) * 2;
           const f = 1 - d / COLLAR;
-          if (f > 0) maskData[j * GRID + i] = Math.round(255 * f * f);
+          if (d > 0 && f > 0) maskData[o] = Math.round(255 * f);
+          // Shade: full from 0.3 m under the deck, fading out 0.25 m beyond the edge.
+          maskData[o + 1] = Math.round(255 * Math.max(0, Math.min(1, (0.25 - d) / 0.55)));
         }
       }
     }

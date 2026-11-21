@@ -105,3 +105,11 @@ test('stroke blocked away from the edge, while anchored, or when worn; the paddl
   assert.equal(guestAway.sail.vz, 0, 'a guest with no known position is ignored');
   assert.equal(guestAway.p.apply({ kind: 'sail', op: 'raise' }, 'host', guestAway.bag), false, 'other sail ops pass through');
 });
+
+test('co-op HELD appends paddle (21) and axe (22) after the spears', async () => {
+  const { HELD } = await import('../dist/coop.js');
+  assert.equal(HELD.indexOf('spear'), 19); assert.equal(HELD.indexOf('metalspear'), 20);
+  assert.equal(HELD.indexOf('paddle'), 21); assert.equal(HELD.indexOf('axe'), 22);
+  const src = (await import('node:fs')).readFileSync(new URL('../dist/coop-avatar.js', import.meta.url), 'utf8');
+  for (const k of ['paddle', 'axe']) { assert.match(src, new RegExp(`\\n    ${k}\\(g, K\\) \\{`)); assert.match(src, new RegExp(`${k}: [\\d.]+`)); }
+});

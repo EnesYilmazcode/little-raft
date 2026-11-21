@@ -1,31 +1,49 @@
 // Procedural water purifier (pot over a little fire tray) and palm-planter
-// growth stages. Imports nothing: callers pass THREE in as T.
+// growth stages. Callers pass THREE in as T.
+import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
+// Built once per THREE; createPurifier() returns a clone sharing geometries and materials
+// (userData.shared: the engine's disposeGeometry() skips them). The ember and steam materials are
+// shared too: paintPurifier() drives them from the elapsed time and the part index alone, so every
+// busy purifier would write the same values (idle ones hide those parts).
+const TEMPLATES = new WeakMap();
 export function createPurifier(T) {
+  let tpl = TEMPLATES.get(T);
+  if (!tpl) {
+    tpl = buildPurifier(T);
+    tpl.traverse(o => { if (o.isMesh) { o.geometry.userData.shared = true; o.material.userData.shared = true; } });
+    TEMPLATES.set(T, tpl);
+  }
+  const g = tpl.clone(true);
+  paintPurifier(g, null, 0);
+  return g;
+}
+
+function buildPurifier(T) {
   const g = new T.Group();
   g.name = 'craft_purifier';
   const std = (hex, rough = .8, metal = 0, extra = {}) => new T.MeshStandardMaterial({color:hex, roughness:rough, metalness:metal, ...extra});
-  const add = (geo, mat, name, x = 0, y = 0, z = 0, shadow = true) => {
+  const add = (geo, mat, name, x = 0, y = 0, z = 0, shadow = true, parent = g) => {
     const m = new T.Mesh(geo, mat); m.name = name; m.position.set(x, y, z);
-    m.castShadow = shadow; m.receiveShadow = shadow; g.add(m); return m;
+    m.castShadow = shadow; m.receiveShadow = shadow; parent.add(m); return m;
   };
   const wood = () => std(0x9c7649, .9), steel = () => std(0x76838a, .45, .7);
 
   add(new T.BoxGeometry(.7, .04, .5), wood(), 'purifierBase', 0, .02, 0);
-  const legs = new T.Group(); legs.name = 'purifierLegs'; g.add(legs);
   const legMat = steel();
   for (const deg of [90, 210, 330]) {
-    const a = deg * Math.PI / 180, m = new T.Mesh(new T.CylinderGeometry(.022, .022, .42, 8), legMat);
-    m.position.set(Math.cos(a) * .2, .23, Math.sin(a) * .2); m.castShadow = m.receiveShadow = true; legs.add(m);
+    const a = deg * Math.PI / 180;
+    add(new T.CylinderGeometry(.022, .022, .42, 8), legMat, 'purifierLegs', Math.cos(a) * .2, .23, Math.sin(a) * .2);
   }
   const ring = add(new T.TorusGeometry(.2, .018, 8, 28), steel(), 'purifierRing', 0, .44, 0); ring.rotation.x = Math.PI / 2;
   add(new T.CylinderGeometry(.17, .17, .04, 20), std(0x3b3430, .95), 'fireTray', 0, .1, 0);
   const embers = new T.Group(); embers.name = 'embers'; g.add(embers);
+  const emberGeo = [];
   for (let i = 0; i < 5; i++) {
     const a = i * 1.26, r = i ? .085 : 0;
-    const m = new T.Mesh(new T.IcosahedronGeometry(.035, 0), std(0x5a2a14, .7, 0, {emissive:0xff7a2a, emissiveIntensity:.8}));
-    m.position.set(Math.cos(a) * r, .135, Math.sin(a) * r); m.castShadow = m.receiveShadow = true; embers.add(m);
+    emberGeo.push(new T.IcosahedronGeometry(.035, 0).translate(Math.cos(a) * r, .135, Math.sin(a) * r));
   }
+  add(mergeGeo(T, emberGeo), std(0x5a2a14, .7, 0, {emissive:0xff7a2a, emissiveIntensity:.8}), 'emberHeap', 0, 0, 0, false, embers).receiveShadow = true;
   // Fuel: up to 3 little planks in the tray (one per 50 s of fire) and a flame that shows only while lit.
   const logs = new T.Group(); logs.name = 'fuelLogs'; g.add(logs);
   const logMat = std(0x7a5a36, .9);
@@ -40,21 +58,43 @@ export function createPurifier(T) {
     m.name = 'flame' + i; m.position.y = i ? .08 : .12; m.castShadow = m.receiveShadow = false; flame.add(m);
   }
   add(new T.CylinderGeometry(.2, .17, .22, 24, 1, true), std(0xb87333, .4, .6, {side:T.DoubleSide}), 'pot', 0, .55, 0);
-  const pw = add(new T.CircleGeometry(.185, 24), std(0x5f8fa0, .2), 'potWater', 0, .62, 0); pw.rotation.x = -Math.PI / 2;
+  const pw = add(new T.CircleGeometry(.185, 24), std(0x5f8fa0, .2), 'potWater', 0, .62, 0, false); pw.rotation.x = -Math.PI / 2; pw.receiveShadow = true;
   const curve = new T.QuadraticBezierCurve3(new T.Vector3(.14, .66, 0), new T.Vector3(.32, .78, 0), new T.Vector3(.42, .42, 0));
   add(new T.TubeGeometry(curve, 16, .018, 8, false), steel(), 'spout');
   add(new T.BoxGeometry(.18, .03, .18), wood(), 'shelf', .42, .3, 0);
   add(new T.CylinderGeometry(.012, .012, .27, 6), steel(), 'shelfRod', .42, .155, 0);
   add(new T.CylinderGeometry(.06, .05, .1, 16, 1, true), std(0xe8e2d0, .6, 0, {side:T.DoubleSide}), 'cup', .42, .365, 0);
-  const cw = add(new T.CircleGeometry(.055, 16), std(0x9ad7f0, .15, 0, {emissive:0x2a6f8a, emissiveIntensity:.3}), 'cupWater', .42, .41, 0); cw.rotation.x = -Math.PI / 2;
+  const cw = add(new T.CircleGeometry(.055, 16), std(0x9ad7f0, .15, 0, {emissive:0x2a6f8a, emissiveIntensity:.3}), 'cupWater', .42, .41, 0, false); cw.rotation.x = -Math.PI / 2; cw.receiveShadow = true;
   for (let i = 0; i < 3; i++) {
     const s = add(new T.SphereGeometry(.05, 10, 8), new T.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:.4, depthWrite:false}), 'steam' + i, 0, .7, 0, false);
     s.visible = false;
   }
+  // merge the static parts: timber + fire tray, and every metal part into the (double-sided) copper pot's class
+  const merge = (names, name, opts) => {
+    const set = new Set(g.children.filter(c => names.includes(c.name)));
+    const mat = std(0xffffff, opts.rough, opts.metal || 0, {vertexColors:true, ...(opts.extra || {})});
+    for (const m of set) if (m.geometry.attributes.uv) m.geometry.deleteAttribute('uv');
+    const [m] = mergeChildMeshes(T, g, {colorize:true, skip: c => !set.has(c), material: () => mat});
+    m.name = name;
+    for (const c of set) { c.geometry.dispose(); c.material.dispose(); }
+  };
+  merge(['purifierBase', 'shelf', 'fireTray'], 'purifierBase', {rough:.91});
+  merge(['purifierLegs', 'purifierRing', 'spout', 'shelfRod', 'pot'], 'purifierMetal', {rough:.43, metal:.64, extra:{side:T.DoubleSide}});
   g.userData.craftType = 'purifier';
   g.userData.height = .78;
-  paintPurifier(g, null, 0);
   return g;
+}
+
+function mergeGeo(T, list) {
+  const out = new T.BufferGeometry();
+  for (const n of ['position', 'normal']) {
+    const arr = new Float32Array(list.reduce((k, x) => k + x.attributes[n].array.length, 0));
+    let o = 0; for (const x of list) { arr.set(x.attributes[n].array, o); o += x.attributes[n].array.length; }
+    out.setAttribute(n, new T.BufferAttribute(arr, 3));
+  }
+  for (const x of list) x.dispose();
+  out.computeBoundingSphere();
+  return out;
 }
 
 /** entry: a world.purifiers entry ({t, ready, fuel, cup}) or null. Lit = a cup is boiling and fuel > 0. */

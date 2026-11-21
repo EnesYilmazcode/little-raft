@@ -173,14 +173,14 @@ export function migrateDeckNets(deckNets, tiles, nets) {
 // Empties a net into `bag` (a Bag from inventory-state.js). lootFor(type) gives the loot for one piece
 // (rolled here, so a barrel only rolls once it is actually taken). Each piece goes in whole or stays.
 // Returns {taken, left, loot} and removes the taken pieces from net.items.
-export function emptyNet(net, bag, lootFor) {
+export function emptyNet(net, bag, lootFor, onTake = null) { // onTake(type): called once an item's loot went into the bag
   const loot = {}, keep = [];
   let taken = 0;
   for (const type of net.items) {
     const l = lootFor(type);
     if (!l || !fits(bag, l)) { keep.push(type); continue; }
     for (const [k, n] of Object.entries(l)) { bag.add(k, n); loot[k] = (loot[k] || 0) + n; }
-    taken++;
+    taken++; onTake?.(type);
   }
   net.items = keep;
   return {taken, left:keep.length, loot};

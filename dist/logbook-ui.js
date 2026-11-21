@@ -1,5 +1,6 @@
 // Raft logbook view: bottled notes and achievements in a wood-panel dialog, plus unlock toasts.
 // createLogbookUI({getProgress, onPause, onResume}) -> {open, close, toggle, update, celebrate, destroy, isOpen}
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { NOTES, NOTE_COUNT, ACHIEVEMENTS, cleanProgress } from './logbook.js?build=v3-survival-ae77fa84ac2b';
 
 const INST_KEY = '__littleRaftLogbookUI';
@@ -107,7 +108,9 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
   const opt = { signal: ac.signal };
   const safe = (fn, ...a) => { try { return typeof fn === 'function' ? fn(...a) : undefined; } catch (err) { console.warn('[logbook]', err); } };
   let alive = true, isOpen = false, tab = 'notes', lastSig = null, seenBase = null;
-  let toastTimer = 0, hideTimer = 0, showing = false, queued = null;
+  let toastTimer = 0, hideTimer = 0, showing = false;
+  const queued = []; // FIFO: rapid unlocks each get their turn
+  const QUEUE_MAX = 8;
 
   ensureStyle();
   const dlg = mountDialog();
@@ -165,7 +168,7 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
     isOpen = true;
     seenBase = null;
     safe(onPause);
-    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+    exitLock(document); // marked page-initiated (lock-rules.js), so the game does not pause on it
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     select(tab, true);
     render();
@@ -225,13 +228,13 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
       toast.classList.remove('lb-show');
       hideTimer = setTimeout(() => {
         toast.hidden = true; showing = false;
-        if (queued && alive) { const q = queued; queued = null; showToast(q); }
+        if (queued.length && alive) showToast(queued.shift());
       }, 220);
     }, 3000);
   }
   function celebrate(e) {
     if (!alive || !e || typeof e.text !== 'string' || !e.text) return;
-    if (showing) { queued = e; return; }
+    if (showing) { if (queued.length < QUEUE_MAX) queued.push(e); return; }
     showToast(e);
   }
 
@@ -248,7 +251,7 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
       alive = false;
       ac.abort();
       clearTimeout(toastTimer); clearTimeout(hideTimer);
-      queued = null; showing = false;
+      queued.length = 0; showing = false;
       toast.hidden = true; toast.classList.remove('lb-show');
       if (isOpen) { isOpen = false; if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } } }
       if (window[INST_KEY] === api) window[INST_KEY] = null;

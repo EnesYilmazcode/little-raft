@@ -48,9 +48,13 @@ export function createPalette({ size = 16, emissiveScale = 1 } = {}) {
 // Meshes (visible or not) -> one merged geometry in `space`, addressed into `pal`.
 export function bakeGeometry(meshes, space, pal) {
   if (space) { space.updateWorldMatrix(true, true); _inv.copy(space.matrixWorld).invert(); } else _inv.identity();
-  const geos = [];
-  for (const mesh of meshes) {
+  const geos = [], parts = [];
+  for (const mesh of meshes) { // an InstancedMesh bakes one copy of its geometry per instance
     mesh.updateWorldMatrix(true, false);
+    if (!mesh.isInstancedMesh) { parts.push({ mesh, world: mesh.matrixWorld }); continue; }
+    for (let k = 0; k < mesh.count; k++) { const w = new T.Matrix4(); mesh.getMatrixAt(k, w); parts.push({ mesh, world: w.premultiply(mesh.matrixWorld) }); }
+  }
+  for (const { mesh, world } of parts) {
     const src = mesh.material, slot = pal.slot(src);
     let g = mesh.geometry.clone();
     for (const k of Object.keys(g.attributes)) if (!KEEP.includes(k)) g.deleteAttribute(k);
@@ -65,7 +69,7 @@ export function bakeGeometry(meshes, space, pal) {
     }
     g.setAttribute('color', new T.BufferAttribute(col, 3));
     g.setAttribute('uv', new T.BufferAttribute(uv, 2));
-    _m.multiplyMatrices(_inv, mesh.matrixWorld);
+    _m.multiplyMatrices(_inv, world);
     g.applyMatrix4(_m);
     if (_m.determinant() < 0) {                                   // mirrored part: keep front faces in front
       if (!g.index) { const a = new Uint32Array(c); for (let i = 0; i < c; i++) a[i] = i; g.setIndex(new T.BufferAttribute(a, 1)); }

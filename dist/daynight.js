@@ -125,8 +125,8 @@ export const PALETTE_KEYS = Object.freeze([
   //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
   key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // sunrise peach
   key(0.04, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // ... held a little
-  key(0.13, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'), // bright tropical day (visuals loop)
-  key(0.54, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'),
+  key(0.13, '#86dcef', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'), // bright tropical day (visuals loop)
+  key(0.54, '#86dcef', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'),
   key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#ffc9b0'), // dusk coral
   key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#2c3b55', '#8e88b2'), // blue hour
   key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#1f3044', '#5e6f98'), // cosy blue night
@@ -257,6 +257,7 @@ const LANTERN_PARTS = ['lanternGlow', 'flame', 'lanternGlass', 'candle'];
 const LANTERN_MULT = [2.4, 2.2, 1.1, 3.0];
 const GLASS_NIGHT = '#ffb35c'; // glass emissive is tinted toward this at night so it reads amber, not cream
 const MAX_LANTERNS = 64, MAX_PARTS = MAX_LANTERNS * 4;
+export const UNLIT = 0.05; // [power] emissive scale of an unpowered light (base * UNLIT)
 const STAR_COUNT = 700, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 600;
 const SUN_RADIUS = Math.hypot(-15, 28, 12);
 // The one shadow-casting light is the sun by day and the moon by night. Its direction swaps when the
@@ -336,6 +337,7 @@ export function createDayNight(ctx) {
     cloudGroups.push(g); cloudBase.push(g.position.x, g.scale.x, g.scale.z);
     for (const m of g.children) if (m.isMesh) { cloudMeshes.push(m); cloudOrig.push(m.material); m.material = cloudMat; }
   }
+  for (const m of ctx.cloudMeshes ?? []) if (m?.isMesh && !cloudMeshes.includes(m)) { cloudMeshes.push(m); cloudOrig.push(m.material); m.material = cloudMat; } // instanced cloud copies (game.js)
 
   // ---- stars
   const starGeo = new T.BufferGeometry();
@@ -415,12 +417,13 @@ export function createDayNight(ctx) {
   const lanternGroups = new Array(MAX_LANTERNS).fill(null), lanternLocal = new Float32Array(MAX_LANTERNS * 3), lanternDist = new Float32Array(MAX_LANTERNS);
   const POOL_COLOR = new T.Color('#ffb35c'), lanternTint = Array.from({length:MAX_LANTERNS}, () => POOL_COLOR.clone()), lanternGain = new Float32Array(MAX_LANTERNS).fill(1); // per-lantern pool tint/gain (lanternGlow.userData.pool)
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
+  const lanternPower = new Array(MAX_LANTERNS).fill(null), lanternOn = new Uint8Array(MAX_LANTERNS).fill(1), lanternNoPool = new Uint8Array(MAX_LANTERNS), partOwner = new Uint8Array(MAX_PARTS); // [power] g.userData.power {lit} / noPool per lantern
   let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
-  let scanRaft = null, scanFirst = null, scanLen = -1; // what raft.children looked like at the last scan
+  let scanRaft = null, scanFirst = null, scanLen = -1, scanRev; // what raft.children looked like at the last scan (rev: game.js raft.userData.rev)
   function lanternSignature(raft, world) {
     let n = raft.children.length * 131;
     const decor = world?.decor;
-    if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'lantern' || decor[i]?.type === 'candle') n++; // [bees] candles glow too
+    if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'lantern' || decor[i]?.type === 'candle' || decor[i]?.type === 'stringlights' || decor[i]?.type === 'lamppost') n++; // [bees] candles glow too // [power] + stringlights, lamppost
     return n;
   }
   function restoreParts() {
@@ -435,7 +438,7 @@ export function createDayNight(ctx) {
     partCount = 0; lanternCount = 0;
     for (let c = 0; c < raft.children.length && lanternCount < MAX_LANTERNS; c++) {
       const g = raft.children[c];
-      if (g.name !== 'craft_lantern' && g.name !== 'craft_candle') continue; // [bees]
+      if (g.name !== 'craft_lantern' && g.name !== 'craft_candle' && g.name !== 'craft_stringlights' && g.name !== 'craft_lamppost') continue; // [bees] // [power] + stringlights, lamppost
       let found = false;
       for (let k = 0; k < g.children.length; k++) {
         const m = g.children[k];
@@ -443,7 +446,7 @@ export function createDayNight(ctx) {
         const pi = LANTERN_PARTS.indexOf(m.name);
         if (pi < 0 || partCount >= MAX_PARTS) continue;
         const e = m.material.emissive;
-        partMat[partCount] = m.material; partBase[partCount] = m.material.emissiveIntensity; partMult[partCount] = LANTERN_MULT[pi];
+        partMat[partCount] = m.material; partBase[partCount] = m.material.emissiveIntensity; partMult[partCount] = LANTERN_MULT[pi]; partOwner[partCount] = lanternCount; // [power] partOwner
         partTint[partCount] = pi === 2 && e?.isColor ? 1 : 0;
         if (e?.isColor) { partColor[partCount * 3] = e.r; partColor[partCount * 3 + 1] = e.g; partColor[partCount * 3 + 2] = e.b; }
         partCount++;
@@ -457,17 +460,19 @@ export function createDayNight(ctx) {
         }
       }
       if (!found) { lanternTint[lanternCount].copy(POOL_COLOR); lanternGain[lanternCount] = 1; lanternLocal[lanternCount * 3] = g.position.x + 0.3; lanternLocal[lanternCount * 3 + 1] = g.position.y + 1.24; lanternLocal[lanternCount * 3 + 2] = g.position.z; }
+      lanternPower[lanternCount] = g.userData.power ?? null; lanternOn[lanternCount] = lanternPower[lanternCount] ? (lanternPower[lanternCount].lit ? 1 : 0) : 1; lanternNoPool[lanternCount] = g.userData.noPool ? 1 : 0; // [power]
       lanternGroups[lanternCount++] = g;
     }
     for (let i = lanternCount; i < MAX_LANTERNS; i++) lanternGroups[i] = null;
     for (let i = partCount; i < MAX_PARTS; i++) partMat[i] = null;
-    scanRaft = raft; scanFirst = raft.children.length ? raft.children[0] : null; scanLen = raft.children.length;
+    scanRaft = raft; scanFirst = raft.children.length ? raft.children[0] : null; scanLen = raft.children.length; scanRev = raft.userData?.rev;
     if (lanternCount > 0) poolWanted = true;
     rankClock = 1e9;
   }
   function rankLanterns(raft, cam) {
     for (let i = 0; i < POOL_LIGHTS; i++) poolPick[i] = -1;
     for (let i = 0; i < lanternCount; i++) {
+      if (!lanternOn[i] || lanternNoPool[i]) continue; // [power] unlit lights and String Lights never take a pool light
       vTmp.set(lanternLocal[i * 3], lanternLocal[i * 3 + 1], lanternLocal[i * 3 + 2]);
       raft.localToWorld(vTmp);
       lanternDist[i] = cam ? vTmp.distanceToSquared(cam.position) : i;
@@ -503,7 +508,7 @@ export function createDayNight(ctx) {
     // sky, fog (nothing else writes these per frame, so they only change here)
     if (scene) {
       if (scene.background?.isColor) scene.background.copy(cHorizon);
-      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 60 - 44 * wet; scene.fog.far = 260 - 180 * wet; }
+      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 90 - 74 * wet; scene.fog.far = 260 - 180 * wet; }
     }
     // sun / moon direction
     const th = sunAngle(phaseAt(phase * DAY_SECONDS));
@@ -525,8 +530,12 @@ export function createDayNight(ctx) {
     const u = ctx.ocean?.uniforms;
     if (u) {
       u.uSky?.value.copy(cHorizon); u.uZenith?.value.copy(cZenith);
+      if (u.uFarSea) { // far sea: shallow tint lifted a third toward the horizon (more with a low warm sun), darker after dusk
+        const k = 0.32 + 0.2 * (1 - smooth(0.1, 0.5, Math.abs(L.sunHeight))), d = 1 - 0.35 * Math.max(nf, smooth(0.2, 0, L.sunHeight));
+        u.uFarSea.value.setRGB((PAL[9] + (PAL[0] - PAL[9]) * k) * d, (PAL[10] + (PAL[1] - PAL[10]) * k) * d, (PAL[11] + (PAL[2] - PAL[11]) * k) * d, T.SRGBColorSpace).multiplyScalar(1 - 0.3 * wet).lerp(cHorizon, 0.45 * wet); // rain: hazier horizon
+      }
       u.uDeep?.value.copy(cDeep).multiplyScalar(1 - 0.3 * wet); u.uShallow?.value.copy(cShallow).multiplyScalar(1 - 0.3 * wet);
-      if (u.uFadeFar && scene?.fog) u.uFadeFar.value = Math.min(scene.fog.far, 190); // camera.far is 200
+      if (u.uFadeFar && scene?.fog) u.uFadeFar.value = Math.min(scene.fog.far, 140); // ocean plane half-size: past its edge the sky dome shows far sea
       if (u.uFadeNear) u.uFadeNear.value = fadeNear0 * (1 - 0.55 * Math.max(nf, smooth(0.2, 0, L.sunHeight))); // no light band at the horizon after sunset
       u.uSunDir?.value.copy(vDir);
       if (u.uSunColor) {
@@ -588,10 +597,11 @@ export function createDayNight(ctx) {
     }
     // lanterns
     if (raft) {
-      // O(1) every frame: rebuildRaft() replaces every child, so the first child or the child count
-      // changes (or our first lantern lost its parent). Rescan at once so new lanterns never show a dim frame.
+      // O(1) every frame: rebuildRaft() bumps raft.userData.rev whenever it adds or removes a child (older hosts
+      // replaced every child, so the first child or the child count changes, or our first lantern lost its parent).
+      // Rescan at once so new lanterns never show a dim frame.
       const n = raft.children.length;
-      if (raft !== scanRaft || n !== scanLen || (n ? raft.children[0] : null) !== scanFirst || (lanternCount > 0 && lanternGroups[0].parent !== raft)) {
+      if (raft !== scanRaft || n !== scanLen || (n ? raft.children[0] : null) !== scanFirst || raft.userData?.rev !== scanRev || (lanternCount > 0 && lanternGroups[0].parent !== raft)) {
         scanClock = 0; signature = lanternSignature(raft, ctx.world); scanLanterns(raft); lastNf = -1;
       }
       scanClock += dt;
@@ -602,12 +612,13 @@ export function createDayNight(ctx) {
         const sig = lanternSignature(raft, ctx.world);
         if (stale || sig !== signature) { signature = sig; scanLanterns(raft); lastNf = -1; }
       }
+      for (let i = 0; i < lanternCount; i++) { const p = lanternPower[i]; if (p && (p.lit ? 1 : 0) !== lanternOn[i]) { lanternOn[i] = p.lit ? 1 : 0; lastNf = -1; rankClock = 1e9; } } // [power] lit flips re-write emissive and re-rank at once
       if (nf !== lastNf) {
         lastNf = nf;
         for (let i = 0; i < partCount; i++) {
-          const m = partMat[i];
-          m.emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf);
-          if (partTint[i]) m.emissive.setRGB(partColor[i * 3], partColor[i * 3 + 1], partColor[i * 3 + 2]).lerp(cGlassNight, 0.7 * nf);
+          const m = partMat[i], on = lanternOn[partOwner[i]];
+          m.emissiveIntensity = on ? partBase[i] * (1 + (partMult[i] - 1) * nf) : partBase[i] * UNLIT; // [power] unlit: base * UNLIT
+          if (partTint[i]) m.emissive.setRGB(partColor[i * 3], partColor[i * 3 + 1], partColor[i * 3 + 2]).lerp(cGlassNight, on ? 0.7 * nf : 0);
         }
       }
       rankClock += dt;
@@ -731,5 +742,5 @@ export function createDayNight(ctx) {
     },
   };
 
-  return { name: 'daynight', update, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get rain() { return W.rain; } };
+  return { name: 'daynight', update, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get night() { return L.nightFactor; } /* [power] */, get rain() { return W.rain; } };
 }

@@ -589,6 +589,83 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
 - PR #2 merged into main (3031d67). Review fixes: inventory width at 900px, recipe tracker overlap, Pin button contrast. Reviewer low-priority notes left open: per-frame allocations in rain.js rainTarget and the physics substep input, sky.dispose() missing on hot swap, passive wheel listener.
+## Round 2: claude/loop-ux-202611210547 (base: origin/claude/raft-integration 7d19797 + round 1 merged in e4c3aee)
+
+Fleet:
+- 4 subsystem hunters: cursor/Electron, crafting/backpack, menus/settings, tools/viewmodel.
+- 2 adversarial verifiers per hunter report (8).
+- 5 fixers.
+- 1 new-player UX reviewer, reading screenshots.
+- 1 crafting UX builder.
+- 1 merge agent.
+
+### Merge
+Round 1 was merged into raft-integration, keeping both sides:
+- integration's dark translucent restyle, menus, pickup feed and hands viewmodel;
+- loop-ux's lock rules, edge notices and crafting features.
+
+The two item-icon modules became one shared cache.
+
+### Fixed (each confirmed by both verifiers)
+- **Cursor (CUR2-1..5)**, found with real X11 keys in headful Chrome:
+  - A relock made inside the Esc keyup was granted and then dropped by Chrome's Escape key-release shortcut. The relock is now deferred 250 ms, with guards.
+  - Chrome sometimes eats the Esc in locked play. Any lock loss the page didn't cause now opens the pause menu if the window is focused.
+  - Electron:
+    - on an eaten-Esc keyUp, `raftShell.escapedLock()` runs with a gesture;
+    - on window focus, `raftShell.focusRelock()` relocks after alt-tab, but only if play was locked and nothing is open;
+    - a gesture retry covers the Escape cooldown;
+    - the extra key-release round trip is gone.
+  - In the desktop app, Esc while holding a stack in the bag now puts the stack back first.
+- **Menus (MEN2-1..5):**
+  - The ambience slider is wired up, with its gain after the swell.
+  - The title help button no longer shows Resume or Quit, and quit-to-title is a no-op on the title screen.
+  - The shell Escape goes through settings' stepwise routing.
+  - The default renderScale is now 0.85.
+  - The Audio tab has a Sound toggle.
+- **Tools (TOOL2-1..5):**
+  - A cancelled hand swap rises back instead of staying half-lowered.
+  - A pose override waits for its own item.
+  - models.js is wired into held items and icons, with a fallback.
+  - Rod prompts no longer invite a losing click.
+  - Switching slots pulls the hook back, ported from lane-bugs 53426f0.
+- **Crafting (CRA2-1..6 + builder):**
+  - The crafting panel no longer jumps between tabs.
+  - Esc or a backdrop click while holding a stack puts it back.
+  - A stack picked up with the keyboard sits on its slot.
+  - No overflow between 861 and 923 px.
+  - The icon fallback is shared with the pickup feed.
+  - Tooltips show on focus.
+  - Inline ingredient counts.
+  - Craftable recipes sort first.
+  - A pinned-recipe tracker sits at the top-right edge.
+  - Shift crafts the maximum.
+  - Tools craft one at a time.
+  - The bag opens on the first ready recipe the player doesn't own yet.
+  - Counts read "have X · need Y".
+  - Clicking an ingredient jumps to its recipe.
+  - A slot flashes after crafting.
+- **UX (UX2-2/3/6/7/8):**
+  - Help shows in the pause side panel.
+  - Action prompts are in the edge stack.
+  - The hint chain teaches look → walk → throw → bag → slots.
+  - Key and reel wording is unified.
+  - The throw meter has a gradient fill and a full-power cue.
+  - One palette and font across all menus.
+  - Segmented preset picker.
+  - Title: a legible logo and a single "Play together" button.
+
+### Checks
+- `npm test`: 166 pass, 0 fail.
+- `python shoot.py dist <out>`: no page or console errors. The pause menu is a left rail; the bag shows inline counts.
+- `python tests/e2e/escape_lock.py`: the Esc-from-inventory relock and locked-play Esc → pause pass with native key codes, 3/3 in my run and 5/5 in the fixer's. The fixer measured HEAD before the fix at 0/5.
+- XTest real-key trials: 15/15, from the fixer.
+
+### Open for next round
+- None of the Electron main.cjs paths have ever run. They have only been reasoned from source and checked in a node sim. A real desktop run is needed.
+- The focus relock also fires when the player returns by clicking the title bar or taskbar, which is debatable.
+- Play together is still a separate centred dialog.
+- The Hammer and Fishing Rod icons are still dim on their tiles.
+
 
 ## 2026-11-21 · loop-features-202611210722 (features, round 3)
 Base: origin/claude/raft-master (6ab9b24, already holding round 1) + round 2 (loop-features-202611210534) merged in (re-based 3-way merge; kiln metal now uses master's `metalingot`/`glass`/`brick`; decor-pack rotation kept via `userData.ownRot`). raft-integration (newer timestamp) was skipped as base: it is a divergent line 558 commits behind master without the lanes.
@@ -711,6 +788,7 @@ Left for later:
 - slow bounded GL buffer creep (+52 buffers over minutes 2-8 of play)
 - "Discover at a Tinker's Desk" heading squeezed to 3 px (pre-existing UI bug)
 - `ocean.sampleAt` to remove double-argument boxing in `updateItems`
+
 ## 2026-11-21 · loop-features-202611210648 (features)
 Base: origin/claude/raft-master (8cfdbcd). Branch: claude/loop-features-202611210648.
 
@@ -762,3 +840,111 @@ Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water
 - PR #2 review (2 reviewers, comments on the PR). Fixed: items.js still had an 8-slot hotbar, so slots 9/0 reset on load and for co-op guests; red off-deck ghost said "Place"; slot 9/0 onboarding hint; pickup feed covered the vitals panel; vitals panel overlapped the 10-slot hotbar below 1100px; resume hint forced next to the crosshair by an !important rule; sky noise texture leaked on hot swap.
 - Gate at dbf2ca9: 983/983, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text. Perf vs main (pinned, median of 3, interleaved): 185/191 vs 195/192 ms, 49-52 vs 51-55 draw calls.
 - Merged PR #4 into main (912d941).
+
+## 2026-11-21 · loop-features-202611210648 (features)
+Base: origin/claude/raft-master (8cfdbcd). Branch: claude/loop-features-202611210648.
+
+Features (research in docs/features, specs in docs/specs):
+- **Rain Barrel + Sprinkler**: the barrel fills during rain (1 fresh cup per 30 s, with a slow dew trickle as a fallback), and E fills a cup at it. The sprinkler waters one dry, unripe palm per second in the 8 tiles around it, from its own tank or from a barrel beside it. State is in `world.collectors` / `world.sprinklers`, which old saves load as {}. New `get rain()` in daynight. Files: dist/rain.js, rain-model.js.
+- **Instruments**: three held instruments, Tide Drum, Reed Pipes and Bell Bars. LMB or RT plays; camera pitch picks one of 8 D-pentatonic notes. New `audio.note()` on the effects bus (50 ms gap, 10-voice cap). Co-op sends a transient `inst` message with validation, rate limits and distance falloff; HELD enum appended. Files: dist/instruments.js, instrument-models.js.
+- **Beehive + Flower Box**: honey and beeswax for a Beeswax Candle (night glow) and Honey Glazed Fish. Combs fill from flower boxes within 2 tiles, up to 3 combs. Flower seed comes from island bushes and treasure barrels. State in `world.ext.bees`, with an OLD_HOST guard. Files: dist/bees.js, bees-model.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+Review fixes:
+- The candle's night light blew the deck out.
+- Hidden sprinkler spray stole the aim; pip materials leaked on raft rebuild.
+- The instrument prompt hid the pickup and swim prompts; the rate limit ran before validation; note sprites are now pooled.
+QA found that every content-module and watering prompt (round 1 purifier, storage, grill, plus this round's) went into the CSS-hidden `#contextPrompt` and leaked status lines into the notice feed. They now go through `raftPrompts.provide` via `promptFromHtml`.
+Checks: `npm test` 568/568 (was 533); shoot.py `errors: []`.
+Known limits: live two-peer co-op not run (co-op reviewed by code and unit tests). Mixed-version co-op unsupported (older builds drop the new decor and reset bags holding new kinds). Removing a barrel, sprinkler or hive with the hammer discards its contents. Fishing labels over 48 characters get cut off.
+Next ideas: hammer pickup that refunds contents, a placeable music stand, flower variety, sprinkler range ring while aiming.
+
+## loop-ux round 5: claude/loop-ux-202611210748 (base: origin/claude/raft-master 7294e26)
+Merged the unmerged round-4 branch (loop-ux-202611210648: steady recipe order and panel height, hold counter, tooltips beside their element) first. Fleet of 7 subsystem hunters, a new-player screenshot reviewer, 2 adversarial verifiers per cluster (14), and 7 fixers, each fix with a regression test.
+
+Fixed (confirmed by both verifiers unless noted):
+- **Cursor and lock:** Chrome's post-Esc SecurityError no longer counts toward drag-look fallback. The cursor stays visible in drag-look after a panel closes. `relock` is cleared on blur so the away hint shows. `acceptFirstMouse` is set in Electron. Desktop Esc now closes the hammer build wheel and keeps the lock: `raftShell.closeBuildWheel()` is called from `raftEscape`.
+- **Controls:** keys held through a panel resume when it closes, with no false press edge. A sub-frame Space tap jumps. Mouse flicks over 300px go through the look spike filter instead of being dropped. The fish journal closes on physical KeyJ.
+- **Build wheel:** holding Q no longer flickers it open and shut. While it is open, digits, the mouse wheel and E are swallowed. WASD still works, which is intended. R is consumed only for pieces that rotate.
+- **Fishing:** a rod charge or reel hold is released on blur and lock loss, so there is no stale full-power cast. E follows the prompt order. Gamepad RT uses fishing v2. Clicking during the post-catch linger recasts. Grills don't cook on the title screen.
+- **HUD:** the crosshair prompt follows the fishing stage and grill, rain and content prompts. The dive label, binoculars readout and reel bar moved out of screen centre into the crosshair-side column. The three bottom-left feeds are now one stack. Notes and achievements show once, and the toast queue is FIFO. The help text gives the right bag-close keys.
+- **Inventory:** a metal hook is repaired with R. A cast retracts when its hook leaves the slot. Barrel pity counters advance only when the loot is taken, and nets back off for 6s after a refused roll.
+- **Crafting (Raft-like):**
+  - Layout: a vertical category column, a tall scrolling recipe list with a fade, and a detail pane (big icon, used-for, have/need rows, Craft) above a 10-column backpack. The panel is the same size on every tab.
+  - Locked recipes: recipes locked behind the Tinker's Desk show as locked with the full reason, instead of "Ready" while the host refuses them.
+  - Crafting and icons: a click crafts exactly 1, and a hold repeats after 800ms with a fill. The receiver has a real icon. Tooltips never jump to the top-left or cover the Craft button.
+  - Build costs and categories: costs show per-material have/need using bag names. Cup and purifier are in Survival.
+- Refuted: Tab-to-close bag (Tab moves focus by design; help text fixed).
+
+Gate: npm test 695/695. `tests/art.test.mjs` "atlas build stays fast" is load-sensitive: it fails sometimes with ~20 agents on 4 cores and passes alone. shoot.py: no page errors; Esc from inventory leaves the game locked with no pause; Esc closes the settings panel first.
+
+Open / next:
+- Gamepad build menu (Pad12) lists decor and emits an unhandled `buildPick`.
+- Rebinding UI is not mounted in settings; several keys bypass input-map.
+- Two Invert Y settings.
+- Ctrl+W crouch-walk closes the browser tab.
+- Pieces and decor don't check each other for overlap.
+- The host does no reach check on piece and unpiece.
+- Fish journal chip overlaps the hotbar at 390px.
+- Grill progress is lost on tab discard.
+- Icon style still swaps from flat SVG to 3D mid-session.
+## 2026-11-21 · loop-features-202611210735 (features)
+Base: origin/claude/raft-master (c96002e), plus the two round-1 commits that missed the master merge (the prompt fix).
+Branch: claude/loop-features-202611210735.
+
+Features (research in docs/features, specs in docs/specs):
+- **Fish Trap**:
+  - Placed on edge tiles only, via a new `placeBlock` content hook. A woven creel hangs off the raft edge into the water.
+  - Catches a fish every 240 s, or every 150 s with seaweed bait (5 charges). Catches use `rollCatch` on a seeded host RNG; up to 3 fish.
+  - E collects all-or-nothing into the bag and the collector's journal (`recordTrapCatch`).
+  - Tails poke above the rim when the trap holds fish; a seaweed tuft shows when baited.
+  - State in `world.ext.fishtrap`. Files: dist/fish-trap.js, fish-trap-model.js.
+- **Power**:
+  - Wind Turbine, Battery, String Lights and Lamp Post. Turbines beside a battery charge it from the daynight wind; lights within 3 tiles glow and drain it at night.
+  - Only the charge is synced (`world.ext.power`); each peer works out lit state itself.
+  - No new PointLights: the Lamp Post shares the lantern pool lights, and new `night` getter and per-light lit flag in daynight.
+  - Files: dist/power.js, power-model.js.
+- **Display Shelf + Trophy Stand**:
+  - E puts or takes the held item in the aimed slot, through atomic host actions with `expect`.
+  - Items are fitted to the slot: tools stand upright, long items lie flat.
+  - The stand mounts a cosmetic trophy of a fish species from your journal, with a plaque.
+  - State in `world.ext.display`. Shared per-kind model templates; 48-model cap. Files: dist/display.js, display-model.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+
+Review fixes:
+- Fish trap:
+  - Fish can still be collected from a trap that no longer sits on an edge.
+  - The waiting percent no longer goes over 100.
+  - The bob animation is skipped off-screen.
+- Power: old-host prompts on lights; slimmer wooden turbine; brighter powered bulbs and darker unpowered ones; battery charge gauge on the top face.
+- Display: items fitted to slots, using instanced-mesh bounds; plaque textures stay alive while shown.
+
+QA regression fixed: round 1's game-aim provider hid the placement hint while holding a crate or bench. Place mode now shows the hint, with the aim prompt stacked below it.
+Also fixed:
+- muted status prompts get a dark pill
+- the caught-fish viewmodel also expires on wall-clock time
+- new tests/syntax.test.mjs runs `node --check` on every dist module, after a broken game.js passed `npm test`
+
+Checks: `npm test` 605/605 (was 568); shoot.py `errors: []`.
+Known limits:
+- Live two-peer co-op not run; mixed-version co-op is unsupported.
+- Decor still cannot be removed (a refund helper exists for shelves).
+- Trap catches don't count toward fish achievements.
+- The trap's placement ghost doesn't face the water.
+Next ideas: decor pickup with refunds, achievement hooks for content modules, flower variety, power for the receiver and purifier.
+
+- Follow-up: the electron check caught an uncaught `isReady` TypeError (three r170 compileAsync polling a material disposed
+  mid-compile); patched the vendored three with the upstream-style guard. Full fleet-gate PASS at dbf2ca9 (983 tests,
+  hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
+  PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
+
+## 2026-11-21 · integrator B round 4 (alongside the parallel integrator, which shipped PRs #3 and #4)
+- Clean merges: loop-fidelity-202611210821, raft-tech, fleet-tech perf/water. Sky dome now disposed on hot swap.
+- One subagent per conflicting branch, each pushing straight to raft-master after tests, shoot.py and perf:
+  - merged loop-features-202611210722 (diving gear, Pim's trader barge, cooking pot) and 0648; loop-ux-202611210743 (menu restyle, help panel, sound settings);
+    loop-perf-202611210708 (partial: quality ladder, fog cache, cached models) and 0648; loop-visuals-202611210648 (new held hook only).
+  - skipped loop-fidelity-202611210747 (second copy of vitals/shark with a different save format; its game-mode and death card would need porting),
+    loop-perf-202611210720 (stale), loop-ux-202611210742 (redoes lock rows, still being pushed). raft-integration was already in.
+- Gate at 9b3ba49: 1023/1023, no page errors, hook-only spawn, Esc OK, perf 133 ms / 43 calls (main 912d941: 229 ms / 49 calls).
+- Recurring flake: tests/art.test.mjs atlas build-time (<1500 ms) fails under machine load (load avg > 15); passes alone.
