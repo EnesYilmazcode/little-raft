@@ -20,6 +20,84 @@ Prototype: `sandbox/procedural-models/`
 - `deck-study.*` is the earlier salvage experiment on the deck tile (bake+merge, grid AO, instancing), kept for
   reference. Its numbers are in `shots/deck-study-stats.json`.
 
+## Retarget to current main (read this first)
+
+Everything below this section was measured against the **old** dist. Main has since gained its own model and
+texture work, so the question changed from "lowpoly vs the old builders" to "does lowpoly still beat what main
+ships now?". Short answer: **only for the crafts, only on cost, and as an option rather than a clear upgrade.**
+
+What main has now:
+- `deck.js createRaftMesh()` merges the whole raft floor into ~7 meshes, and the `?art` lane (`materials.js` +
+  `textures.js`/`texgen/`) textures the deck, debris and jug through game.js `mat()`.
+- `debris.js` / `plastic.js` items are 1–3 meshes, and floating items skip the shadow pass.
+- `models.js` is main's own low-poly kit (docs/MODEL-STYLE.md). It feeds held items (hands.js) and HUD icons
+  (item-icons.js), but not the world props.
+- `crafts.js` is unchanged in cost: 3–11 meshes and up to 22k triangles per craft, per-call materials, and the art
+  lane never touches it. Other lanes now read named craft parts (sailing furls `sailCloth`, day/night ramps
+  `lanternGlow`, watering pivots the palm `trunk` and recolours `soil`).
+
+`?view=compare4` (`shots/compare4_0.png`, `compare4_1.png`) puts current dist, current dist with `?art`, `models.js`
+and lowpoly side by side. "c" = draw calls including the shadow pass, prop only:
+
+| prop | current dist | models.js | lowpoly |
+|---|---|---|---|
+| plank | 244 t, 2 m, 4 c | 564 t, 2 m, 4 c | 260 t, 1 m, 2 c |
+| barrel | 2,404 t, 2 m, 4 c | 844 t, 2 m, 4 c | 624 t, 1 m, 2 c |
+| jug | 973 t, 2 m, 4 c | 464 t, 1 m, 2 c | 312 t, 1 m, 2 c |
+| leaf | 1,280 t, 1 m, 2 c | 720 t, 2 m, 4 c | 1,224 t, 1 m, 2 c |
+| scrap | 808 t, 3 m, 6 c | 396 t, 2 m, 4 c | 296 t, 1 m, 2 c |
+| deck tile | 3,428 t, 7 m, 14 c (merged across the raft in game) | 2,060 t, 3 m, 6 c | 1,428 t, 1 m, 2 c |
+| crate | 10,260 t, 3 m, 6 c | 2,712 t, 3 m, 6 c | 1,712 t, 1 m, 2 c |
+| sail | 22,464 t, 9 m, 18 c | 737 t, 3 m, 6 c | 1,714 t, 3 m, 6 c |
+| palm | 8,996 t, 11 m, 22 c | 4,676 t, 3 m, 6 c | 2,724 t, 5 m, 10 c |
+| lantern | 6,028 t, 8 m, 14 c | 1,492 t, 5 m, 10 c | 950 t, 2 m, 3 c |
+| net | 17,660 t, 5 m, 10 c | 2,628 t, 3 m, 6 c | 1,452 t, 1 m, 2 c |
+| bench | 5,248 t, 3 m, 6 c | 1,576 t, 2 m, 4 c | 828 t, 1 m, 2 c |
+
+The lowpoly sail and palm went from 2 to 3 and 5 meshes in this retarget, because they now keep the named parts
+the sailing and watering lanes animate.
+
+**Look, judged from the shots.** In turntable close-ups the current crafts hold up well: metal-cornered crate, round
+lashed mast, smooth ringed palm trunk. Lowpoly is a coherent sidegrade, not an upgrade. In first person (the game
+probe below) the current sail yard and mast read richer than the flat octagonal lowpoly spars. The lowpoly palm's
+fronds are larger and droop over the neighbouring tiles. Lowpoly's crate, bench and lantern are about equal. The
+`?art` deck and textured debris are better than the vertex-coloured lowpoly deck and debris, and adopting lowpoly
+there would switch the art lane off for them. `models.js` is the most efficient for the sail, but its net (upright
+frame) and palm (a sapling, no deck base) are different objects, made for icons and hands rather than world props.
+
+**In-game, crafts only** (`adopt_check.py`, seeded Math.random so both builds get the same debris, 3×3 raft,
+place sail/palm/lantern/net/bench/crate with real clicks, hammer one tile; renderer.info and a WebGL draw*() hook
+agree within 3 calls):
+
+| frame | stock calls / tris | lowpoly crafts calls / tris |
+|---|---|---|
+| spawn, sail ghost showing | 157 / 151,511 | 145 / 110,043 |
+| all 6 decor + 10 tiles, facing the sail | 167 / 219,484 | 132 / 118,296 (−21% / −46%) |
+| same, facing the palm | 121 / 190,370 | 84 / 93,562 (−31% / −51%) |
+
+Programs went 54 → 56 (`lp-solid`, `lp-glow`). Geometries 331 → 281. There were 0 page errors on both builds, and
+every cross-lane contract held. SwiftShader frame times at load ~25 were noise (1.6–2.1 s per frame on both) and
+are not evidence either way.
+
+**Low preset, tier mode** (`adopt_check.py --mode tier`: both builds on `graphics: 'low'`, so there is no shadow
+pass): 120 → 111 calls and 129,668 → 90,166 triangles facing the sail; 75 → 63 calls and 101,522 → 65,432
+triangles facing the palm. With no shadow pass the call saving halves, and most of what is left is triangles
+(−30 to −36%). The patched build's placed crafts were the lowpoly ones (`sailSolid` present), with 0 errors and all
+contracts intact.
+
+**Decision (supersedes the one below).** Do not adopt the deck, debris or jug. For crafts, the saving is real but
+moderate: 35 draw calls and ~100k triangles on a raft with all six crafts, about 6 calls and 12k triangles per
+craft. The look is a sidegrade. Two ways to take it, both in `procedural-models-ADOPT.md` and both checked by
+`adopt_check.py`:
+- `--mode crafts`: always use lowpoly crafts (one import and one placement.js guard).
+- `--mode tier`: use lowpoly crafts only on the `low` graphics preset. Detailed crafts stay the default, and weak
+  machines get the cheap set.
+
+The tier option is the recommended one, because it keeps the better-looking default. Be clear about its size,
+though: on `low` it saves about 10 calls and a third of the triangles on a fully decorated raft. That is worth having
+on weak GPUs, but it is not a headline win. Skipping the adoption entirely is a defensible call too. If the team would rather have one model source, the real follow-up is to make `models.js` the
+world-prop builder (names and footprints matched to crafts.js), not to add lowpoly as a third style.
+
 ## What was wrong with the current models
 
 - **No shared look.** Each builder (`crafts.js`, `debris.js`, `plastic.js`, `deck.js`) has its own detail
@@ -135,7 +213,7 @@ SwiftShader ReadPixels notices. Floor, floating items, hands and HUD were all in
   flame height. It is 2 draw calls + 1 shadow, down from 4 + 1. In daylight the panes read as frosted rather than
   clear glass.
 
-## Decision
+## Decision (old dist, superseded by "Retarget to current main")
 
 Adopt `lowpoly-props.js` for all four builder modules (deck, debris, plastic, crafts). It is a one-file drop-in
 with the same contracts. It cuts triangles by about 5× and draw calls by about 5.4× on a typical raft, and

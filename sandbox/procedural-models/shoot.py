@@ -14,6 +14,7 @@ VIEWS = [
     ("compare_0", "view=compare&page=0", (1560, 520)), ("compare_1", "view=compare&page=1", (1560, 520)),
     ("scene", "view=scene", (1600, 620)), ("fp", "view=fp", (1600, 900)),
     ("hero_0", "view=hero&names=lantern,crate,net", (1560, 1040)), ("hero_1", "view=hero&names=plank,scrap,bench", (1560, 1040)), ("stats", "view=stats", (600, 400)),
+    ("compare4_0", "view=compare4&page=0", (1560, 1040)), ("compare4_1", "view=compare4&page=1", (1560, 1040)),
 ]
 only = set(sys.argv[1:])
 

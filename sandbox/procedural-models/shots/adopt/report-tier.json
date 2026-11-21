@@ -1,0 +1,171 @@
+{
+ "mode": "tier",
+ "anchors": [
+  {
+   "file": "game.js",
+   "line": 12,
+   "expectedLine": 12,
+   "matches": 1
+  },
+  {
+   "file": "game.js",
+   "line": 1010,
+   "expectedLine": 1010,
+   "matches": 1
+  },
+  {
+   "file": "placement.js",
+   "line": 91,
+   "expectedLine": 91,
+   "matches": 1
+  }
+ ],
+ "fails": [],
+ "stock": {
+  "errors": [],
+  "fails": [],
+  "spawn": {
+   "calls": 148,
+   "triangles": 134163,
+   "geometries": 155,
+   "textures": 15,
+   "programs": 64,
+   "shadows": false,
+   "glCallsPerFrame": 148,
+   "frameMs": 1011.1
+  },
+  "decor": [
+   "sail",
+   "palm",
+   "lantern",
+   "net",
+   "bench",
+   "crate"
+  ],
+  "tiles": 10,
+  "2-decor": {
+   "calls": 120,
+   "triangles": 129668,
+   "geometries": 319,
+   "textures": 15,
+   "programs": 77,
+   "shadows": false,
+   "glCallsPerFrame": 121.5,
+   "frameMs": 1905.5
+  },
+  "3-decor-back": {
+   "calls": 75,
+   "triangles": 101522,
+   "geometries": 321,
+   "textures": 15,
+   "programs": 77,
+   "shadows": false,
+   "glCallsPerFrame": 75,
+   "frameMs": 1356.9
+  },
+  "contracts": {
+   "sailCloth": true,
+   "pennant": true,
+   "lanternGlowEmissive": true,
+   "palmPivot": true,
+   "palmSoil": true,
+   "palmCoconuts": true,
+   "sailKids": [
+    "sailCloth",
+    "sailSeams",
+    "sailPatch",
+    "sailStitches",
+    "pennant",
+    "sailTimber",
+    "sailRope",
+    "sailLashing",
+    "sailSteel",
+    ""
+   ],
+   "lanternKids": [
+    "lanternGlass",
+    "lanternGlow",
+    "candle",
+    "flame",
+    "lanternTimber",
+    "lanternSteel",
+    "lanternBrass",
+    "lanternRope"
+   ],
+   "palmKids": [
+    "pot",
+    "soil",
+    "pebbles",
+    "palmBase",
+    "palmNails",
+    "palmRope"
+   ]
+  }
+ },
+ "patched": {
+  "errors": [],
+  "fails": [],
+  "spawn": {
+   "calls": 136,
+   "triangles": 92695,
+   "geometries": 149,
+   "textures": 15,
+   "programs": 64,
+   "shadows": false,
+   "glCallsPerFrame": 136,
+   "frameMs": 1708.3
+  },
+  "decor": [
+   "sail",
+   "palm",
+   "lantern",
+   "net",
+   "bench",
+   "crate"
+  ],
+  "tiles": 10,
+  "2-decor": {
+   "calls": 111,
+   "triangles": 90166,
+   "geometries": 277,
+   "textures": 15,
+   "programs": 79,
+   "shadows": false,
+   "glCallsPerFrame": 112.5,
+   "frameMs": 1397.2
+  },
+  "3-decor-back": {
+   "calls": 63,
+   "triangles": 65432,
+   "geometries": 278,
+   "textures": 15,
+   "programs": 79,
+   "shadows": false,
+   "glCallsPerFrame": 63,
+   "frameMs": 1009.7
+  },
+  "contracts": {
+   "sailCloth": true,
+   "pennant": true,
+   "lanternGlowEmissive": true,
+   "palmPivot": true,
+   "palmSoil": true,
+   "palmCoconuts": true,
+   "sailKids": [
+    "sailSolid",
+    "sailCloth",
+    "pennant",
+    ""
+   ],
+   "lanternKids": [
+    "lanternSolid",
+    "lanternGlow"
+   ],
+   "palmKids": [
+    "palmSolid",
+    "soil"
+   ]
+  }
+ },
+ "ok": true
+}

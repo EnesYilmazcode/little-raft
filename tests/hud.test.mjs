@@ -89,11 +89,14 @@ test('first-run hints go throw -> bag -> slots and are stored once', () => {
 test('game.js routes notices to the edge stack, not under the crosshair', async () => {
   const src = await readFile(new URL('game.js', base), 'utf8');
   assert.doesNotMatch(src, /#contextPrompt\{[^}]*top:calc\(50%/);
-  // raft-master routes notices to the bottom-left pickup feed (pickup-feed.js); beep() there is only the old
-  // tone API, mapped onto the audio.js recipes.
+  // Integration routes notices to the bottom-left pickup feed (pickup-feed.js); it is raised as a popover over panels.
   assert.match(src, /function notice\([^)]*\) \{[^\n]*pickupFeed\.note\(/);
+  assert.match(src, /#pickupFeed\[popover\]\{/);
   assert.match(src, /dragLookScale\(DRAG_SENSITIVITY, options\.sensitivity\)/);
   assert.match(src, /createOceanAudio\(/);
+  // beep() survives only as the old tone API for lane hooks; it plays the audio.js recipes, never a raw oscillator.
+  assert.match(src, /function beep\(f = 500\) \{ play\(/);
+  assert.doesNotMatch(src, /createOscillator\(/);
   assert.doesNotMatch(src, /new AudioContext\(/);
   const css = await readFile(new URL('graphics.css', base), 'utf8');
   assert.doesNotMatch(css, /#resumeHint\{[^}]*top:calc\(50%/);
