@@ -6,9 +6,9 @@ Line numbers refer to the unpatched files. Steps 1 to 6 are independent; apply a
 and 4 both need step 1 (the import), and step 4 needs `fitShadow()` from step 5 or the call removed.
 
 Measured on the real game: 9-tile raft at spawn, 1280x720, frozen seeded scene, SwiftShader. Full numbers and method are in
-`docs/tech/perf.md`. Patched vs stock: **draw calls 542 -> 253 (-53%)**, main-thread `renderer.render` time
-about -40%, renderer-process CPU about -30%, SwiftShader raster CPU about -20%, no visible change (the screenshots are
-pixel-compared in perf.md).
+`docs/tech/perf.md`. Patched vs stock on the fresh raft: **draw calls 542 -> 253 (-53%)**, main-thread `renderer.render` time -41%,
+renderer-process CPU -36%, SwiftShader raster CPU -37%. The frozen-scene screenshots match pixel for pixel (0.0% of pixels
+off by more than 8/255). On a 49-tile raft: calls -65% (1026 -> 362).
 
 ## 0. Files to add
 
@@ -34,7 +34,7 @@ carry their own literal query.
 **Why:** the ocean is a `ShaderMaterial` with `lights:false` (dist/ocean.js `createOcean`). It never samples the
 shadow map, so `ocean.mesh.receiveShadow = true` (game.js line 290) does nothing, and a floating item's shadow lands
 nowhere. Items never rest on the deck: they are picked up into the bag. Each item is 2 to 8 meshes, all
-`castShadow = true` (debris.js `mesh()`, plastic.js). **Gain: -155 draw calls per frame with 30 items (-29%), zero visual change.**
+`castShadow = true` (debris.js `mesh()`, plastic.js). **Gain: -163 draw calls per frame with 30 items (-30%), zero visual change.**
 
 Replace the body of `itemModel`:
 
@@ -53,7 +53,7 @@ If a later water pass makes the ocean receive shadows, revert this step and step
 ## 3. Bake static scenery (game.js lines 300-301, in `init()`)
 
 **Why:** 12 islands (10 meshes each) and 24 clouds (3 meshes each) are 192 separate objects that never move.
-**Gain: -61 draw calls when they are on screen. Geometry is unchanged, so they look identical.** They lose
+**Gain: -44 draw calls at the spawn view (more when looking toward more islands). Geometry is unchanged, so they look identical.** They lose
 per-island frustum culling, but the baked meshes are about 25k triangles in total.
 
 Replace the two `for` lines with:
@@ -76,7 +76,7 @@ A 9-tile raft is 62 draw calls plus about 50 in the shadow pass, and a 49-tile r
 `rebuildRaft()` currently **regenerates every tile's procedural geometry on every build or decor placement**
 (ExtrudeGeometry per plank). That costs about 6 ms CPU per tile: roughly 300 ms of main-thread hitch at 49 tiles
 (node, `process.cpuUsage`). The batch keeps one mesh per material for the whole deck and only builds tiles that are new.
-**Gain: about -100 draw calls at 9 tiles and about -600 at 49 tiles. Placing a floor or decoration no longer rebuilds
+**Gain: -82 draw calls at 9 tiles, and several hundred at 49 tiles. Placing a floor or decoration no longer rebuilds
 existing tiles, so a 49-tile hitch drops from about 300 ms to about 10 ms. Looks identical: same geometry, same materials.**
 
 Line 182: add `deckBatch` to the scene `let` list:
@@ -112,7 +112,7 @@ the `plane` at deck height (game.js `pickNdc`), and physics uses `world.tiles`.
 **Why:** the shadow camera is a fixed ±25 m box (game.js line 289), so every caster within 25 m (items, palms, the
 whole deck underside) is drawn into a 1024² map whose only visible receivers are the deck, the decor and the avatars.
 Fitting it to the raft culls the casters out at sea and keeps about the old texel density with a 512² map while the
-raft is small. **Gain: about -150 shadow draw calls on its own (overlaps step 2 when both are applied) and a 4x smaller
+raft is small. **Gain: -144 shadow draw calls on its own (overlaps step 2 when both are applied) and a 4x smaller
 shadow map. Deck shadows get slightly crisper: 2.7 cm per texel instead of 4.9 cm.**
 
 ```js
@@ -135,7 +135,7 @@ origin like today, because the raft is always built around tile (0,0).
 derivative), through the colour map's `anisotropy = 4` sampler. At `bumpScale: .018` the result cannot be seen. With and
 without the bump map, frozen-scene screenshots differ by 0.01 mean (0-255) and **no pixel by more than 8/255**,
 both at the spawn view and looking straight down at the deck from standing height (`shoot.py --look 400`).
-**Gain: -32% SwiftShader raster CPU at spawn, -40% looking down. This is the largest single pixel cost found.**
+**Gain: -34% SwiftShader raster CPU at spawn, -40% looking down. This is the largest single pixel cost found.**
 
 ```js
  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;

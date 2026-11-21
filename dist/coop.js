@@ -22,7 +22,8 @@ import { createPings, createRemoteRope, createRemoteGhost } from './coop-fx.js';
 import { createFeed } from './coop-feed.js';
 
 export const COOP_VERSION = 1;
-const HELD = [null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
+export const HELD = Object.freeze([null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate',
+  'drum', 'pipes', 'bells']); // append only: index is the wire format ([instruments] 14-16)
 const STAGES = ['flying', 'floating', 'reeling', 'done', 'fishing'];
 const SEND_MS = 1000 / 15, IDLE_MS = 250, ITEMS_MS = 500;
 const SILENCE_MS = 3000, RECONNECT_WINDOW_MS = 30000, ATTEMPT_MS = 12000; // an attempt in flight gets 12 s (ICE can be slow)

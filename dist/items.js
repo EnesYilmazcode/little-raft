@@ -96,6 +96,13 @@ const LIST = [
     tip: 'A chunky grey rock full of metal. The smelter turns it into ingots.' }),
   item('seaweed', 'Seaweed', 'material', { iconTint: '#4f9a5c',
     tip: 'Slippery seaweed tangled in a barrel. Dried out, it burns slow and gentle as fuel.' }),
+  // [bees] flower seed (bushes, barrels), honey and beeswax (beehive harvest), see dist/bees.js
+  item('flowerseed', 'Flower Seed', 'material', { iconTint: '#ff7aa2',
+    tip: 'A tiny seed from an island bush. Plant it in a flower box.' }),
+  item('honey', 'Honey', 'material', { iconTint: '#f2b134',
+    tip: 'Sweet, golden and sticky.' }),
+  item('wax', 'Beeswax', 'material', { iconTint: '#f3e2a4',
+    tip: 'Soft beeswax from the comb. Good for candles.' }),
   item('fish', 'Fish', 'food', { icon: 'icon-fish', placeholder: false,
     tip: 'A shiny catch from your fishing rod. Grill it for a tasty treat.' }),
 
@@ -147,6 +154,13 @@ const LIST = [
   item('spear', 'Wooden Spear', 'tool', { iconTint: '#d9c49a', tool: true, durability: 20,
     recipe: hand({ wood: 8, rope: 3 }), unlock: START,
     tip: 'A long pale shaft with a lashed, sharpened tip. Click to stab; keeps the shark honest. Snaps after about 20 hits.' }),
+  // [instruments] held instruments (dist/instruments.js): no durability, no world state
+  item('drum', 'Tide Drum', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 3, leaf: 2, rope: 1 }), unlock: discover('rope'),
+    tip: 'A palm-leaf hand drum. Click to thump; look up or down to change the note.' }),
+  item('pipes', 'Reed Pipes', 'tool', { iconTint: '#8fc3c9', stack: 1, recipe: hand({ plastic: 3, rope: 1 }), unlock: discover('rope', 'plastic'),
+    tip: 'Breathy little tubes tied in a row. Look up for high notes, down for low ones.' }),
+  item('bells', 'Bell Bars', 'tool', { iconTint: '#c9b26a', stack: 1, recipe: hand({ wood: 2, scrap: 3, nail: 2 }), unlock: research('nail'),
+    tip: 'Scrap-metal bars on a little frame. They ring bright and fade out softly.' }),
 
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
@@ -158,6 +172,9 @@ const LIST = [
   item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { icon: 'icon-fish', placeholder: true, iconTint: '#a8683a', stack: 10,
     recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
     tip: 'Smoky, filling shark steak. A proper sailor\'s dinner.' }),
+  item('honeyfish', 'Honey Glazed Fish', 'food', { iconTint: '#e8a83a', stack: 10, // [bees]
+    recipe: hand({ cookedfish: 1, honey: 1 }), unlock: discover('honey'),
+    tip: 'Grilled fish with a honey glaze. The seagull is very jealous.' }),
 
   // ----- build / decor (placeable on raft tiles) -----
   item('bench', 'Bench', 'decor', { icon: 'icon-repair', placeholder: true, placeable: true,
@@ -166,6 +183,16 @@ const LIST = [
   item('palm', 'Palm Planter', 'decor', { icon: 'icon-palm', placeholder: false, placeable: true,
     recipe: hand({ wood: 2, leaf: 3 }), unlock: START,
     tip: 'A little potted palm. Every raft deserves some green.' }),
+  // [bees] flower box, beehive and beeswax candle (models in dist/bees-model.js)
+  item('flowerbox', 'Flower Box', 'decor', { placeable: true, iconTint: '#ff7aa2',
+    recipe: hand({ wood: 2, flowerseed: 1 }), unlock: discover('flowerseed'),
+    tip: 'A box of bright blooms. Bees love it.' }),
+  item('beehive', 'Beehive', 'decor', { placeable: true, iconTint: '#d9a441',
+    recipe: hand({ wood: 4, rope: 2, leaf: 2 }), unlock: discover('flowerseed'),
+    tip: 'A cosy hive. Put flower boxes close by and the bees make honeycomb.' }),
+  item('candle', 'Beeswax Candle', 'decor', { placeable: true, iconTint: '#ffd27a',
+    recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
+    tip: 'A little jar candle that glows warmly at night.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
     recipe: hand({ wood: 4, rope: 3, leaf: 3 }), unlock: discover('rope', 'plastic'),
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
@@ -201,6 +228,7 @@ export const PLACEABLE_IDS = Object.freeze(ITEM_IDS.filter((id) => ITEMS[id].pla
 export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
   smelter: 0.5, researchtable: 0.55, grill: 0.45,
+  flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
 });
 
 /** Fuel units per item put into a station. Plastic is never burned (friendly seas). */
@@ -266,9 +294,9 @@ export const PROGRESSION_PLAN = deepFreeze([
  * Barrel loot: BARREL_ROLLS.basic picks from the 'basic' pool (min..max each)
  * plus BARREL_ROLLS.treasure picks from the 'treasure' pool (always 1 of the
  * kind, so mid-game materials trickle in steadily with low variance).
- * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 96): ~5.3
- * basics plus clay .19, stone .13, metal ore .10, sand .13, seaweed .08 (x1.5), copper ore
- * .06, scrap .31. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
+ * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 102): ~5.3
+ * basics plus clay .18, stone .12, metal ore .10, sand .12, seaweed .08 (x1.5), copper ore
+ * .06, flower seed .06, scrap .29. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
  * least every 5-13 barrels (a few more when two are overdue at once), so the real rates are
  * clay .24, stone .19, metal ore .18, sand .14, copper ore .09, seaweed .05 (x1.5).
  */
@@ -284,6 +312,7 @@ export const BARREL_LOOT = deepFreeze([
   { kind: 'sand', min: 1, max: 1, weight: 12, pool: 'treasure' },
   { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
   { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },
+  { kind: 'flowerseed', min: 1, max: 1, weight: 6, pool: 'treasure' }, // [bees]
   { kind: 'scrap', min: 1, max: 1, weight: 30, pool: 'treasure' },
 ]);
 const POOLS = Object.freeze(Object.fromEntries(['basic', 'treasure'].map((p) => {

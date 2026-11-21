@@ -1,7 +1,8 @@
 // Little Raft item icons: each item kind is rendered ONCE as a lit 3/4 view on a transparent
-// background by a small dedicated WebGL renderer, then cached as a PNG data URL.
-// The renderer is created lazily, works through a queue in idle time, and is released once the
-// queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
+// background by a small dedicated WebGL renderer, copied to a 2D canvas and encoded off the main
+// thread (toBlob) into a cached object URL. The renderer is created lazily, works through the queue
+// only in idle time (several icons per idle slice while the title screen is up), and is released once
+// the queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
 // getModel; never disposed here) and fall back to the game's own procedural models.
 // Public API: getItemIcon(kind) (sync, data URL or null while rendering / without WebGL),
 // loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider.
@@ -13,14 +14,16 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createSpear } from './spear-model.js?build=v3-survival-ae77fa84ac2b'; // [spear]
+import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
 // Item ids whose name differs from the models.js kind.
 const MODEL_ALIAS = { fishingrod: 'rod' };
 const RELEASE_MS = 2500;
 
-const cache = new Map();   // kind -> data URL ('' = failed, use the SVG)
+const cache = new Map();   // kind -> object/data URL ('' = failed, use the SVG)
 const queued = new Set();
+const encoding = new Map(); // kind -> token while its PNG encodes
 const listeners = new Set();
 const waiters = new Map(); // kind -> [resolve] for loadItemIcon
 let provider = null;
@@ -122,18 +125,28 @@ function freeModel(root) {
   });
 }
 
-function renderKind(kind) {
-  if (!ensureGL()) return '';
-  let model = null, own = false;
+/** Model for an icon: the provider, then the procedural fallback, then models.js for kinds the
+ *  fallback lacks (cup, seed, water). own = true when the caller must free it. */
+export function resolveIconModel(kind) {
+  let model = null;
   if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
-  if (!model) { try { model = buildFallbackModel(kind); own = true; } catch (e) { console.warn('item icon model failed', kind, e); } }
-  if (!model) return '';
+  if (model) return { model, own: false };
+  try { model = buildFallbackModel(kind); } catch (e) { console.warn('item icon model failed', kind, e); }
+  if (model) return { model, own: true };
+  try { model = getLibraryModel(kind); } catch (e) { console.warn('item icon library model failed', kind, e); }
+  return { model: model || null, own: false };   // getModel clones share cached geometry: never free
+}
+
+function renderKind(kind) {
+  if (!ensureGL()) return null;
+  const { model, own } = resolveIconModel(kind);
+  if (!model) return null;
   const pivot = new T.Group();
   pivot.add(model);
   const p = (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
   pivot.updateMatrixWorld(true);
   _box.setFromObject(pivot, true);
-  if (_box.isEmpty()) { if (own) freeModel(model); return ''; }
+  if (_box.isEmpty()) { if (own) freeModel(model); return null; }
   _box.getBoundingSphere(_sphere);
   pivot.position.sub(_sphere.center);
   _box.translate(_v.copy(_sphere.center).negate());
@@ -152,28 +165,51 @@ function renderKind(kind) {
   camera.near = r; camera.far = r * 7;
   camera.updateProjectionMatrix();
   scene.add(pivot);
-  let url = '';
-  try { gl.render(scene, camera); url = gl.domElement.toDataURL('image/png'); }
-  catch (e) { console.warn('item icon render failed', kind, e); }
+  let out = null;
+  try {
+    gl.render(scene, camera);
+    out = document.createElement('canvas'); out.width = out.height = SIZE;
+    out.getContext('2d').drawImage(gl.domElement, 0, 0);       // GPU copy; the PNG encode happens later, async
+  } catch (e) { out = null; console.warn('item icon render failed', kind, e); }
   scene.remove(pivot);
   if (own) freeModel(model);
-  return url;
+  return out;
 }
 
-// ---------- queue ----------
-const idle = typeof requestIdleCallback === 'function' ? cb => requestIdleCallback(cb, { timeout: 120 }) : cb => setTimeout(cb, 16);
-
-function pump() {
-  pumping = false;
-  const it = queued.values().next();
-  if (it.done) return;
-  const kind = it.value;
-  queued.delete(kind);
-  if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
-  const url = renderKind(kind);
+function finish(kind, url) {
   cache.set(kind, url);
   const w = waiters.get(kind); if (w) { waiters.delete(kind); for (const r of w) r(url || null); }
   if (url) for (const fn of listeners) { try { fn(kind, url); } catch (e) { console.error(e); } }
+}
+function encode(kind, canvas) {
+  if (!canvas) { finish(kind, ''); return; }
+  if (typeof canvas.toBlob !== 'function') { let url = ''; try { url = canvas.toDataURL('image/png'); } catch {} finish(kind, url); return; }
+  const token = {};
+  encoding.set(kind, token);
+  canvas.toBlob(blob => {
+    if (encoding.get(kind) !== token) return;                    // provider swapped meanwhile: re-queued
+    encoding.delete(kind);
+    finish(kind, blob ? URL.createObjectURL(blob) : '');
+  }, 'image/png');
+}
+
+// ---------- queue ----------
+// Idle time only (the timeout is a late fallback for a page that never idles): no icon work lands in a busy frame.
+const idle = typeof requestIdleCallback === 'function' ? cb => requestIdleCallback(cb, { timeout: 1500 }) : cb => setTimeout(() => cb(null), 16);
+const SLICE_MS = 8;
+
+function pump(deadline) {
+  pumping = false;
+  if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
+  const t0 = performance.now();
+  // At least one icon per callback; more while the slice has room (cheap once the shaders exist).
+  do {
+    const it = queued.values().next();
+    if (it.done) break;
+    const kind = it.value;
+    queued.delete(kind);
+    encode(kind, renderKind(kind));
+  } while (queued.size && (deadline ? !deadline.didTimeout && deadline.timeRemaining() > SLICE_MS : performance.now() - t0 < 4));
   if (queued.size) schedule();
   else if (gl) releaseTimer = setTimeout(release, RELEASE_MS);
 }
@@ -185,7 +221,7 @@ export function iconURL(kind) {
   const hit = cache.get(kind);
   if (hit !== undefined) return hit || null;
   if (failed) return null;
-  if (!queued.has(kind)) { queued.add(kind); schedule(); }
+  if (!queued.has(kind) && !encoding.has(kind)) { queued.add(kind); schedule(); }
   return null;
 }
 export const getItemIcon = iconURL;
@@ -195,14 +231,14 @@ export function loadItemIcon(kind) {
   if (url || !kind || cache.has(kind) || failed) return Promise.resolve(url);
   return new Promise(r => { let w = waiters.get(kind); if (!w) waiters.set(kind, w = []); w.push(r); });
 }
-/** Queue several kinds ahead of time (one render per idle slice). */
+/** Queue several kinds ahead of time (rendered in idle slices). */
 export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 /** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */
 export function setModelProvider(fn) {
   provider = typeof fn === 'function' ? fn : null;
-  const kinds = [...cache.keys()];
-  cache.clear();
+  const kinds = [...cache.keys(), ...encoding.keys()];
+  cache.clear(); encoding.clear();
   warmIcons(kinds);
 }

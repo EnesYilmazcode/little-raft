@@ -14,14 +14,20 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createSpear } from './spear-model.js?build=v3-survival-ae77fa84ac2b'; // [spear]
+import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
 export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds']);
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
 const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'spear'];
+const HOOK_SCALE = 0.4;                     // compact: the held hook stays in the lower-right corner
+// Right-hand kinds that still prefer the shared models.js mesh (so the held cup matches its icon and the world).
+const FACTORY_FIRST = ['cup', 'water'];
+// Seeds ride the left fist without pointing; game.js asks for 'point' only while a planter is aimed at.
+const SEED_KINDS = ['seed', 'seeds'];
 
-const SPEAR_RX = -1.2026, SPEAR_RY = -0.0989, SPEAR_RZ = 0.6585; // [spear] solved from the right fist frame: tip points just below-right of the crosshair
+const SPEAR_RX = -0.9847, SPEAR_RY = 0.1726, SPEAR_RZ = 1.2600; // [spear] solved from the right fist frame: tip points just below-right of the crosshair
 export const HOLD = Object.freeze({
   hook:       { hand: 'right', pose: 'grip' },
   hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2 },
@@ -35,13 +41,15 @@ export const HOLD = Object.freeze({
   fish:       { hand: 'right', pose: 'grip', rx: 0.15, ry: -0.5, rz: 0.15 },
   cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
   water:      { hand: 'right', pose: 'grip', ry: 0.3 },
-  ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: 'point' }])),
+  drum: { hand: 'left', pose: 'grip', rx: -0.7 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'left', pose: 'grip', rx: -1.25 }, // [instruments]
+  ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
 export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
 
 const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.15, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
-  planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11 };
+  planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
+  drum: 0.24, pipes: 0.2, bells: 0.26 }; // [instruments]
 
 function fit(T, model, maxDim, gripFn) {
   const root = new T.Group();
@@ -139,7 +147,7 @@ export function buildItemModel(T, kind, factory = null) {
   if (!kind) return null;
   let root = null;
   const left = holdFor(kind).hand === 'left';
-  if (factory && !TOOL_KINDS.includes(kind) && (left || !HOLD[kind])) {
+  if (factory && !TOOL_KINDS.includes(kind) && (left || !HOLD[kind] || FACTORY_FIRST.includes(kind))) {
     let m = null;
     try { m = factory(kind); } catch { m = null; }
     if (m?.isObject3D) {
@@ -148,11 +156,11 @@ export function buildItemModel(T, kind, factory = null) {
     }
   }
   if (root) { /* factory model */ } else if (kind === 'hook') {
-    const m = createHook(T); m.scale.setScalar(0.55);
+    const k = HOOK_SCALE, m = createHook(T); m.scale.setScalar(k);
     // handle axis sits at x=.2, y≈-.27 in createHook's inner group (inner is re-centred)
-    const inner = m.children[0], gp = new T.Vector3(0.2, -0.272, 0).add(inner.position).multiplyScalar(0.55);
+    const inner = m.children[0], gp = new T.Vector3(0.2, -0.272, 0).add(inner.position).multiplyScalar(k);
     root = new T.Group(); root.add(m);
-    root.userData.size = { x: m.userData.size.x * 0.55, y: m.userData.size.y * 0.55, z: m.userData.size.z * 0.55 };
+    root.userData.size = { x: m.userData.size.x * k, y: m.userData.size.y * k, z: m.userData.size.z * k };
     root.userData.grip = [gp.x, gp.y, gp.z];
   } else if (kind === 'hammer' || kind === 'fishingrod') {
     const m = kind === 'hammer' ? createHammer(T) : createFishingTool(T), s = kind === 'hammer' ? 0.6 : 0.55;
@@ -191,6 +199,7 @@ export function buildItemModel(T, kind, factory = null) {
   } else if (kind === 'planter') {
     root = fit(T, createCraft(T, 'palm'), SIZE.planter, (s) => new T.Vector3(0, -s.y / 2, 0));
   }
+  if (!root) { const ins = buildInstrument(T, kind), gf = ins?.userData.gripFrac; if (ins) root = fit(T, ins, SIZE[kind], gf ? (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z) : null); } // [instruments]
   if (!root) root = fit(T, buildBundle(T), 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
   root.name = 'item_' + kind;
   root.userData.kind = kind;

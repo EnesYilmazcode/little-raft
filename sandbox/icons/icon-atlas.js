@@ -147,8 +147,12 @@ function frame(T, stage, obj, pose, pad) {
 function defaultDispose(o) {
   if (typeof o.userData?.dispose === 'function') { o.userData.dispose(); return; }
   o.traverse(n => {
-    n.geometry?.dispose();
-    for (const m of [].concat(n.material || [])) { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); m.dispose(); }
+    if (!n.geometry?.userData?.shared) n.geometry?.dispose();
+    for (const m of [].concat(n.material || [])) {
+      if (!m || m.userData?.shared) continue; // module-shared (e.g. lowpoly-props lp-*): not ours
+      for (const v of Object.values(m)) if (v?.isTexture) v.dispose();
+      m.dispose();
+    }
   });
 }
 
