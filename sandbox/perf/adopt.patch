@@ -1,17 +1,16 @@
 diff --git a/dist/game.js b/dist/game.js
-index a43eafc..609024d 100644
 --- a/dist/game.js
 +++ b/dist/game.js
-@@ -15,6 +15,8 @@ import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
- import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
- import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
- import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+@@ -2,6 +2,8 @@
+ import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
+ import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
+ import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 +import { mergeMeshesByMaterial, createStaticBatch } from './merge.js?build=v3-survival-ae77fa84ac2b';
 +import { createPerfOverlay } from './perf-overlay.js?build=v3-survival-ae77fa84ac2b';
- 
- // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
- // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
-@@ -58,7 +60,7 @@ export function mount(transfer = null) {
+ import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
+ import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
+ import { createSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
+@@ -58,7 +60,7 @@
    const clamp = T.MathUtils.clamp;
    const ac = new AbortController(), signal = ac.signal;
    const timers = new Set();
@@ -20,16 +19,7 @@ index a43eafc..609024d 100644
  
    // ---------- Small utilities ----------
    const newToken = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36);
-@@ -179,7 +181,7 @@ export function mount(transfer = null) {
-     if (raw) { try { const v = cleanWorld(JSON.parse(raw)); if (v) world = v; } catch {} }
-     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
-   }
--  let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
-+  let scene = null, camera = null, renderer = null, ocean = null, raft, deckBatch, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
-   let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
-   let survivalUI = null, settingsController = null, options = {sensitivity:1, fov:75, cameraMotion:.35, volume:.5, graphics:'medium'};
-   let running = !!X?.running;
-@@ -289,6 +291,7 @@ export function mount(transfer = null) {
+@@ -289,6 +291,7 @@
      sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
      ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.receiveShadow = true; scene.add(ocean.mesh); ocean.update(elapsed);
      raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
@@ -37,7 +27,7 @@ index a43eafc..609024d 100644
      itemsGroup = new T.Group(); scene.add(itemsGroup);
      player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
      ghost = new T.Mesh(new T.BoxGeometry(1.9, .13, 1.9), new T.MeshBasicMaterial({color:'#b6ffd0', transparent:true, opacity:.55, depthWrite:false})); ghost.visible = false; scene.add(ghost);
-@@ -297,8 +300,11 @@ export function mount(transfer = null) {
+@@ -297,8 +300,12 @@
      hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
      clothMat = new T.MeshStandardMaterial({color:'#fff3cf', side:T.DoubleSide, roughness:1});
      buildViewmodels();
@@ -46,15 +36,17 @@ index a43eafc..609024d 100644
 +    const scenery = []; // islands and clouds never move: bake ~190 meshes into one mesh per material (perf)
 +    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scenery.push(g); }
 +    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scenery.push(g); }
++    for (const g of scenery) g.traverse(c => { c.castShadow = false; }); // 65 m+ out, beyond any shadow camera: their shadows were never drawn
 +    for (const m of mergeMeshesByMaterial(T, scenery, {name:'scenery'})) scene.add(m);
 +    for (const g of scenery) g.traverse(c => c.geometry?.dispose());
      rebuildRaft();
      if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
      syncItems(); refreshPointerUI(true);
-@@ -348,9 +354,22 @@ export function mount(transfer = null) {
+@@ -348,9 +355,23 @@
      for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
      parent.add(g);
    }
++  let deckBatch = null; // all floor tiles, baked into one mesh per material (merge.js createStaticBatch)
 +  // The sun's shadow only lands on the deck, decor and avatars (the ocean shader ignores lights), so fit the
 +  // shadow camera to the raft and size the map to keep roughly the old texel density.
 +  function fitShadow() {
@@ -76,7 +68,7 @@ index a43eafc..609024d 100644
      for (const d of world.decor) {
        let detailed = null; try { detailed = createCraft(T, d.type); } catch (e) { console.warn('craft model failed', e); }
        if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); raft.add(detailed); continue; }
-@@ -369,8 +388,11 @@ export function mount(transfer = null) {
+@@ -369,8 +390,11 @@
    // ---------- Floating supplies ----------
    function makeItem(id) { const edge = Math.min(...world.tiles.map(t => t[1])) * 2 - 1, spread = Math.max(11, Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 6); return {id, token:newToken(), type:SPAWN_TABLE[Math.floor(Math.random() * SPAWN_TABLE.length)], x:(Math.random() - .5) * spread * 2, z:edge - 3 - Math.random() * 17, phase:Math.random() * 6}; }
    function itemModel(item) {
@@ -90,7 +82,7 @@ index a43eafc..609024d 100644
    }
    // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
    const itemMeshes = new Map();
-@@ -818,6 +840,7 @@ export function mount(transfer = null) {
+@@ -818,6 +842,7 @@
    }
    const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
    function frame() {
@@ -98,7 +90,7 @@ index a43eafc..609024d 100644
      const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
      const dialog = uiBlocked();
      if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); }
-@@ -840,6 +863,7 @@ export function mount(transfer = null) {
+@@ -840,6 +865,7 @@
      if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
      refreshPointerUI(); updateCharge(); updateContext(dialog);
      renderer.render(scene, camera);
@@ -106,7 +98,7 @@ index a43eafc..609024d 100644
    }
    function animate() {
      if (!active || disposed) return;
-@@ -1169,6 +1193,7 @@ export function mount(transfer = null) {
+@@ -1169,6 +1195,7 @@
      if (disposed) return;
      pause(); disposed = true; ac.abort();
      try { settingsController?.destroy(); } catch {}
@@ -114,7 +106,7 @@ index a43eafc..609024d 100644
      try { survivalUI?.destroy?.(); } catch {}
      for (const id of timers) clearTimeout(id); timers.clear();
      unlisten(bindings.splice(0));
-@@ -1180,7 +1205,8 @@ export function mount(transfer = null) {
+@@ -1180,7 +1207,8 @@
    try {
      if (!canvas) throw new Error('#world canvas missing');
      init();
@@ -126,10 +118,9 @@ index a43eafc..609024d 100644
        onSelect:guard(i => selectSlot(i)),
 diff --git a/dist/merge.js b/dist/merge.js
 new file mode 100644
-index 0000000..6d35adf
 --- /dev/null
 +++ b/dist/merge.js
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,135 @@
 +// Static batching for Little Raft: bake many meshes into one mesh per (material, shadow flags, renderOrder).
 +// Drop-in for dist/ (no imports; pass the three namespace like the other dist modules):
 +//   import { mergeMeshesByMaterial, createStaticBatch } from './merge.js?build=...';
@@ -139,7 +130,7 @@ index 0000000..6d35adf
 +// - Each mesh's transform is baked relative to `relativeTo` (default: the roots' own world space, i.e. roots that
 +//   are not in the scene are baked in their local space), so results go under `relativeTo` with identity transform.
 +// - Output is non-indexed position/normal/uv (+color when every source in the bucket has it); uv is zero-filled
-+//   where a source has none. mergeMeshesByMaterial leaves sources alone; createStaticBatch.add disposes them.
++//   where a source has none (in a static batch, pieces without colour get white, i.e. untinted). mergeMeshesByMaterial leaves sources alone; createStaticBatch.add disposes them.
 +// - Only visible meshes are merged; skinned/instanced/multi-material meshes are skipped (they stay unmerged).
 +
 +function bake(T, roots, relativeTo) {
@@ -213,24 +204,52 @@ index 0000000..6d35adf
 +  return bake(T, roots, relativeTo).map(b => toMesh(T, b, name));
 +}
 +
-+// A growable static batch: add() appends new pieces to the existing per-material meshes (typed-array concat), so
-+// adding one raft tile costs one tile of work instead of rebuilding every tile.
++// A growable static batch. Each (material, shadow flags) bucket is one mesh whose vertex arrays have spare capacity:
++// add() writes the new pieces after the used part and uploads only that range (addUpdateRange), and reallocates
++// (to 1.5x what is used) only when full. Adding one tile to a 49-tile deck therefore costs one tile of work and one tile of upload,
++// not a copy and re-upload of the whole deck. Unused capacity is outside drawRange, so it is never drawn.
 +export function createStaticBatch(T, name = 'batch') {
 +  const group = new T.Group(); group.name = name;
 +  const keys = new Set();
-+  const cat = (a, b) => { if (!a) return b; const r = new Float32Array(a.length + b.length); r.set(a); r.set(b, a.length); return r; };
-+  function add(roots, rootKeys = []) {
-+    if (!roots.length) return;
-+    for (const b of bake(T, roots, null)) {
-+      const old = group.children.find(m => m.userData.batchKey === b.key);
-+      if (old) {
-+        const A = old.geometry.attributes;
-+        b.pos = cat(A.position.array, b.pos); b.nor = cat(A.normal.array, b.nor); b.uv = cat(A.uv.array, b.uv);
-+        b.col = b.col && A.color ? cat(A.color.array, b.col) : null;
-+        group.remove(old); old.geometry.dispose();
-+      }
-+      group.add(toMesh(T, b, name));
++  const ATTRS = [['position', 'pos', 3], ['normal', 'nor', 3], ['uv', 'uv', 2], ['color', 'col', 3]];
++  function realloc(mesh, cap, color) { // new arrays with room for `cap` vertices; keeps the used part
++    const old = mesh.geometry, used = mesh.userData.used, geo = new T.BufferGeometry();
++    for (const [a, , size] of ATTRS) {
++      if (a === 'color' && !color) continue;
++      const arr = new Float32Array(cap * size), src = old?.attributes[a];
++      if (src) arr.set(src.array.subarray(0, used * size));
++      else if (a === 'color') arr.fill(1, 0, used * size); // pieces added before any had colours: white = untinted
++      geo.setAttribute(a, new T.BufferAttribute(arr, size));
 +    }
++    geo.setDrawRange(0, used); geo.boundingBox = mesh.userData.box.clone(); geo.boundingSphere = mesh.userData.box.getBoundingSphere(new T.Sphere());
++    mesh.geometry = geo; old?.dispose(); mesh.userData.fresh = true; // a fresh geometry uploads whole; no ranges needed
++  }
++  function append(b) {
++    let mesh = group.children.find(m => m.userData.batchKey === b.key);
++    const n = b.pos.length / 3;
++    if (!mesh) {
++      mesh = new T.Mesh(undefined, b.material); mesh.geometry.dispose();
++      Object.assign(mesh, { name, castShadow: b.cast, receiveShadow: b.receive, renderOrder: b.order, matrixAutoUpdate: false });
++      mesh.userData = { batchKey: b.key, used: 0, box: new T.Box3() }; mesh.geometry = null;
++      realloc(mesh, Math.ceil(n * 1.5), !!b.col); group.add(mesh);
++    } else {
++      const want = mesh.userData.used + n, color = !!(b.col || mesh.geometry.attributes.color);
++      if (want > mesh.geometry.attributes.position.count || color !== !!mesh.geometry.attributes.color)
++        realloc(mesh, Math.ceil(want * 1.5), color);
++    }
++    const geo = mesh.geometry, used = mesh.userData.used, fresh = mesh.userData.fresh;
++    for (const [a, k, size] of ATTRS) {
++      const attr = geo.attributes[a]; if (!attr) continue;
++      if (b[k]) attr.array.set(b[k], used * size); else attr.array.fill(1, used * size, (used + n) * size);
++      if (!fresh) attr.addUpdateRange(used * size, n * size);
++      attr.needsUpdate = true;
++    }
++    const box = new T.Box3().setFromArray(b.pos);
++    mesh.userData.box.union(box); mesh.userData.used = used + n; mesh.userData.fresh = false;
++    geo.setDrawRange(0, used + n); geo.boundingBox = mesh.userData.box.clone(); geo.boundingSphere = mesh.userData.box.getBoundingSphere(new T.Sphere());
++  }
++  function add(roots, rootKeys = []) {
++    if (roots.length) for (const b of bake(T, roots, null)) append(b);
 +    for (const r of roots) r.traverse(o => o.geometry?.dispose());
 +    for (const k of rootKeys) keys.add(k);
 +  }
@@ -239,7 +258,6 @@ index 0000000..6d35adf
 +}
 diff --git a/dist/perf-overlay.js b/dist/perf-overlay.js
 new file mode 100644
-index 0000000..752f14b
 --- /dev/null
 +++ b/dist/perf-overlay.js
 @@ -0,0 +1,69 @@
@@ -313,10 +331,9 @@ index 0000000..752f14b
 +  };
 +}
 diff --git a/dist/wood.js b/dist/wood.js
-index 4a15e07..de71c2c 100644
 --- a/dist/wood.js
 +++ b/dist/wood.js
-@@ -13,5 +13,7 @@ export function createWoodMaterial(T, color) {
+@@ -13,5 +13,7 @@
    for(let r=1;r<6;r++){ctx.beginPath();ctx.ellipse(x,y,r*1.4,r*4.7,.1,0,Math.PI*2);ctx.strokeStyle=`rgba(68,37,19,${.18-r*.02})`;ctx.lineWidth=.7;ctx.stroke();}
   }
   const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
