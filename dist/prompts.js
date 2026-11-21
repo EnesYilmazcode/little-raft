@@ -63,7 +63,7 @@ export const isThrow = (prev, stage) => stage === 'flying' && prev !== 'flying';
 export function statePrompt(s, opt = {}) {
   if (!s || !s.running) return null;
   if (s.role === 'guest' && !s.networkReady) return {label:'Waiting for your brother’s raft…', muted:true};
-  if (s.pickup) return {key:'E', label:'Pick up ' + (PICK_NAMES[s.pickup.type] ?? 'supply')};
+  if (s.pickup) return {key:'E', label:'Pick up ' + (s.pickup.name ?? PICK_NAMES[s.pickup.type] ?? 'supply')};
   if (s.swimming && !s.physics?.climbing) { // physics: hold jump near a tile edge to clamber
     const d = raftDistance(s.me?.x, s.me?.z, s.tileList);
     if (d <= CLIMB_REACH) return {key:'Space', hold:true, label:'Climb aboard'};

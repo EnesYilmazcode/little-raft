@@ -182,7 +182,6 @@ export function createBuilding(T, scene) {
     if (!hammer) { removing = false; return false; }
     if (code === 'KeyR' && down && freePiece()) { if (!repeat) rot = (rot + 1) % 4; return true; } // foundation: R stays hook repair
     if (code === 'Escape' && down && menu.isOpen) { menu.close(false); return true; }
-    if (code === 'KeyQ' && down) { menu.isOpen ? menu.close(true) : menu.open(); return true; }
     if (code === 'KeyX') { if (down) removing = true; return true; }
     return false;
   }

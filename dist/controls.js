@@ -19,7 +19,7 @@ function storage() { try { return globalThis.localStorage ?? null; } catch { ret
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
 
 // g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
-//     inventory(), repair(back), pause(), menuBack(id) (pad closes the open menu), useDown(), useUp(), useCancel(), reelDown(), reelUp(),
+//     inventory(), repair(back), drop(all), pause(), menuBack(id) (pad closes the open menu), useDown(), useUp(), useCancel(), reelDown(), reelUp(),
 //     buildPieces? (list or () => list of {id,label}), buildPick?(id)}
 export function createControls(g) {
   const map = new ActionMap({storage:storage()});
@@ -39,6 +39,7 @@ export function createControls(g) {
       else if (id === 'pause' && pad) call('pause'); // Escape on the keyboard is owned by settings.js / pointer lock
       else if (id === 'rotate') { call('repair', input.shiftHeld()); emit('little-raft-action', {id}); } // game's R = repair today
       else if (id === 'buildMenu') openRadial();
+      else if (id === 'drop') call('drop', input.shiftHeld()); // Shift+Q drops the whole stack
       else if ((id === 'use' || id === 'aim') && pad) return; // pad triggers handled analog in frame()
     } else if (id === 'buildMenu') radial?.confirm();
     else if (id === 'rotate') call('release'); // let go of a steered sail on any device
