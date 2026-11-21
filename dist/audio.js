@@ -10,7 +10,7 @@
 //   setVolume(v)     master volume 0..1 (same as setBus('master', v)); returns the clamped value
 //   setBus(n, v)     n in BUSES: master | effects | ambience | music; getBus(n) reads it back
 //   setMusic(on)     toggles the calm music bed (fades); music getter reports it
-//   play(ev, s=1)    ev in EVENTS; s clamped 0..1; true if scheduled (never throws). Repeat calls
+//   play(ev, s=1)    ev in EVENTS (or ALIASES, e.g. 'pickup'); s clamped 0..1; true if scheduled (never throws). Repeat calls
 //                    inside MIN_GAP are dropped, so 'reel' can be called every frame while reeling.
 //   tick(dt, st)     drives ambient one-shots (lapping, plank creaks) and music chord changes;
 //                    st.swimming muffles the wind and drops creaks. Allocation-free when idle.
@@ -18,13 +18,15 @@
 //
 // Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
-export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'craft', 'repair', 'jump', 'land', 'step', 'swim',
-  'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny']);
+export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny']);
+// friendlier names other modules may use; play() resolves them to a recipe above
+export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
 
 const OUTPUT_SCALE = 0.5;       // keeps full volume comfortable
 const MAX_VOICES = 24;
-const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
+const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, place: 0.06, plant: 0.12, water: 0.25, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
   step: 0.16, swim: 0.3, reel: 0.075, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15 };
 const SILENT = 0.0001;
 // calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
@@ -241,6 +243,33 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
   }
 
   const recipes = {
+    place(v, t, s) {
+      // decoration set down on the deck: one soft wooden knock with a little scrape
+      knock(v, t, s * 0.8, rand(140, 165));
+      burst(v, t + 0.02, 'bandpass', 1300, 1, 0.06 * s, 0.01, 0.1);
+    },
+    plant(v, t, s) {
+      // seed pressed into soil: two muffled dirt pats + a short leafy rustle
+      for (let i = 0; i < 2; i++) {
+        burst(v, t + i * 0.11, 'lowpass', rand(380, 460), 0.9, 0.3 * s * (i ? 0.7 : 1), 0.003, 0.08);
+        tone(v, t + i * 0.11, 'sine', rand(80, 95), 0.16 * s, 0.003, 0.07, 60);
+      }
+      const f = burst(v, t + 0.22, 'bandpass', 2600, 1.2, 0.07 * s, 0.03, 0.16);
+      f.frequency.linearRampToValueAtTime(1600, t + 0.4);
+    },
+    water(v, t, s) {
+      // watering a seedling: a trickle of noise with a wobbling band + droplets soaking in
+      const g = gain(v, v.bus);
+      const bp = filter(v, 'bandpass', 1500, 2.4, g);
+      const depth = track(v, ctx.createGain()); depth.gain.value = 450; depth.connect(bp.frequency);
+      osc(v, 'sine', rand(9, 13), t, 0.75, depth);
+      g.gain.setValueAtTime(SILENT, t);
+      g.gain.linearRampToValueAtTime(0.2 * s, t + 0.08);
+      g.gain.setValueAtTime(0.2 * s, t + 0.5);
+      g.gain.exponentialRampToValueAtTime(SILENT, t + 0.75);
+      noise(v, t, 0.75, bp);
+      drops(v, t + 0.15, s * 0.8, 3);
+    },
     build(v, t, s) {
       // Raft-style placement: three quick hammer knocks, then the plank settles
       const lp = filter(v, 'lowpass', 2800, 0.7, v.bus); v.bus = lp;
@@ -445,6 +474,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
   function play(event, strength = 1) {
     try {
       if (!ready()) return false;
+      event = ALIASES[event] ?? event;
       if (AMBIENT.has(event) || !Object.prototype.hasOwnProperty.call(recipes, event)) return false;
       const s = clamp01(strength, 1);
       if (s <= 0.001) return false;

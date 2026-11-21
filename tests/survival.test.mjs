@@ -530,3 +530,62 @@ test('avatar shows one held model per kind and animates without NaN', async () =
   assert.ok(Number.isFinite(rightArm.rotation.x) && Number.isFinite(leftLeg.rotation.x));
   g.userData.dispose();
 });
+
+// Minimal fake Web Audio graph: counts live connections and lets the test end sources on demand.
+function fakeAudioContext() {
+  const live = new Set(), sources = new Set();
+  const param = v => ({ value: v, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {}, setTargetAtTime() {}, cancelScheduledValues() {} });
+  const node = (extra = {}) => {
+    const n = { connect(d) { live.add(n); return d; }, disconnect() { live.delete(n); }, ...extra };
+    return n;
+  };
+  const source = extra => {
+    const s = node({ stopped: false, onended: null, start() { sources.add(s); }, stop() { s.stopped = true; }, ...extra });
+    return s;
+  };
+  const ctx = {
+    state: 'suspended', currentTime: 0, sampleRate: 8000, destination: node(),
+    resume() { ctx.state = 'running'; return Promise.resolve(); },
+    createGain: () => node({ gain: param(1) }),
+    createBiquadFilter: () => node({ frequency: param(350), Q: param(1), type: 'lowpass' }),
+    createDynamicsCompressor: () => node({ threshold: param(0), knee: param(0), ratio: param(1), attack: param(0), release: param(0) }),
+    createOscillator: () => source({ frequency: param(440), detune: param(0), type: 'sine' }),
+    createBufferSource: () => source({ buffer: null, loop: false }),
+    createBuffer: (c, len, rate) => { const d = new Float32Array(len); return { duration: len / rate, getChannelData: () => d }; },
+    endOneShots() { for (const s of [...sources]) if (!s.loop && s.stopped) { sources.delete(s); s.onended?.(); } },
+  };
+  return { ctx, live, sources };
+}
+
+test('audio waits for a gesture, starts ambience once and frees every one-shot voice', async () => {
+  const { createOceanAudio, EVENTS, ALIASES } = await import(new URL('audio.js', base));
+  const { ctx, live, sources } = fakeAudioContext();
+  const a = createOceanAudio({ context: ctx, volume: 0.5 });
+  assert.equal(a.play('pickup'), false, 'silent before resume()');
+  assert.equal(await a.resume(), true);
+  const base0 = live.size, loops0 = sources.size;
+  assert.ok(loops0 > 0, 'ambience loops started');
+  await a.resume(); await a.resume();
+  assert.equal(sources.size, loops0, 'ambience created once');
+  for (const name of ['pickup', 'throw', 'reel', 'build', 'place', 'plant', 'water', 'catch', 'splash']) {
+    assert.ok(EVENTS.includes(name) || ALIASES[name], name);
+  }
+  for (const e of [...EVENTS, ...Object.keys(ALIASES)]) { ctx.currentTime += 1; assert.equal(a.play(e), true, e); if (e === 'deny') ctx.endOneShots(); }
+  ctx.endOneShots();
+  assert.equal(live.size, base0, 'effect voices disconnected after ending');
+  let capped = 0;
+  for (let i = 0; i < 40; i++) capped += a.play(EVENTS[i % EVENTS.length]) ? 0 : 1, ctx.currentTime += 0.5;
+  assert.ok(capped > 0, 'voice cap drops excess sounds');
+  ctx.endOneShots();
+  a.setMusic(true);
+  for (let i = 0; i < 400; i++) { ctx.currentTime += 0.05; a.tick(0.05, { swimming: i > 200 }); }
+  a.setMusic(false);
+  assert.ok(live.size > base0);
+  ctx.endOneShots();
+  assert.equal(live.size, base0, 'one-shot voices disconnected after ending');
+  assert.equal(a.setBus('effects', 0.3), 0.3);
+  a.setVolume(0);
+  assert.equal(a.play('build'), false, 'muted master skips scheduling');
+  a.destroy();
+  assert.equal(live.size, 0, 'destroy disconnects the whole graph');
+});
