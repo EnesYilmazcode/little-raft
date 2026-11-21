@@ -18,6 +18,10 @@ url = f'http://127.0.0.1:{port}/?fixedres'  # pin render scale so shots stay sha
 report = {'errors': [], 'console': [], 'shots': []}
 def shot(page, name):
     p = out / f'{name}.png'; page.screenshot(path=str(p)); report['shots'].append(str(p))
+def click(page, sel):  # DOM click: locator.click() can hang on some headless builds
+    page.evaluate('s => document.querySelector(s).click()', sel)
+def title_start(page):  # the title's start button: #newGame on current builds, #solo on older ones
+    click(page, '#newGame' if page.locator('#newGame').count() else '#solo')
 
 with sync_playwright() as p:
     b = p.chromium.launch(channel='chrome', headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
@@ -27,7 +31,7 @@ with sync_playwright() as p:
     page.on('console', lambda m: m.type in ('error', 'warning') and report['console'].append(m.text[:300]))
     page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=20000)
     page.wait_for_timeout(800); shot(page, '01-title')
-    page.locator('#newGame' if page.locator('#newGame').count() else '#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=15000)
+    title_start(page); page.wait_for_function('raftDebug.state.running', timeout=15000)
     page.wait_for_timeout(1500); shot(page, '02-spawn')
     try: report['spawnState'] = {k: v for k, v in page.evaluate('raftDebug.state').items() if k in ('ownedTools', 'inventory', 'stock', 'heldKind')}
     except Exception as e: report['errors'].append('state: ' + str(e))
@@ -38,8 +42,8 @@ with sync_playwright() as p:
     report['afterInvEsc'] = page.evaluate("({pause:!!document.querySelector('#options')?.open,inv:!!document.querySelector('#inventory')?.open,locked:!!document.pointerLockElement,relock:document.body.classList.contains('relock')})")
     page.keyboard.press('Escape'); page.wait_for_timeout(500); shot(page, '07-pause')
     if page.locator('#options [data-act=settings]').count():
-        page.locator('#options [data-act=settings]').click(); page.wait_for_timeout(200); shot(page, '07b-settings')
-        page.locator('#options [data-tab=graphics]').click(); page.wait_for_timeout(200); shot(page, '07c-graphics')
+        click(page, '#options [data-act=settings]'); page.wait_for_timeout(200); shot(page, '07b-settings')
+        click(page, '#options [data-tab=graphics]'); page.wait_for_timeout(200); shot(page, '07c-graphics')
         page.keyboard.press('Escape'); page.wait_for_timeout(200)  # closes the panel, pause stays
         report['escClosesPanelFirst'] = page.evaluate("!!document.querySelector('#options')?.open")
     page.keyboard.press('Escape'); page.wait_for_timeout(300)
@@ -52,8 +56,8 @@ with sync_playwright() as p:
     except Exception as e: report['errors'].append('feed: ' + str(e))
     page.wait_for_timeout(4000); report['feedRowsLater'] = page.evaluate("document.querySelectorAll('#pickupFeed .pf-row').length")
     if page.locator('#options [data-act=quit]').count():
-        page.keyboard.press('Escape'); page.wait_for_timeout(300); page.locator('#options [data-act=quit]').click(); page.wait_for_timeout(800)
-        shot(page, '09-quit-title'); page.locator('#solo').click(); page.wait_for_timeout(500)
+        page.keyboard.press('Escape'); page.wait_for_timeout(300); click(page, '#options [data-act=quit]'); page.wait_for_timeout(800)
+        shot(page, '10-quit-title'); click(page, '#solo'); page.wait_for_timeout(500)
     # frame time probe (software GL, so relative numbers only)
     report['frameMs'] = page.evaluate("""new Promise(r=>{let n=0,t0=performance.now(),worst=0,last=t0;function f(t){worst=Math.max(worst,t-last);last=t;if(++n<120)requestAnimationFrame(f);else r({avg:(t-t0)/n,worst})}requestAnimationFrame(f)})""")
     report['heapMB'] = page.evaluate('performance.memory ? performance.memory.usedJSHeapSize/1048576 : null')
@@ -68,12 +72,12 @@ with sync_playwright() as p:
     bp.on('pageerror', lambda e: report['errors'].append('build: ' + str(e)))
     bp.add_init_script('localStorage.getItem("little-raft-v1")||localStorage.setItem("little-raft-v1",%s)' % json.dumps(json.dumps(save)))
     bp.goto(url); bp.wait_for_function('!!window.raftDebug', timeout=20000)
-    bp.locator('#solo').click(); bp.wait_for_function('raftDebug.state.running', timeout=15000); bp.wait_for_timeout(800)
+    click(bp, '#solo'); bp.wait_for_function('raftDebug.state.running', timeout=15000); bp.wait_for_timeout(800)
     look = lambda dx, dy: bp.evaluate(f'document.dispatchEvent(new MouseEvent("mousemove",{{movementX:{dx},movementY:{dy}}}))')  # headless lock gives no movement
-    look(0, 55); bp.keyboard.press('2'); bp.wait_for_timeout(400); shot(bp, '09-build-floor-ghost')
-    look(-120, 180); bp.keyboard.press('3'); bp.wait_for_timeout(400); shot(bp, '10-place-crate-ghost')
+    look(0, 55); bp.keyboard.press('2'); bp.wait_for_timeout(400); shot(bp, '11-build-floor-ghost')
+    look(-120, 180); bp.keyboard.press('3'); bp.wait_for_timeout(400); shot(bp, '12-place-crate-ghost')
     bp.mouse.down(); bp.mouse.up(); bp.wait_for_timeout(300)
-    look(60, -40); bp.keyboard.press('4'); bp.keyboard.press('r'); bp.wait_for_timeout(400); shot(bp, '11-place-bench-rotated')
+    look(60, -40); bp.keyboard.press('4'); bp.keyboard.press('r'); bp.wait_for_timeout(400); shot(bp, '13-place-bench-rotated')
     report['build'] = bp.evaluate('({decor: raftDebug.state.decor, build: raftDebug.state.build, locked: raftDebug.state.pointerLocked})')
     b.close()
 srv.shutdown()

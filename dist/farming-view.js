@@ -6,7 +6,7 @@
 // Kinds: 'planter', 'palm-0' (seedling), 'palm-1', 'palm-2', 'palm-3' (mature).
 import { isPlot, MATURE, EMPTY, farmSignature } from './farming.js';
 
-const DECK_Y = .22, POT_H = .5, PICK_R = .6; // PICK_R: aim within this many metres of a planter centre
+const DECK_Y = .22, POT_H = .5, PICK_R = .9; // PICK_R: aim within this many metres of a planter centre
 
 export function createFarmView(T, { getModel = null } = {}) {
   const group = new T.Group(); group.name = 'farm';
