@@ -136,6 +136,8 @@ class Run:
         self._cv = threading.Condition()
         self._next = 0
         self.t0 = time.time()
+        self.last_esc = 0.0
+        self.real = False  # True while the session plays with real pointer lock (not lockFallback)
 
     # ---------- setup ----------
     def publish(self, build: str):
@@ -232,9 +234,10 @@ class Run:
 
     def settle(self, ms=450): time.sleep(ms / 1000)
 
-    def key(self, key, label=None):
+    def key(self, key, label=None, hold=100):
         self.steps.append(label or key)
-        self.cmd('key', key=key)
+        self.cmd('key', key=key, hold=hold)
+        if key == 'Escape': self.last_esc = time.time()
 
     def click(self, x, y, label):
         self.steps.append(label)
@@ -315,14 +318,15 @@ class Run:
             self.check('lock.ui', 'crosshair shown and resume hint hidden while locked', s['crosshair'] and not s['resumeHint'], s)
         self.screenshot('01-playing')
         if mode == 'none': return
-        real = mode == 'pointer-lock'
+        self.real = mode == 'pointer-lock'
 
-        self.pause_cycle('pause', real)
-        self.inventory_cycle('inv.tab', 'Tab', real)
-        self.inventory_cycle('inv.i', 'I', real)
-        self.inventory_cycle('inv.dwell', 'Tab', real, dwell_ms=5000)
-        self.pause_cycle('pause2', real)
-        if self.do_hot_swap: self.hot_swap(real)
+        self.pause_cycle('pause')
+        self.inventory_cycle('inv.tab', 'Tab')
+        self.inventory_cycle('inv.i', 'I')
+        self.inventory_cycle('inv.dwell', 'Tab', dwell_ms=5000)
+        self.pause_cycle('pause2')
+        if self.do_hot_swap: self.hot_swap()
+        if self.real: self.quick_reclick()
 
         errs = [h for h in self.harness_log if h.get('harness') in ('render-process-gone', 'console-error')
                 or (h.get('harness') == 'child-process-gone' and h.get('reason') != 'clean-exit')]
@@ -334,22 +338,27 @@ class Run:
 
     def relock(self, label):
         """Real canvas click back into locked play (Esc is not a user-activation key, so the game cannot relock by itself).
-        Chromium refuses a re-lock for ~1 s after the user left lock with Esc, so one delayed retry is browser policy, not a bug."""
+        Chromium refuses a re-lock for ~1 s after the user leaves lock with Esc, so wait 1.5 s since the last Esc first;
+        quick_reclick() tests the faster case on its own."""
         s = self.snap()
-        if self.has_lock(s) or s['lockFallback'] or s['dialogs']: return s
-        for attempt in range(2):
-            self.click_canvas(f'click canvas ({label})' if not attempt else 'wait 1.2 s, click canvas again')
+        if not (self.has_lock(s) or s['lockFallback'] or s['dialogs']):
+            gap = 1.5 - (time.time() - self.last_esc)
+            if gap > 0: self.steps.append(f'wait {gap + .05:.1f} s'); time.sleep(gap)
+            self.click_canvas(f'click canvas ({label})')
             self.wait_for(LOCK_OR_FALLBACK, timeout=3); self.settle(300)
             s = self.snap()
-            if self.has_lock(s) or s['lockFallback']: break
-            self.metrics['relock_retries'] = self.metrics.get('relock_retries', 0) + 1
-            self.notes.append(f'relock attempt {attempt + 1} failed: {s["lastCall"]}')
-            self.settle(1200)
+        if self.real and s['lockFallback']:
+            self.check('lock.fallback-latch', 'game stays in pointer-lock mode (does not latch drag-look lockFallback) after a refused re-lock', False, s,
+                       repro_extra=f'last lock request {s["lastCall"]}; raftDebug.state.lockFallback became true, so mouse look is drag-only for the rest of the session')
+            self.real = False
+            self.notes.append('lockFallback latched mid-session; continuing in fallback mode')
+        if self.real:
+            self.check(f'relock.{len(self.checks)}', 'a canvas click re-acquires pointer lock', self.has_lock(s), s)
         return s
 
-    def pause_cycle(self, cid, real):
+    def pause_cycle(self, cid):
         s = self.relock('to resume play')
-        if real and not self.check(f'{cid}.relock', 'a canvas click re-acquires pointer lock', self.has_lock(s), s): return
+        if self.real and not self.has_lock(s): return
         self.key('Escape', 'Esc (in play)'); self.settle(700)
         s = self.snap()
         self.window_alive(f'{cid}.window1', 'Esc in play')
@@ -376,21 +385,30 @@ class Run:
         self.check(f'{cid}.no-reopen', 'pause menu does not reopen on its own after resume', not self.snap()['options'])
         self.metrics.setdefault('after_pause_resume', {})[cid] = {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'lockRequests': s['calls']}
 
-    def inventory_cycle(self, cid, key, real, dwell_ms=400):
+    def inventory_cycle(self, cid, key, dwell_ms=400, hold=100):
         s = self.relock('to resume play')
-        if real and not self.check(f'{cid}.relock', 'a canvas click re-acquires pointer lock', self.has_lock(s), s): return
+        if self.real and not self.has_lock(s): return
+        real = self.real
         self.key(key, f'{key} (open inventory)'); self.settle(500)
         s = self.snap()
         if not self.check(f'{cid}.open', f'{key} opens the inventory and frees the cursor', s['inventory'] and not s['locked'] and not s['options'], s): return
         self.settle(max(0, dwell_ms - 500))
-        self.key('Escape', 'Esc (in inventory' + (f', after {dwell_ms // 1000}s)' if dwell_ms >= 1000 else ')')); self.settle(800)
+        self.key('Escape', f'Esc held {hold} ms (in inventory' + (f', after {dwell_ms // 1000}s)' if dwell_ms >= 1000 else ')'), hold=hold)
+        self.settle(800)
         s = self.snap()
         self.window_alive(f'{cid}.window', f'Esc in the inventory ({key})')
         self.check(f'{cid}.close', 'Esc closes the inventory', not s['inventory'] and not s['engineInventoryOpen'], s)
         self.check(f'{cid}.no-pause', 'that Esc does not leave the pause menu open', not s['options'] and not s['dialogs'], s['dialogs'])
         self.check(f'{cid}.running', 'game is running again after closing the inventory', s['running'] and s['active'] is not False, s)
+        if real:
+            ev = [e for e in s['events'] if e['type'] == 'change']
+            bounced = len(ev) >= 2 and ev[-2]['locked'] == 'world' and ev[-1]['locked'] is None
+            self.check(f'{cid}.relocked', 'closing the inventory with Esc puts the player back in locked play (lock holds after Esc is released)',
+                       self.has_lock(s), {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'lastCall': s['lastCall'], 'events': s['events']},
+                       repro_extra=('the game re-requests lock on Esc keydown, lock engages, then Electron drops it on the Esc keyup '
+                                    f'({ev[-1]["t"] - ev[-2]["t"]} ms later); player is left unlocked with the resume hint') if bounced else '')
 
-    def hot_swap(self, real):
+    def hot_swap(self):
         self.relock('to resume play')
         self.key('Tab', 'Tab (open inventory)'); self.settle(500)
         s0 = self.snap()
@@ -409,8 +427,25 @@ class Run:
         self.key('Escape', 'Esc (in carried-over inventory)'); self.settle(800)
         s = self.snap()
         self.check('swap.inv-close', 'hot-swap: Esc closes the carried-over inventory without pausing', not s['inventory'] and not s['options'], s)
-        self.pause_cycle('swap.pause', real)
-        self.inventory_cycle('swap.inv', 'Tab', real)
+        self.pause_cycle('swap.pause')
+        self.inventory_cycle('swap.inv', 'Tab')
+
+    def quick_reclick(self):
+        """A player who presses Esc and clicks straight back in (within Chromium's ~1 s re-lock cooldown) must not lose pointer lock for good."""
+        s = self.relock('to resume play')
+        if not self.has_lock(s): return
+        self.key('Escape', 'Esc (in play)'); self.settle(400)
+        if self.snap()['options']: self.key('Escape', 'Esc (close pause)'); self.settle(250)
+        else: self.key('Escape', 'Esc (open pause)'); self.settle(250); self.key('Escape', 'Esc (close pause)'); self.settle(250)
+        self.click_canvas(f'click canvas {time.time() - self.last_esc:.1f} s after the last Esc')
+        self.wait_for(LOCK_OR_FALLBACK, timeout=3); self.settle(300)
+        s = self.snap()
+        self.metrics['quick_reclick'] = {'locked': s['locked'], 'lockFallback': s['lockFallback'], 'lastCall': s['lastCall']}
+        self.check('lock.quick-reclick', 'a quick click back in after Esc does not latch lockFallback (drag-look) for the session', not s['lockFallback'], s,
+                   repro_extra=f'lock request result: {s["lastCall"] and s["lastCall"]["result"]}; game treats that SecurityError (re-lock cooldown) as "pointer lock unsupported"')
+        if not s['lockFallback']:
+            self.settle(1500); self.click_canvas('wait 1.5 s, click canvas'); self.wait_for(LOCK_OR_FALLBACK, timeout=3); self.settle(300)
+            self.check('lock.quick-reclick-recover', 'after a refused quick re-click, the next click locks', self.has_lock(self.snap()), self.snap())
 
 
 def main():
