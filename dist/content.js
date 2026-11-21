@@ -18,7 +18,7 @@
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
-// ctx (live getters, set up by game.js): T, scene, camera, raft, ocean, sun, hemi, clouds, world, role,
+// ctx (live getters, set up by game.js): T, scene, camera, raft, ocean, sun, hemi, sky, clouds, world, role,
 // running, physics, elapsed, options, localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
 // esc(s), mat(color), rebuildRaft(), deckY(), uiOpen().
 
