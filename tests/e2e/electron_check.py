@@ -1,7 +1,8 @@
 """Desktop shell check: runs the real desktop/main.cjs in Electron against a candidate dist.
 
 Usage: python3.13 tests/e2e/electron_check.py --dist <dist_dir> [--out <artifact_dir>]
-                                               [--window show|offscreen|hidden] [--xvfb] [--no-hot-swap] [--keep]
+                                               [--window show|offscreen|hidden] [--xvfb] [--input send|xtest]
+                                               [--no-hot-swap] [--keep]
 
 The candidate is copied to a temp dir and served by the unmodified desktop/server.py (RAFT_DIST,
 RAFT_PORT, release mode). An unmodified copy of desktop/main.cjs runs next to a config.json that
@@ -9,6 +10,8 @@ points its origin at that server, loaded through tools/electron_harness.cjs, whi
 userData (and the single-instance lock) and exposes a stdin control channel. All input is real:
 webContents.sendInputEvent keyboard and mouse events (trusted, with user activation), never JS
 dispatch. Page state is only read through executeJavaScript (no gesture).
+--input xtest drives the same steps with real X keyboard/mouse events (xdotool/XTest into the private Xvfb)
+instead; the Esc/pointer-lock results are identical either way, so they are not sendInputEvent artifacts.
 
 With no $DISPLAY (cloud box) a private Xvfb is started; --xvfb forces one even when $DISPLAY is
 set (so your real mouse is never grabbed). Electron gets --no-sandbox and swiftshader GL flags.
@@ -122,8 +125,10 @@ def start_xvfb(work: Path):
 
 
 class Run:
-    def __init__(self, candidate: Path, window: str, keep: bool, force_xvfb: bool, hot_swap: bool):
-        self.candidate, self.window, self.keep, self.force_xvfb, self.do_hot_swap = candidate, window, keep, force_xvfb, hot_swap
+    def __init__(self, candidate: Path, window: str, keep: bool, force_xvfb: bool, hot_swap: bool, input_mode: str = 'send'):
+        self.candidate, self.window, self.keep, self.do_hot_swap = candidate, window, keep, hot_swap
+        self.input = input_mode
+        self.force_xvfb = force_xvfb or input_mode == 'xtest'  # XTest input only ever goes to a private Xvfb, never your desktop
         self.work = Path(tempfile.mkdtemp(prefix='lr-electron-'))
         self.dist = self.work / 'dist'; self.app = self.work / 'app'; self.user = self.work / 'userData'
         self.server = self.electron = self.xvfb = None
@@ -161,7 +166,10 @@ class Run:
         if os.name != 'nt' and (self.force_xvfb or not os.environ.get('DISPLAY')):
             self.xvfb, env['DISPLAY'] = start_xvfb(self.work)
             env.pop('WAYLAND_DISPLAY', None)
-        self.metrics['display'] = env.get('DISPLAY') or 'native'
+        self.display = env.get('DISPLAY')
+        self.metrics['display'] = self.display or 'native'
+        self.metrics['input'] = 'xtest (xdotool on the private Xvfb)' if self.input == 'xtest' else 'webContents.sendInputEvent'
+        if self.input == 'xtest' and not (self.xvfb and shutil.which('xdotool')): raise Infra('--input xtest needs Xvfb and xdotool (apt install xdotool)')
         self.metrics['xvfb'] = bool(self.xvfb)
         self.electron = subprocess.Popen([str(find_electron()), *ELECTRON_FLAGS, str(HARNESS)], cwd=str(self.app), env=env,
                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(self.work / 'electron.err', 'wb'),
@@ -249,14 +257,26 @@ class Run:
 
     def settle(self, ms=450): time.sleep(ms / 1000)
 
+    XKEYS = {'Escape': 'Escape', 'Tab': 'Tab', 'I': 'i'}
+
+    def xdo(self, *args):
+        r = subprocess.run(['xdotool', *map(str, args)], env={**os.environ, 'DISPLAY': self.display}, capture_output=True, text=True, timeout=10)
+        if r.returncode: raise Infra(f'xdotool {" ".join(map(str, args))} failed: {r.stderr[-300:]}')
+
     def key(self, key, label=None, hold=100):
         self.steps.append(label or key)
-        self.cmd('key', key=key, hold=hold)
+        if self.input == 'xtest':
+            self.xdo('keydown', self.XKEYS[key]); time.sleep(hold / 1000); self.xdo('keyup', self.XKEYS[key])
+        else: self.cmd('key', key=key, hold=hold)
         if key == 'Escape': self.last_esc = time.time()
 
     def click(self, x, y, label):
         self.steps.append(label)
-        self.cmd('click', x=int(x), y=int(y))
+        if self.input == 'xtest':
+            b = self.cmd('status')['bounds']  # content bounds are root-window coordinates (no WM under Xvfb)
+            self.xdo('mousemove', b['x'] + int(x), b['y'] + int(y)); time.sleep(.03)
+            self.xdo('mousedown', 1); time.sleep(.06); self.xdo('mouseup', 1)
+        else: self.cmd('click', x=int(x), y=int(y))
 
     def click_selector(self, sel, label):
         r = self.js(f"(() => {{ const r = document.querySelector({json.dumps(sel)})?.getBoundingClientRect(); return r && r.width ? {{x: r.x + r.width / 2, y: r.y + r.height / 2}} : null }})()")
@@ -269,7 +289,8 @@ class Run:
 
     def repro(self, extra=''):
         seq = ' -> '.join(self.steps[-12:])
-        return (f'Desktop app (Electron {self.metrics.get("electron", "?")} running desktop/main.cjs, {self.window} window, real OS-level input): '
+        how = 'real X keyboard/mouse via XTest' if self.input == 'xtest' else 'trusted input via webContents.sendInputEvent; real X/XTest input behaves the same'
+        return (f'Desktop app (Electron {self.metrics.get("electron", "?")} running desktop/main.cjs, {self.window} window, {how}): '
                 f'{seq}{"; " + extra if extra else ""}')
 
     def check(self, cid: str, name: str, ok: bool, detail=None, repro_extra=''):
@@ -380,7 +401,7 @@ class Run:
         self.check(f'{cid}.unlock', 'Esc during play releases pointer lock', not s['locked'], s)
         opened = self.check(f'{cid}.open', 'the same Esc that releases the lock opens the pause menu', s['options'], s,
                             repro_extra=f'expected pause menu after one Esc; got dialogs={s["dialogs"]} locked={s["locked"]} resumeHint={s["resumeHint"]} '
-                                        '(Electron delivers neither keydown nor keyup of the lock-releasing Esc to the page)')
+                                        '(Electron delivers neither keydown nor keyup of the lock-releasing Esc to the page, so the settings.js keyup fallback never fires)')
         presses = 1
         if not opened and not s['dialogs']:
             # Keep going so the rest of the cycle is still tested: see how many more presses pause takes.
@@ -470,6 +491,8 @@ def main():
     ap.add_argument('--window', choices=['show', 'offscreen', 'hidden'], default=os.environ.get('LR_WINDOW', 'show'),
                     help='show (default): real focused window and real pointer lock; hidden cannot lock')
     ap.add_argument('--xvfb', action='store_true', help='use a private Xvfb even when $DISPLAY is set')
+    ap.add_argument('--input', choices=['send', 'xtest'], default='send',
+                    help='send (default): webContents.sendInputEvent; xtest: real X events via xdotool into a private Xvfb (cross-check)')
     ap.add_argument('--no-hot-swap', action='store_true')
     ap.add_argument('--keep', action='store_true', help='keep the temp work dir')
     a = ap.parse_args()
@@ -479,7 +502,7 @@ def main():
     if not (candidate / 'index.html').is_file():
         report['failures'] = [{'id': 'infra', 'detail': f'not a dist dir: {candidate}', 'repro': f'ls {candidate}/index.html'}]
         print(json.dumps(report)); sys.exit(2)
-    run = Run(candidate, a.window, a.keep, a.xvfb, not a.no_hot_swap)
+    run = Run(candidate, a.window, a.keep, a.xvfb, not a.no_hot_swap, a.input)
     infra = None
     try:
         run.start()
