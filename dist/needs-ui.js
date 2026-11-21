@@ -16,7 +16,7 @@ const CSS = `
 #needsHud .nd-thirst{--nd:linear-gradient(#78cdf0,#2f8fc4)}
 #needsHud .nd-bar.nd-low{animation:ndPulse 1s ease-in-out infinite}
 #needsHud .nd-bar.nd-low svg{animation:ndBeat 1s ease-in-out infinite}
-@keyframes ndPulse{50%{background:rgba(150,28,24,.62)}}
+@keyframes ndPulse{50%{background:rgba(150,28,24,.66);box-shadow:inset 0 0 0 1px rgba(255,140,120,.55)}}
 @keyframes ndBeat{50%{transform:scale(1.18)}}
 #needsHurt{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:0;
   background:radial-gradient(ellipse at center,rgba(150,0,0,0) 55%,rgba(170,12,8,.5) 88%,rgba(120,0,0,.75) 100%)}
@@ -30,6 +30,7 @@ const CSS = `
 #needsDeath p{margin:0 0 14px}
 #needsDeath small{opacity:.75;letter-spacing:.08em;text-transform:uppercase;font-size:11px}
 @keyframes ndFade{from{opacity:0}}
+body.lr-dead #lrPrompt,body.lr-dead #crosshair,body.lr-dead #spearHit{visibility:hidden}
 body.lr-needs #pickupFeed{bottom:134px!important}
 body.lr-needs #fcChip{bottom:100px!important}
 @media(max-width:760px){#needsHud{left:16px;bottom:14px}#needsHud .nd-track{width:96px}}
@@ -81,12 +82,12 @@ export function createNeedsHUD(doc = globalThis.document) {
     },
     death(cause) {
       const [h, p] = LINES[cause] ?? LINES.hurt;
-      death.querySelector('h2').textContent = h; death.querySelector('p').textContent = p; death.hidden = false;
+      death.querySelector('h2').textContent = h; death.querySelector('p').textContent = p; death.hidden = false; doc.body.classList.add('lr-dead');
     },
-    alive() { death.hidden = true; },
+    alive() { death.hidden = true; doc.body.classList.remove('lr-dead'); },
     dispose() {
       if (hud.dataset.owner !== owner) return; // a newer engine adopted these nodes
-      doc.body.classList.remove('lr-needs'); hud.hidden = true; death.hidden = true;
+      doc.body.classList.remove('lr-needs', 'lr-dead'); hud.hidden = true; death.hidden = true;
     },
   };
 }
