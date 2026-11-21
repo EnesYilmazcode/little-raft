@@ -232,15 +232,23 @@ function boot() {
     } catch {}
   }
   const feed = t => { try { window.raftPrompts?.feed?.(t); } catch {} };
+  // The tick re-renders 4x/s: write only values that changed (every write is a DOM mutation plus style work).
+  const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
+  let logHTML = '';
   function renderHead(ch) {
     const all = ch === null, list = STEPS.filter(s => s.chapter === ch && !s.optional);
     panel.classList.toggle('ob-all', all);
-    head.querySelector('.ob-ch').textContent = all ? 'Notes' : collapsed ? 'Notes' : chName(ch);
-    head.querySelector('.ob-sum').textContent = all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`;
-    const open = all ? logOpen : !collapsed;
+    setText(head.querySelector('.ob-ch'), all ? 'Notes' : collapsed ? 'Notes' : chName(ch));
+    setText(head.querySelector('.ob-sum'), all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`);
+    const open = String(all ? logOpen : !collapsed), hide = !(all && logOpen);
     panel.classList.toggle('ob-collapsed', !all && collapsed); panel.classList.toggle('ob-logopen', all && logOpen);
-    head.setAttribute('aria-expanded', String(open)); logEl.hidden = !(all && logOpen);
-    if (all && logOpen) logEl.innerHTML = [...new Set(STEPS.map(s => s.chapter))].map(c => `<section><h3>${hintHTML(chName(c))}</h3><ul>${STEPS.filter(s => s.chapter === c && (!s.optional || P.done[s.id])).map(s => `<li class="${P.done[s.id] ? 'ob-tick' : ''}">${hintHTML(s.title)}</li>`).join('')}</ul></section>`).join('');
+    if (head.getAttribute('aria-expanded') !== open) head.setAttribute('aria-expanded', open);
+    if (logEl.hidden !== hide) logEl.hidden = hide;
+    if (hide) logHTML = '';
+    else {
+      const html = [...new Set(STEPS.map(s => s.chapter))].map(c => `<section><h3>${hintHTML(chName(c))}</h3><ul>${STEPS.filter(s => s.chapter === c && (!s.optional || P.done[s.id])).map(s => `<li class="${P.done[s.id] ? 'ob-tick' : ''}">${hintHTML(s.title)}</li>`).join('')}</ul></section>`).join('');
+      if (html !== logHTML) logEl.innerHTML = logHTML = html;
+    }
   }
   function toggle() {
     if (panel.classList.contains('ob-all')) logOpen = !logOpen; else collapsed = !collapsed;
@@ -268,7 +276,7 @@ function boot() {
     for (const [id, li] of rows) if (!vis.has(id) && !li.classList.contains('ob-done')) { li.remove(); rows.delete(id); }
     for (const id of r.visible) {
       const li = rows.get(id) ?? rowFor(id, animate), c = r.counts[id], h = r.hints[id] ?? '';
-      li.querySelector('.ob-count').textContent = c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '';
+      setText(li.querySelector('.ob-count'), c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '');
       if (li.dataset.hint !== h) { li.dataset.hint = h; li.querySelector('.ob-hint').innerHTML = hintHTML(h); }
     }
     renderHead(shownCh);
@@ -286,7 +294,23 @@ function boot() {
     if (r.reset) collapsed = false;
     sync(r); booted = true;
     panel.classList.toggle('ob-dim', Date.now() - lastProgress > DIM_MS && !panel.classList.contains('ob-all'));
-    placeBesideBag(S.inventoryOpen && $('#inventory .sv-wrap')?.getBoundingClientRect());
+    placeBag(!!S.inventoryOpen);
+  }
+  // Placement reads layout (forced sync reflow), so it runs once per bag open and again only when the window, the
+  // Notes or the bag change size (ResizeObserver / resize mark it dirty), not on every tick.
+  let placedOpen = null, placeDirty = true, bagEl = null;
+  const markPlace = () => { placeDirty = true; };
+  const sizeObs = typeof ResizeObserver === 'function' ? new ResizeObserver(markPlace) : null;
+  sizeObs?.observe(panel); window.addEventListener('resize', markPlace);
+  function placeBag(open) {
+    if (open) {
+      const el = $('#inventory .sv-wrap');
+      if (el !== bagEl) { if (bagEl) sizeObs?.unobserve(bagEl); bagEl = el; if (el) sizeObs?.observe(el); placeDirty = true; }
+      if (!sizeObs) placeDirty = true; // no observer: measure every tick as before
+    }
+    if (open === placedOpen && (!placeDirty || !open)) return;
+    placedOpen = open; placeDirty = false;
+    placeBesideBag(open && bagEl?.getBoundingClientRect());
   }
   // Bag open: if the Notes overlap it, move them (narrowed, >= ASIDE_MIN px) into the wider gutter beside the bag;
   // no gutter that wide (phones, small windows) -> .ob-covered hides them rather than peeking out over the bag.

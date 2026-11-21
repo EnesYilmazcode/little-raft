@@ -59,3 +59,19 @@ Revisit if any of these appear:
 - buoyancy for many bodies (more than about 200 floating items);
 - boids or fish schools;
 - runtime procedural mesh generation that takes more than 5 ms per call (today, merging a deck chunk takes about 18 ms for 49 tiles but happens only when building).
+
+## Round 3 (2026-11-21, branch claude/loop-perf-202611210648)
+
+Profile (headless Chrome, SwiftShader, CDP CPU profile of 10 s steady solo play, box under 5x contention):
+
+| Hot spot | Measured cost | Verdict |
+|---|---|---|
+| All per-frame JS (game + three.js + GL calls) | 3.8 ms/frame mean (p50 3.4) under ~5x contention, roughly 1 ms on an idle laptop | **No.** The rest of each frame is GPU time. |
+| three.js `setValue` (uniform upload) | 0.26 ms/frame | **No.** Vendor code; only fewer materials or objects reduce it. |
+| `uniformMatrix4fv` (native GL) | 0.19 ms/frame | **No.** Native. |
+| daynight `segmentStart`, game `updateItems` | 0.06-0.07 ms/frame each | **No.** Far under the 1 ms bar. daynight now refreshes at 10 Hz. |
+| wildlife gull/fish sim | KB-level allocation, sub-0.1 ms | **No.** Allocation problem, fixed in JS: cached constants in typed arrays, bit-identical output. |
+| audio brown-noise generation (one-time, first key press) | 125 ms, 4.6 MB garbage | **No.** One-shot, fixed in JS: 2 s single-pass loop (34 ms, 2.3 MB). An AudioWorklet would remove it entirely; WASM isn't needed. |
+
+Conclusion: still no WASM. No JS function exceeds 1 ms/frame. The remaining costs are draw calls, shader programs and the GPU,
+plus one-time startup work (icons, co-op avatar, shader warm-up), and those were moved off the critical path in JS.
