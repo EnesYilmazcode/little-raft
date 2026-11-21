@@ -7,7 +7,7 @@ export const HOTBAR_SIZE = 8;
 export const TOOL_DURABILITY = 100;
 
 // content hook: islands/storage item kinds and recipes live in content-items.js
-import { CONTENT_ITEMS, CONTENT_RECIPES } from './content-items.js';
+import { CONTENT_ITEMS, CONTENT_RECIPES } from './content-items.js?build=v3-survival-ae77fa84ac2b';
 
 const TOOL_KINDS = new Set(['hook', 'hammer', 'fishingrod']);
 
