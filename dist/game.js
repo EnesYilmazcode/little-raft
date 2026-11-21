@@ -824,7 +824,8 @@ export function mount(transfer = null) {
   // ---------- Frame ----------
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3();
   let chargeWidth = '';
-  const aimPoint = new T.Vector3(), hookPos = new T.Vector3(), titleFocus = new T.Vector3(-5, 0, 2), heldScratch = new Set(), freeItems = [], fishPts = [];
+  const aimPoint = new T.Vector3(), hookPos = new T.Vector3(), titleFocus = new T.Vector3(-5, 0, 2), heldScratch = new Set(), fishPts = [], ropeScratch = [];
+  const hookParams = {hand:null, items:null, skip:it => isPending(it), reeling:false, time:0};
   for (let i = 0; i <= ROPE_SEGMENTS; i++) fishPts.push(new T.Vector3());
   function heldTokenSet() { heldScratch.clear(); for (const c of caughtList(castOut())) heldScratch.add(c.token); return heldScratch; } // reused every frame
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
@@ -922,14 +923,14 @@ export function mount(transfer = null) {
       if (f >= 1) { action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    freeItems.length = 0; for (const it of world.items) if (!isPending(it)) freeItems.push(it);
-    const ev = hook.update(dt, {hand:handPos, items:freeItems, reeling, time:elapsed});
+    const hk = hookParams; hk.hand = handPos; hk.items = world.items; hk.reeling = reeling; hk.time = elapsed; // reused; HookCast skips pending items via hp.skip
+    const ev = hook.update(dt, hk);
     const hp = hook.position, pos = hookPos.set(hp.x, hook.onDeck ? hp.y : surfaceY(hp.x, hp.z, hp.y), hp.z);
     hookMesh.visible = true; hookMesh.position.copy(pos);
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
     else if (hook.stage === 'reeling') hookMesh.rotation.set(-.6, yaw, 0);
     else hookMesh.rotation.set(0, yaw, 1.1);
-    const pts = hook.ropePoints(handPos, ROPE_SEGMENTS);
+    const pts = hook.ropePoints(handPos, ROPE_SEGMENTS, ropeScratch);
     for (let i = 1; i < pts.length; i++) pts[i].y = surfaceY(pts[i].x, pts[i].z, pts[i].y);
     pts[pts.length - 1].copy(pos); setRope(pts);
     const caught = caughtList(hook);
