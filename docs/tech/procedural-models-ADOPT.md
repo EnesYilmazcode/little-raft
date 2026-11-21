@@ -75,5 +75,8 @@ call (crafts, plastic, debris metal), and `disposeGeometry()` disposed them. Tha
     footprints are unchanged.
   - Hot-swap (`live.js` update) and `dispose()` throw no errors. In devtools, `renderer.info.programs.length`
     stays flat while you pick up items. If it climbs, step 3 is missing.
-- Expected in-game cost (SwiftShader, relative): the 3×3 raft with all six crafts and 7 floating items drops
-  from 137 to 28 draw calls in the main pass. The shadow pass also roughly halves, and materials drop from 78 to 5.
+- Expected cost (gallery `scene` view, SwiftShader, relative): on the 3×3 raft with all six crafts and 7 floating
+  items, draw calls (main + shadow) drop from 271 to 52 and triangles from 251k to 57k. Materials drop from 78 to 5
+  and frame time from 6.5 ms to 1.45 ms.
+- I verified these steps on a scratch copy of `dist/` with the root `shoot.py` probe (its launch line was changed to
+  the brief's `executable_path`). There were no page or console errors, and the floor, items and HUD were intact.

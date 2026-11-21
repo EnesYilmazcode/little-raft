@@ -1,4 +1,12 @@
 {
+ "grid_0": {
+  "view": "grid",
+  "renderer": "SwiftShader (relative timings only)"
+ },
+ "grid_1": {
+  "view": "grid",
+  "renderer": "SwiftShader (relative timings only)"
+ },
  "compare_0": {
   "view": "compare",
   "renderer": "SwiftShader (relative timings only)"
@@ -12,27 +20,350 @@
   "renderer": "SwiftShader (relative timings only)",
   "scene": {
    "current": {
-    "buildMs": 330.2,
-    "drawCalls": 137,
-    "triangles": 125362,
+    "buildMs": 612.2,
+    "drawCalls": 271,
+    "triangles": 251208,
     "meshes": 137,
     "materials": 78,
-    "frameMs": 3.26,
+    "frameMs": 6.54,
     "programs": 8,
     "textures": 7,
     "geometries": 137
    },
    "new": {
-    "buildMs": 204.4,
-    "drawCalls": 28,
-    "triangles": 26400,
+    "buildMs": 409.7,
+    "drawCalls": 52,
+    "triangles": 56606,
     "meshes": 27,
     "materials": 5,
-    "frameMs": 1.26,
+    "frameMs": 1.45,
     "programs": 9,
     "textures": 8,
     "geometries": 164
    }
+  }
+ },
+ "stats": {
+  "view": "stats",
+  "renderer": "SwiftShader (relative timings only)",
+  "models": {
+   "plank:current": {
+    "tris": 244,
+    "meshes": 2,
+    "materials": 2,
+    "drawCalls": 2,
+    "drawCallsWithShadow": 4,
+    "buildMs": 1.8,
+    "x16": {
+     "calls": 64,
+     "triangles": 7808,
+     "frameMs": 1.83
+    }
+   },
+   "plank:new": {
+    "tris": 304,
+    "meshes": 1,
+    "materials": 1,
+    "drawCalls": 1,
+    "drawCallsWithShadow": 2,
+    "buildMs": 27.88,
+    "x16": {
+     "calls": 32,
+     "triangles": 9728,
+     "frameMs": 0.39
+    }
+   },
+   "barrel:current": {
+    "tris": 3556,
+    "meshes": 8,
+    "materials": 7,
+    "drawCalls": 8,
+    "drawCallsWithShadow": 16,
+    "buildMs": 5.5,
+    "x16": {
+     "calls": 256,
+     "triangles": 113792,
+     "frameMs": 3.17
+    }
+   },
+   "barrel:new": {
+    "tris": 656,
+    "meshes": 1,
+    "materials": 1,
+    "drawCalls": 1,
+    "drawCallsWithShadow": 2,
+    "buildMs": 0.88,
+    "x16": {
+     "calls": 32,
+     "triangles": 20992,
+     "frameMs": 0.39
+    }
+   },
+   "jug:current": {
+    "tris": 2405,
+    "meshes": 7,
+    "materials": 6,
+    "drawCalls": 8,
+    "drawCallsWithShadow": 15,
+    "buildMs": 8.15,
+    "x16": {
+     "calls": 240,
+     "triangles": 77040,
+     "frameMs": 8.08
+    }
+   },
+   "jug:new": {
+    "tris": 352,
+    "meshes": 1,
+    "materials": 1,
+    "drawCalls": 1,
+    "drawCallsWithShadow": 2,
+    "buildMs": 0.47,
+    "x16": {
+     "calls": 32,
+     "triangles": 11264,
+     "frameMs": 9.76
+    }
+   },
+   "leaf:current": {
+    "tris": 4464,
+    "meshes": 6,
+    "materials": 6,
+    "drawCalls": 6,
+    "drawCallsWithShadow": 12,
+    "buildMs": 5.8,
+    "x16": {
+     "calls": 192,
+     "triangles": 142848,
+     "frameMs": 1.18
+    }
+   },
+   "leaf:new": {
+    "tris": 1236,
+    "meshes": 1,
+    "materials": 1,
+    "drawCalls": 1,
+    "drawCallsWithShadow": 2,
+    "buildMs": 2.77,
+    "x16": {
+     "calls": 32,
+     "triangles": 39552,
+     "frameMs": 0.09
+    }
+   },
+   "scrap:current": {
+    "tris": 808,
+    "meshes": 3,
+    "materials": 3,
+    "drawCalls": 3,
+    "drawCallsWithShadow": 6,
+    "buildMs": 0.77,
+    "x16": {
+     "calls": 96,
+     "triangles": 25856,
+     "frameMs": 0.99
+    }
+   },
+   "scrap:new": {
+    "tris": 344,
+    "meshes": 1,
+    "materials": 1,
+    "drawCalls": 1,
+    "drawCallsWithShadow": 2,
+    "buildMs": 1.42,
+    "x16": {
+     "calls": 32,
+     "triangles": 11008,
+     "frameMs": 0.16
+    }
+   },
+   "crate:current": {
+    "tris": 10260,
+    "meshes": 3,
+    "materials": 3,
+    "drawCalls": 3,
+    "drawCallsWithShadow": 6,
+    "buildMs": 64.22,
+    "x16": {
+     "calls": 96,
+     "triangles": 328320,
+     "frameMs": 0.92
+    }
+   },
+   "crate:new": {
+    "tris": 1856,
+    "meshes": 1,
+    "materials": 1,
+    "drawCalls": 1,
+    "drawCallsWithShadow": 2,
+    "buildMs": 5.83,
+    "x16": {
+     "calls": 32,
+     "triangles": 59392,
+     "frameMs": 0.16
+    }
+   },
+   "sail:current": {
+    "tris": 22464,
+    "meshes": 9,
+    "materials": 9,
+    "drawCalls": 9,
+    "drawCallsWithShadow": 18,
+    "buildMs": 201.15,
+    "x16": {
+     "calls": 284,
+     "triangles": 718752,
+     "frameMs": 3.68
+    }
+   },
+   "sail:new": {
+    "tris": 1794,
+    "meshes": 2,
+    "materials": 2,
+    "drawCalls": 2,
+    "drawCallsWithShadow": 4,
+    "buildMs": 4.1,
+    "x16": {
+     "calls": 64,
+     "triangles": 57408,
+     "frameMs": 0.53
+    }
+   },
+   "palm:current": {
+    "tris": 8996,
+    "meshes": 11,
+    "materials": 11,
+    "drawCalls": 11,
+    "drawCallsWithShadow": 22,
+    "buildMs": 9.35,
+    "x16": {
+     "calls": 352,
+     "triangles": 287872,
+     "frameMs": 3.32
+    }
+   },
+   "palm:new": {
+    "tris": 2952,
+    "meshes": 2,
+    "materials": 2,
+    "drawCalls": 2,
+    "drawCallsWithShadow": 4,
+    "buildMs": 31.13,
+    "x16": {
+     "calls": 64,
+     "triangles": 94464,
+     "frameMs": 0.85
+    }
+   },
+   "lantern:current": {
+    "tris": 6028,
+    "meshes": 8,
+    "materials": 8,
+    "drawCalls": 9,
+    "drawCallsWithShadow": 15,
+    "buildMs": 7.1,
+    "x16": {
+     "calls": 240,
+     "triangles": 189440,
+     "frameMs": 5.1
+    }
+   },
+   "lantern:new": {
+    "tris": 1048,
+    "meshes": 3,
+    "materials": 3,
+    "drawCalls": 4,
+    "drawCallsWithShadow": 5,
+    "buildMs": 2.53,
+    "x16": {
+     "calls": 80,
+     "triangles": 32640,
+     "frameMs": 1.65
+    }
+   },
+   "deck:current": {
+    "tris": 4620,
+    "meshes": 7,
+    "materials": 7,
+    "drawCalls": 7,
+    "drawCallsWithShadow": 14,
+    "buildMs": 35.38,
+    "x16": {
+     "calls": 220,
+     "triangles": 147232,
+     "frameMs": 1.53
+    }
+   },
+   "deck:new": {
+    "tris": 1720,
+    "meshes": 1,
+    "materials": 1,
+    "drawCalls": 1,
+    "drawCallsWithShadow": 2,
+    "buildMs": 3.35,
+    "x16": {
+     "calls": 32,
+     "triangles": 53400,
+     "frameMs": 0.08
+    }
+   },
+   "net:current": {
+    "tris": 17660,
+    "meshes": 5,
+    "materials": 5,
+    "drawCalls": 5,
+    "drawCallsWithShadow": 10,
+    "buildMs": 87.38,
+    "x16": {
+     "calls": 160,
+     "triangles": 565120,
+     "frameMs": 2
+    }
+   },
+   "net:new": {
+    "tris": 1536,
+    "meshes": 1,
+    "materials": 1,
+    "drawCalls": 1,
+    "drawCallsWithShadow": 2,
+    "buildMs": 1.92,
+    "x16": {
+     "calls": 32,
+     "triangles": 49152,
+     "frameMs": 0.9
+    }
+   },
+   "bench:current": {
+    "tris": 5248,
+    "meshes": 3,
+    "materials": 3,
+    "drawCalls": 3,
+    "drawCallsWithShadow": 6,
+    "buildMs": 68.73,
+    "x16": {
+     "calls": 96,
+     "triangles": 167936,
+     "frameMs": 1.18
+    }
+   },
+   "bench:new": {
+    "tris": 936,
+    "meshes": 1,
+    "materials": 1,
+    "drawCalls": 1,
+    "drawCallsWithShadow": 2,
+    "buildMs": 2.97,
+    "x16": {
+     "calls": 32,
+     "triangles": 29952,
+     "frameMs": 0.08
+    }
+   }
+  },
+  "renderer_info": {
+   "geometries": 0,
+   "textures": 7,
+   "programs": 15
   }
  }
 }
