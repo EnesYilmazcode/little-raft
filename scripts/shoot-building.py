@@ -61,8 +61,10 @@ try { Object.defineProperty(Element.prototype, 'requestPointerLock', {value: und
 report = {'errors': [], 'console': [], 'shots': [], 'checks': {}}
 
 def log(*a): print(*a, file=sys.stderr, flush=True)
-def shot(page, name, note=''):
+def shot(page, name, note='', aim=False):
     log('shot', name)
+    if not aim:  # scenic shot: drop the screen-aim so no build ghost floats in the picture
+        page.evaluate("document.querySelector('#world')?.dispatchEvent(new PointerEvent('pointerleave'))"); page.wait_for_timeout(700)
     p = out / f'{name}.jpg'; page.screenshot(path=str(p), type='jpeg', quality=80)
     report['shots'].append({'file': str(p), 'note': note})
 
@@ -117,14 +119,20 @@ with sync_playwright() as pw:
         me = S()['me']; d = math.hypot(x - me['x'], z - me['z'])
         look(math.atan2(-(x - me['x']), -(z - me['z'])), math.atan2(y - me['y'], d))
 
-    def walk_to(x, z, tol=0.25, tries=40):
+    def walk_to(x, z, tol=0.3, tries=6):
+        """Hold W towards (x, z), re-aiming as it goes (software GL runs at a few fps, so poll the sim, not the clock)."""
         for _ in range(tries):
-            me = S()['me']; d = math.hypot(x - me['x'], z - me['z'])
-            if d < tol: return True
+            me = S()['me']
+            if math.hypot(x - me['x'], z - me['z']) < tol: return True
+            face(x, z, 0); page.keyboard.down('KeyW')
+            for _ in range(120):
+                page.wait_for_timeout(60)
+                me = page.evaluate('raftDebug.state.me'); dx, dz = x - me['x'], z - me['z']; d = math.hypot(dx, dz)
+                if d < tol: break
+                fx, fz = -math.sin(me['yaw']), -math.cos(me['yaw'])
+                if (fx * dx + fz * dz) / d < 0.9: break  # drifted (or overshot): stop and re-aim
+            page.keyboard.up('KeyW'); page.wait_for_timeout(150)
             log('walk', round(me['x'], 2), round(me['z'], 2), '->', x, z)
-            face(x, z, 0)
-            page.keyboard.down('KeyW'); page.wait_for_timeout(int(min(d / 2.6, 0.6) * 1000 * 0.8) + 40); page.keyboard.up('KeyW')
-            page.wait_for_timeout(120)
         return False
 
     def aim_at(x, y, z):
@@ -138,7 +146,7 @@ with sync_playwright() as pw:
         r = page.evaluate("(()=>{const e=document.querySelector('.bm-wheel').getBoundingClientRect();return {x:e.left+e.width/2,y:e.top+e.height/2,s:e.width/400}})()")
         a = idx * 2 * math.pi / n
         page.mouse.move(r['x'] + 137 * r['s'] * math.sin(a), r['y'] - 137 * r['s'] * math.cos(a), steps=4); page.wait_for_timeout(300)
-        if hold_shot: shot(page, *hold_shot)
+        if hold_shot: shot(page, *hold_shot, aim=True)
         page.mouse.up(button='right'); page.wait_for_timeout(200)
 
     ORDER = ['foundation', 'floor', 'wall', 'halfwall', 'window', 'door', 'pillar', 'stairs', 'roof']
@@ -148,6 +156,8 @@ with sync_playwright() as pw:
     shot(page, '01-exterior-corner', 'three-quarter view of the 2-storey house from the front-right deck corner')
     walk_to(-4.2, 3.6); look_at(1, 2.6, -3); page.wait_for_timeout(700)
     shot(page, '01b-exterior-left', 'view from the front-left corner (west window, balcony railing, roof)')
+    walk_to(-2.6, 0.9); look_at(-1, 1.7, -1.3); page.wait_for_timeout(700)
+    shot(page, '07-corner-joint', 'close-up of the front-left corner: pillar, wall/door/window joints, storey line')
 
     # (3) radial wheel open, hovering "wall"; release picks it
     walk_to(-2, 3.6); look(0, -0.45); page.wait_for_timeout(400)
@@ -156,7 +166,7 @@ with sync_playwright() as pw:
 
     # (2) ghost: valid wall slot on the deck (edge (-1,1,0): x in [-3,-1], z=1)
     aim_at(-2, DECK + 0.02, 1); page.wait_for_timeout(400)
-    shot(page, '02-ghost-valid-wall', 'green ghost wall on an empty deck edge')
+    shot(page, '02-ghost-valid-wall', 'green ghost wall on an empty deck edge', aim=True)
     # real placement: click without moving
     before = S(); w0 = before['stock'].get('wood', 0); n0 = len(before['pieces']['list'])
     page.mouse.down(); page.mouse.up(); page.wait_for_timeout(600)
@@ -169,7 +179,7 @@ with sync_playwright() as pw:
     # (6) removal highlight: hold X while aiming at the new wall, then release to remove + refund
     page.keyboard.down('KeyX'); aim_at(-2, DECK + 1.1, 1); page.wait_for_timeout(500)
     report['checks']['removingFlag'] = S()['pieces']['removing']
-    shot(page, '06-remove-highlight', 'holding X: red highlight on the wall about to be removed')
+    shot(page, '06-remove-highlight', 'holding X: red highlight on the wall about to be removed', aim=True)
     page.keyboard.up('KeyX'); page.wait_for_timeout(600)
     rem = S(); report['checks']['remove'] = {'piecesAfter': len(rem['pieces']['list']), 'woodAfter': rem['stock'].get('wood', 0),
         'refunded': rem['stock'].get('wood', 0) - w1, 'stillThere': [p for p in added if p in rem['pieces']['list']]}
@@ -178,7 +188,7 @@ with sync_playwright() as pw:
     walk_to(-4.4, 2.0); look(math.pi / 2, -0.25); page.wait_for_timeout(300)
     s = aim_at(-9.8, DECK, 2.0); page.wait_for_timeout(400)
     report['checks']['invalidAimScreen'] = s
-    shot(page, '02b-ghost-invalid-wall', 'red ghost: wall slot over the water has no support')
+    shot(page, '02b-ghost-invalid-wall', 'red ghost: wall slot over the water has no support', aim=True)
     report['checks']['invalidChip'] = page.evaluate("document.querySelector('.bm-chip .bm-status')?.textContent")
 
     # (5) interior through the door
@@ -187,12 +197,14 @@ with sync_playwright() as pw:
     shot(page, '05-door-from-deck', 'front door (open leaf) with the room behind it')
     walk_to(0, 0.6); look(0, -0.12); page.wait_for_timeout(600)
     shot(page, '05b-through-door', 'looking through the doorway into the ground-floor room')
-    walk_to(0, -1.6, tries=30); walk_to(0.3, -2.6, tries=20); look_at(2.6, 1.2, -4.6); page.wait_for_timeout(600)
+    walk_to(0, -1.6); walk_to(0.3, -2.6); look_at(2.6, 1.2, -4.6); page.wait_for_timeout(600)
     report['checks']['insidePos'] = S()['me']
     shot(page, '05c-interior', 'inside the ground-floor room: east window, walls, floor joists overhead')
 
     # (4) walk out and up the stairs onto the balcony
-    walk_to(0, -1.4, tries=20); walk_to(0, 1.6, tries=30); walk_to(2, 2.8, tries=30)
+    walk_to(0, -1.4); walk_to(0, 1.6); walk_to(4.3, 1.8); look_at(2, 1.0, -0.2); page.wait_for_timeout(700)
+    shot(page, '08-stairs-side', 'stairs from the side: stringers, treads, landing onto the balcony')
+    walk_to(2, 2.8, tol=0.15)
     look(0, 0)
     page.keyboard.down('KeyW')
     for _ in range(60):
@@ -206,6 +218,8 @@ with sync_playwright() as pw:
     shot(page, '04-upper-floor-room', 'on the balcony after climbing the stairs: upper-room door + window, roof above')
     look(math.pi, -0.35); page.wait_for_timeout(500)
     shot(page, '04b-upper-floor-view', 'looking back from the balcony: railing, stair opening, deck below')
+    look_at(-1, 3.5, -1.4); page.wait_for_timeout(500)
+    shot(page, '04c-balcony-side', 'balcony corner: half-wall railing, pillar, upper-room wall and roof eave')
 
     report['frameMs'] = page.evaluate("""new Promise(r=>{let n=0,t0=performance.now();function f(){if(++n<60)requestAnimationFrame(f);else r((performance.now()-t0)/n)}requestAnimationFrame(f)})""")
     b.close()
