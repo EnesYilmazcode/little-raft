@@ -1,5 +1,6 @@
 // Raft logbook view: bottled notes and achievements in a wood-panel dialog, plus unlock toasts.
-// createLogbookUI({getProgress, onPause, onResume}) -> {open, close, toggle, update, celebrate, destroy, isOpen}
+// createLogbookUI({getProgress, onPause, onResume, tasks}) -> {open, close, toggle, update, celebrate, destroy, isOpen}
+// tasks (optional, [tasks]): {view: () => taskView object | null, claim: id => void}; null view hides the Tasks tab.
 import { NOTES, NOTE_COUNT, ACHIEVEMENTS, cleanProgress } from './logbook.js?build=v3-survival-ae77fa84ac2b';
 
 const INST_KEY = '__littleRaftLogbookUI';
@@ -56,6 +57,22 @@ const CSS = `
 #lb-toast .lb-icon{width:32px;height:32px;flex:none}
 @media (prefers-reduced-motion:reduce){#lb-toast{transition:none;transform:none}}
 @media (max-width:760px){#lb-toast{top:52px}} /* clear the centred signal readout pill */
+.lb-tk-head{margin:0 0 8px;font:600 12px/1.3 ${FONT};letter-spacing:.06em;text-transform:uppercase;color:#d6b67e}
+.lb-tk-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.lb-tk{padding:8px 10px;background:linear-gradient(180deg,#664730e8,#46301ce8);border-radius:4px;box-shadow:inset 0 0 0 1px #d4b07a44}
+.lb-tk.lb-tk-done{box-shadow:inset 0 0 0 2px #ffcf7d99}
+.lb-tk-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.lb-tk-top b{font:600 14px/1.3 ${FONT};color:#fff2cc}
+.lb-tk-top span{font:600 13px/1 ${FONT};color:#e8d3a8;font-variant-numeric:tabular-nums;white-space:nowrap}
+.lb-tk-bar{height:8px;margin:6px 0;border-radius:4px;background:#24170c;box-shadow:inset 0 0 0 1px #b48d5544;overflow:hidden}
+.lb-tk-bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#c58f32,#ffcf7d);transition:width .3s}
+.lb-tk-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#e8d3a8}
+.lb-tk-foot em{font:600 11px/1 ${FONT};font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#d6b67e}
+.lb button.lb-claim{min-height:30px;padding:5px 12px;border:0;border-radius:3px;background:linear-gradient(#ffcf7d,#e9a24a);color:#2a1b0e;font:800 12px/1 ${FONT};cursor:pointer;box-shadow:0 2px 0 #8a5a26;transform:none}
+.lb button.lb-claim:disabled{opacity:.35;cursor:default;box-shadow:none}
+.lb button.lb-claim:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
+.lb-tk.lb-tk-extra{background:#2a1b0ecc}
+.lb-tk-streak{margin:10px 0 0;font-size:13px;color:#e8d3a8;text-align:center}
 @media (max-width:520px){.lb [role=tab]{flex:1}.lb-grid{grid-template-columns:1fr}.lb [role=tabpanel]{padding:8px}}
 `;
 
@@ -71,9 +88,11 @@ const MARKUP = `<div class="lb-wrap" tabindex="-1">
   <div class="lb-tabs" role="tablist" aria-label="Logbook sections">
     <button type="button" role="tab" id="lb-tab-notes" aria-controls="lb-panel-notes" data-tab="notes" aria-selected="true">Notes</button>
     <button type="button" role="tab" id="lb-tab-ach" aria-controls="lb-panel-ach" data-tab="ach" aria-selected="false" tabindex="-1">Achievements</button>
+    <button type="button" role="tab" id="lb-tab-tasks" aria-controls="lb-panel-tasks" data-tab="tasks" aria-selected="false" tabindex="-1" hidden>Tasks</button>
   </div>
   <section role="tabpanel" id="lb-panel-notes" aria-labelledby="lb-tab-notes" tabindex="0"><ol class="lb-notes"></ol></section>
   <section role="tabpanel" id="lb-panel-ach" aria-labelledby="lb-tab-ach" tabindex="0" hidden><div class="lb-grid"></div></section>
+  <section role="tabpanel" id="lb-panel-tasks" aria-labelledby="lb-tab-tasks" tabindex="0" hidden><div class="lb-tasks"></div></section>
 </div>`;
 
 function mountDialog() {
@@ -85,7 +104,7 @@ function mountDialog() {
   }
   d.className = 'lb';
   d.setAttribute('aria-labelledby', 'lb-title');
-  if (!d.querySelector('.lb-wrap [role=tablist]') || !d.querySelector('.lb-notes') || !d.querySelector('.lb-grid')) d.innerHTML = MARKUP;
+  if (!d.querySelector('.lb-wrap [role=tablist]') || !d.querySelector('.lb-notes') || !d.querySelector('.lb-grid') || !d.querySelector('.lb-tasks')) d.innerHTML = MARKUP;
   return d;
 }
 
@@ -101,7 +120,7 @@ function mountToast() {
 const readSeen = () => { try { const v = parseInt(localStorage.getItem(SEEN_KEY), 10); return Number.isFinite(v) ? v : 0; } catch { return 0; } };
 const writeSeen = n => { try { localStorage.setItem(SEEN_KEY, String(n)); } catch {} };
 
-export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
+export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) {
   const prev = window[INST_KEY];
   const ac = new AbortController();
   const opt = { signal: ac.signal };
@@ -114,9 +133,38 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
   const toast = mountToast();
   const wrap = dlg.querySelector('.lb-wrap');
   const tabs = [...dlg.querySelectorAll('[role=tab]')];
-  const panels = { notes: dlg.querySelector('#lb-panel-notes'), ach: dlg.querySelector('#lb-panel-ach') };
+  const panels = { notes: dlg.querySelector('#lb-panel-notes'), ach: dlg.querySelector('#lb-panel-ach'), tasks: dlg.querySelector('#lb-panel-tasks') };
   const list = dlg.querySelector('.lb-notes');
   const grid = dlg.querySelector('.lb-grid');
+  const taskBox = dlg.querySelector('.lb-tasks');
+  const taskTab = tabs.find(t => t.dataset.tab === 'tasks');
+  let taskSig = null;
+
+  // ---------- [tasks] crew tasks tab ----------
+  const tasksView = () => { const v = safe(tasks?.view); return v && typeof v === 'object' && Array.isArray(v.rows) ? v : null; };
+  const visibleTabs = () => tabs.filter(t => !t.hidden);
+  const claimBtn = (id, can, label = 'Claim') => `<button type="button" class="lb-claim" data-claim="${esc(id)}"${can ? '' : ' disabled'}>${label}</button>`;
+  function renderTasks(v = tasksView()) {
+    taskSig = v ? v.sig : null;
+    if (taskTab) taskTab.hidden = !v;
+    if (!v) { taskBox.innerHTML = ''; if (tab === 'tasks') select('notes'); return; }
+    if (taskTab) taskTab.textContent = `Tasks ${v.doneCount ?? v.rows.filter(r => r.done).length}/${v.rows.length}`;
+    const row = r => {
+      const pct = r.target > 0 ? Math.min(100, Math.round(r.n / r.target * 100)) : 0;
+      const end = r.claimed ? '<em>Claimed</em>' : claimBtn(r.i, r.canClaim);
+      return `<li class="lb-tk${r.done ? ' lb-tk-done' : ''}"><div class="lb-tk-top"><b>${esc(r.label)}</b><span>${r.n}/${r.target}</span></div>`
+        + `<div class="lb-tk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${r.target}" aria-valuenow="${r.n}" aria-label="${esc(r.label)}"><i style="width:${pct}%"></i></div>`
+        + `<div class="lb-tk-foot"><span>Reward: ${esc(r.reward)}</span>${end}</div></li>`;
+    };
+    let html = `<p class="lb-tk-head">Day ${v.day} · fresh tasks each morning</p><ul class="lb-tk-list">`;
+    html += v.rows.map((r, i) => row({ ...r, i })).join('');
+    const b = v.bonus || {};
+    html += `<li class="lb-tk lb-tk-extra${b.done ? ' lb-tk-done' : ''}"><div class="lb-tk-foot"><span>All three done: ${esc(b.reward || '')}</span>${b.claimed ? '<em>Claimed</em>' : claimBtn('bonus', !!b.canClaim)}</div></li>`;
+    if (v.owed) html += `<li class="lb-tk lb-tk-extra"><div class="lb-tk-foot"><span>Left over from before: ${esc(v.owed)}</span>${claimBtn('owed', true)}</div></li>`;
+    html += '</ul>';
+    html += `<p class="lb-tk-streak">${v.streak > 0 ? `Streak ${v.streak} day${v.streak === 1 ? '' : 's'} · best ${v.best}` : 'Finish all three for a streak' + (v.best > 0 ? ` · best ${v.best}` : '')}</p>`;
+    taskBox.innerHTML = html;
+  }
 
   const progress = () => cleanProgress(safe(getProgress));
   const sigOf = p => p.notes.join() + '|' + p.achievements.join();
@@ -141,10 +189,11 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
       return `<div class="lb-card${got ? '' : ' lb-locked'}">${icon(a.icon)}<div><b>${esc(a.name)}</b><span>${esc(a.desc)}</span>${got ? '' : '<em>Locked</em>'}</div></div>`;
     }).join('');
     if (isOpen && tab === 'notes' && seenBase != null) writeSeen(p.notes.length);
+    renderTasks();
   }
 
   function select(name, focus = false) {
-    tab = name === 'ach' ? 'ach' : 'notes';
+    tab = name === 'ach' ? 'ach' : name === 'tasks' && taskTab && !taskTab.hidden ? 'tasks' : 'notes';
     for (const t of tabs) {
       const on = t.dataset.tab === tab;
       t.setAttribute('aria-selected', on ? 'true' : 'false');
@@ -153,6 +202,7 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
     }
     panels.notes.hidden = tab !== 'notes';
     panels.ach.hidden = tab !== 'ach';
+    panels.tasks.hidden = tab !== 'tasks';
     if (tab === 'notes' && isOpen) {
       // Keep the dot for this opening, then remember it was seen.
       if (seenBase == null) seenBase = readSeen();
@@ -160,14 +210,16 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
     }
   }
 
-  function open() {
-    if (!alive || isOpen) return;
+  function open(want) {
+    if (!alive) return;
+    if (isOpen) { if (want) select(want, true); return; }
     isOpen = true;
     seenBase = null;
     safe(onPause);
     if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
-    select(tab, true);
+    renderTasks();
+    select(want || tab, true);
     render();
   }
   function close() {
@@ -183,20 +235,23 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
   dlg.addEventListener('close', () => { if (isOpen) { isOpen = false; seenBase = null; safe(onResume); } }, opt);
   dlg.addEventListener('click', e => {
     if (e.target?.closest?.('.lb-close')) { close(); return; }
+    const c = e.target?.closest?.('[data-claim]');
+    if (c && !c.disabled) { const id = c.dataset.claim; c.disabled = true; safe(tasks?.claim, /^\d$/.test(id) ? Number(id) : id); setTimeout(() => { if (alive && isOpen) renderTasks(); }, 0); return; }
     const t = e.target?.closest?.('[role=tab]');
     if (t) select(t.dataset.tab, true);
   }, opt);
   dlg.addEventListener('keydown', e => {
     const t = e.target?.closest?.('[role=tab]');
     if (!t) return;
-    let i = tabs.indexOf(t);
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') i = (i + 1) % tabs.length;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') i = (i + tabs.length - 1) % tabs.length;
+    const vis = visibleTabs();
+    let i = vis.indexOf(t);
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') i = (i + 1) % vis.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') i = (i + vis.length - 1) % vis.length;
     else if (e.key === 'Home') i = 0;
-    else if (e.key === 'End') i = tabs.length - 1;
+    else if (e.key === 'End') i = vis.length - 1;
     else return;
     e.preventDefault();
-    select(tabs[i].dataset.tab, true);
+    select(vis[i].dataset.tab, true);
   }, opt);
   dlg.addEventListener('wheel', e => e.stopPropagation(), { ...opt, passive: true });
 
@@ -211,7 +266,7 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
     e.preventDefault(); e.stopPropagation();
     open();
   }, { ...opt, capture: true });
-  document.addEventListener('littleraft:open-logbook', () => open(), opt);
+  document.addEventListener('littleraft:open-logbook', e => open(typeof e?.detail?.tab === 'string' ? e.detail.tab : undefined), opt); // [tasks] detail.tab
 
   // ---------- toast ----------
   function showToast(e) {
@@ -239,6 +294,7 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
     if (!alive || !isOpen) return;
     const p = progress();
     if (sigOf(p) !== lastSig) render();
+    else { const v = tasksView(); if ((v ? v.sig : null) !== taskSig) renderTasks(v); }
   }
 
   const api = {
