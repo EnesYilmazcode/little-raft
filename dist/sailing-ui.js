@@ -72,7 +72,7 @@ export function createSailingUI({ signal } = {}) {
     const dim = !motor && (!hasSail || !info.raised || !!info.anchored);
     if (dim !== sDim) { sDim = dim; sail.classList.toggle('sail-dim', dim); }
 
-    const m = motor ? (hasSail && info.raised ? 'sailmotor' : 'motor') : !hasSail ? 'none' : info.anchored ? 'anchor' : info.raised ? 'up' : 'drift';
+    const m = motor ? (hasSail && info.raised ? 'sailmotor' : 'motor') : info.anchored ? 'anchor' : !hasSail ? 'none' : info.raised ? 'up' : 'drift'; // the anchor works without a sail
     const sp = Math.round(Math.max(0, +info.speed || 0) * 10);
     if (m !== mode || (sp !== qSpeed && m !== 'none' && m !== 'anchor')) {
       mode = m; qSpeed = sp;

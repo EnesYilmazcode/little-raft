@@ -147,7 +147,7 @@ export function createSailing(T, ctx) {
     for (const t of tiles) if (Array.isArray(t) && (!best || t[1] > best[1] || (t[1] === best[1] && t[0] < best[0]))) best = t;
     anchorPos.ok = !!best; anchorRoot.visible = !!best;
     if (best) { anchorPos.x = best[0] * 2 - .7; anchorPos.z = best[1] * 2 + .7; anchorRoot.position.set(anchorPos.x, .2, anchorPos.z); }
-    if (!sails.length && !(grabKind === 3 && ctx.steerTargets?.()?.length)) steering = false; // a wheel keeps its grab
+    if (grabLost()) steering = false; // a wheel grab survives a raft with no sail, and the other way round
   }
   function restoreSails() {
     for (const e of sails) {
@@ -239,9 +239,10 @@ export function createSailing(T, ctx) {
     }
     if (p !== lastPrompt) { lastPrompt = p; ui.setPrompt(p); }
   }
+  function grabLost() { return grabKind === 3 ? !(ctx.steerTargets?.()?.length) : !sails.length; } // the grabbed kind is gone
   function steer(dt) {
     if (!steering) return;
-    if (!ctx.isRunning() || (!sails.length && !(ctx.steerTargets?.()?.length))) { release(); return; }
+    if (!ctx.isRunning() || grabLost()) { release(); return; }
     const target = grabHeading + angDiff(ctx.getYaw(), grabYaw), d = angDiff(target, steerHeading), lim = STEER_RATE * dt;
     steerHeading += Math.max(-lim, Math.min(lim, d));
     const h = Math.atan2(Math.sin(steerHeading), Math.cos(steerHeading));
