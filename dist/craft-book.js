@@ -278,6 +278,10 @@ export const ITEM_SOURCE = Object.freeze({
   copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in the smelter.' }),
   glass:     Object.freeze({ tag: 'smelter', how: 'Melt sand in the smelter.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Grill a fish on the grill.' }),
+  // [bees] gathered from flower bushes and beehives
+  flowerseed: Object.freeze({ tag: 'bushes, barrels', how: 'Harvest bushes on islands, or open floating barrels.' }),
+  honey:      Object.freeze({ tag: 'beehive', how: 'Press E at a full beehive placed near flower boxes.' }),
+  wax:        Object.freeze({ tag: 'beehive', how: 'Collected with honey from a beehive (E).' }),
 });
 
 /**
