@@ -481,7 +481,7 @@ export function mount(transfer = null) {
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
     const locked = isLocked(), dialog = uiBlocked();
-    const signature = [running, locked, dialog, lockFallback].join();
+    const signature = (running ? 1 : 0) | (locked ? 2 : 0) | (dialog ? 4 : 0) | (lockFallback ? 8 : 0); // flags as bits: no per-frame array or string
     if (!force && signature === uiSignature) return; uiSignature = signature;
     const b = document.body.classList;
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
@@ -855,6 +855,7 @@ export function mount(transfer = null) {
     raft.rotation.x += (-s.z * .35 - raft.rotation.x) * kr;
     raft.rotation.z += (s.x * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
   }
+  const handArgs = {dt:NaN, time:NaN, charge:NaN, reeling:false, casting:NaN, walking:false, hasHookOut:false, motion:NaN, yaw:NaN, pitch:NaN, fov:NaN}; // reused (hands.update keeps nothing); NaN seeds make the number fields double-typed so 0 -> 0.5 never deopts
   function updateCamera(dt) {
     const fov = running ? options.fov : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
     if (running) {
@@ -878,7 +879,9 @@ export function mount(transfer = null) {
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
-    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? out && hook.t > fishWait : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch, fov:camera.fov});
+    const ha = handArgs; ha.dt = dt; ha.time = elapsed; ha.charge = ch; ha.reeling = rod ? out && hook.t > fishWait : reeling && !!castOut(); ha.casting = swing;
+    ha.walking = walking; ha.hasHookOut = !!castOut(); ha.motion = motion; ha.yaw = yaw; ha.pitch = pitch; ha.fov = camera.fov;
+    hands.update(ha);
     camera.updateMatrixWorld(true);
     hands.ropeAnchor().getWorldPosition(handPos);
   }
@@ -895,6 +898,15 @@ export function mount(transfer = null) {
       friend.userData.animate?.(dt, {speed:Math.min(6, Math.hypot(friend.position.x - before.x, friend.position.z - before.z) / dt), swimming:other.swimming, pitch:other.pitch});
     }
   }
+  // Same fields and draws as makeItem(it.id), written in place: no fresh object, and updateItems stays small and monomorphic.
+  function respawnItem(it) {
+    let minZ = Infinity, maxX = 0;
+    for (const t of world.tiles) { if (t[1] < minZ) minZ = t[1]; const ax = Math.abs(t[0]); if (ax > maxX) maxX = ax; }
+    const edge = minZ * 2 - 1, spread = Math.max(11, maxX * 2 + 6);
+    it.token = newToken(); it.type = SPAWN_TABLE[Math.floor(Math.random() * SPAWN_TABLE.length)];
+    it.x = (Math.random() - .5) * spread * 2; it.z = edge - 3 - Math.random() * 17; it.phase = Math.random() * 6;
+  }
+  function onTile(x, z) { const ts = world.tiles; for (let i = 0; i < ts.length; i++) if (ts[i][0] === x && ts[i][1] === z) return true; return false; } // hasTile without a closure; integer args (|0 drops Math.round's -0)
   function updateItems(dt) {
     const heldTokens = heldTokenSet();
     if (role !== 'guest') {
@@ -904,7 +916,7 @@ export function mount(transfer = null) {
       for (const it of world.items) {
         if (heldTokens.has(it.token)) continue; // our hook holds it; don't let it drift away or respawn
         it.z += dt * .22; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
-        if (it.z > end || Math.abs(it.x) > side || hasTile(Math.round(it.x / 2), Math.round(it.z / 2))) { Object.assign(it, makeItem(it.id)); respawned = true; }
+        if (it.z > end || Math.abs(it.x) > side || onTile(Math.round(it.x / 2) | 0, Math.round(it.z / 2) | 0)) { respawnItem(it); respawned = true; }
       }
       if (respawned) syncItems();
     }
