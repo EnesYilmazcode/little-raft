@@ -414,7 +414,12 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
       if (lb instanceof HTMLDialogElement && lb.open) { returnToPause = lb; lb.dataset.fromPause = '1'; }
       return;
     }
-    if (act === 'look') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-look')); return; }
+    if (act === 'look') {
+      close(false); document.dispatchEvent(new CustomEvent('littleraft:open-look'));
+      const lk = document.getElementById('lookDialog'); // like the logbook: closing it comes back to this menu
+      if (lk instanceof HTMLDialogElement && lk.open) { returnToPause = lk; lk.dataset.fromPause = '1'; }
+      return;
+    }
     if (act === 'help' || act === 'crew') {
       const target = document.getElementById(act);
       if (!(target instanceof HTMLDialogElement)) return;

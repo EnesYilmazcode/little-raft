@@ -215,16 +215,19 @@ export function createLookUI({ getState, onChange, onSend, onPause, onResume } =
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     try { dlg.querySelector('.lk-sw [aria-checked=true]')?.focus({ preventScroll: true }); } catch {}
   }
+  // Opened from the pause menu (dataset.fromPause, settings.js): closing goes back to that menu, so no resume.
+  const resumes = fromPause => !fromPause && !document.getElementById('options')?.open;
   function close() {
     if (!isOpen) return;
     isOpen = false;
     flushSend();
+    const fromPause = !!dlg.dataset.fromPause; // read first: settings.js clears it on the close event
     if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } }
-    safe(onResume);
+    if (resumes(fromPause)) safe(onResume);
   }
 
   dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, opt);
-  dlg.addEventListener('close', () => { if (isOpen) { isOpen = false; flushSend(); safe(onResume); } }, opt);
+  dlg.addEventListener('close', () => { if (isOpen) { isOpen = false; flushSend(); if (resumes(!!dlg.dataset.fromPause)) safe(onResume); } }, opt);
   dlg.addEventListener('click', e => {
     const t = e.target;
     if (t?.closest?.('.lk-close') || t?.closest?.('[data-act=done]')) { close(); return; }
