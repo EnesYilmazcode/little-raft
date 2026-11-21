@@ -96,6 +96,16 @@ test('eatLabel', () => {
   assert.equal(V.eatLabel('freshcup'), 'Drink (+40 water)');
   assert.equal(V.eatLabel('saltcup'), 'Drink (-5 water)');
   assert.equal(V.eatLabel('wood'), '');
+  assert.equal(V.eatLabel('honeyfish'), 'Eat (+45 food)'); // [juicer]
+  assert.equal(V.eatLabel('berrycup'), 'Drink (+10 food, +35 water)'); // [juicer]
+});
+
+test('isDrink and every food item is edible [juicer]', async () => {
+  for (const k of ['freshcup', 'berrycup', 'mixcup']) assert.equal(V.isDrink(k), true, k);
+  for (const k of ['cookedfish', 'honeyfish', 'berries']) assert.equal(V.isDrink(k), false, k);
+  assert.equal(V.isDrink('wood'), false);
+  const { ITEMS } = await import(new URL('items.js', base));
+  for (const [id, it] of Object.entries(ITEMS)) if (it.category === 'food') assert.ok(V.isEdible(id), `${id} is edible`);
 });
 
 test('cleanVitals: old saves start full, junk is clamped, a faint wakes as a respawn', () => {

@@ -17,6 +17,10 @@ const ICONS = {
   pillar: '<rect x="9.5" y="5" width="5" height="14" rx=".6"/><path d="M7 3.5h10M7 20.5h10"/><path d="M9.5 8.5l5 2M9.5 14l5 2" stroke-width="1.2" opacity=".75"/>',
   stairs: '<path d="M3 20.5h4v-4h4v-4h4v-4h4v-4h2"/><path d="M3 20.5h18.5V4.5" stroke-width="1.3" opacity=".55"/>',
   roof: '<path d="M2 15.5L21.5 6v3.4L2 19z"/><path d="M6 13.6v3.6M10 11.6v3.6M14 9.7v3.6M18 7.7v3.6" stroke-width="1.1" opacity=".7"/><path d="M5 18v3M18.5 11v10"/><path d="M3 21h18" stroke-width="1.4" opacity=".6"/>',
+  railing: '<path d="M4 4.5v15.5M12 4.5v15.5M20 4.5v15.5"/><path d="M3 7.5h18M3 13.5h18" stroke-width="1.3"/><path d="M2.5 21h19" stroke-width="1.4" opacity=".6"/>',
+  hatch: '<rect x="3.5" y="3.5" width="17" height="17" rx="1"/><path d="M12 5.5v13" stroke-width="1.3"/><path d="M6 9h4M6 15h4M14 9h4M14 15h4" stroke-width="1.1" opacity=".7"/><circle cx="14.6" cy="12" r="1.3" stroke-width="1.1"/>',
+  ladder: '<path d="M7 2.5v19M17 2.5v19"/><path d="M7 6.5h10M7 10.5h10M7 14.5h10M7 18.5h10" stroke-width="1.3"/>',
+  gate: '<path d="M3.5 6v14M20.5 6v14"/><rect x="6.5" y="8" width="11" height="10" rx=".5" stroke-width="1.3"/><path d="M6.5 18l11-10M10.2 8v10M13.8 8v10" stroke-width="1.1" opacity=".75"/><path d="M2.5 21h19" stroke-width="1.4" opacity=".6"/>',
 };
 const FALLBACK_ICON = '<rect x="5" y="5" width="14" height="14" rx="2"/>';
 

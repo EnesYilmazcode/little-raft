@@ -60,7 +60,7 @@ export function createAnimals(ctx) {
   function worldSig(w) {
     let s = decorSig(w.decor);
     const tl = w.tiles; if (Array.isArray(tl)) for (let i = 0; i < tl.length; i++) { const t = tl[i]; if (Array.isArray(t)) s = (s + mix(t[0], t[1], 0x51ed27)) | 0; }
-    const pc = w.pieces; if (Array.isArray(pc)) for (let i = 0; i < pc.length; i++) { const q = pc[i]; if (q && q.l === 0) s = (s + mix(q.i, q.j, strH(q.t) + (q.r & 1) + 0x3c6ef3)) | 0; }
+    const pc = w.pieces; if (Array.isArray(pc)) for (let i = 0; i < pc.length; i++) { const q = pc[i]; if (q && q.l === 0) s = (s + mix(q.i, q.j, strH(q.t) + (q.r & 1) + (q.o === 1 ? 0x2f1 : 0) + 0x3c6ef3)) | 0; } // [buildpack] an open gate re-plans the walk graph
     return s;
   }
   function rebuildGraph() {
