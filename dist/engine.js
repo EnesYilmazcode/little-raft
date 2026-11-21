@@ -252,7 +252,11 @@ export function createEngine(ctx) {
   let unprovide = null, mod = null;
   function provide() {
     const P = globalThis.raftPrompts; if (unprovide || typeof P?.provide !== 'function') return;
-    unprovide = P.provide({ id: 'engine', priority: 1, prompt: () => (mod?.dead || !ctx.running ? null : promptRows(null)) });
+    unprovide = P.provide({ id: 'engine', priority: 1, prompt: pc => {
+      const s = pc?.state; // yield to the built-in pickup / waiting prompts (priority 0): pickups win E in game.js
+      if (mod?.dead || !ctx.running || s?.pickup || (s?.role === 'guest' && !s.networkReady)) return null;
+      return promptRows(null);
+    } });
   }
   return (mod = {
     name: 'engine',

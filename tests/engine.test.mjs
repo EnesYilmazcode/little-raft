@@ -255,3 +255,20 @@ test('review: prompt rows for prompts.js (the visible prompt) match the HTML pro
   ctx.world.decor = [{ type: 'wheel', x: 0, z: 1 }];
   assert.deepEqual(mod.promptRows(wheel)[1], { label: 'No motors yet', muted: true });
 });
+
+test('review: the engine provider yields to the pickup and waiting-for-host prompts', async () => {
+  const T = await import(new URL('vendor/three.module.js', base));
+  let provider = null;
+  globalThis.raftPrompts = { provide: o => { provider = o; return () => {}; } };
+  try {
+    const { ctx } = makeCtx();
+    ctx.T = T; const mod = E.createEngine(ctx); // needs T for its camera-forward scratch vector
+    const v = new T.Vector3(2, .65 - 1.6, 0).normalize();
+    ctx.camera = { position: { x: 0, y: 1.6, z: 0 }, getWorldDirection: o => o.copy(v) };
+    mod.update(1 / 60);
+    assert.ok(Array.isArray(provider.prompt({ state: { role: 'solo' } })), 'aimed at the motor');
+    assert.equal(provider.prompt({ state: { role: 'solo', pickup: { type: 'wood' } } }), null);
+    assert.equal(provider.prompt({ state: { role: 'guest', networkReady: false } }), null);
+    mod.dispose();
+  } finally { delete globalThis.raftPrompts; }
+});
