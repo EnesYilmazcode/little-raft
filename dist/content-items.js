@@ -70,6 +70,9 @@ export const CONTENT_ITEMS = Object.freeze({
   // driftboard paddleboard (paddleboard.js): launched from the bag, never lost
   driftboard: Object.freeze({ kind: 'driftboard', name: 'Driftboard', icon: 'icon-driftboard', maxStack: 1, tool: false, placeholder: false }),
   flagpole: item('flagpole', 'Flagpole', 'icon-flag', true), // raft flag (flags.js); placeholder: no icon-flag sprite, item-svg.js draws it
+  dryrack: item('dryrack', 'Drying Rack', 'icon-dryrack', true), // [dryrack] drying-rack.js; item-svg.js draws the icons
+  driedfish: item('driedfish', 'Dried Fish', 'icon-driedfish', true, 30), kelpcrisp: item('kelpcrisp', 'Kelp Crisps', 'icon-kelpcrisp', true, 30), // [dryrack]
+  driedberries: item('driedberries', 'Dried Berries', 'icon-driedberries', true, 30), sharkjerky: item('sharkjerky', 'Shark Jerky', 'icon-sharkjerky', true, 30), // [dryrack]
 });
 
 // Same shape as recipe() in inventory-state.js.
@@ -128,8 +131,9 @@ export const CONTENT_RECIPES = Object.freeze({
   // driftboard paddleboard (paddleboard.js)
   driftboard: recipe('driftboard', 'Driftboard', 1, { wood: 6, plastic: 3, rope: 2 }),
   flagpole: recipe('flagpole', 'Flagpole', 1, { wood: 4, rope: 2, leaf: 2 }), // raft flag (flags.js)
+  dryrack: recipe('dryrack', 'Drying Rack', 1, { wood: 4, rope: 3, leaf: 2 }), // [dryrack]
 });
 
 // Placeable decor added by content modules (models come from content.decorModel()).
-export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat', 'flagpole', 'gametable', 'courseflag', 'scoreboard', 'goatpen', 'stormrod', 'stormlamp', 'stormglass']);
-export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2, flagpole: .1, gametable: .45, courseflag: .15, scoreboard: .3, goatpen: .4, stormrod: .15, stormlamp: .12, stormglass: .1 });
+export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat', 'flagpole', 'gametable', 'courseflag', 'scoreboard', 'goatpen', 'stormrod', 'stormlamp', 'stormglass', 'dryrack']); // [dryrack]
+export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2, flagpole: .1, gametable: .45, courseflag: .15, scoreboard: .3, goatpen: .4, stormrod: .15, stormlamp: .12, stormglass: .1, dryrack: .4 }); // [dryrack]

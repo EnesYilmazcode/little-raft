@@ -42,6 +42,10 @@ export const FOOD = {
   coconutcup:      {food:6,    water:45, returns:'cup'},  // [juicer]
   mixcup:          {food:14,   water:38, returns:'cup'},  // [juicer]
   milk:            {food:10,   water:25, returns:'bucket', drink:true}, // Bramblegoat milk; the pail comes back
+  driedfish:       {food:10,   water:0},  // [dryrack]
+  kelpcrisp:       {food:5,    water:0},  // [dryrack]
+  driedberries:    {food:6,    water:1},  // [dryrack]
+  sharkjerky:      {food:12,   water:0},  // [dryrack]
 };
 
 const num = (x, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
