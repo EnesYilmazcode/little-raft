@@ -1197,3 +1197,11 @@ No regressions. Intended differences:
 - Lower the net rope segment count (about 5k tris).
 - Measure decor and deck chunk culling on rafts of 144+ tiles.
 - Check whether three.js's `setValueV3f` boxing (8–11 KB/frame) can be avoided.
+
+## 2026-11-21 · integrator round 6 (integrator A)
+- Merged clean: loop-perf-0823, loop-features-0831 (finished juicer), raft-tech.
+- Lane agents (respecting STATUS.md claims by integrators B/C/D): features 0648, 0735 (power, fish trap, display shelf), 0749 (camera/album, crew tasks, recycler, photo frame, task board), 0753-zfs (scarecrow, fireworks, zipline); visuals 0558 (record only, stale copy), 0748 (crisp horizon, deck water, hand shading), 0843 (outlined icons, notes card). Fixed along the way: bake.js baked the fishing rod's instanced guide rings at unit size.
+- Skipped: loop-perf-0720 (stale rewritten copy of work already in raft-master), loop-fidelity-0747 (second needs/shark system next to vitals), loop-ux-0743 (needs worker rebase onto the wood crafting panel). loop-fidelity-0804 is resolved and tested on merge/loop-fidelity-0804 for its claimant (B).
+- PR #5 review (2 reviewers, comments on the PR). Fixed: juicer hopper never added to the model; string lights turned on the point-light pool (19 shader links mid-game); photo frame cast 9 shadows; picking up a linked glide post dropped its rope (posts now refuse pickup); misleading "Empty it first" text. The photo album's exit-lock fix had already landed.
+- Gate at fd3724d: 1398/1398, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause. Perf vs main: 99-103 vs 185-197 ms, 45-49 vs 46-52 draw calls.
+- Merged PR #5 into main (c3a29df).
