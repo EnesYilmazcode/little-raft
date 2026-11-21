@@ -45,6 +45,15 @@ export function escReleasePlan({ running, pending, fromShell = false } = {}) {
   return { preventDefault: !fromShell && !!running, relock: !pending ? null : fromShell ? 'now' : 'defer' };
 }
 
+// body.relock (no cursor, no resume hint) is a short pending state after a panel closes unlocked. It ends
+// when the lock arrives, a pointerlockchange leaves the page unlocked, pointerlockerror fires, or after
+// timeout ms, so a refused or revoked relock always shows the resume hint again.
+export const RELOCK_TIMEOUT = 600;
+export function relockPending({ locked = false, event = null, elapsed = 0, timeout = RELOCK_TIMEOUT } = {}) {
+  if (locked || event === 'unlocked' || event === 'error') return false;
+  return elapsed < timeout;
+}
+
 // Escape bookkeeping for the pause menu's keyup fallback (browsers often swallow the keydown that
 // ends pointer lock). A press whose keydown was handled never pauses on keyup, however long it is
 // held: key-repeat keeps it handled. Lock losses the page caused itself are not recorded.

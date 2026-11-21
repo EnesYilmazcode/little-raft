@@ -4,7 +4,7 @@
 // In the desktop app the main process claims Escape and calls window.raftEscape() with a user gesture,
 // so closing a menu can relock the mouse without a click.
 
-import { createEscGate } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { createEscGate, relockPending, RELOCK_TIMEOUT } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 
 const STORAGE_KEY = 'little-raft-settings';
 const DIALOG_ID = 'options';
@@ -301,12 +301,30 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (!dialog.open && !otherDialogs().length && gameActive()) { event.preventDefault(); open(); }
   }), { capture: true, signal: ac.signal });
 
+  // body.relock is a short pending state: a granted-then-revoked or refused relock brings the resume hint back.
+  let relockTimer = 0;
+  function endRelock(event) {
+    const locked = !!document.pointerLockElement;
+    if (relockPending({ locked, event, elapsed: event ? 0 : RELOCK_TIMEOUT })) return;
+    clearTimeout(relockTimer); relockTimer = 0;
+    document.body.classList.remove('relock');
+  }
+  function startRelock() {
+    document.body.classList.add('relock');
+    clearTimeout(relockTimer); relockTimer = setTimeout(guard(() => endRelock(null)), RELOCK_TIMEOUT);
+  }
+  ac.signal.addEventListener('abort', () => clearTimeout(relockTimer));
+
   // Remember lock loss only; never pause from lock loss alone (build mode, menus release it on purpose).
   document.addEventListener('pointerlockchange', guard(() => {
-    if (document.pointerLockElement) document.body.classList.remove('relock');
-    // A release caused by the page opening a menu (inventory, crew, help) is not an Escape.
-    else if (gameActive() && !dialog.open) esc.lockLost(performance.now(), { selfCaused: otherDialogs().length > 0 });
+    if (document.pointerLockElement) endRelock('locked');
+    else {
+      endRelock('unlocked');
+      // A release caused by the page opening a menu (inventory, crew, help) is not an Escape.
+      if (gameActive() && !dialog.open) esc.lockLost(performance.now(), { selfCaused: otherDialogs().length > 0 });
+    }
   }), sig);
+  document.addEventListener('pointerlockerror', guard(() => endRelock('error')), sig);
 
   // A menu closed while playing but the browser refused to relock (Escape is not a user gesture):
   // hide the cursor and the centred hint; the next click relocks.
@@ -316,7 +334,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (d !== dialog && d === returnToPause) { returnToPause = null; delete d.dataset.fromPause; if (gameActive()) { open(); return; } }
     if (d.id !== 'inventory' && d !== dialog) return;
     setTimeout(guard(() => {
-      if (gameActive() && !document.pointerLockElement && !document.querySelector('dialog[open]')) document.body.classList.add('relock');
+      if (gameActive() && !document.pointerLockElement && !document.querySelector('dialog[open]')) startRelock();
     }), 150);
   }), { capture: true, signal: ac.signal });
   window.addEventListener('pointerdown', () => document.body.classList.remove('relock'), { capture: true, signal: ac.signal });

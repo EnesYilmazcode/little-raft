@@ -19,3 +19,13 @@ test('LOCK-1: the desktop shell release relocks synchronously (keeps its user ge
 test('LOCK-1: Escape keyups on the title screen are left alone', () => {
   assert.equal(rules.escReleasePlan({ running: false, pending: false }).preventDefault, false);
 });
+
+test('LOCK-2: body.relock ends on lock loss, lock error and after the timeout', () => {
+  assert.equal(rules.relockPending({ elapsed: 0 }), true);
+  assert.equal(rules.relockPending({ elapsed: 300 }), true);
+  assert.equal(rules.relockPending({ event: 'unlocked', elapsed: 50 }), false, 'granted then revoked');
+  assert.equal(rules.relockPending({ event: 'error', elapsed: 50 }), false, 'refused');
+  assert.equal(rules.relockPending({ elapsed: rules.RELOCK_TIMEOUT }), false, 'timed out');
+  assert.equal(rules.relockPending({ locked: true }), false, 'lock arrived');
+  assert.ok(rules.RELOCK_TIMEOUT >= 400 && rules.RELOCK_TIMEOUT <= 1000);
+});
