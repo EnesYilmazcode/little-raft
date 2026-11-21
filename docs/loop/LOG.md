@@ -240,3 +240,11 @@ Two integrator sessions are running on claude/raft-master; each merges the other
 - Next: lane agents merging the newest loop-features/perf/ux/visuals/fidelity and raft-content/tests/integration + lane-placement.
 - Still skipped: raft-reference (scraped commercial-game stills). Farming (farming.js) is merged but not reachable in play:
   it and the watering lane drive the same palm planter; it needs a design decision.
+
+## 2026-11-21 · integrator round 3
+- Clean merges: raft-tests, raft-tech, loop-features-202611210648, fleet-tech icons/perf/procedural-models/water/audio/foliage.
+- One subagent per conflicting branch in its own worktree: merged raft-integration (10-slot hotbar, throw ring, ocean foam, offline fonts),
+  raft-content, loop-ux-202611210603 (bag keys, craftable-first sort, ingredient sources, pinned tracker), loop-features-202611210548 (paint, sleep, engine).
+  Skipped loop-perf-0548/0540, loop-visuals-0451, loop-ux-0547, loop-features-0534 (see STATUS).
+- Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
+- Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
