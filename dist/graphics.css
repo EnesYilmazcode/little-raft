@@ -312,7 +312,7 @@ header{z-index:6}
 }
 
 /* Throw charge: an unlabeled 2px arc around the reticle, filled clockwise by --c (0..1) */
-#chargeMeter{position:fixed;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;pointer-events:none;z-index:4;background:conic-gradient(#fffe calc(var(--c,0) * 360deg),#ffffff2e 0);-webkit-mask:radial-gradient(closest-side,transparent calc(100% - 2.5px),#000 calc(100% - 2px));mask:radial-gradient(closest-side,transparent calc(100% - 2.5px),#000 calc(100% - 2px));filter:drop-shadow(0 0 1px #0008)}
+#chargeMeter{--d:max(36px,7vh);--b:max(4px,1vh);position:fixed;left:50%;top:50%;width:var(--d);height:var(--d);margin:calc(var(--d) / -2) 0 0 calc(var(--d) / -2);border-radius:50%;pointer-events:none;z-index:4;background:conic-gradient(from 0deg,#f6e4c9 calc(var(--c,0) * 360deg),#ffffff38 0);-webkit-mask:radial-gradient(closest-side,transparent calc(100% - var(--b) - .5px),#000 calc(100% - var(--b)));mask:radial-gradient(closest-side,transparent calc(100% - var(--b) - .5px),#000 calc(100% - var(--b)));filter:drop-shadow(0 0 1.5px #0009)}
 .close .icon{width:20px;height:20px}.guide-note{font-size:12px}#resumeHint{max-width:90vw;white-space:normal;text-align:center}
 
 body.playing header{justify-content:flex-end}body.playing .brand,body.playing .goal{display:none}
