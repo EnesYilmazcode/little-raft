@@ -56,9 +56,10 @@ export function createControls(g) {
   }
 
   // Call once per frame before physics. Returns the shaped input for physics.update().
-  function movement(dt, active, physics) {
+  // lookDt: the real (uncapped) frame time for gamepad look, so stick turn rate holds below 20fps; dt shapes movement.
+  function movement(dt, active, physics, lookDt = dt) {
     if (radial?.isOpen && g.isBlocked?.()) radial.close(); // a dialog opened over the radial: cancel, never pick behind it
-    input.update(dt);
+    input.update(lookDt);
     const {dx, dy} = input.lookDelta();
     if (radial?.isOpen) { // look input steers a virtual stick (works for right stick and locked mouse)
       input.hotbarStep(); input.hotbarSlot(); // drain: bumpers pressed while choosing must not fire on close

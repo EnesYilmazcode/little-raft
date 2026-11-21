@@ -975,7 +975,7 @@ export function mount(transfer = null) {
   function releaseLock() { if (isLocked()) exitLock(document); } // marked page-initiated (lock-rules.js)
   function look(dx, dy, k) {
     k /= viewZoom; // [spyglass] slower look while zoomed
-    yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT);
+    yaw -= dx * k; pitch = clamp(pitch - dy * k, -PITCH_LIMIT, PITCH_LIMIT); // no invert here: callers own it (mouse = options.invertY via input.js, pad = padInvertY)
     if (running && !hintsDone.has('look') && (lookTaught += Math.hypot(dx, dy) * k) >= LOOK_DONE_RAD) hintDone('look');
   }
   function clearInput() { keys = {}; charging = null; reeling = false; down = null; lookFilter.reset(); controls?.clear(); fc?.releaseInput(); } // controls lane: also release the input layer
@@ -1512,8 +1512,10 @@ export function mount(transfer = null) {
     if (pr != null && renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr); // each call resizes the canvas and its MSAA buffers
     setShadows(renderer.shadowMap, sun, options.shadows !== false && !!l?.shadows); // keeps castShadow on: no program change
   }
+  const invertDy = dy => options.invertY ? -dy : dy; // legacy / drag mouse paths (input.js applies it for the action map)
+  function syncInvert() { const v = !!options.invertY; if (controls && controls.map.settings.invertY !== v) controls.map.setSetting('invertY', v); } // one mouse invert source: Settings -> action map
   function applyOptions(next) {
-    options = next; applyVolume(); soundLabel(); // loop-ux: label notes a 0% volume
+    options = next; applyVolume(); soundLabel(); syncInvert(); // loop-ux: label notes a 0% volume
     if (quality && quality.info.preset !== next.graphics) quality.setCap(next.graphics);
     applyUserGraphics();
   }
@@ -1579,7 +1581,7 @@ export function mount(transfer = null) {
   function movePlayer(frameDt, input) {
     splitSteps(frameDt, .05, .25, steps); // real frame time in equal steps; a long stall must not teleport the player
     const dt = steps.n * steps.step, laneDt = Math.min(dt, .05); // lane hooks keep the old capped frame step
-    const ci = controls?.movement(laneDt, running && input, physics); // controls lane: polls input, applies look, shapes movement
+    const ci = controls?.movement(laneDt, running && input, physics, dt); // dt: pad look uses the real frame time; controls lane: polls input, applies look, shapes movement
     if (!running) { walking = false; return; }
     const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
     if (building) { climbIn.forward = fwd; climbIn.jump = !!(ci ? ci.jump : input && held('Space')); climbIn.yaw = yaw; } // [buildpack] reused, no per-frame object
@@ -1895,7 +1897,7 @@ export function mount(transfer = null) {
     if (building?.menu.isOpen) { if (isLocked()) building.menu.move(e.movementX, e.movementY); else building.menu.hoverAt(e.clientX, e.clientY); return; } // building-pieces lane hook
     if (controls || !isLocked() || uiBlocked()) return; // controls lane: input.js owns mouse look
     const [dx, dy] = lookFilter.filter(e.movementX, e.movementY);
-    look(dx, dy, LOOK_SENSITIVITY * options.sensitivity);
+    look(dx, invertDy(dy), LOOK_SENSITIVITY * options.sensitivity);
   });
   on(canvas, 'pointerdown', e => {
     if (e.button === 2 && running && building && heldKind() === 'hammer' && !uiBlocked()) { building.menu.open(); return; } // building-pieces lane hook
@@ -1921,7 +1923,7 @@ export function mount(transfer = null) {
     if (!down || isLocked()) return;
     const dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 4) { down.moved = true; if (charging && charging.x !== null) charging = null; } // a drag is a look, not a throw
-    if (down.moved) { look(dx, dy, dragLookScale(DRAG_SENSITIVITY, options.sensitivity)); down.x = e.clientX; down.y = e.clientY; }
+    if (down.moved) { look(dx, invertDy(dy), dragLookScale(DRAG_SENSITIVITY, options.sensitivity)); down.x = e.clientX; down.y = e.clientY; }
   });
   on(window, 'pointerup', e => { if (e.button === 2 && building?.menu.isOpen) building.menu.close(true); }); // building-pieces lane hook
   on(canvas, 'pointerup', e => {
@@ -1997,7 +1999,7 @@ export function mount(transfer = null) {
       menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard
       useDown:() => { if (fc?.pointerDown()) return; if (reelCast('click')) return; if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
       useUp:() => { reeling = false; if (fc?.pointerUp()) return; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; fc?.releaseInput(); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
-    signal.addEventListener('abort', () => controls?.dispose());
+    signal.addEventListener('abort', () => controls?.dispose()); syncInvert();
   } catch (e) { console.error('controls lane failed to start', e); controls = null; }
   on(document, 'visibilitychange', () => { quality?.reset(); });
   on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });

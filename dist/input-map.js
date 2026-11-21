@@ -50,7 +50,7 @@ export const DEFAULT_BINDINGS = Object.freeze({
   inventory: b(['Tab', 'KeyI'], ['Pad3']),
   rotate: b(['KeyR'], ['Pad11']),
   pause: b(['Escape'], ['Pad9']),
-  ...Object.fromEntries(hotbar.map((a) => [a.id, b([`Digit${a.id.slice(6)}`])])),
+  ...Object.fromEntries(hotbar.map((a) => [a.id, b([`Digit${a.id.slice(6)}`, `Numpad${a.id.slice(6)}`])])),
   hotbarNext: b(['WheelDown'], ['Pad5']),
   hotbarPrev: b(['WheelUp'], ['Pad4']),
   buildMenu: b([], ['Pad12']),
@@ -137,6 +137,12 @@ export class ActionMap {
     // old default crouch was Ctrl+C; saves that still hold exactly that move to the new default (customised ones stay)
     const ck = src.crouch?.keys;
     if (Array.isArray(ck) && ck.length === 2 && ck[0] === 'ControlLeft' && ck[1] === 'KeyC') src.crouch = { ...src.crouch, keys: ['KeyC'] };
+    // saves from before Numpad hotbar keys hold [DigitN, null]: give the empty slot its new default unless another action owns it
+    const used = new Set(Object.values(src).flatMap((e) => (Array.isArray(e?.keys) ? e.keys : [])));
+    if (!data?.numpad) for (const a of hotbar) {
+      const e = src[a.id], k = Array.isArray(e?.keys) ? e.keys : null, [digit, np] = DEFAULT_BINDINGS[a.id].keys;
+      if (!k?.[1]) src[a.id] = { ...e, keys: [k ? k[0] ?? null : digit, used.has(np) ? null : np] };
+    }
     for (const id of Object.keys(src)) if (ACTION_IDS.has(id)) fill(this.bindings[id], src[id]);
     this.settings = { ...SETTINGS_DEFAULTS };
     const s = data?.settings && typeof data.settings === 'object' ? data.settings : {};
@@ -241,7 +247,7 @@ export class ActionMap {
   serialize() {
     const bindings = {};
     for (const a of ACTIONS) bindings[a.id] = this.bindingsFor(a.id);
-    return { v: 1, bindings, settings: { ...this.settings } };
+    return { v: 1, numpad: true, bindings, settings: { ...this.settings } }; // numpad: hotbar Numpad defaults already applied
   }
 
   save() {
