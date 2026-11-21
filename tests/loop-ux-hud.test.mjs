@@ -164,3 +164,11 @@ test('E3 the shared stack is published and the prompt feed posts into it', () =>
   assert.match(p, /win\.raftPickupFeed/); assert.match(p, /sink\.note\(t\)/);
   assert.match(src('style.css'), /\.pf-emote i\{/);
 });
+
+// ---------------------------------------------------------------- E4 help text matches the bag's keys
+test('E4 help says the bag closes with I, E or Esc (Tab moves focus inside it)', () => {
+  const li = /<li><kbd>Tab<\/kbd><span><b>Inventory\.<\/b>[^<]*<\/span><\/li>/.exec(src('index.html'))?.[0];
+  assert.ok(li, 'inventory help line');
+  assert.match(li, /I, E or Esc closes it/);
+  assert.doesNotMatch(li, /Tab or Esc/);
+});
