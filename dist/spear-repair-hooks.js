@@ -5,8 +5,8 @@
 // ctx (all getters so hot swaps and role changes are picked up):
 //   T, camera(), raft(), world(), physics(), other(), localBag(), role(), elapsed(), shark()
 //   action(a), emit(e, to), notice(text), beep(f), setSwing(v)
-import { isSpear, spearDamage, canThrust, thrust, wearSpearSlot, SPEAR_REACH } from './spear.js';
-import { hasTileAt, repairTile, hpBarText, tileHpOf, TILE_MAX_HP, TILE_REPAIR_COST } from './repair.js';
+import { isSpear, spearDamage, canThrust, thrust, wearSpearSlot, SPEAR_REACH } from './spear.js?build=v3-survival-ae77fa84ac2b';
+import { hasTileAt, repairTile, hpBarText, tileHpOf, TILE_MAX_HP, TILE_REPAIR_COST } from './repair.js?build=v3-survival-ae77fa84ac2b';
 import { inReach, BUILD_REACH, GUEST_REACH_SLACK } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 
 const POKE_TIME = 0.32; // seconds of the visible jab (cooldown is longer: SPEAR_COOLDOWN)

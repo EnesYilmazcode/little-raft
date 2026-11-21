@@ -14,7 +14,7 @@ import { createBrush } from './brush-model.js?build=v3-survival-ae77fa84ac2b'; /
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
-import { createSpear } from './spear-model.js'; // [spear-repair]
+import { createSpear } from './spear-model.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);

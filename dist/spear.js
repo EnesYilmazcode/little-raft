@@ -1,6 +1,6 @@
 // Spear rules (thrust timing, damage, wear). Pure ES module: no DOM, no THREE.
 // Numbers: docs/loop/research/fidelity-r1-shark.md (wooden 5 dmg / 20 uses, metal 10 dmg / 40 uses).
-import { SPEAR_DAMAGE, wearPerUse, toolRole } from './items.js';
+import { SPEAR_DAMAGE, wearPerUse, toolRole } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 export const SPEAR_COOLDOWN = 0.7; // seconds between thrusts
 export const SPEAR_REACH = 2.8;    // metres
