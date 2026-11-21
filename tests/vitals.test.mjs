@@ -106,3 +106,13 @@ test('cleanVitals: old saves start full, junk is clamped, a faint wakes as a res
   assert.deepEqual(V.saveVitals({hp:40.04, food:12.36, water:99.99}), {hp:40, food:12.4, water:100});
   assert.deepEqual(V.cleanVitals(JSON.parse(JSON.stringify(V.saveVitals(V.newVitals({hp:3, food:4, water:5}))))), {hp:3, food:4, water:5});
 });
+
+test('migrateSnapshot keeps engine-only kinds (cups) when given extraStack', async () => {
+  const { migrateSnapshot } = await import(new URL('items.js', base));
+  const slots = [{ kind: 'freshcup', count: 7 }, { kind: 'cookedfish', count: 2 }, { kind: 'saltcup', count: 1 }, { kind: 'bogus', count: 1 }];
+  const stack = k => ({ freshcup: 5, saltcup: 5, cup: 5 })[k] ?? 0;
+  const m = migrateSnapshot({ slots, selected: 0 }, stack);
+  assert.deepEqual(m.slots.slice(0, 5), [{ kind: 'freshcup', count: 5 }, { kind: 'cookedfish', count: 2 }, { kind: 'saltcup', count: 1 }, { kind: 'freshcup', count: 2 }, null]);
+  assert.equal(migrateSnapshot({ slots, selected: 0 }).slots[0], null); // without it, unknown kinds are still dropped
+  assert.equal(migrateSnapshot({ slots, selected: 0 }, () => { throw new Error('x'); }).slots[0], null);
+});

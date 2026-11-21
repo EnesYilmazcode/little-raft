@@ -97,7 +97,7 @@ const LIST = [
   item('seaweed', 'Seaweed', 'material', { iconTint: '#4f9a5c',
     tip: 'Slippery seaweed tangled in a barrel. Dried out, it burns slow and gentle as fuel.' }),
   item('fish', 'Fish', 'food', { icon: 'icon-fish', placeholder: false,
-    tip: 'A shiny catch from your fishing rod. Grill it for a tasty treat.' }),
+    tip: 'A shiny catch from your fishing rod. Edible raw, but salty: grill it to fill up properly.' }),
 
   // ----- refined (hand crafted or station) -----
   item('rope', 'Rope', 'refined', { icon: 'icon-net', placeholder: true, iconTint: '#d9c38c',
@@ -147,7 +147,7 @@ const LIST = [
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
     recipe: cook('grill', 'fish', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
-    tip: 'A cosy, smoky snack. Nobody is hungry here, but the seagull would love a treat.' }),
+    tip: 'A cosy, smoky meal. Click with it in hand to eat (+35 food).' }),
 
   // ----- build / decor (placeable on raft tiles) -----
   item('bench', 'Bench', 'decor', { icon: 'icon-repair', placeholder: true, placeable: true,
@@ -410,13 +410,17 @@ function resolveKind(kind) {
  * fit is dropped), tool durability filled/clamped to 0..100, non-tool
  * durability removed, duplicate ids removed, `selected` kept when valid.
  * Non-object input returns null (new Bag(null) = fresh starter bag).
+ * `extraStack(kind)` (optional) keeps non-catalogue kinds the engine still knows (cups, purifier…):
+ * it returns their max stack (> 0) or 0/undefined to drop them.
  */
-export function migrateSnapshot(snap) {
+export function migrateSnapshot(snap, extraStack = null) {
   if (!snap || typeof snap !== 'object' || Array.isArray(snap)) return null;
   const src = Array.isArray(snap.slots) ? snap.slots : [];
   const slots = new Array(SLOT_COUNT).fill(null);
   const overflow = [];
   const ids = new Set();
+  const extra = (k) => { if (typeof extraStack !== 'function' || typeof k !== 'string' || !k) return 0; let n; try { n = Math.floor(num(extraStack(k))); } catch { return 0; } return Number.isFinite(n) && n > 0 ? n : 0; };
+  const stackOf = (k) => (isItem(k) ? ITEMS[k].stack : extra(k));
   const durOf = (raw) => {
     const d = num(raw);
     return raw === undefined || raw === null || !Number.isFinite(d) ? MAX_DURABILITY : Math.min(MAX_DURABILITY, Math.max(0, d));
@@ -424,14 +428,13 @@ export function migrateSnapshot(snap) {
   for (let i = 0; i < src.length; i++) {
     const raw = src[i];
     if (!raw || typeof raw !== 'object') continue;
-    const kind = resolveKind(raw.kind);
+    const kind = resolveKind(raw.kind) ?? (extra(raw.kind) ? raw.kind : null);
     let count = toCount(raw.count);
     if (!kind || count === 0) continue;
-    const it = ITEMS[kind];
     const base = { kind };
-    if (it.tool) base.durability = durOf(raw.durability);
+    if (isItem(kind) && ITEMS[kind].tool) base.durability = durOf(raw.durability);
     if (typeof raw.id === 'string' && raw.id && !ids.has(raw.id)) { ids.add(raw.id); base.id = raw.id; }
-    const put = Math.min(count, it.stack);
+    const put = Math.min(count, stackOf(kind));
     if (i < SLOT_COUNT) slots[i] = { ...base, count: put };
     else overflow.push({ ...base, count: put });
     count -= put;
@@ -441,7 +444,7 @@ export function migrateSnapshot(snap) {
     }
   }
   for (const o of overflow) {
-    const max = ITEMS[o.kind].stack;
+    const max = stackOf(o.kind);
     let left = o.count;
     if (max > 1) {
       for (const s of slots) {
