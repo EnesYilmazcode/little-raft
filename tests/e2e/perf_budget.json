@@ -12,13 +12,19 @@
   "  Observed hitches 0 (threshold resolved to 1067-2568 ms depending on box load) -> 2. Absolute timings (fps, scriptMsPerFrame, frameIntervalMs) are reported, never budgeted.",
   "  minFrames: observed 162-428 -> 30 (only catches a stalled render loop).",
   "To recalibrate: run `python3.13 tests/e2e/perf_gate.py --dist dist --budget <file with only the session block> --out <dir>` 3-4 times,",
-  "take the max of each metric from <dir>/perf_gate.json and add ~20-25% (counts) or ~3-5x (heap/DOM/GL growth, which is near zero)."
+  "take the max of each metric from <dir>/perf_gate.json and add ~20-25% (counts) or ~3-5x (heap/DOM/GL growth, which is near zero).",
+  "2026-11-21 recalibration with Math.random seeded (seed 1): 5 back-to-back runs at load ~15 gave drawCalls p50 543-552, p95 554-556, max 557-558,",
+  "  triangles p95 264k-266k; 2 concurrent runs + 2 busy-loop cores (load 17-27) gave p95 557-571, max 559-571, tris p95 267k-276k, 0 hitches.",
+  "  Draw/triangle budgets tightened to ~+12-19% over that (p50 620, p95 640, max 680, tris 310k): the old +20% headroom missed a deliberate",
+  "  +150-mesh (+22% draws) regression. Unseeded (--no-seed) runs (observed 496-583) also fit, with less margin; the gate defaults to seed 1.",
+  "  3 concurrent runs at load ~25 produced 1 hitch (a ~3 s OS-scheduling spike); hitch-only failures are therefore confirmed by one rerun (--retries)."
  ],
- "session": {"durationS": 90, "warmupS": 6},
- "drawCalls": {"p50": 680, "p95": 700, "max": 800},
- "triangles": {"p95": 360000},
+ "session": {"durationS": 90, "warmupS": 6, "warmupFrames": 15, "maxExtendS": 120},
+ "drawCalls": {"p50": 620, "p95": 640, "max": 680},
+ "triangles": {"p95": 310000},
  "growth": {"heapMB": 4, "heapMBLateHalf": 2, "domNodes": 50, "listeners": 10, "glObjects": 200, "glObjectsLateHalf": 20},
  "webglContexts": 1,
  "longTasks": {"hitchMinMs": 500, "hitchFactor": 4, "hitches": 2},
- "minFrames": 30
+ "minFrames": 30,
+ "stallS": 20
 }
