@@ -236,7 +236,7 @@ export function mount(transfer = null) {
     }
     const progress = cleanProgress(v);
     const out = {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
-      hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory), signal:cleanSignal(v.signal), ext:cleanExt(v.ext), pieces:cleanPieces(v.pieces, tiles), sailing:cleanSailing(v.sailing), // content + building-pieces + sailing hooks
+      hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory), signal:cleanSignal(v.signal), ext:cleanExt(v.ext), pieces:cleanPieces(v.pieces, tiles), sailing:cleanSailing(v.sailing, Math.random), // content + building-pieces + sailing hooks (Math.random: a world with no sailing yet rolls its fixed wind once)
       notes:progress.notes, achievements:progress.achievements, vitals:v.vitals ? cleanVitals(v.vitals) : null, // [vitals] old saves: null -> start full
       tileHp:cleanTileHp(v.tileHp, tiles), tileArmor:cleanTileArmor(v.tileArmor, tiles), shark:cleanShark(v.shark), nets, // [nets] // [armor]
       // shark lane: foundation HP + saved shark (old saves: full HP, fresh 300 s timer)
@@ -246,7 +246,7 @@ export function mount(transfer = null) {
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
     return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => (d.crop ? {...d, crop:cleanCrop(d.crop)} : {...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})}, pieces:Array.isArray(w.pieces) ? w.pieces.map(p => ({...p})) : [],
-      fish:isInt(w.fish) ? w.fish : 0, collected:isInt(w.collected) ? w.collected : 0, signal:cleanSignal(w.signal), ext:cleanExt(w.ext), sailing:cleanSailing(w.sailing), // content + sailing hooks
+      fish:isInt(w.fish) ? w.fish : 0, collected:isInt(w.collected) ? w.collected : 0, signal:cleanSignal(w.signal), ext:cleanExt(w.ext), sailing:cleanSailing(w.sailing, Math.random), // content + sailing hooks
       ...cleanProgress(w), // fresh, validated notes/achievements arrays
       tileHp:cleanTileHp(w.tileHp, w.tiles), tileArmor:cleanTileArmor(w.tileArmor, w.tiles), shark:cleanShark(w.shark), nets:copyNets(w.nets), // shark lane; [armor]
       ...copyWatering(w), ...copyRain(w)};

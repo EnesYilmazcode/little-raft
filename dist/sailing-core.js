@@ -10,10 +10,15 @@ export const SAIL = Object.freeze({
   CURRENT_X: 0, CURRENT_Z: 0.30, // constant ocean current (m/s), same as baseline debris drift (+z)
   TAU_UP: 4, TAU_DOWN: 3,   // velocity easing time-constants (s): speeding up / slowing down
   MAX_DT: 0.1,
-  WIND_RATE: 0.05,          // max wind direction change (rad/s)
-  WIND_SWING: Math.PI / 3,  // re-rolled target = windDir ± up to this ...
-  WIND_LIMIT: Math.PI * 100 / 180, // ... then clamped to ±100° of +z so wind and current roughly agree
-  WIND_STR_TAU: 20,         // windStr eases toward windStrTarget (s)
+  // Raft: the wind never changes. Its direction is rolled once per world (within ±WIND_SPREAD of +z, so wind and
+  // current roughly agree), saved, and then held; the strength sits at WIND_STEADY.
+  WIND_FIXED: true,
+  WIND_SPREAD: Math.PI / 6,
+  WIND_STEADY: 0.9,
+  WIND_RATE: 0.05,          // legacy wander (WIND_FIXED false): max wind direction change (rad/s)
+  WIND_SWING: Math.PI / 3,  // legacy: re-rolled target = windDir ± up to this ...
+  WIND_LIMIT: Math.PI * 100 / 180, // ... then clamped to ±100° of +z
+  WIND_STR_TAU: 20,         // windStr eases toward windStrTarget (s); old saves settle onto WIND_STEADY this way
   WIND_MIN: 0.55, WIND_MAX: 1,
   WIND_CLOCK_MIN: 70, WIND_CLOCK_MAX: 140, WIND_CLOCK_CAP: 200,
   PADDLE_IMPULSE: 0.25, PADDLE_CAP: 1.1, PADDLE_COOLDOWN: 0.8, // paddling alone never exceeds PADDLE_CAP
@@ -28,7 +33,7 @@ export const SAIL = Object.freeze({
 });
 
 const DEFAULTS = Object.freeze({
-  v: 1, windDir: 0.6, windStr: 0.8, windTarget: 0.6, windStrTarget: 0.8, windClock: 100, heading: 0,
+  v: 1, windDir: 0.4, windStr: 0.9, windTarget: 0.4, windStrTarget: 0.9, windClock: 100, heading: 0,
   raised: false, anchored: false, vx: 0, vz: 0, wx: 0, wz: 0, gx: 0, gz: 0,
 });
 
@@ -48,12 +53,22 @@ export function wrapAxis(v, W) {
   return v - p * Math.floor((v + W) / p);
 }
 
-export function defaultSailing() { return { ...DEFAULTS }; }
+/** Fresh state. rng (optional, () => [0,1)) rolls this world's fixed wind direction within ±WIND_SPREAD of +z. */
+export function defaultSailing(rng) {
+  const s = { ...DEFAULTS };
+  if (typeof rng === 'function') {
+    let r = NaN;
+    try { r = rng(); } catch { /* keep the default */ }
+    if (fin(r)) s.windDir = s.windTarget = clamp(r * 2 - 1, -1, 1) * SAIL.WIND_SPREAD;
+  }
+  return s;
+}
 
-/** Validator / migrator: always returns a fresh object with only the documented keys. Never throws. */
-export function cleanSailing(v) {
+/** Validator / migrator: always returns a fresh object with only the documented keys. Never throws.
+ * rng (optional) seeds the wind of a world that has no sailing state yet (see defaultSailing). */
+export function cleanSailing(v, rng) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return defaultSailing(rng);
   const s = defaultSailing();
-  if (!v || typeof v !== 'object' || Array.isArray(v)) return s;
   const num = (k, lo, hi) => {
     let x;
     try { x = v[k]; } catch { return; }
@@ -73,6 +88,7 @@ export function cleanSailing(v) {
   }
   try { if (typeof v.raised === 'boolean') s.raised = v.raised; } catch { /* ignore */ }
   try { if (typeof v.anchored === 'boolean') s.anchored = v.anchored; } catch { /* ignore */ }
+  if (SAIL.WIND_FIXED) { s.windTarget = s.windDir; s.windStrTarget = SAIL.WIND_STEADY; } // old saves keep their direction and stop re-rolling
   return s;
 }
 
@@ -119,8 +135,14 @@ export function stepSailing(state, dt, opts, out) {
 
   if (state.paddleClock > 0) state.paddleClock = Math.max(0, state.paddleClock - dt);
 
-  // Wind wander (authoritative side only).
-  if (o.host) {
+  // Wind (authoritative side only). Fixed: the direction holds; the strength settles onto WIND_STEADY.
+  if (o.host && SAIL.WIND_FIXED) {
+    state.windTarget = state.windDir; state.windStrTarget = SAIL.WIND_STEADY;
+    if (state.windStr !== SAIL.WIND_STEADY) {
+      state.windStr = clamp(state.windStr + (SAIL.WIND_STEADY - state.windStr) * (1 - Math.exp(-dt / SAIL.WIND_STR_TAU)), SAIL.WIND_MIN, SAIL.WIND_MAX);
+      if (Math.abs(state.windStr - SAIL.WIND_STEADY) < 1e-4) state.windStr = SAIL.WIND_STEADY;
+    }
+  } else if (o.host) { // legacy wander
     const rng = typeof o.rng === 'function' ? o.rng : Math.random;
     state.windClock -= dt;
     if (!(state.windClock > 0)) {

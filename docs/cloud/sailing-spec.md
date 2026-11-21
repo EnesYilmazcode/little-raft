@@ -8,7 +8,8 @@ The raft group never translates in x/z (player physics, tiles, placement all ass
 Instead the raft has a *virtual* velocity and everything else moves relative to it.
 
 - Wind: `windDir` (radians, compass angle; direction the wind blows TOWARD, vector `(sin a, cos a)` in world x/z),
-  `windStr` in 0.55..1. Host slowly wanders the wind toward a `windTarget` that is re-rolled every 70–140 s.
+  `windStr` in 0.55..1. The wind is fixed (Raft): rolled once per world within ±30° of +z and saved, strength steady at 0.9.
+  Old saves keep their direction (`windTarget` snaps to `windDir`). The old 70–140 s re-roll only runs with `SAIL.WIND_FIXED` false.
 - Current: constant `CURRENT = (0, +0.30)` m/s (same direction as the existing debris drift, which is +z).
 - Sail: shared state for all placed `sail` decor: `raised` (bool), `heading` (radians; cloth normal points to
   `(sin h, cos h)`; the raft is pushed along that direction).
@@ -36,7 +37,7 @@ Instead the raft has a *virtual* velocity and everything else moves relative to 
 { v:1, windDir, windStr, windTarget, windClock, heading, raised, anchored, vx, vz, wx, wz, gx, gz }
 ```
 All numbers finite; `cleanSailing(v)` returns a fresh validated copy or the defaults (`raised:false`,
-`anchored:false`, heading 0, wind 0.6 rad, windStr .8, zeros). Old saves without `sailing` → defaults.
+`anchored:false`, heading 0, wind 0.4 rad, windStr .9, zeros). `cleanSailing(v, rng)`: with no saved `sailing`, rng rolls the world's wind.
 Offsets are wrapped modulo 100000 to bound float precision.
 
 ## Files
