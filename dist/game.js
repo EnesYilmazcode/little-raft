@@ -1219,6 +1219,7 @@ export function mount(transfer = null) {
     return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
       world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}}; // content hook: ext
   }
+  const signalOpts = {token:newToken, held:null}; // reused per frame; signalTick reads it synchronously only
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
   function frame() {
     const now = performance.now(), rawMs = now - last, dt = Math.min(rawMs / 1000, .05); last = now; elapsed += dt;
@@ -1237,7 +1238,8 @@ export function mount(transfer = null) {
     content?.update(dt); // content hook
     if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (running && role !== 'guest') {
-      const itemCount = world.items.length, sigEvents = signalTick(world, dt, {token:newToken, held:new Set(caughtList(castOut()).map(c => c.token))});
+      signalOpts.held = heldTokens(); // our hook only, as before
+      const itemCount = world.items.length, sigEvents = signalTick(world, dt, signalOpts);
       for (const e of sigEvents) emit({kind:'signal', text:e.kind === 'detected' ? 'A signal! Something is drifting your way' : 'The signal cache is close: hook it in!'}, 'all');
       if (sigEvents.length || world.items.length !== itemCount) syncItems();
       netClock += dt;
