@@ -319,6 +319,7 @@ function boot() {
     menu.innerHTML = `${raw != null ? `<button type="button" class="ob-item" data-act="continue">Continue${sub ? `<small>${hintHTML(sub)}</small>` : ''}</button>` : ''}
       <button type="button" class="ob-item" data-act="new">${auto && raw == null ? 'Set sail' : 'New Game'}</button>
       <button type="button" class="ob-item" data-act="crew">Play together</button>
+      ${$('#welcomeLook') ? '<button type="button" class="ob-item" data-act="look">Change look</button>' : ''}
       <button type="button" class="ob-item" data-act="settings">Settings</button>
       <small class="ob-savenote">Saves automatically in this browser</small>`;
     welcome.prepend(logo); card.prepend(menu); welcome.classList.add('ob-on'); document.body.classList.add('ob-title-ready');
@@ -342,6 +343,7 @@ function boot() {
         else if (armed) { disarm(); wipe(); }
         else { newBtn.textContent = 'Start over? Click again'; newBtn.classList.add('ob-confirm'); armed = setTimeout(disarm, 4000); }
       } else if (act === 'crew') $('#welcomeCrew')?.click();
+      else if (act === 'look') $('#welcomeLook')?.click(); // [look] docs/specs/customise.md
       else if (act === 'settings') $('#helpButton')?.click();
     });
     menu.addEventListener('keydown', e => {

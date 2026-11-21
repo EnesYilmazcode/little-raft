@@ -14,6 +14,7 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
+import { createSpade, createFinder } from './treasure-models.js';
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
@@ -30,6 +31,8 @@ export const HOLD = Object.freeze({
   hook:       { hand: 'right', pose: 'grip' },
   hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2 },
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
+  spade:      { hand: 'right', pose: 'grip', rx: 0.2, rz: 0.35 },
+  finder:     { hand: 'right', pose: 'grip', rx: -1.1, rz: 0.25 },
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
   leaf:       { hand: 'right', pose: 'grip', rx: -0.35, ry: 0.4, rz: 0.35 },
   scrap:      { hand: 'right', pose: 'grip', rx: 1.1, ry: 0.3, rz: -0.3 },
@@ -167,6 +170,14 @@ export function buildItemModel(T, kind, factory = null) {
     root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
     root.userData.grip = [gp.x, gp.y, gp.z];
     root.userData.model = m;                                     // rod: userData.float/leader/tipNode live here
+  } else if (kind === 'spade' || kind === 'finder') {
+    const m = kind === 'spade' ? createSpade(T) : createFinder(T), s = 0.55;
+    m.scale.setScalar(s);
+    root = new T.Group(); root.add(m);
+    const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size;
+    root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
+    root.userData.grip = [gp.x, gp.y, gp.z];
+    root.userData.model = m;
   } else if (kind === 'wood' || kind === 'leaf' || kind === 'scrap') {
     const d = createDebris(T, kind, matCache(T), { seed: 7 });
     const lie = new T.Group(); lie.add(d);
