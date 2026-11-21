@@ -7,7 +7,7 @@
 // buildSceneryIsland(T, group, seed, mat) adds meshes to `group` (local space, waterline ~ y .1);
 // `mat(color)` is the game's cached material factory. Returns the sand radius.
 
-export const ISLE_COLORS = Object.freeze({sand:'#e8d9a8', foam:'#eef3ea', rock:'#8d8a80', leafDark:'#3f8a4e', leafLight:'#5fa456'});
+export const ISLE_COLORS = Object.freeze({sand:'#d8c49a', foam:'#eef3ea', rock:'#8d8a80', leafDark:'#3f8a4e', leafLight:'#5fa456'});
 
 function mulberry(a) {
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };

@@ -9,7 +9,7 @@ export const FLOOR_BOUNDS = Object.freeze({minX:-1, maxX:1, minY:0, maxY:0.2, mi
 
 // Weathered grey-olive tan boards. All planks share one material (PLANK_COLORS[0]); each board's own tone
 // is a per-vertex multiplier, so tone variety costs no draw calls.
-const PLANK_COLORS = ['#a68e66', '#988160', '#b0986c', '#8b7655'];
+const PLANK_COLORS = ['#ac9466', '#9e8762', '#b49c6c', '#907a57'];
 const UNDERLAY_COLOR = '#2a241a'; // dark quad under the boards so the gaps read as shadow, not water
 const UNDERLAY_Y = 0.135;
 const BEAM_COLOR = '#5e4029', BEAM_END_COLOR = '#9c7649', ROPE_COLOR = '#a8946c', NAIL_COLOR = '#4b4844';

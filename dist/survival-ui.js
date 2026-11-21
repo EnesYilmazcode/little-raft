@@ -147,8 +147,8 @@ const CSS = `
   transition:transform .18s cubic-bezier(.3,1.5,.5,1),background .15s,box-shadow .15s}
 .tools.sv-hotbar>button.sv-slot::after{content:none;display:none}
 .sv-slot i{font-style:normal;pointer-events:none}
-.sv-slot .sv-num{position:absolute;left:5px;top:4px;z-index:1;font:700 10px/1 ${FONT};color:#3b2a1a;opacity:.7;text-shadow:0 1px 0 #f6ecd080}
-.sv-slot .sv-art{position:absolute;inset:5px;display:block;transition:scale .2s cubic-bezier(.3,1.5,.5,1)}
+.sv-slot .sv-num{position:absolute;left:5px;top:4px;z-index:1;font:700 10px/1 ${FONT};color:#3b2a1a;opacity:1;text-shadow:0 1px 0 #f6ecd080}
+.sv-slot .sv-art{position:absolute;inset:5px;display:block;filter:drop-shadow(0 1px 0 #3b2a1a) drop-shadow(0 0 1px #3b2a1a);transition:scale .2s cubic-bezier(.3,1.5,.5,1)}
 .sv-icon{display:block;width:100%;height:100%;object-fit:contain;-webkit-user-drag:none;user-select:none}
 .sv-slot .sv-icon{filter:drop-shadow(0 1px 1px #3b2a1a80)}
 .sv-slot svg.sv-icon{scale:.78}
