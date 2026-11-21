@@ -42,8 +42,10 @@ const DUCK = { splash: 0.35, catch: 0.4, hammer: 0.25, build: 0.25, craft: 0.2, 
 
 const clamp01 = (v, d = 0) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
 const rand = (a, b) => a + Math.random() * (b - a);
+// Keep this a plain './x.js' literal: publish_local.py stamps it with ?build=<id> like every module import,
+// so a hot update loads the new processor file (registerProcessor is guarded for the re-registration).
 const workletDefault = (() => {
-  try { const u = new URL(import.meta.url); return new URL('./audio-worklet.js' + u.search, u).href; } catch (_) { return null; }
+  try { return new URL('./audio-worklet.js', import.meta.url).href; } catch (_) { return null; }
 })();
 
 export function createOceanAudio({
