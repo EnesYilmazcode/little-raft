@@ -1837,7 +1837,7 @@ export function mount(transfer = null) {
     signal.addEventListener('abort', () => controls?.dispose());
   } catch (e) { console.error('controls lane failed to start', e); controls = null; }
   on(document, 'visibilitychange', () => { quality?.reset(); });
-  on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
+  on(window, 'beforeunload', () => { if (running) save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} }); // on the title the world is already saved (or was never played)
   on(document, 'visibilitychange', () => {
     send({type:document.hidden ? 'hidden' : 'visible'}); lastNetSendAt = performance.now();
     if (document.hidden && running) save(); // a hidden tab may be discarded without beforeunload
