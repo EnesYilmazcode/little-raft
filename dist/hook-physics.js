@@ -4,7 +4,7 @@
 // and do not claim to reproduce, any other game's internals.
 //
 // API
-//   new HookCast(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deck })
+//   new HookCast(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deck, reelSpeed = 4 })
 //     T         : the THREE namespace (only T.Vector3 is used)
 //     origin    : Vector3-like throw start (player hand, y ~ 1.2). Copied, never mutated.
 //     direction : Vector3-like camera aim. Copied and normalized. Elevation decides the arc/range.
@@ -12,6 +12,8 @@
 //                 is missing/invalid. The hook is never snapped/teleported to it.
 //     maxRange  : rope length (m), measured horizontally from the *current* hand.
 //     charge    : [0,1]; launch speed = BASE_SPEED + charge * CHARGE_SPEED = 5 + charge * 7 m/s (+1.0 m/s upward throw boost).
+//     reelSpeed : peak horizontal reel speed (m/s). Reeling comes in pulled steps: the speed pulses at
+//                 REEL_PULSE_HZ, v * (REEL_PULSE_MIN + (1 - REEL_PULSE_MIN) * |sin|), starting on a slow beat.
 //     drift     : optional {x,z} m/s water drift for the floating hook. Default mirrors game.js
 //                 item drift (z += .22/s, x += sin(time*.13)*.04/s) so hook and supplies co-drift.
 //     deck      : optional (x, z) -> deck surface y, or null over water. A hook coming down onto
@@ -59,7 +61,9 @@ const UP_BOOST = 1.0;             // m/s added to vertical launch velocity (thro
 const MAX_DT = 0.05;              // s, frame dt clamp
 const SUBSTEP = 0.01;             // s, max integration step (≤ ~0.2 m per step at full speed)
 const MAX_FLIGHT_TIME = 8;        // s, safety: force a splash if somehow never reaching water
-const REEL_SPEED = 8;             // m/s horizontal reel speed
+const REEL_SPEED = 4;             // m/s peak horizontal reel speed (plastic hook; see HOOK_SPECS)
+const REEL_PULSE_HZ = 2;          // pulls per second while reeling
+const REEL_PULSE_MIN = 0.6;       // speed factor between pulls
 const CATCH_RADIUS = 1.0;         // m, swept catch radius while floating / reeling / at splash
 const CATCH_RADIUS_FLIGHT = 0.65; // m, swept catch radius during flight near the water
 const FLIGHT_CATCH_HEIGHT = 0.35; // m above WATER_Y where a flying hook can snag things
@@ -76,13 +80,25 @@ const finVec = (v) => !!v && fin(v.x) && fin(v.y) && fin(v.z);
 const len2 = (x, z) => Math.sqrt(x * x + z * z);
 const len3 = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 
+// Rope length and reel speed per hook kind. Fixed: wear never shortens the rope (a worn hook just breaks).
+export const HOOK_SPECS = Object.freeze({
+  hook: Object.freeze({ range: 20, reel: 4 }),
+  metalhook: Object.freeze({ range: 26, reel: 6 }),
+});
+/** {range, reel} for a hook kind; unknown kinds get the plastic hook. */
+export function hookSpec(kind) { return Object.prototype.hasOwnProperty.call(HOOK_SPECS, kind) ? HOOK_SPECS[kind] : HOOK_SPECS.hook; }
+/** Reel speed factor at reel time t (s): pulled steps at REEL_PULSE_HZ, in [REEL_PULSE_MIN, 1]. */
+export function reelPulse(t) { return REEL_PULSE_MIN + (1 - REEL_PULSE_MIN) * Math.abs(Math.sin(Math.PI * REEL_PULSE_HZ * (fin(t) ? t : 0))); }
+
 export class HookCast {
-  constructor(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deck, deckAt } = {}) {
+  constructor(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deck, deckAt, reelSpeed = REEL_SPEED } = {}) {
     this.T = T;
     const o = finVec(origin) ? origin : { x: 0, y: 1.2, z: 0 };
     this.origin = new T.Vector3(o.x, o.y, o.z);
     this.maxRange = fin(maxRange) && maxRange > 0 ? Math.max(1, maxRange) : 32;
     this.charge = clamp(fin(charge) ? charge : 1, 0, 1);
+    this.reelSpeed = fin(reelSpeed) && reelSpeed > 0 ? reelSpeed : REEL_SPEED;
+    this.reelTime = 0; // seconds spent reeling this cast (drives the pull rhythm)
 
     // Direction: explicit aim > legacy (target - origin) > straight ahead (-Z).
     const dir = new T.Vector3(0, 0, -1);
@@ -267,7 +283,9 @@ export class HookCast {
     const h = this._h;
     const p = this.position, hd = this._hand, ax = p.x, az = p.z;
     const dx = hd.x - ax, dz = hd.z - az, d = len2(dx, dz);
-    if (d > 1e-9) { const k = Math.min(1, (REEL_SPEED * h) / d); p.x += dx * k; p.z += dz * k; }
+    this.reelTime += h;
+    const v = this.reelSpeed * reelPulse(this.reelTime);
+    if (d > 1e-9) { const k = Math.min(1, (v * h) / d); p.x += dx * k; p.z += dz * k; }
     this._sweep(items, ax, az, p.x, p.z, CATCH_RADIUS);
     const rem = len2(hd.x - p.x, hd.z - p.z);
     const rise = clamp(1 - rem / REEL_RISE_DIST, 0, 1);

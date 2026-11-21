@@ -9,8 +9,10 @@ const MAX_RADIUS = 0.02;
 const MIN_RADIUS = 0.002;
 const EPS = 1e-6;
 
-const TAN_LIGHT = [0.86, 0.74, 0.52];
-const TAN_DARK = [0.63, 0.50, 0.32];
+// Weathered mid-brown braid, about sRGB #8a7a64 / #5a4e40 (average near #726553), so the line reads as a
+// dark stroke on bright water. Vertex colours are linear, hence the small numbers.
+const TAN_LIGHT = [0.254, 0.195, 0.127];
+const TAN_DARK = [0.102, 0.076, 0.051];
 
 function finite3(p) {
   return p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z);
@@ -57,7 +59,7 @@ export function createRope(T, { segments = 32, radius = 0.012 } = {}) {
       const phase = (s / SIDES) * 3 + r * 0.38;               // 3 strands, helical drift
       let k = 0.5 + 0.5 * Math.cos(phase * Math.PI * 2);
       k = k * k * (3 - 2 * k);
-      const fleck = ((r * 7 + s * 13) % 5) * 0.012;           // tiny fibre variation
+      const fleck = ((r * 7 + s * 13) % 5) * 0.005;           // tiny fibre variation
       const o = (r * SIDES + s) * 3;
       for (let c = 0; c < 3; c++) colors[o + c] = TAN_DARK[c] + (TAN_LIGHT[c] - TAN_DARK[c]) * k - fleck;
     }
