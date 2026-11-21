@@ -41,6 +41,8 @@ export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
+const DEBUG_SHADERS = /[?&]debug\b/.test(globalThis.location?.search || ''); // ?debug: three.js checks and logs every shader program (stalls the first frame on links)
+const WARM_TIMEOUT_MS = 1500; // longest the first frame waits for compileAsync
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
@@ -108,7 +110,7 @@ export function mount(transfer = null) {
   const clamp = T.MathUtils.clamp;
   const ac = new AbortController(), signal = ac.signal;
   const timers = new Set();
-  let disposed = false, active = false, rafId = 0;
+  let disposed = false, active = false, rafId = 0, loopPending = false;
 
   // ---------- Small utilities ----------
   const newToken = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -391,6 +393,7 @@ export function mount(transfer = null) {
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
     renderer.setSize(innerWidth, innerHeight);
+    renderer.debug.checkShaderErrors = DEBUG_SHADERS; // the per-program log queries stall on links; ?debug brings them back
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
@@ -508,11 +511,15 @@ export function mount(transfer = null) {
   }
   // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
+  // Resolves once the driver reports every program linked (KHR_parallel_shader_compile) or after WARM_TIMEOUT_MS:
+  // the render loop waits for it, so the first frame doesn't block on the links (340-890 ms on a laptop).
   function warmShaders() {
-    if (typeof renderer.compileAsync !== 'function') return;
+    if (typeof renderer.compileAsync !== 'function') return Promise.resolve();
     hands?.preload(['hammer', 'fishingrod']);
-    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
-    catch (e) { console.warn('shader warm-up failed', e); }
+    let warm;
+    try { warm = renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
+    catch (e) { console.warn('shader warm-up failed', e); return Promise.resolve(); }
+    return Promise.race([warm, new Promise(r => later(r, WARM_TIMEOUT_MS))]);
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -1812,8 +1819,9 @@ export function mount(transfer = null) {
       raftPose:raft ? {y:raft.position.y, rx:raft.rotation.x, rz:raft.rotation.z} : {...raftPose},
     };
   }
-  function pause() { active = false; if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
+  function pause() { loopPending = false; active = false; if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
   function resume() {
+    loopPending = false;
     if (disposed || active || !scene) return;
     active = true; last = performance.now(); quality?.reset(); rafId = requestAnimationFrame(animate);
   }
@@ -1878,8 +1886,11 @@ export function mount(transfer = null) {
     pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
-    warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants
-    active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
+    loopPending = true; // the loop starts once the programs are linked; pause()/resume() before then take over
+    warmShaders().then(() => { // after settings: the saved graphics preset decides the light/shadow program variants
+      if (!loopPending || disposed || active) return;
+      loopPending = false; active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
+    });
     // onboarding/prompts hook (docs/cloud/onboarding.md): lets dist/prompts.js raycast with the live camera.
     try { window.raftMount = {T, scene, camera, debug:debugApi}; window.dispatchEvent(new CustomEvent('raft:mount', {detail:window.raftMount})); } catch {}
   } catch (e) {
