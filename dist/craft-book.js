@@ -357,7 +357,10 @@ export const ITEM_SOURCE = Object.freeze({
   saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
   freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
-  // [bees] beehive harvest and island bushes
+  // [bees] gathered from flower bushes and beehives
+  flowerseed:  Object.freeze({ tag: 'bushes, barrels', how: 'Harvest bushes on islands, or open floating barrels.' }),
+  honey:       Object.freeze({ tag: 'beehive', how: 'Press E at a full beehive placed near flower boxes.' }),
+  wax:         Object.freeze({ tag: 'beehive', how: 'Collected with honey from a beehive (E).' }),
   // raft animals (animals.js)
   puffegg:     Object.freeze({ tag: 'puffhen', how: 'Place a Nest Box; a puffhen moves in and lays eggs. Press E on the nest to collect.' }),
   feather:     Object.freeze({ tag: 'puffhen', how: 'Sometimes left with the eggs in a puffhen nest box; collect with E.' }),

@@ -601,3 +601,113 @@ Review/QA fixes: diveMods per-frame allocation; rain hidden underwater; night-vi
 Checks: npm test 609/609; shoot2.py errors []; coop2 loopback: only base failures (3 join feed, 6 remote hook); guest buff isolation and guest trade verified over loopback.
 Harness note: master's title menu hides #solo/#welcomeCrew, so shoot.py and tests/coop-e2e.mjs time out as written; patched copies click via JS.
 Known limits: barge has no collision (you can swim through it); held meal steals E from grill/stations (prompt says Eat); leftover guest buff can pass to the next guest until reload; journal chip overlaps hotbar slot 1 on phones (master); pale seabed fade band (pre-existing).
+## 2026-11-21 · integrator C, round 2
+- Merged into raft-master: content-islands, fishing-cooking, building-pieces, content (+wildlife, storage, daynight), sailing,
+  onboarding (tracker and left-aligned title menu now loaded from index.html), loop-features-0451 (logbook, signal caches,
+  purifier), coop, diving, loop-ux-0451, loop-perf-0451, then raft-progression and raft-art (subagent). All kept both intents:
+  sailing drift + diving hide-above survive the merged scenery (each island/cloud group is baked on its own), the coop rejoin
+  path survives the heartbeat rewrite, fishing-cooking grills block placement, day/night offsets the sun from the shadow-fitted target.
+- Progression and the content "Research Table" both gated recipes: progression owns its catalogue, the content table
+  (renamed Tinker's Desk) teaches the rest. raft-art stays opt-in behind ?art=1 (doubles frame time under SwiftShader).
+- QA (bugs, detail, perf reviewers read the screenshots): Notes panel no longer covers the compass or dialogs; journal close relocks;
+  fish toasts, piece chip and sail prompt no longer centred; Esc on the piece wheel no longer pauses; wood bump map dropped (no visible change, ~-20% CPU).
+- Gate fixes: Tab closes the bag again (playbot), item icons render through the game's WebGL context (budget: 1 context),
+  recipe lock badges are built before the first bag open (DOM growth 109 -> 4), desktop shell opens pause on the Esc keyUp
+  when Chromium ate the keyDown that ended pointer lock (electron check), icon encode is synchronous under the deterministic clock (visual check).
+- Full fleet gate PASS at c7a8293 (unit, playbot, visual, perf, electron). Electron is now installed in node_modules.
+- PR #3 (round 4) is the open PR from raft-master; integrator B merged #2 at 1636dfe meanwhile.
+
+## 2026-11-21 · integrator B, round 3/4
+- Clean merges into raft-master: loop-perf-0708, raft-tech, raft-tests, fleet-tech audio/foliage/icons/perf/procedural-models/water.
+- Five lane merges in separate worktrees, each rebased onto the parallel integrator's pushes before landing:
+  - integration: raft-integration + lane-placement (10-slot hotbar 1-0, ring charge crosshair, foam collars, red "nofloor" ghost, offline fonts).
+  - content: raft-content, loop-fidelity-0714 (spear, shark meat, vitals), loop-visuals-0548. debris.js kept as the single-mesh version.
+  - features: loop-features-0703 (finder, spade, map table), 0534 (kiln makes progression metalingot/glass/brick, decor pack, puffhens), 0548.
+  - perf: loop-perf-0648, 0540 and 0548 hand-ported by cherry-pick; 0720 skipped (old base, rewrites sky/islands/title).
+  - ux: loop-ux-0648, 0603 (hand port), 0748; 0547 and 0743 skipped (stale, 0743 would pause on any lock loss).
+- Fixes during merges: undefined farmPlot call (game crashed holding a seed), 21 unstamped imports, spear/metalspear appended to co-op HELD (19-20) with avatar models, lazy co-op avatar unioned with partner Look.
+- PR #2 reviews (2 reviewers, comments on #2). Fixed: Esc that ends pointer lock with the build wheel open no longer pauses
+  (window-capture pointerlockchange marks the press handled); hand skin back to warm tan (pink came from b > g tone factors);
+  treasure and binocular readouts moved off screen centre; duplicate craft-book keys; treasure debug select uses 10 slots; dead charge-bar CSS.
+  HOTBAR_SIZE in items.js and the onboarding slot hint were already fixed by the parallel integrator.
+- Perf: the unpinned probe looked +16% because the adaptive quality controller steps down later (still at pixel ratio 1 vs 0.85 at sample time);
+  with ?pinQuality: 242 vs 226 ms idle (+7%), 183 vs 180 ms walking (+2%), draw calls equal (~52). JS self time is ~2% of the frame; the rest is SwiftShader raster.
+- Gate passed; PR #3 merged into main (8d21618).
+- Open nits: "Discover at a Tinker's Desk" ::before header shows above the detail card when locked rows are scrolled out of view;
+  co-op HELD lacks metalhook/sharkmeat/brush/decor kinds; content.js EXT_MAX drops all world.ext at once when exceeded;
+  per-frame stroke closure in hands.update; adaptive quality starts later after New game (check for an extra reset on that path).
+
+## Perf round 3, 2026-11-21 (branch `claude/loop-perf-202611210648`, base `origin/claude/raft-master` 8cfdbcd)
+
+Fleet: 6 profilers (draw calls, allocations, DOM, startup/contexts, heap/GL leaks, GPU pipeline), 11 optimizers,
+1 regression checker (read every shoot.py pair plus close-ups of the anchor, gull, deck shadows, locked recipes and dusk/night), 1 measurer.
+Files owned by the unmerged `loop-perf-202611210548` branch (ocean, debris, plastic, deck, crafts, hands, bake, item-icons rewrite)
+were left alone. Two of the `loop-perf-202611210540` commits applied cleanly and were cherry-picked (input bindings, controls tabs).
+
+Numbers. The perf gate runs with quality pinned (`?pinQuality`, new default) so builds compare at the same tier, alternating B/A/B/A,
+SwiftShader 640x360, load average 6-17. Means of 2 runs:
+
+| area | metric | before | after | change |
+|---|---|---|---|---|
+| gate | draw calls mean / p95 | 152.3 / 161 | 142.1 / 152 | -6.7% / -5.6% |
+| gate | shadow-pass draws mean | 10.0 | 7.1 | -29% |
+| gate | triangles mean | 113.5k | 118.0k | +3.9% (random debris mix + fitted shadow box; not a model change) |
+| gate | DOM growth (elements) | 40 / 27 | -4 / 2 | about -100% |
+| gate | script ms/frame | 3.5 | 3.0 | -14% (noisy) |
+| gate | hitches | 0 | 0 | 0 |
+| gate | result (new accounting) | pass | pass | — |
+| alloc | KB/frame idle / walk / hook / inventory | 126 / 91 / 103 / 85 | 111 / 72 / 73 / 67 | -12% / -20% / -30% / -21% |
+| alloc | timer KB/s walk / hook / inventory | 50 / 29 / 54 | 29 / 22 / 39 | -41% / -23% / -28% |
+| startup | nav → raftDebug ready (median of 6) | 597 ms | 528 ms | -11.5% |
+| startup | mount end | 1234 ms | 1070 ms | -13.3% |
+| startup | JS requests / decoded KB | 108 / 2764 | 103 / 2725 | -4.6% / -1.4% |
+| startup | WebGL contexts at title | 2 | 1 | -50% |
+| startup | solo createCoop | 328 ms | 4 ms | -99% |
+| shaders | programs at spawn | 38 | 35 | -8% |
+| shaders | shadows-off switch relinks | 9 (≈1 s frame on SwiftShader) | 0 | -100% |
+| first key | brown-noise build | 125 ms, 4.6 MB garbage | 34 ms, 2.3 MB | -73% / -50% |
+
+What landed:
+- Rendering:
+  - anchor post, crank and arm merged; drum and coil no longer cast shadows
+  - grill smoke hidden while no puff is alive
+  - gull body 424 → 164 triangles
+  - shadow camera fitted to the raft at init
+- Allocation:
+  - input bindings read in place (cherry-picked)
+  - wildlife constants cached in typed arrays (output bit-identical over 36k frames)
+  - daynight sky, palette and sun refreshed at 10 Hz of game clock
+  - game.js reuses scratch objects for held tokens, hook params, rope points and signal options; forced camera matrix update dropped
+  - coop-fx returns early when no ping is alive
+  - `raftDebug.hud` light view for the prompts and onboarding polls
+- Startup:
+  - item icons warmed after gameplay starts; icon renderer kept 60 s so it isn't re-created
+  - co-op remote avatar built on first peer hello
+  - diving shaders warmed at idle
+  - every module import carries the build stamp: 5 modules no longer load twice, and the split module state bug is gone (new test)
+  - shorter crossfaded noise loop
+- Adaptive quality:
+  - frames over 250 ms are clamped instead of ignored, so very slow machines now step down
+  - stops stepping up after 3 reverts at a level
+  - pixel ratio set once per change
+  - no-shadow shaders warmed only when the scaler is one step from shadows off, so fast machines keep 35 programs
+- DOM:
+  - craft-list lock badge and research hint drawn with CSS pseudo-elements
+  - onboarding skips unchanged writes and places Notes once per bag open
+- Perf gate:
+  - starts from the visible title button
+  - heap late half budgeted on JS objects only (V8 compiled code excluded)
+  - GL objects counted per context, freed on context loss
+  - context budget is now peak simultaneous contexts
+  - quality pinned by default
+
+Regression check: PASS (no page errors, same console warnings; only expected differences: drum shadow gone, gull head slightly
+more faceted). Rust/WASM: no; no JS function is over 1 ms/frame (see `docs/loop/rust-wasm.md`).
+
+Left for later:
+- render icons with the main renderer, which needs the item-icons rewrite branch
+- bake each scenery island into one mesh (on the 0548 branch)
+- `tests/coop-e2e.mjs` clicks the hidden `#welcomeCrew` and no longer runs
+- slow bounded GL buffer creep (+52 buffers over minutes 2-8 of play)
+- "Discover at a Tinker's Desk" heading squeezed to 3 px (pre-existing UI bug)
+- `ocean.sampleAt` to remove double-argument boxing in `updateItems`

@@ -341,6 +341,12 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     }
   }), sig);
   document.addEventListener('pointerlockerror', guard(() => endRelock('error')), sig);
+  // The Escape that ends pointer lock with the build wheel open is swallowed as a keydown, and the game's own
+  // lock-loss handler closes the wheel before the keyup. Window capture runs before both, so mark that press
+  // handled here while the wheel is still open: its keyup closes the wheel only, never pauses.
+  window.addEventListener('pointerlockchange', guard(() => {
+    if (!document.pointerLockElement && buildWheelOpen()) esc.keydown(performance.now(), { handled: true });
+  }), { capture: true, signal: ac.signal });
 
   // A menu closed while playing but the browser refused to relock (Escape is not a user gesture):
   // hide the cursor and the centred hint; the next click relocks.

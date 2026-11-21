@@ -113,7 +113,7 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #signalReadout[hidden],#signalMarker[hidden]{display:none}
 /* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); below 1000px wide that gutter is too narrow, so the feed lifts above the hotbar. */
 #pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
-@media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(132px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
+@media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
 .feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
 #inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:88px;align-self:stretch}
 /* Pause rail: the lane fills the space under "Esc Back"; an equal spacer on top keeps the menu centred. */
@@ -121,7 +121,7 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #options .rs-menu>.feed-lane{margin-top:18px;padding:0 16px 16px 0}#options .rs-menu::before{margin-bottom:18px;padding-bottom:16px}
 #pickupFeed.docked{position:static;inset:auto;z-index:auto;max-width:100%}
 #pickupFeed.docked .pf-row{max-width:100%;white-space:normal;line-height:1.25}
-@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto calc(184px + var(--coop-feed-h, 0px)) 10px}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
+@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto calc(232px + var(--coop-feed-h, 0px)) 10px}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
 `;
 
 export function mount(transfer = null) {
@@ -440,7 +440,7 @@ export function mount(transfer = null) {
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
-    quality = createQuality({sun, preset:options.graphics, onChange:() => applyUserGraphics()}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
+    quality = createQuality({sun, preset:options.graphics, onChange:() => { applyUserGraphics(); warmBeforeShadowsOff(); }}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#a6e9f2', fadeNear:28, fadeFar:190}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
@@ -577,8 +577,13 @@ export function mount(transfer = null) {
     catch (e) { console.warn('shader warm-up failed', e); }
   }
   // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
-  // Runs once, a few seconds into play (after lazily built materials such as wildlife exist), so boot compiles only what the first frame draws.
-  let lateNoShadowWarm = true;
+  // Warm it only when the scaler is one step from turning shadows off, so fast machines never pay for the extra programs.
+  let noShadowWarmed = false;
+  function warmBeforeShadowsOff() {
+    if (noShadowWarmed || !quality) return;
+    const L = quality.levels, i = quality.level;
+    if (L[i]?.shadows && L[i + 1] && !L[i + 1].shadows) { noShadowWarmed = true; warmNoShadow(); }
+  }
   function warmNoShadow() {
     if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
     sun.castShadow = false;
@@ -1258,7 +1263,7 @@ export function mount(transfer = null) {
       if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : 'Point at an empty raft floor'); return; }
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
       if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
-      swing = 1; ghostHold = {kind, x:v.x, z:v.z}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
+      swing = 1; ghostHold = {kind, x:v.x, z:v.z, rot:kind === 'hammer' ? 0 : placeRot}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
     }
     if (kind === 'fishingrod') {
       if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to fish'); return; }
@@ -1556,9 +1561,9 @@ export function mount(transfer = null) {
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
-    if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.x !== hover.x || ghostHold.z !== hover.z)) ghostHold = null;
-    if (!hover || ghostHold) { ghosts.hide(); return; } // just-placed spot: no ghost over the new piece until the aim moves off
     const floor = kind === 'hammer';
+    if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.rot !== (floor ? 0 : placeRot) || hover.x !== ghostHold.x || hover.z !== ghostHold.z)) ghostHold = null; // keep the ghost off the piece just placed until the aim moves
+    if (!hover || ghostHold) { ghosts.hide(); return; }
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
   }
   function hostState() {
@@ -1620,7 +1625,6 @@ export function mount(transfer = null) {
     if (achList.length !== seenAch || achList !== seenAchList) { seenAch = achList.length; seenAchList = achList; const n = noteAchievements(lookState.unlocked, achList); if (n.length) { saveLook(lookState.look, lookState.unlocked); lookUI?.refresh(); notice('New hat for your Look: ' + n.map(id => LOOK_HATS.find(h => h.id === id)?.label ?? id).join(', ')); } } // [look] hat unlocks (host or guest view of the list)
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); updateNotices(dialog); warmKinds();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
-    if (lateNoShadowWarm && running) { lateNoShadowWarm = false; later(warmNoShadow, 4000); }
     // Behind a blurred pause/settings backdrop the world only redraws at ~10 fps (the inventory has no blur).
     const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
     if (veiled && now - lastDraw < 100) return;
@@ -1733,7 +1737,7 @@ export function mount(transfer = null) {
     const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
     if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat) interact();
-    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration
+    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : e.altKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration (Shift+R in 15 degree steps, Alt+R back)
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => {
@@ -2199,6 +2203,7 @@ export function mount(transfer = null) {
     try { building?.dispose(); } catch {} building = null; // building-pieces lane hook
     if (diveWarmAt && typeof cancelIdleCallback === 'function') { try { cancelIdleCallback(diveWarmAt); } catch {} } diveWarmAt = 0; // a later() fallback is cleared with the other timers
     try { diving?.dispose(); } catch {} diving = null; // diving lane hook
+    try { sky?.dispose(); } catch {} sky = null; // frees the sky noise texture on hot swap
     try { shark?.dispose(); } catch {} shark = null; try { sharkFx?.dispose(); } catch {} sharkFx = null; // shark lane
     const mats = new Set(), geos = new Set();
     scene.traverse(o => {
