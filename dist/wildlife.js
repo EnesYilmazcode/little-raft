@@ -197,10 +197,18 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
   return out;
 }
 
-export function schoolCenter(seed, i, t, out, ext = 0) {
+// Per-school seeded constants (ph1, ph2, ph3, w), computed once per seed.
+const SCH_N = 4, schK = new Float64Array((SCHOOL_MAX + 1) * SCH_N), schSeed = new Float64Array(SCHOOL_MAX).fill(NaN);
+function schoolConsts(seed, i, o) {
   const s = (seed ^ Math.imul(i + 7, 0x51ed27)) | 0;
-  const ph1 = TAU * rnd(s, 0), ph2 = TAU * rnd(s, 1), ph3 = TAU * rnd(s, 2), dir = rnd(s, 3) < 0.5 ? -1 : 1;
-  const w = 0.045 * dir, R = 12 + 5 * Math.sin(t * 0.031 + ph1) + pushOut(ext, FISH_MARGIN, FISH_R0), dR = 5 * 0.031 * Math.cos(t * 0.031 + ph1);
+  schK[o] = TAU * rnd(s, 0); schK[o + 1] = TAU * rnd(s, 1); schK[o + 2] = TAU * rnd(s, 2); schK[o + 3] = 0.045 * (rnd(s, 3) < 0.5 ? -1 : 1);
+}
+export function schoolCenter(seed, i, t, out, ext = 0) {
+  let k = SCHOOL_MAX * SCH_N; // spare row for an out-of-range i
+  if (i >= 0 && i < SCHOOL_MAX) { k = i * SCH_N; if (schSeed[i] !== seed) { schoolConsts(seed, i, k); schSeed[i] = seed; } }
+  else schoolConsts(seed, i, k);
+  const ph1 = schK[k], ph2 = schK[k + 1], ph3 = schK[k + 2];
+  const w = schK[k + 3], R = 12 + 5 * Math.sin(t * 0.031 + ph1) + pushOut(ext, FISH_MARGIN, FISH_R0), dR = 5 * 0.031 * Math.cos(t * 0.031 + ph1);
   const a = ph2 + w * t, ca = Math.cos(a), sa = Math.sin(a);
   out.x = ca * R; out.z = sa * R;
   out.y = -0.8 + 0.25 * Math.sin(t * 0.11 + ph3);
