@@ -20,7 +20,7 @@ import * as Farm from './farming.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
-import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
@@ -220,6 +220,7 @@ export function mount(transfer = null) {
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
   const pending = new Map(X?.pending instanceof Map ? X.pending : []); // item token -> expiry; hides supplies we reeled in while the host confirms
   const guestHeld = createGuestHeld(); // host only: tokens on the guest's hook, from its move messages
+  let hostHeld = new Set(); // guest only: tokens on the host's hook, from its state messages
   const wornCasts = {host:X?.wornCasts?.host ?? null, guest:X?.wornCasts?.guest ?? null}; // one wear per successful throw
   let seq = isInt(X?.seq) ? X.seq : 0, lastSeqSent = Number.isFinite(X?.lastSeqSent) ? X.lastSeqSent : 0, guestAck = isInt(X?.guestAck) ? X.guestAck : 0;
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
@@ -603,6 +604,7 @@ export function mount(transfer = null) {
     if (a.kind === 'collect') {
       const i = world.items.findIndex(it => it.id === a.id && it.token === a.token); if (i < 0) return; // token guard: each supply counts once
       const it = world.items[i], loot = LOOT[it.type]; if (!loot) return;
+      if (actor === 'guest' && !a.net && ownHeldTokens().has(it.token)) return; // on the host's hook: the host claimed it first
       const scratch = new Bag(bag.snapshot());
       for (const [k, n] of Object.entries(loot)) if (scratch.add(k, n) > 0) { // atomic: all loot fits or nothing changes
         if (!a.net) emit({kind:'full', text:'Your bag is full', tokens:[it.token]}, actor);
@@ -866,7 +868,9 @@ export function mount(transfer = null) {
       friend.rotation.y = (other.yaw ?? 0) + Math.PI;
     }
   }
-  const allHeldTokens = () => new Set([...caughtList(castOut()).map(c => c.token), ...(role === 'guest' ? [] : guestHeld.tokens(performance.now()))]);
+  const ownHeldTokens = () => new Set(caughtList(castOut()).map(c => c.token));
+  const otherHeldTokens = () => (role === 'guest' ? hostHeld : new Set(guestHeld.tokens(performance.now())));
+  const allHeldTokens = () => new Set([...ownHeldTokens(), ...otherHeldTokens()]);
   function updateItems(dt) {
     const heldTokens = allHeldTokens();
     if (role !== 'guest') {
@@ -907,8 +911,8 @@ export function mount(transfer = null) {
       if (f >= 1) { if (selectedKind() === 'fishingrod') action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    const guestTokens = role === 'guest' ? null : new Set(guestHeld.tokens(performance.now())); // host skips the guest's catch
-    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it) && !guestTokens?.has(it.token)), reeling, time:elapsed});
+    // Each side skips the other's catch, but never lets go of what its own hook already holds.
+    const ev = hook.update(dt, {hand:handPos, items:hookableItems(world.items, {isPending, otherHeld:otherHeldTokens(), ownHeld:ownHeldTokens()}), reeling, time:elapsed});
     const hp = hook.position, pos = new T.Vector3(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
     hookMesh.visible = true; hookMesh.position.copy(pos); bobber.visible = false;
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
@@ -941,7 +945,7 @@ export function mount(transfer = null) {
   }
   function hostState() {
     const c = guestBag.counts();
-    return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
+    return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(), held:[...ownHeldTokens()],
       world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items}};
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
@@ -1128,7 +1132,7 @@ export function mount(transfer = null) {
   }
   function closeConnection() {
     joinTimer = cancelTimer(joinTimer); joinDeadline = 0; networkReady = false; peerHidden = false;
-    const oldConn = conn, oldPeer = peer; conn = null; peer = null; other = null;
+    const oldConn = conn, oldPeer = peer; conn = null; peer = null; other = null; hostHeld = new Set();
     unlisten(bindings.splice(0));
     try { oldConn?.close(); } catch {} try { oldPeer?.destroy(); } catch {}
     if (role === 'guest') restoreOwnRaft();
@@ -1194,7 +1198,7 @@ export function mount(transfer = null) {
         const w = cleanWorld(data.world, true); if (!w) return;
         const first = !networkReady;
         const changed = first || JSON.stringify([world.tiles, world.decor.map(d => [d.type, d.x, d.z, d.rot])]) !== JSON.stringify([w.tiles, w.decor.map(d => [d.type, d.x, d.z, d.rot])]); // farming: growth ticks do not rebuild
-        world = w; other = validPose(data.other);
+        world = w; other = validPose(data.other); hostHeld = new Set(cleanHeldTokens(data.held));
         if (data.bag) { // canonical bag once the host has applied all of our sent actions
           const acked = first || !isInt(data.ack) || data.ack >= seq || performance.now() - lastSeqSent > ACK_TIMEOUT;
           if (acked) { const b = snapBag(data.bag); if (b) remoteBag = b; }

@@ -79,3 +79,38 @@ test('NET-2: the failed-mount path and settings.destroy() restore raftShell and 
   assert.ok(g.indexOf("previousShell = Object.getOwnPropertyDescriptor(window, 'raftShell')") < g.indexOf('window.raftShell = shellApi'));
   assert.match(st, /destroy\(\) \{[^]*restoreGlobal\(window, 'raftEscape', previousEscape, raftEscape\)/);
 });
+
+const T = await import(new URL('vendor/three.module.js', base));
+const { HookCast } = await import(new URL('hook-physics.js', base));
+const { hookableItems, cleanHeldTokens } = await import(new URL('coop-rules.js', base));
+
+test('NET-3: hookableItems skips the other player\'s catch but keeps our own', () => {
+  const items = [{id:1, token:'a', x:0, z:-4}, {id:2, token:'b', x:0, z:-5}, {id:3, token:'c', x:0, z:-6}];
+  const ids = l => l.map(it => it.token).join();
+  assert.equal(ids(hookableItems(items, {otherHeld:new Set(['a', 'b']), ownHeld:new Set(['a'])})), 'a,c');
+  assert.equal(ids(hookableItems(items, {isPending:it => it.token === 'c'})), 'a,b');
+  assert.equal(ids(hookableItems(items)), 'a,b,c');
+  assert.deepEqual(cleanHeldTokens(undefined), []); // older hosts send no held list
+});
+
+test('NET-3: the host keeps a plank on its hook even when the guest reports holding it too', () => {
+  const cast = new HookCast(T, {origin:{x:0, y:1.45, z:0.6}, direction:{x:0, y:0, z:-1}, charge:0.5});
+  for (let i = 0; i < 200 && cast.stage === 'flying'; i++) cast.update(1 / 60, {hand:{x:0, y:1.45, z:0.6}, items:[], time:i / 60});
+  const plank = {id:7, token:'p7', type:'wood', x:cast.position.x, z:cast.position.z};
+  cast.update(1 / 60, {hand:{x:0, y:1.45, z:0.6}, items:[plank], time:4});
+  assert.deepEqual(cast.caughtItems.map(c => c.token), ['p7']);
+  const own = new Set(cast.caughtItems.map(c => c.token)), guest = new Set(['p7']);
+  cast.update(1 / 60, {hand:{x:0, y:1.45, z:0.6}, items:hookableItems([plank], {otherHeld:guest, ownHeld:own}), time:4.1});
+  assert.deepEqual(cast.caughtItems.map(c => c.token), ['p7'], 'still on the host hook');
+  cast.update(1 / 60, {hand:{x:0, y:1.45, z:0.6}, items:[plank].filter(it => !guest.has(it.token)), time:4.2}); // the old filter
+  assert.deepEqual(cast.caughtItems, [], 'the old guest-only filter silently dropped it');
+});
+
+test('NET-3: host state carries its held tokens, the guest filters them, and a guest collect of them is refused', () => {
+  const g = src('game.js');
+  assert.match(g, /type:'state', v:3,[^\n]*held:\[\.\.\.ownHeldTokens\(\)\]/);
+  assert.match(g, /hostHeld = new Set\(cleanHeldTokens\(data\.held\)\)/);
+  assert.match(g, /otherHeldTokens = \(\) => \(role === 'guest' \? hostHeld :/);
+  assert.match(g, /hook\.update\(dt, \{hand:handPos, items:hookableItems\(world\.items, \{isPending, otherHeld:otherHeldTokens\(\), ownHeld:ownHeldTokens\(\)\}\)/);
+  assert.match(g, /if \(actor === 'guest' && !a\.net && ownHeldTokens\(\)\.has\(it\.token\)\) return;/);
+});
