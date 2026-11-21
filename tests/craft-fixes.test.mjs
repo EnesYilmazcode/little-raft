@@ -27,6 +27,40 @@ test('CRAFT-5: migrateSnapshot keeps bag kinds that are not in ITEMS', () => {
   assert.match(src('game.js'), /migrateSnapshot\(s, ITEM_INFO\)/, 'snapBag passes the bag info table');
 });
 
+const CB = await import(new URL('craft-book.js', base));
+
+test('CRAFT-1: the bag UI gate folds in content (research) locks and craft() reports refusals', () => {
+  const g = src('game.js');
+  assert.match(g, /recipeGate:id => craftGate\(id\)/, 'survival UI asks craftGate');
+  const fn = g.slice(g.indexOf('function craftGate('), g.indexOf('function craft(recipe)'));
+  assert.match(fn, /prog\?\.recipeGate\(id\)/, 'progression gate first');
+  assert.match(fn, /content\?\.craftLocked\(id/, 'then content craftLocked');
+  assert.match(fn, /locked:true, reason/, 'content lock becomes {locked, reason}');
+  assert.match(g, /function craft\(recipe\) \{[^\n]*return !g; \}/, 'craft() returns false when gated');
+  const s = src('survival-ui.js');
+  assert.match(s, /if \(g\?\.locked\) return \{ rows, state: 'gated'/, 'evaluate: gated beats ready');
+  assert.match(s, /if \(r === false\) return false;/, 'craftNow: a refused craft is not counted');
+  assert.match(s, /v\.state !== 'gated' \|\| v\.el === rec/, 'arrow keys skip locked rows');
+  assert.match(s, /inTab\.find\(v => v\.state !== 'gated'\)/, 'auto-pick prefers an unlocked row');
+});
+
+test('CRAFT-2: the pinned tracker shows a locked recipe as locked', () => {
+  const r = { id: 'cup', name: 'Cup', out: { kind: 'cup', count: 1 }, reqs: [{ kind: 'plastic', count: 2 }] };
+  const have = () => 10;
+  assert.equal(CB.trackerView(r, have).state, 'ready');
+  const tv = CB.trackerView(r, have, null, { locked: true, reason: 'Study it first' });
+  assert.equal(tv.state, 'gated');
+  assert.equal(tv.reason, 'Study it first');
+  assert.equal(tv.times, 0);
+  assert.equal(CB.trackerView(r, have, null, { hidden: true }).state, 'gated');
+  assert.equal(CB.trackerView(r, have, null, null).state, 'ready');
+  const s = src('survival-ui.js');
+  const fn = s.slice(s.indexOf('function paintTracker('), s.indexOf('function reorderRecipes('));
+  assert.match(fn, /trackerView\(r, k => countOf\(bag, k\), check, g\)/, 'tracker passes the gate');
+  assert.match(fn, /'Locked: ' \+/, 'tracker says Locked: reason');
+  assert.match(fn, /const key = sig \+ '\|' \+ pinId \+ '\|' \+ \(g \?/, 'gate change repaints the tracker');
+});
+
 // ---- item-tooltips.js with a minimal fake DOM ----
 function fakeEl(tag = 'div') {
   const attrs = {};
