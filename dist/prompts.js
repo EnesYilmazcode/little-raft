@@ -21,7 +21,7 @@ export function normalizePrompt(p) {
   const out = list.slice(0, 2).map(x => {
     let key = x.key == null ? '' : String(x.key).trim(), hold = !!x.hold;
     if (/^hold\s+/i.test(key)) { hold = true; key = key.replace(/^hold\s+/i, ''); }
-    return {key:key.slice(0, 12), label:x.label.trim().slice(0, 48), hold, muted:!!x.muted};
+    return {key:key.slice(0, 12), label:x.label.trim().slice(0, 60), hold, muted:!!x.muted};
   });
   return out.length ? out : null;
 }
@@ -72,7 +72,28 @@ export function raftDistance(x, z, tiles) {
 }
 // Counts hook throws: a hook leaving 'idle' for 'flying' (not a rod cast, which shows as 'fishing').
 export const isThrow = (prev, stage) => stage === 'flying' && prev !== 'flying';
+// fishing-v2 (fishing-cooking.js session) owns the rod while a cast is out; game.js hookStage stays 'idle' then.
+export const FC_ACTIVE = new Set(['charging', 'flying', 'waiting', 'nibble', 'bite', 'reeling']);
+export function fishingPrompt(stage) {
+  if (stage === 'bite') return {key:'LMB', label:'Strike!'};
+  if (stage === 'reeling') return {key:'LMB', hold:true, label:'Reel in'};
+  if (stage === 'flying' || stage === 'waiting' || stage === 'nibble') return {label:'Waiting for a bite…', muted:true};
+  return null; // charging: the cast-power bar says it; caught/escaped: the feed says it
+}
+// game.js #contextPrompt markup -> one prompt: '<kbd>E</kbd>Take fresh water' -> {key:'E', label}; key-less text -> muted line.
+// el is anything with {hidden, textContent, querySelector('kbd')}; 'Floor needs' is covered by the hammer prompt.
+export function contextPromptOf(el) {
+  if (!el || el.hidden) return null;
+  const text = formatFeed(el.textContent); if (!text || /^Floor needs/i.test(text)) return null;
+  const kbd = el.querySelector?.('kbd'), raw = kbd ? formatFeed(kbd.textContent) : '';
+  if (!raw) return {label:text, muted:true};
+  const label = formatFeed(text.startsWith(raw) ? text.slice(raw.length) : text.replace(raw, ''));
+  if (!label) return null;
+  return {key:/^(click|lmb)$/i.test(raw) ? 'LMB' : /^(rmb|right click)$/i.test(raw) ? 'RMB' : raw, label};
+}
+export const hasKey = p => !!normalizePrompt(p)?.some(x => x.key);
 // Built-in, state-derived prompts (replicates + extends game.js updateContext). opt.throws hides the hook's Throw tip once learned.
+// opt.fcStage: the fishing-v2 session stage (window.raftFC.session.stage).
 export function statePrompt(s, opt = {}) {
   if (!s || !s.running) return null;
   if (s.role === 'guest' && !s.networkReady) return {label:'Waiting for your brother’s raft…', muted:true};
@@ -89,12 +110,14 @@ export function statePrompt(s, opt = {}) {
     return null;
   }
   if (held === 'hammer') {
+    if (s.build?.hover?.blocked) return null; // game.js says why (BLOCK_TEXT) in #contextPrompt
     if (!s.build?.hover) return {label:'Aim at the raft edge', muted:true};
     if (s.build.affordable) return [{key:'LMB', label:'Build floor'}, {label:costText(FLOOR_COST), muted:true}];
     const m = missingText(s.stock, FLOOR_COST);
     return [{label:'Needs ' + costText(FLOOR_COST), muted:true}, ...(m && m !== costText(FLOOR_COST) ? [{label:'Missing ' + m, muted:true}] : [])];
   }
   if (held === 'fishingrod') {
+    if (FC_ACTIVE.has(opt.fcStage)) return fishingPrompt(opt.fcStage);
     if (stage === 'fishing' || s.fishWait) return {label:'Waiting for a bite…', muted:true}; // bites land automatically (game.js fishWait)
     return stage === 'idle' ? {key:'LMB', label:'Cast line'} : null;
   }
@@ -115,7 +138,7 @@ const MOUSE = side => `<svg class="lr-mouse" viewBox="0 0 12 16" width="11" heig
 
 function createPrompts(win, doc) {
   const rays = new Map(), providers = new Map(); let order = 0, shown = null, sig = null, visible = false, lastFeed = null;
-  let promptEl = null, feedEl = null, ctxEl = null, observer = null, ray = null, rayT = null, aimAt = null, placed = '';
+  let promptEl = null, feedEl = null, ray = null, rayT = null, aimAt = null, placed = '';
   let throws = 0, lastStage; // undefined until the first sample, so a restored in-flight hook is not counted
   let mouse = null; win.addEventListener('pointermove', e => { mouse = {x:e.clientX, y:e.clientY}; }, {passive:true, capture:true});
   win.addEventListener('pointerout', e => { if (!e.relatedTarget) mouse = null; }, {passive:true, capture:true});
@@ -131,20 +154,15 @@ function createPrompts(win, doc) {
       feedEl = doc.getElementById('lrFeed') || doc.createElement('div');
       feedEl.id = 'lrFeed'; feedEl.setAttribute('role', 'status'); feedEl.setAttribute('aria-live', 'polite'); if (!feedEl.isConnected) doc.body.appendChild(feedEl);
     }
-    const c = doc.getElementById('contextPrompt');
-    if (c && c !== ctxEl) { // game.js (re)created it: re-attach
-      safe(() => observer?.disconnect()); ctxEl = c; let lastText = '';
-      observer = new win.MutationObserver(() => safe(() => {
-        const t = formatFeed(ctxEl.textContent);
-        if (t !== lastText) { lastText = t; if (!ctxEl.hidden && isNotice(t, !!ctxEl.querySelector('kbd'))) feed(t); }
-      }));
-      observer.observe(ctxEl, {childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:['hidden']});
-    }
   }
+  // game.js #contextPrompt is hidden (prompts.css): its state prompts render in #lrPrompt below, never as feed news.
   function feed(text) {
     return safe(() => {
       const t = formatFeed(text), now = Date.now(); if (!t || !shouldPost(lastFeed, t, now)) return false;
-      lastFeed = {text:t, at:now}; ensureEls();
+      lastFeed = {text:t, at:now};
+      const sink = safe(() => win.raftPickupFeed); // one bottom-left stack (pickup-feed.js): never a second overlapping feed
+      if (sink?.note) { sink.note(t); return true; }
+      ensureEls();
       const line = doc.createElement('div'); line.className = 'lr-line'; line.textContent = t; // untrusted: textContent only
       feedEl.appendChild(line); while (feedEl.children.length > FEED_MAX) feedEl.firstElementChild.remove();
       win.setTimeout(() => line.classList.add('lr-out'), FEED_MS); win.setTimeout(() => line.remove(), FEED_MS + 450);
@@ -200,7 +218,12 @@ function createPrompts(win, doc) {
       if (show) {
         const cands = rayHits(ctx);
         for (const p of providers.values()) safe(() => cands.push({prompts:p.prompt(ctx), priority:p.priority, ray:false, order:p.order}));
-        cands.push({prompts:statePrompt(state, {throws}), priority:0, ray:false}); // built-ins lose ties to registered providers
+        // Built-ins lose ties to registered providers. Order at equal priority: keyed #contextPrompt (grill, rain barrel,
+        // purifier, content...) > keyed state prompt > key-less #contextPrompt status > key-less state prompt.
+        const fcStage = safe(() => win.raftFC?.session?.stage) ?? 'idle';
+        const sp = statePrompt(state, {throws, fcStage}), cp = safe(() => contextPromptOf(doc.getElementById('contextPrompt')));
+        const spKey = hasKey(sp), cpKey = hasKey(cp);
+        for (const p of [cpKey && cp, spKey && sp, !cpKey && cp, !spKey && sp]) if (p) cands.push({prompts:p, priority:0, ray:false});
         list = pickPrompt(cands);
       }
       shown = list; const s = signature(list);

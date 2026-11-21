@@ -5,7 +5,7 @@
 import { BuildGrid, PIECES, PIECE_ORDER, LEVEL_H, STATEFUL, cleanPieces, toRec } from './building-pieces.js?build=v3-survival-ae77fa84ac2b';
 import { createPieceGeometry, createPieceMaterial } from './building-models.js?build=v3-survival-ae77fa84ac2b';
 import { createBuildMenu } from './build-menu.js?build=v3-survival-ae77fa84ac2b';
-import { Bag } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 export { cleanPieces };
 const FLOOR_Y = .2, REACH = 7, GHOST_OK = '#9dffc0', GHOST_BAD = '#ff8a73';
@@ -32,7 +32,8 @@ export function createBuilding(T, scene) {
   const WHITE = new T.Color(1, 1, 1), tmp = new T.Color(), tintCount = {};
   let tintOf = null; // content hook (paint): p -> T.Color instance tint or null (white = untinted)
 
-  const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; }});
+  const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; },
+    countOf:k => (curBag ? curBag.count(k) : 0), nameOf:k => ITEM_INFO[k]?.name});
   menu.setAfford(afford);
 
   // Instance placement in raft-local space (the group follows the raft transform every frame).
@@ -78,6 +79,7 @@ export function createBuilding(T, scene) {
     group.position.copy(raft.position); group.quaternion.copy(raft.quaternion);
     curBag = bag;
     menu.setVisible(active);
+    if (active) menu.refresh(); // cost lines follow the bag (only repaints when a count changed)
     if (!active) { removing = false; if (menu.isOpen) menu.close(false); } // hammer put away / UI opened: no stuck wheel or X mode
     ghost.visible = false; removeTarget = null;
     let text = '';
@@ -180,9 +182,9 @@ export function createBuilding(T, scene) {
   // Input from game.js. Returns true when the event was consumed.
   function key(code, down, hammer, repeat = false) {
     if (!hammer) { removing = false; return false; }
-    if (code === 'KeyR' && down && freePiece()) { if (!repeat) rot = (rot + 1) % 4; return true; } // foundation: R stays hook repair
+    if (code === 'KeyR' && down && PIECES[piece()]?.slot === 'cell') { if (!repeat) rot = (rot + 1) % 4; return true; } // only floor/stairs/roof rotate; else R stays sail grab / hook repair
     if (code === 'Escape' && down && menu.isOpen) { menu.close(false); return true; }
-    if (code === 'KeyQ' && down) { menu.isOpen ? menu.close(true) : menu.open(); return true; }
+    if (code === 'KeyQ' && down) { if (!repeat) menu.isOpen ? menu.close(true) : menu.open(); return true; } // auto-repeat must not re-toggle (each close commits)
     if (code === 'KeyX') { if (down) removing = true; return true; }
     return false;
   }
