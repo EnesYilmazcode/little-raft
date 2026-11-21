@@ -2,7 +2,7 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
-import { ITEM_ICONS } from './item-svg.js'; // [progression-hook]
+import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv3';
@@ -91,8 +91,10 @@ function durFrac(s) {
   return d <= 1 ? clamp01(d) : 1;
 }
 // Rendered 3D icon when ready, flat sprite until then. data-icon lets a late render swap it in place.
+// 3D icons need a second WebGL context, so none are requested on the title screen (see liveIcons).
+let iconsLive = false;
 function iconHTML(kind) {
-  const url = iconURL(kind);
+  const url = iconsLive ? iconURL(kind) : null;
   if (url) return `<img class="sv-icon sv-3d" data-icon="${esc(kind)}" src="${url}" alt="" draggable="false">`;
   return iconSVG(kind).replace('<svg ', `<svg data-icon="${esc(kind)}" `);
 }
@@ -819,6 +821,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   // ---------- render ----------
   function render(force) {
     if (!alive) return;
+    if (!iconsLive && document.body?.classList.contains('playing')) liveIcons();
     const bag = bagNow();
     ensureTools();
     if (!bag) return;
@@ -850,9 +853,18 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (document.querySelector('dialog[open]:not(#inventory)')) return false;
     return !!document.pointerLockElement || !!document.body?.classList.contains('playing');
   }
+  // Hotbar icons on the first play frame, the rest ~5 s later (or on first open), never at the title.
+  let warmTimer = 0;
+  function liveIcons() {
+    iconsLive = true;
+    warmIcons(curSlots.slice(0, HB).map(s => s?.kind).filter(Boolean));
+    if (!warmTimer) warmTimer = setTimeout(warmAll, 5000);
+  }
+  function warmAll() { warmTimer = -1; iconsLive = true; warmIcons(Object.keys(ITEM_INFO || {})); }
   function open() {
     if (!alive || isOpen) return;
     isOpen = true;
+    if (warmTimer >= 0) { clearTimeout(warmTimer); warmAll(); }
     clearSrc();
     safe(onPause);
     if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
@@ -1040,7 +1052,6 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 
   buildRecipes();
   if (isOpen) render(true);
-  warmIcons(Object.keys(ITEM_INFO || {}));
 
   const api = {
     update() { render(false); },
@@ -1052,6 +1063,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       alive = false;
       ac.abort();
       offIcons();
+      if (warmTimer > 0) clearTimeout(warmTimer);
       clearTimeout(labelTimer);
       endDrag(false);
       clearSrc();

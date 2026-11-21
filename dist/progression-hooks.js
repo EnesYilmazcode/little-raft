@@ -8,12 +8,12 @@
 // guest only renders the snapshots the host sends ({kind:'prog:sync'} effects) and sends
 // 'prog:*' actions. Limits: guest progression is tied to the host's save (a guest starts fresh on
 // another host's raft), and guest station/research views lag by one sync (~0.3 s).
-import { ITEMS, FUEL_VALUE, toolRole } from './items.js';
-import { Progression } from './progression.js';
-import { StationModel } from './smelter.js';
-import { createStationPanel } from './smelter-ui.js';
-import { createSmelterModel, createResearchTableModel, createGrillModel, setSmelterGlow } from './smelter-model.js';
-import { installItemTooltips } from './item-tooltips.js';
+import { ITEMS, FUEL_VALUE, toolRole } from './items.js?build=v3-survival-ae77fa84ac2b';
+import { Progression } from './progression.js?build=v3-survival-ae77fa84ac2b';
+import { StationModel } from './smelter.js?build=v3-survival-ae77fa84ac2b';
+import { createStationPanel } from './smelter-ui.js?build=v3-survival-ae77fa84ac2b';
+import { createSmelterModel, createResearchTableModel, createGrillModel, setSmelterGlow } from './smelter-model.js?build=v3-survival-ae77fa84ac2b';
+import { installItemTooltips } from './item-tooltips.js?build=v3-survival-ae77fa84ac2b';
 
 export const PROGRESSION_KEY = 'littleRaft.progression.v1';
 const REACH = 2.2, NOTE_EVERY = 0.5, SAVE_EVERY = 2, SYNC_EVERY = 0.3;

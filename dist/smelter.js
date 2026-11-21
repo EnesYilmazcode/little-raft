@@ -2,7 +2,7 @@
 // Each item of a recipe takes recipe.time seconds and burns recipe.fuel fuel
 // units spread evenly over that time. Progress pauses (never resets) when fuel
 // runs out or the output slot cannot take the result.
-import { ITEMS, FUEL_VALUE } from './items.js';
+import { ITEMS, FUEL_VALUE } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 export const FUEL_CAP = 10;
 const EPS = 1e-9;

@@ -1,8 +1,9 @@
 // Sailing lane, THREE side: drives world.sailing each frame, moves scenery relative to the raft, animates sails,
 // owns the anchor fixture, points each sail's own pennant downwind, and handles aiming (E toggles sail/anchor, hold R steers the sail).
 // See docs/cloud/sailing-spec.md. The raft never moves in x/z: the world drifts past it instead.
-import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js';
-import { createSailingUI } from './sailing-ui.js';
+import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
+import { createSailingUI } from './sailing-ui.js?build=v3-survival-ae77fa84ac2b';
+import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
 const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22;
 const CLOTH_R = 1.2, CLOTH_Y0 = 1, CLOTH_Y1 = 3.4; // raised cloth hit volume around the mast axis (cheap approximation)
@@ -52,11 +53,14 @@ export function createSailing(T, ctx) {
 
   const fixture = new T.Group(); fixture.name = 'sailingFixture'; scene.add(fixture);
   const anchorRoot = new T.Group(); fixture.add(anchorRoot);
-  mesh(G.post, M.wood, 0, .5, 0, anchorRoot);
-  mesh(G.drum, M.woodLight, 0, .9, 0, anchorRoot).rotation.z = Math.PI / 2;
-  const coil = mesh(G.coil, M.rope, 0, .9, 0, anchorRoot); coil.rotation.z = Math.PI / 2;
-  mesh(G.crank, M.wood, .2, .84, 0, anchorRoot, false);
-  mesh(G.arm, M.wood, 0, .97, .3, anchorRoot);
+  // Post, crank and arm share M.wood and never move: baked into one mesh (one draw, one shadow draw). The small
+  // drum and coil skip the shadow pass; the coil stays separate because animateAnchor scales it.
+  G.post.translate(0, .5, 0); G.crank.translate(.2, .84, 0); G.arm.translate(0, .97, .3);
+  G.postParts = mergeGeometries(T, [G.post, G.crank, G.arm]);
+  for (const k of ['post', 'crank', 'arm']) { G[k].dispose(); delete G[k]; }
+  mesh(G.postParts, M.wood, 0, 0, 0, anchorRoot);
+  mesh(G.drum, M.woodLight, 0, .9, 0, anchorRoot, false).rotation.z = Math.PI / 2;
+  const coil = mesh(G.coil, M.rope, 0, .9, 0, anchorRoot, false); coil.rotation.z = Math.PI / 2;
   const anchorRope = mesh(G.rope, M.rope, 0, .95, .57, anchorRoot, false);
   const hook = new T.Group(); anchorRoot.add(hook);
   mesh(G.anchor, M.iron, 0, 0, 0, hook, false);
