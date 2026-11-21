@@ -26,8 +26,9 @@ import { createIslands } from './islands.js?build=v3-survival-ae77fa84ac2b';
 import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
 import { createStorage } from './storage-research.js?build=v3-survival-ae77fa84ac2b';
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
+import { createSleep } from './sleep.js?build=v3-survival-ae77fa84ac2b';
 
-const FEATURES = [createIslands, createWildlife, createStorage, createDayNight];
+const FEATURES = [createIslands, createWildlife, createStorage, createDayNight, createSleep];
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
