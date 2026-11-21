@@ -24,6 +24,7 @@ import { cleanSailing } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 import { createCoop } from './coop.js?build=v3-survival-ae77fa84ac2b'; // coop: co-op layer (docs/cloud/coop.md)
 import { createDiving, DIVE } from './diving.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook (docs/cloud/diving.md)
 import { nodeById, NODE_LOOT } from './seafloor.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook
+import { createFishingCooking } from './fishing-cooking.js'; // [fishing-cooking] lane hook, see docs/cloud/fishing-cooking.md
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -192,6 +193,7 @@ export function mount(transfer = null) {
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
   let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
+  let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
   let survivalUI = null, settingsController = null, options = {sensitivity:1, fov:75, cameraMotion:.35, volume:.5, graphics:'medium'};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
@@ -322,6 +324,7 @@ export function mount(transfer = null) {
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
     clothMat = new T.MeshStandardMaterial({color:'#fff3cf', side:T.DoubleSide, roughness:1});
     buildViewmodels();
+    try { fc = createFishingCooking(T, fcHost()); } catch (e) { console.error('fishing-cooking failed', e); fc = null; } // [fishing-cooking]
     islands.length = 0; // diving lane hook: seafloor rises toward these
     for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
     for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scene.add(g); clouds.push(g); scenery.push([g, 0]); } // content + sailing: clouds
@@ -336,6 +339,13 @@ export function mount(transfer = null) {
     syncItems(); refreshPointerUI(true);
   }
 
+  // [fishing-cooking] adapter: the lane module only sees the engine through these functions.
+  function fcHost() {
+    return {scene, raft, ocean, camera, signal, rodModel, role:() => role, netReady:() => networkReady, send, action, notice, beep,
+      selectedKind, aim:() => currentAim(), rodTip:() => handPos, player:() => ({x:physics.x, y:physics.y, z:physics.z, yaw}),
+      hasTile, decorAt:(x, z) => world.decor.some(d => d.x === x && d.z === z), bagCount:k => localBag().count(k),
+      running:() => running, uiBlocked, busy:() => !!hook || !!fishWait || !!charging};
+  }
   function fallbackAvatar(color) {
     const g = new T.Group();
     cylinder(.21, .25, .58, color, 0, .64, 0, g); sphere(.23, '#f2c69b', 0, 1.14, 0, g); cylinder(.28, .28, .07, '#f7e7b5', 0, 1.32, 0, g); cylinder(.17, .19, .16, '#f7e7b5', 0, 1.4, 0, g);
@@ -441,6 +451,7 @@ export function mount(transfer = null) {
       else if (performance.now() < noticeUntil) html = esc(noticeText);
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if ((contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook
+      else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
       else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
@@ -576,6 +587,7 @@ export function mount(transfer = null) {
   function applyAction(a, actor = 'host') {
     if (!a || typeof a !== 'object' || role === 'guest') return;
     const bag = actorBag(actor);
+    if (typeof a.kind === 'string' && a.kind.startsWith('fc:')) { fc?.applyAction(a, actor, {count:k => bag.count(k), remove:(k, n) => bag.remove(k, n), add:(k, n) => bag.add(k, n), emit:text => emit({kind:'notice', text}, actor)}); return; } // [fishing-cooking]
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
     if (a.kind === 'sail') { sailing?.apply(a, actor); return; } // [sailing]
     if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
@@ -674,6 +686,7 @@ export function mount(transfer = null) {
       return;
     }
     if (content?.interact(currentAim())) return; // content hook: chest, research table, island nodes
+    if (fc?.interact()) return; // [fishing-cooking] grill
     openInventory();
   }
 
@@ -797,7 +810,8 @@ export function mount(transfer = null) {
     if (hammerHands.group.visible) hammerHands.update({dt, time:elapsed, charge:0, reeling:false, casting:swing, walking, hasHookOut:false, motion});
     if (rodHands.group.visible) {
       const out = !!hook?.fishing; if (rodModel.userData.float) rodModel.userData.float.visible = !out; if (rodModel.userData.leader) rodModel.userData.leader.visible = !out;
-      rodHands.update({dt, time:elapsed, charge:0, reeling:out && hook.t > fishWait, casting:swing, walking, hasHookOut:false, motion});
+      rodHands.update({dt, time:elapsed, charge:0, reeling:fc ? fc.rodReeling : out && hook.t > fishWait, // [fishing-cooking]
+        casting:swing, walking, hasHookOut:false, motion});
     }
     camera.updateMatrixWorld(true);
     (kind === 'fishingrod' ? rodTip : hookHands.handTip).getWorldPosition(handPos);
@@ -902,6 +916,7 @@ export function mount(transfer = null) {
     pickTarget = pickupFrom(frameAim);
     updateItems(dt); updateHook(dt); updateGhost();
     content?.update(dt); // content hook
+    if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (running && role !== 'guest') {
       netClock += dt;
       if (netClock > .8) { // nets gather into the host's bag (trusted shared machine) and never consume when full
@@ -941,10 +956,12 @@ export function mount(transfer = null) {
     if (building?.menu.isOpen) { building.menu.close(isLocked()); return; } // building-pieces lane hook (unlocked: a click off the wheel cancels)
     if (controls?.radialOpen) return; // controls lane: a click while the build radial is open picks a piece, not the tool
     if (isLocked()) {
+      if (fc?.pointerDown()) return; // [fishing-cooking]
       if (castOut()) reeling = true;
       else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); }
       return;
     }
+    if (lockFallback && fc?.pointerDown()) return; // [fishing-cooking]
     down = {x:e.clientX, y:e.clientY, moved:false}; try { canvas.setPointerCapture(e.pointerId); } catch {}
     if (castOut()) reeling = true; // hold to reel works without lock too
     else if (lockFallback && selectedKind() === 'hook' && !hook && !fishWait) beginCharge({x:e.clientX, y:e.clientY});
@@ -960,6 +977,7 @@ export function mount(transfer = null) {
   on(canvas, 'pointerup', e => {
     if (e.button !== 0) return;
     reeling = false;
+    if (fc?.pointerUp()) { down = null; return; } // [fishing-cooking]
     if (isLocked()) { down = null; if (charging) releaseCharge(pickCenter()); return; }
     const wasClick = !!down && !down.moved; down = null;
     if (charging) { if (wasClick && charging.x !== null) releaseCharge(pickScreen(charging.x, charging.y)); else charging = null; return; }
@@ -1102,6 +1120,7 @@ export function mount(transfer = null) {
     listen(c, 'data', data => {
       if (conn !== c || !data || typeof data !== 'object') return;
       if (coop) { data = coop.decode(data); if (!data) return; } // coop: delta decode + coop events
+      if (data.type === 'fc') { if (isHost) lastGuestMessage = performance.now(); fc?.onNet(data, isHost ? 'guest' : 'host'); return; } // [fishing-cooking]
       if (data.type === 'leaving') { if (isHost) { const old = conn; conn = null; unbindTarget(old); old.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); } else closeConnection(); toast('Your brother left the raft.'); return; }
       if (isHost) {
         lastGuestMessage = performance.now();
@@ -1256,6 +1275,7 @@ export function mount(transfer = null) {
   // ---------- Lifecycle ----------
   function capture() {
     if (role !== 'guest') syncWorldInventories();
+    try { fc?.capture(); } catch {} // [fishing-cooking] flushes its own save before a hot swap
     return {
       version:3, world, bags:{host:hostBag.snapshot(), guest:guestBag.snapshot(), remote:remoteBag ? remoteBag.snapshot() : null},
       physics:physics.capture(), me:{x:physics.x, y:physics.y, z:physics.z}, other:other ? {...other} : null, yaw, pitch, running, elapsed, walkPhase,
@@ -1298,6 +1318,7 @@ export function mount(transfer = null) {
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
     try { sailing?.dispose(); } catch {} // [sailing]
+    try { fc?.dispose(); } catch {} fc = null; // [fishing-cooking]
     for (const id of timers) clearTimeout(id); timers.clear();
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
