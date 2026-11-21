@@ -20,7 +20,7 @@ export function createPaddleboard(ctx) {
   const meshes = new Map(); // id -> {g, x, z, h, rx, rz, seen, clock, side, tx, tz}
   const nt = { d: 0, tx: 0, tz: 0, px: 0, pz: 0 }, spot = { x: 0, z: 0, h: 0 }, vel = { x: 0, z: 0 }, S = { h: 0, sx: 0, sz: 0 };
   const stepIn = { forward: 1, strafe: 0, sprint: false, yaw: 0 }, out = { v: 1, n: 1, boards: [] }, outBoards = [];
-  let frame = 0, retie = 0, staleT = 0, clock = 0, group = null;
+  let frame = 0, retie = 0, staleT = 0, clock = 0, group = null, orphanT = 0;
   // Host: a guest's ride goes live once its pose reaches the board (its first ride frame writes the board pose),
   // so the board is not dragged to where the guest stood while the confirmation travels. 6 s without that frees it.
   const GL = { id: 0, live: false, t: 0 };
@@ -101,7 +101,7 @@ export function createPaddleboard(ctx) {
     if (p !== R.phys || p !== ctx.physics) { endSilently(); R.jump = !!inp?.jump; return false; }
     const i = ctx.uiOpen?.() || !inp ? ZERO_IN : inp;
     R.jump = !!inp?.jump;
-    const press = !!i.jump && !R.prevJump; R.prevJump = !!i.jump;
+    const press = !!i.jump && !R.prevJump; R.prevJump = R.jump; // raw key: Space held through a closing UI is not a fresh press
     if (press) { leave('swim'); return false; }
     rideTick(R.st, i, dt, tiles(), R.info);
     if (R.info.tug > 0 && clock - R.tugAt > TUG_EVERY) { R.tugAt = clock; notice('The current tugs you back toward the raft'); }
@@ -270,6 +270,12 @@ export function createPaddleboard(ctx) {
       if (b && b.r === 'guest') { R.req.on = false; if (!R.on) startRide(b); }
       else if (R.req.t > REQ_T) { R.req.on = false; notice('Someone is already on it'); }
     }
+    if (!host()) { // guest: a board the slice says we ride while we are not (late confirmation, hot swap) is handed back
+      let orphan = 0;
+      if (!R.on && !R.req.on) for (const b of slice.boards) if (b.r === 'guest') { orphan = b.id; break; }
+      orphanT = orphan ? orphanT + dt : 0;
+      if (orphanT > 1.5) { orphanT = 0; try { ctx.action({ kind: 'paddleboard.leave', id: orphan, mode: 'swim' }); } catch {} }
+    }
     // pose every board
     const ocean = ctx.ocean, k3 = Math.min(1, dt * 3), k6 = Math.min(1, dt * 6), dy = ctx.deckY?.() ?? 0;
     for (const b of slice.boards) {
@@ -312,7 +318,7 @@ export function createPaddleboard(ctx) {
         } else ud.rope.visible = false;
       }
     }
-    for (const [id, e] of meshes) if (e.seen !== frame) { e.g.removeFromParent(); e.g.userData.dispose?.(); meshes.delete(id); }
+    if (meshes.size > slice.boards.length) for (const [id, e] of meshes) if (e.seen !== frame) { e.g.removeFromParent(); e.g.userData.dispose?.(); meshes.delete(id); }
   }
 
   // ------------------------------------------------------------------ save / net
