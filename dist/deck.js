@@ -122,12 +122,12 @@ function lashing(T, rng, x, zb, surf, out) {
   const R = BEAM_R + 0.008, tube = 0.0075;
   const bottomC = BEAM_Y - BEAM_R - 0.006, topC = surf + 0.007;
   const Ry = (topC - bottomC) / 2, yc = (topC + bottomC) / 2, ky = Ry / R;
-  const wraps = 3;
+  const wraps = 2;
   for (let w = 0; w < wraps; w++) {
     const t = new T.TorusGeometry(R, tube, 3, 8);
     t.rotateY(Math.PI / 2); t.scale(1, ky, 1);
     t.rotateZ((rng() - 0.5) * 0.12);
-    t.translate(x + (w - (wraps - 1) / 2) * 0.019, yc, zb);
+    t.translate(x + (w - (wraps - 1) / 2) * 0.024, yc, zb);
     out.push(t);
   }
   const side = rng() < 0.5 ? -1 : 1;
@@ -195,7 +195,7 @@ function floorParts(T, index) {
       const xs = lashed.has(i + ':' + bi) ? [xc - hw * 0.7, xc + hw * 0.7] : rng() < 0.5 ? [xc - hw * 0.55, xc + hw * 0.55] : [xc - hw * 0.62, xc + (rng() - 0.5) * hw * 0.2, xc + hw * 0.62];
       for (const x of xs) {
         const z = z0 + (rng() - 0.5) * 0.03;
-        const h = new T.CylinderGeometry(0.012, 0.0135, 0.007, 10);
+        const h = new T.CylinderGeometry(0.012, 0.0135, 0.007, 6);
         h.setIndex(Array.from(h.index.array.slice(0, h.groups[2].start))); // bottom cap is buried in the plank
         h.rotateY(rng() * 1.05); h.translate(x, plankSurface(p, x, z) + 0.0005, z);
         nails.push(h);
