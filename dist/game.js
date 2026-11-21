@@ -451,6 +451,7 @@ export function mount(transfer = null) {
     faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, // [sit] seat facing
     award: ev => award(ev), night: () => content?.night?.() ?? 0, // [sit] host achievements, [fireworks] content hook
     heldKind: () => heldKind(), // [zipline] content hook
+    get seabed() { return sailing ? sailing.ground : null; }, addBlocker: b => !!sailing?.addBlocker(b), removeBlocker: b => { sailing?.removeBlocker(b); }, // [islands] seabed offset + raft grounding
   };
   function init() {
     // Point the sprite at this build so a deploy never shows a stale cached icons.svg; survival-ui.js reads the URL back.
