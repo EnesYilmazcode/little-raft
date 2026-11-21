@@ -938,3 +938,8 @@ Next ideas: decor pickup with refunds, achievement hooks for content modules, fl
   mid-compile); patched the vendored three with the upstream-style guard. Full fleet-gate PASS at dbf2ca9 (983 tests,
   hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
   PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
+
+## 2026-11-21 · integrator D: loop-ux-202611210848, loop-ux-202611210852
+- Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
+- Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
+- Gate: 1106/1106 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 43 draw calls.
