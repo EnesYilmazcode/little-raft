@@ -251,24 +251,30 @@ export const PROGRESSION_PLAN = deepFreeze([
 ]);
 
 /**
- * Barrel loot: BARREL_ROLLS weighted picks, each giving min..max of the kind
- * (picks of the same kind add up). Expected per barrel: ~4.7 basics,
- * clay .26, stone .17, sand .17, metal ore .13, copper ore .06, seaweed .2.
+ * Barrel loot: BARREL_ROLLS.basic picks from the 'basic' pool (min..max each)
+ * plus BARREL_ROLLS.treasure picks from the 'treasure' pool (always 1 of the
+ * kind, so mid-game materials trickle in steadily with low variance).
+ * Picks of the same kind add up. Expected per barrel: ~5.3 basics plus
+ * clay .28, stone .20, metal ore .13, sand .12, seaweed .12, copper ore .06.
  */
-export const BARREL_ROLLS = 3;
+export const BARREL_ROLLS = deepFreeze({ basic: 3, treasure: 1 });
 export const BARREL_LOOT = deepFreeze([
-  { kind: 'wood', min: 2, max: 3, weight: 30 },
-  { kind: 'leaf', min: 1, max: 3, weight: 18 },
-  { kind: 'plastic', min: 1, max: 2, weight: 18 },
-  { kind: 'scrap', min: 1, max: 2, weight: 14 },
-  { kind: 'clay', min: 1, max: 2, weight: 6 },
-  { kind: 'seaweed', min: 1, max: 2, weight: 5 },
-  { kind: 'stone', min: 1, max: 2, weight: 4 },
-  { kind: 'sand', min: 1, max: 2, weight: 4 },
-  { kind: 'metalore', min: 1, max: 2, weight: 3 },
-  { kind: 'copperore', min: 1, max: 1, weight: 2 },
+  { kind: 'wood', min: 2, max: 3, weight: 30, pool: 'basic' },
+  { kind: 'leaf', min: 1, max: 3, weight: 22, pool: 'basic' },
+  { kind: 'plastic', min: 1, max: 2, weight: 22, pool: 'basic' },
+  { kind: 'scrap', min: 1, max: 2, weight: 16, pool: 'basic' },
+  { kind: 'clay', min: 1, max: 1, weight: 28, pool: 'treasure' },
+  { kind: 'stone', min: 1, max: 1, weight: 20, pool: 'treasure' },
+  { kind: 'metalore', min: 1, max: 1, weight: 13, pool: 'treasure' },
+  { kind: 'sand', min: 1, max: 1, weight: 12, pool: 'treasure' },
+  { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
+  { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },
+  { kind: 'scrap', min: 1, max: 1, weight: 13, pool: 'treasure' },
 ]);
-const LOOT_WEIGHT = BARREL_LOOT.reduce((s, e) => s + e.weight, 0);
+const POOLS = Object.freeze(Object.fromEntries(['basic', 'treasure'].map((p) => {
+  const rows = BARREL_LOOT.filter((e) => e.pool === p);
+  return [p, Object.freeze({ rows, total: rows.reduce((s, e) => s + e.weight, 0) })];
+})));
 
 const hasOwn = (o, k) => o !== null && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
 const unit = (rand) => {
@@ -276,15 +282,17 @@ const unit = (rand) => {
   return Number.isFinite(r) ? Math.min(Math.max(r, 0), 0.999999999) : 0;
 };
 
-/** @returns {{[kind:string]: number}} loot for one opened barrel. */
+function pickFrom(pool, rand, out) {
+  let pick = unit(rand) * pool.total, e = pool.rows[pool.rows.length - 1];
+  for (const c of pool.rows) { if (pick < c.weight) { e = c; break; } pick -= c.weight; }
+  out[e.kind] = (out[e.kind] || 0) + e.min + Math.floor(unit(rand) * (e.max - e.min + 1));
+}
+
+/** @returns {{[kind:string]: number}} loot for one opened barrel. Deterministic for a given rand. */
 export function rollBarrel(rand = Math.random) {
   const out = {};
-  for (let i = 0; i < BARREL_ROLLS; i++) {
-    let pick = unit(rand) * LOOT_WEIGHT, e = BARREL_LOOT[BARREL_LOOT.length - 1];
-    for (const c of BARREL_LOOT) { if (pick < c.weight) { e = c; break; } pick -= c.weight; }
-    const n = e.min + Math.floor(unit(rand) * (e.max - e.min + 1));
-    out[e.kind] = (out[e.kind] || 0) + n;
-  }
+  for (let i = 0; i < BARREL_ROLLS.basic; i++) pickFrom(POOLS.basic, rand, out);
+  for (let i = 0; i < BARREL_ROLLS.treasure; i++) pickFrom(POOLS.treasure, rand, out);
   return out;
 }
 
