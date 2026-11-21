@@ -141,11 +141,11 @@ export class DiveBody {
 const NAMES = { sand: 'Sand', clay: 'Clay', scrap: 'Scrap', metalore: 'Metal ore' };
 let mounts = 0;
 
-export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore } = {}) {
+export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore, hideAbove = [] } = {}) {
   const mount = ++mounts;
   const seafloor = createSeafloor(T, { islands });
   scene?.add(seafloor.group);
-  const fx = createUnderwaterFx(T, { scene, camera, ocean, seafloor });
+  const fx = createUnderwaterFx(T, { scene, camera, ocean, seafloor, hideAbove, getTiles, getDeckY });
   const ui = typeof document !== 'undefined' ? createDivingUI(document) : null;
   const failed = new Set();
   const fail = (name, e) => { failed.add(name); console.error(`diving ${name} failed`, e); };
