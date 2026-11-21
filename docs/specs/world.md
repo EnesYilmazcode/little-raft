@@ -130,13 +130,18 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 
 - **C10 The calm sea is low-amplitude swell with no visible crests on the horizon.** 2018-08-15-*-05,
   2021-04-01-devblog-46-03 and community_047 show a flat horizon (C1). Close up, broad smooth swells
-  carry small ripple detail (community_097, community_039, community_082).
+  carry small ripple detail (community_097, community_039, community_082). **[VERIFIED: visual, same
+  frames as C1.]**
 - **C11 In a storm, swells break the horizon line.** In community_024, right half (x 720 to 1150),
   the sea-sky edge undulates between rows 509 and 520, which is 11 px (1.5 % H). There are 5 crests
   across 430 px, so crests are about 86 px apart (6.7 % W) at the horizon. Rain shows as faint pale
   streaks, 1 to 2 px wide and 40 to 100 px long, nearly vertical. I counted about 25 visible streaks
   across the frame by eye, because my automatic detector found none at a contrast of 6 L or more.
   The rain sky stays bright teal (L169 to L216), and nothing in the frame is grey or dark.
+  **[CORRECTED: per-column horizon (5 px steps, x 720 to 1150) runs rows 508 to 522, 14 px (1.9 % H),
+  not 11 px. The profile is mostly one broad hump plus a slope; I could not resolve 5 distinct crests,
+  so the 86 px crest spacing is UNSURE. Rain streaks are clearly visible by eye; count not re-done.
+  The sky has darker grey-teal cloud bands, so "nothing grey" is a slight overstatement.]**
 - **C12 Open-sea foam is soft, translucent and streaky, and it is never lacy or opaque.** Soft foam
   (saturation below 0.55 and at least 30 L above the 30th percentile of the water) covers 11.3 % of
   the open water in community_097 (0,0 to 560,600), 13.7 % in community_082 and 9.1 % in
