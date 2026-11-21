@@ -258,6 +258,8 @@ export function createFishingCooking(T, host) {
   }
   function pointerDown() {
     if (!canFish()) return false;
+    // a click during the short caught/escaped linger recasts instead of being swallowed
+    if (session && (session.stage === 'caught' || session.stage === 'escaped')) { session.cancel(); session = null; }
     session ??= new FishingSession({ night: false });
     session.press(); downHeld = true; return true;
   }

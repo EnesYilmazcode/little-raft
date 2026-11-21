@@ -99,3 +99,34 @@ test('D3: gamepad RT drives the fishing-cooking rod (species catch) before the l
   assert.equal(h.api.pointerUp(), true);
   assert.equal(h.debug.session.stage, 'flying');
 });
+
+test('D4: a click during the escaped linger starts a fresh cast instead of being swallowed', () => {
+  const h = mount();
+  h.api.pointerDown(); h.step(0.3); h.api.pointerUp(); h.step(1.2);
+  assert.equal(h.debug.session.stage, 'waiting');
+  h.api.pointerDown(); h.api.pointerUp(); h.step(0.05); // too early: spooked
+  assert.equal(h.debug.session.stage, 'escaped');
+  h.step(0.2);
+  const old = h.debug.session;
+  assert.equal(h.api.pointerDown(), true);
+  assert.notEqual(h.debug.session, old, 'new session');
+  assert.equal(h.debug.session.stage, 'charging');
+  h.step(0.3); h.api.pointerUp(); h.step(0.05);
+  assert.equal(h.debug.session.stage, 'flying', 'the recast flies');
+  h.step(1);
+  assert.ok(h.debug.session && h.debug.session.stage !== 'done', 'still fishing after the old linger would have ended');
+});
+
+test('D4: a click during the caught linger also recasts', () => {
+  const h = mount();
+  h.debug.forceBite('pomfret'); h.step(0.05);
+  h.api.pointerDown(); // reel and hold until landed
+  for (let i = 0; i < 400 && h.debug.session.stage === 'reeling'; i++) {
+    // ease off whenever tension runs hot so the line never snaps
+    if (h.debug.session.tension > 0.6) { h.api.pointerUp(); h.step(0.05); h.api.pointerDown(); } else h.step(0.05);
+  }
+  h.api.pointerUp();
+  assert.equal(h.debug.session.stage, 'caught');
+  assert.equal(h.api.pointerDown(), true);
+  assert.equal(h.debug.session.stage, 'charging');
+});
