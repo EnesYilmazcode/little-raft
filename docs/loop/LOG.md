@@ -589,6 +589,18 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
 - PR #2 merged into main (3031d67). Review fixes: inventory width at 900px, recipe tracker overlap, Pin button contrast. Reviewer low-priority notes left open: per-frame allocations in rain.js rainTarget and the physics substep input, sky.dispose() missing on hot swap, passive wheel listener.
+
+## 2026-11-21 · loop-features-202611210722 (features, round 3)
+Base: origin/claude/raft-master (6ab9b24, already holding round 1) + round 2 (loop-features-202611210534) merged in (re-based 3-way merge; kiln metal now uses master's `metalingot`/`glass`/`brick`; decor-pack rotation kept via `userData.ownRot`). raft-integration (newer timestamp) was skipped as base: it is a divergent line 558 commits behind master without the lanes.
+Avoided features already taken by other loop-features runs (paint, sleep, motor/wheel, beehive, rain barrel, instruments, treasure, map table, customise).
+- **Diving gear** (`divegear`) — Puff-Feather Fins (swim ×1.3), Breath Jug (45→75 s air), Seaglass Goggles (fog ×1.53, lighter vignette, lens frame overlay), Tide Scraper (gather ×0.6); works while in the bag. New shared registry hook `content.diveMods(out)` → diving.js `getMods`; underwater-fx `fogMul`/`uVig`.
+- **Cooking pot & meals** (`cookpot`, last in FEATURES) — clay/stone/scrap pot, Driftwood Bowls, 6 meals from fish/seaweed/eggs/seeds/fresh water giving one timed per-player buff (swim, walk/jump, breath, reel, night vision, all-round). MOVE_MUL (player-physics) and HOOK_MUL (hook-physics) multipliers; buffs `{host, guest}` host-owned, applied locally.
+- **Pim's Barge** (`trader`) — visiting trade barge (first at 4 min, then every 10–14 min) docking at the bow; Bright Shell currency, 6 seeded offers per visit, Shell Wreath plan (plan-gated recipe) and rare Glass Float decor; trade dialog.
+Fleet: 1 merge agent, 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (14 agents).
+Review/QA fixes: diveMods per-frame allocation; rain hidden underwater; night-vision floor restored after buff/without daynight; guest wore-off toast; stale net flag after leaving; wreath craft row locked until plan; trade dialog per-frame string; Tinker's Desk heading wrap in Tools tab; goggles lenses on portrait phones; "Move closer to Pim" wording.
+Checks: npm test 609/609; shoot2.py errors []; coop2 loopback: only base failures (3 join feed, 6 remote hook); guest buff isolation and guest trade verified over loopback.
+Harness note: master's title menu hides #solo/#welcomeCrew, so shoot.py and tests/coop-e2e.mjs time out as written; patched copies click via JS.
+Known limits: barge has no collision (you can swim through it); held meal steals E from grill/stations (prompt says Eat); leftover guest buff can pass to the next guest until reload; journal chip overlaps hotbar slot 1 on phones (master); pale seabed fade band (pre-existing).
 ## 2026-11-21 · integrator C, round 2
 - Merged into raft-master: content-islands, fishing-cooking, building-pieces, content (+wildlife, storage, daynight), sailing,
   onboarding (tracker and left-aligned title menu now loaded from index.html), loop-features-0451 (logbook, signal caches,

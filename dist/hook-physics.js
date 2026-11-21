@@ -60,6 +60,7 @@ const MAX_DT = 0.05;              // s, frame dt clamp
 const SUBSTEP = 0.01;             // s, max integration step (≤ ~0.2 m per step at full speed)
 const MAX_FLIGHT_TIME = 8;        // s, safety: force a splash if somehow never reaching water
 const REEL_SPEED = 8;             // m/s horizontal reel speed
+export const HOOK_MUL = { reel: 1 }; // live reel multiplier (cookpot.js)
 const CATCH_RADIUS = 1.0;         // m, swept catch radius while floating / reeling / at splash
 const CATCH_RADIUS_FLIGHT = 0.65; // m, swept catch radius during flight near the water
 const FLIGHT_CATCH_HEIGHT = 0.35; // m above WATER_Y where a flying hook can snag things
@@ -267,7 +268,7 @@ export class HookCast {
     const h = this._h;
     const p = this.position, hd = this._hand, ax = p.x, az = p.z;
     const dx = hd.x - ax, dz = hd.z - az, d = len2(dx, dz);
-    if (d > 1e-9) { const k = Math.min(1, (REEL_SPEED * h) / d); p.x += dx * k; p.z += dz * k; }
+    if (d > 1e-9) { const k = Math.min(1, (REEL_SPEED * HOOK_MUL.reel * h) / d); p.x += dx * k; p.z += dz * k; }
     this._sweep(items, ax, az, p.x, p.z, CATCH_RADIUS);
     const rem = len2(hd.x - p.x, hd.z - p.z);
     const rise = clamp(1 - rem / REEL_RISE_DIST, 0, 1);
