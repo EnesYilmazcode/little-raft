@@ -77,7 +77,8 @@ const MIX = {
   main: {
     ambience: -24, other: -3,
     events: { splash: -6.5, collect: -4.5, build: -3, place: -2, craft: -3, plant: -2.5, water: 2, jump: -5, land: -2,
-      swim: -4, reel: -3.5, catch: -7.5, open: 3.5, deny: -4.5 },
+      swim: -4, reel: -3.5, catch: -7.5, open: 3.5, deny: -4.5,
+      note: -2 },  // note(): all three instruments (drum, pipes, bells), measured like the events
   },
   engine: { ambience: 0, other: 0, events: {} },
 };
