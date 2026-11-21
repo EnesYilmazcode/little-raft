@@ -16,6 +16,16 @@ Measured:
 Hardware-independent metrics (draws, triangles, heap/DOM/GL growth) get strict-ish budgets;
 time-based ones are reported (scriptMsPerFrame, frameIntervalMs, fps) but not budgeted.
 
+Stability (so the gate does not flip on a loaded box):
+  * Math.random and crypto.randomUUID are seeded (tests/e2e/seed_random.js, --seed, default 1), so
+    the floating-supply mix and therefore draw calls repeat to within ~2% (unseeded: ~+-12%).
+  * Warmup lasts until at least session.warmupFrames frames; recording is extended (up to
+    session.maxExtendS) until minFrames frames are in. Still short: a gap > stallS with no frame is
+    a game stall (exit 1), otherwise the box is just too slow (exit 2, infra).
+  * Post-GC heap = lowest of three GC+read rounds.
+  * Hitches are the one load-sensitive budget: if they are the only failure, one fresh session
+    confirms it (--retries, default 1); a real hitch repeats, a CPU-steal spike does not.
+
 Usage:
   python3.13 tests/e2e/perf_gate.py --dist <dist_dir> [--budget tests/e2e/perf_budget.json] [--out <dir>]
          [--duration S] [--warmup S] [--width W --height H]
@@ -267,6 +277,9 @@ CHECKS = [
 ]
 
 
+LOAD_SENSITIVE = {'budget.longTasks.hitches'}
+
+
 def check(metrics, budget, repro):
     fails = []
     for mpath, bpath, what in CHECKS:
@@ -415,6 +428,7 @@ def main():
     # do not depend on resolution, so this just buys more frames per second of wall time.
     ap.add_argument('--seed', type=int, default=1, help='seed for Math.random/crypto.randomUUID (makes the floating-supply mix repeatable); --no-seed for the real RNG')
     ap.add_argument('--no-seed', dest='seed', action='store_const', const=None)
+    ap.add_argument('--retries', type=int, default=1, help='fresh sessions to confirm a failure that is only in load-sensitive budgets (hitches); 0 = report attempt 1')
     ap.add_argument('--width', type=int, default=640); ap.add_argument('--height', type=int, default=360)
     args = ap.parse_args()
     t_start = time.time()
@@ -424,6 +438,15 @@ def main():
         if args.duration is None: args.duration = float(budget.get('session', {}).get('durationS', 90))
         if args.warmup is None: args.warmup = float(budget.get('session', {}).get('warmupS', 6))
         metrics, fails, report = run(args, budget)
+        # Hitches are the only budget that host load can move (another process stealing the CPU
+        # for 2-3 s looks exactly like a game hitch). When they are the only failure, confirm with
+        # one fresh session: a game hitch repeats, a load spike usually does not.
+        if fails and all(f['id'] in LOAD_SENSITIVE for f in fails) and args.retries > 0:
+            first = {'failures': fails, 'longTasks': metrics['longTasks'], 'frames': metrics['frames']}
+            metrics, fails, report = run(args, budget)
+            metrics['retry'] = {'reason': 'only load-sensitive budgets failed on attempt 1; attempt 2 is the result', 'attempt1': first}
+            for f in fails:
+                if f['id'] in LOAD_SENSITIVE: f['detail'] += f" (reproduced on a second session; attempt 1: {first['longTasks']['hitches']} hitches over {first['longTasks']['hitchThresholdMs']} ms)"
     except Exception as e:  # harness failure, not a budget failure
         out['failures'] = [{'id': 'harness', 'detail': f'{type(e).__name__}: {str(e)[:500]}', 'repro': f'python3.13 tests/e2e/perf_gate.py --dist {args.dist}'}]
         out['metrics'] = {'wallS': round(time.time() - t_start, 1)}
