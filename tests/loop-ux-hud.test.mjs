@@ -86,7 +86,9 @@ class El {
   addEventListener() {} removeEventListener() {}
   getBoundingClientRect() { return this.rect ?? {left:0, top:0, width:0, height:0}; }
   querySelector(sel) { return this._q?.(sel) ?? (this._stub ??= new Map()).get(sel) ?? (this._stub.set(sel, new El('div', this.ownerDocument)), this._stub.get(sel)); }
-  querySelectorAll() { return []; }
+  querySelectorAll(sel) { return (this._all ??= new Map()).get(sel) ?? (this._all.set(sel, [new El('button', this.ownerDocument), new El('button', this.ownerDocument)]), this._all.get(sel)); }
+  removeAttribute(k) { delete this.attrs[k]; }
+  focus() {}
 }
 function fakeDoc() {
   const doc = {};
@@ -171,4 +173,32 @@ test('E4 help says the bag closes with I, E or Esc (Tab moves focus inside it)',
   assert.ok(li, 'inventory help line');
   assert.match(li, /I, E or Esc closes it/);
   assert.doesNotMatch(li, /Tab or Esc/);
+});
+
+// ---------------------------------------------------------------- E5 each unlock shows once; rapid toasts queue FIFO
+test('E5 logbook toasts: three rapid celebrations all show, in order', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const doc = fakeDoc();
+  globalThis.document = doc; globalThis.window = {}; globalThis.requestAnimationFrame = f => f();
+  const mem = new Map();
+  Object.defineProperty(globalThis, 'localStorage', {configurable:true, value:{getItem:k => mem.get(k) ?? null, setItem:(k, v) => mem.set(k, String(v))}});
+  const { createLogbookUI } = await import(new URL('logbook-ui.js', base));
+  const ui = createLogbookUI({getProgress:() => ({notes:[], achievements:[]})});
+  const toast = doc.getElementById('lb-toast'), shown = [];
+  const text = () => toast.querySelector('span').textContent;
+  ui.celebrate({kind:'note', text:'Note one'}); shown.push(text());
+  ui.celebrate({kind:'achievement', text:'Achievement two'});
+  ui.celebrate({kind:'achievement', text:'Achievement three'});
+  for (let i = 0; i < 2; i++) { t.mock.timers.tick(3000); t.mock.timers.tick(220); assert.ok(!toast.hidden); shown.push(text()); }
+  assert.deepEqual(shown, ['Note one', 'Achievement two', 'Achievement three']);
+  t.mock.timers.tick(3000); t.mock.timers.tick(220);
+  assert.ok(toast.hidden);
+  ui.destroy();
+});
+
+test('E5 game.js sends a note/achievement to the logbook toast only, not also the feed', () => {
+  const body = /function effect\(e\) \{[\s\S]*?\n  \}\n/.exec(src('game.js'))[0];
+  assert.match(body, /const toLog = \(e\.kind === 'note' \|\| e\.kind === 'achievement'\) && typeof logbookUI\?\.celebrate === 'function'/);
+  assert.match(body, /e\.text && !toLog\) notice\(/);
+  assert.match(body, /if \(toLog\) logbookUI\.celebrate\(e\)/);
 });

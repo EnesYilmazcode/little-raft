@@ -801,9 +801,10 @@ export function mount(transfer = null) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
     if (prog?.effect(e)) return; // [progression-hook]
+    const toLog = (e.kind === 'note' || e.kind === 'achievement') && typeof logbookUI?.celebrate === 'function'; // shown once: the logbook toast
     if (e.loot && typeof e.loot === 'object') { for (const [k, n] of Object.entries(e.loot)) if (ITEM_INFO[k] && isInt(n) && n > 0) pickupFeed.add(k, n); } // pickup feed rows with icons
-    else if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
-    if (e.kind === 'note' || e.kind === 'achievement') logbookUI?.celebrate?.(e);
+    else if (typeof e.text === 'string' && e.text && !toLog) notice(e.text.slice(0, 90));
+    if (toLog) logbookUI.celebrate(e);
     play(typeof e.sound === 'string' ? e.sound : e.kind === 'signal' || e.kind === 'note' || e.kind === 'achievement' ? 'catch' : e.kind === 'build' ? 'build' : e.kind === 'craft' ? 'craft' : e.kind === 'loot' ? 'collect' : 'deny', e.kind === 'notice' ? .6 : 1);
   }
   function collectBottle(i, a, bag, actor) { // no bag space needed; does not count toward world.collected
