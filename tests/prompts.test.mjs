@@ -37,15 +37,11 @@ test('signature changes only with content', () => {
   assert.equal(P.signature(null), '');
 });
 
-test('feed helpers: formatting, notice detection, dedupe', () => {
+test('feed helpers: formatting, dedupe', () => {
   assert.equal(P.formatFeed('  + 2 plank\n ·  1 leaf '), '+ 2 plank · 1 leaf');
   assert.equal(P.formatFeed('x'.repeat(200)).length, 90);
   assert.equal(P.formatFeed(undefined), '');
-  assert.ok(P.isNotice('Crafted Rope', false));
-  assert.ok(!P.isNotice('Pick up plank', true));
-  assert.ok(!P.isNotice('', false));
-  assert.ok(!P.isNotice('Hold click to reel it in', false));
-  assert.ok(!P.isNotice('Floor needs 1 wood', false)); // hover prompt, not a notice
+  assert.equal(P.isNotice, undefined); // #contextPrompt text is a side prompt now, never a feed line
   assert.ok(!P.shouldPost({text:'a', at:1000}, 'a', 1500));
   assert.ok(P.shouldPost({text:'a', at:1000}, 'a', 1700));
   assert.ok(P.shouldPost({text:'a', at:1000}, 'b', 1100));

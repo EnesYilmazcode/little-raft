@@ -1,5 +1,6 @@
 // Little Raft diving HUD: oxygen pill (bottom-centre, just above the hotbar) and a
-// hold-to-gather progress ring around the crosshair. Self-contained: injects
+// hold-to-gather progress ring around the crosshair. The gather label ("Hold E · Scrap") is visually hidden:
+// prompts.js shows it as the crosshair-side key prompt. Self-contained: injects
 // <style id="divingStyle"> (shared, refcounted) + DOM (classes prefixed 'dive', no ids, so
 // several live instances never collide; each dispose removes only its own). update() only touches the DOM
 // when a quantised (1 %) value or flag actually changes. Nothing runs at import time.
@@ -31,9 +32,9 @@ const CSS = `
   filter:drop-shadow(0 0 2px rgba(9,107,130,.9))}
 .diveRing.flash{display:block}
 .diveRing.flash circle{stroke:#bff3ea;stroke-dashoffset:0}
-.diveRingLabel{position:fixed;left:50%;top:calc(50% + 30px);transform:translateX(-50%);z-index:3;pointer-events:none;display:none;
-  padding:4px 11px;border-radius:12px;background:rgba(9,20,30,.62);color:#fff3cf;white-space:nowrap;
-  font:600 12px/1.2 var(--ui-font,'Segoe UI',system-ui,sans-serif);box-shadow:0 0 0 1px rgba(201,164,107,.3)}
+/* The label is read by prompts.js and shown as the crosshair-side key prompt; here it is only for screen readers. */
+.diveRingLabel{position:fixed;left:0;top:0;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;
+  border:0;pointer-events:none;display:none}
 @media(max-width:760px){.diveO2{bottom:110px}.diveO2Pill{width:180px}}
 @media(prefers-reduced-motion:reduce){.diveO2,.diveO2Fill{transition:none}.diveO2.low .diveO2Pill{animation:none;
   box-shadow:0 0 0 2px #ffc96b,0 4px 14px rgba(0,0,0,.35)}}
@@ -77,14 +78,12 @@ export function createDivingUI(doc = document) {
   const win = doc.defaultView;
   let flashTimer = 0, disposed = false;
 
-  // Centre ring + label on the real crosshair (its CSS may be offset); fall back to 50%/50%.
+  // Centre the ring on the real crosshair (its CSS may be offset); fall back to 50%/50%.
   function place() {
     const r = doc.querySelector('#crosshair')?.getBoundingClientRect();
     const ok = r && r.width > 0;
-    const x = ok ? `${r.left + r.width / 2}px` : '50%', y = ok ? `${r.top + r.height / 2}px` : '50%';
-    ring.style.left = label.style.left = x;
-    ring.style.top = y;
-    label.style.top = `calc(${y} + 30px)`;
+    ring.style.left = ok ? `${r.left + r.width / 2}px` : '50%';
+    ring.style.top = ok ? `${r.top + r.height / 2}px` : '50%';
   }
   const onResize = () => { if (last.label) place(); };
   win?.addEventListener('resize', onResize);
