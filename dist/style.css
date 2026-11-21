@@ -37,3 +37,4 @@ body #contextPrompt{top:auto;bottom:108px;padding:5px 12px;border-radius:6px;bac
 /* Click-to-look reminder: a small top pill, out of the line of sight */
 body #resumeHint{top:16px;bottom:auto;padding:6px 14px;font-size:12px;letter-spacing:.4px;text-transform:none;background:#1a120bb3;box-shadow:none;border-radius:6px}
 @media(max-width:760px){body #contextPrompt{bottom:96px}}
+.title-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}

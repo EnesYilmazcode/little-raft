@@ -4,6 +4,7 @@ import subprocess,json,base64
 SSH=['ssh','-o','BatchMode=yes','-o','ConnectTimeout=10','-o','HostKeyAlias=192.168.50.218','hayse@192.168.50.253','sh','-s']
 ROOT=Path(__file__).resolve().parents[1]
 main=(ROOT/'desktop/main.cjs').read_bytes()
+preload=(ROOT/'desktop/preload.cjs').read_bytes()
 package=json.dumps({'name':'little-raft','version':'0.1.0','main':'main.cjs','private':True}).encode()
 config=json.dumps({'origin':'http://192.168.50.211:41896'}).encode()
 def encoded(data):return base64.b64encode(data).decode()
@@ -27,12 +28,13 @@ else
 fi
 mkdir -p "$app/Contents/Resources/app"
 printf '%s' MAIN_DATA | base64 -D > "$app/Contents/Resources/app/main.cjs"
+printf '%s' PRELOAD_DATA | base64 -D > "$app/Contents/Resources/app/preload.cjs"
 printf '%s' PACKAGE_DATA | base64 -D > "$app/Contents/Resources/app/package.json"
 printf '%s' CONFIG_DATA | base64 -D > "$app/Contents/Resources/app/config.json"
 codesign --force --deep --sign - "$app" 2>&1
 echo MAC_APP_INSTALLED
 '''
-script=script.replace('MAIN_DATA',encoded(main)).replace('PACKAGE_DATA',encoded(package)).replace('CONFIG_DATA',encoded(config))
+script=script.replace('MAIN_DATA',encoded(main)).replace('PRELOAD_DATA',encoded(preload)).replace('PACKAGE_DATA',encoded(package)).replace('CONFIG_DATA',encoded(config))
 result=subprocess.run(SSH,input=script.encode(),capture_output=True)
 print(result.stdout.decode(errors='replace'));print(result.stderr.decode(errors='replace'))
 raise SystemExit(result.returncode)

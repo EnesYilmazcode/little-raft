@@ -589,3 +589,16 @@ test('pickup feed: refresh swaps in an icon that finished rendering late', () =>
   ready = 'data:image/png;base64,BB'; feed.refresh('wood'); feed.refresh('leaf');
   assert.equal(icon().length, 1); assert.equal(icon()[0].src, 'data:image/png;base64,BB');
 });
+
+test('settings validation clamps ranges, keeps booleans strict and falls back to defaults', async () => {
+  const { validateSettings, SETTINGS_DEFAULTS: D } = await import(new URL('settings.js', base));
+  assert.deepEqual(validateSettings(null), { ...D });
+  const v = validateSettings({ sensitivity: 99, fov: 'x', invertY: 'yes', shadows: false, graphics: 'ultra', renderScale: 0.1, ambience: 0 });
+  assert.equal(v.sensitivity, 3); assert.equal(v.fov, D.fov); assert.equal(v.invertY, false);
+  assert.equal(v.shadows, false); assert.equal(v.graphics, D.graphics); assert.equal(v.renderScale, 0.5); assert.equal(v.ambience, 0);
+});
+
+test('a fresh bag (new game) holds only the hook', () => {
+  const kinds = new Bag().slots.filter(Boolean).map(s => s.kind);
+  assert.deepEqual(kinds, ['hook']);
+});
