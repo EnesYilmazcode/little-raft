@@ -77,15 +77,6 @@ const recipe = (id, name, count, cost) => Object.freeze({ id, name, output: Obje
 
 export const CONTENT_RECIPES = Object.freeze({
   research: recipe('research', 'Tinker\u2019s Desk', 1, { wood: 6, scrap: 2 }),
-  motor:    recipe('motor', 'Little Motor', 1, { wood: 6, scrap: 4, rope: 2 }),
-  wheel:    recipe('wheel', 'Steering Wheel', 1, { wood: 5, rope: 2 }),
-  bed:      recipe('bed', 'Bed', 1, { wood: 6, leaf: 4 }),
-  brush:          recipe('brush', 'Paint Brush', 1, { wood: 2, rope: 1 }), // paint: one pot paints one piece, each recipe makes 4
-  paint_seafoam:  recipe('paint_seafoam', 'Seafoam Paint', 4, { leaf: 1, sand: 1 }),
-  paint_coral:    recipe('paint_coral', 'Coral Paint', 4, { clay: 2 }),
-  paint_sunshell: recipe('paint_sunshell', 'Sunshell Paint', 4, { sand: 1, seed: 1 }),
-  paint_lagoon:   recipe('paint_lagoon', 'Lagoon Paint', 4, { plastic: 1, leaf: 1 }),
-  paint_pebble:   recipe('paint_pebble', 'Pebble Paint', 4, { stone: 1, clay: 1 }),
   // decor pack (decor-pack.js)
   rug:     recipe('rug',     'Woven Deck Mat',    1, { leaf: 4, rope: 2 }),
   pennant: recipe('pennant', 'Wind Pennant',      1, { wood: 2, leaf: 2, rope: 1 }),

@@ -90,7 +90,7 @@ const JUNK_TYPES = Object.freeze(['oldboot', 'tincan', 'seajar']), JUNK_CHANCE =
 const SPAWN_TABLE = Object.freeze(['wood', 'wood', 'wood', 'plastic', 'plastic', 'plastic', 'leaf', 'leaf', 'leaf', 'scrap', 'barrel']);
 const LOOT = Object.freeze({wood:{wood:2}, leaf:{leaf:1}, scrap:{scrap:1}, plastic:{plastic:1}, barrel:{wood:3, leaf:2, scrap:1, plastic:1}, cache:{wood:6, plastic:4, scrap:3, rope:2}, oldboot:{oldboot:1}, tincan:{tincan:1}, seajar:{seajar:1}}); // [recycler] junk
 const STOCK_KEYS = Object.freeze(['wood', 'leaf', 'scrap', 'plastic']); // legacy world.stock (derived)
-const START_TILES = 9; // newWorld() raft size (3x3); more tiles means the player has built a floor
+const START_TILES = 4; // newWorld() raft size (2x2 STARTER_TILES); more tiles means the player has built a floor
 const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12, receiver:.35, antenna:.1, purifier:.3, rainbarrel:.3, sprinkler:.12, ...CONTENT_BLOCK_RADIUS, ...BLOCK_RADII}); // content hook, [progression-hook]
@@ -464,7 +464,6 @@ export function mount(transfer = null) {
     get building() { return building; }, get brush() { return hands?.itemModel('brush') ?? null; }, woodMat: c => woodMat(c), aim: () => frameAim, // content hook (paint)
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
     hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
-    play: (ev, v) => play(ev, v), // [axe] local one-shot sound (islands: the chop thunk)
     adjustVitals: (hp, food, water) => { if (running && fainted < 0) adjustVitals(vitals, hp, food, water); }, // [bed] a slept night: +40 health, -20 food, -20 water
     note: (i, n, s) => note(i, n, s), get content() { return content; }, // [buoycourse] bell chime + registry view (board mode)
     faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, // [sit] seat facing
@@ -536,7 +535,7 @@ export function mount(transfer = null) {
         },
         circler:() => wildlifeMod?.circler ?? null,
         onBite:(x, z) => emit({kind:'shark', fx:'bite', x, z}, 'all'),
-        onBroke:(x, z) => { fc?.dropTile?.(x, z); content?.mods?.find(m => m.name === 'storage')?.dropTile?.(x, z); rebuildRaft(); fitShadow(); emit({kind:'shark', fx:'broke', x, z, text:'The shark tore a foundation off the raft!'}, 'all'); },
+        onBroke:(x, z) => { fc?.dropTile?.(x, z); content?.mods?.find(m => m.name === 'storage')?.dropTile?.(x, z); rebuildRaft(); fitShadow(); netView?.sync(world.nets); emit({kind:'shark', fx:'broke', x, z, text:'The shark tore a foundation off the raft!'}, 'all'); },
         onHurt:(i, n) => { if (i === 0) hurtLocal(n); else emit({kind:'shark', hurt:n}, 'guest'); },
         onWarn:() => emit({kind:'shark', text:'The shark is biting the raft!'}, 'all'),
         sendHit:dmg => action({kind:'shark:hit', dmg}),

@@ -83,7 +83,7 @@ export function evaluate(world, bags, event) {
   const notes = have.notes.length;
   const holds = id => {
     switch (id) {
-      case 'floor1': return tiles >= 10;
+      case 'floor1': return tiles > 4; // 2x2 start raft (old 3x3 saves already qualify)
       case 'tiles25': return tiles >= 25;
       case 'fish1': return num(w.fish) >= 1;
       case 'fish10': return num(w.fish) >= 10;
