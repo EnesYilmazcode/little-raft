@@ -257,6 +257,7 @@ const LANTERN_PARTS = ['lanternGlow', 'flame', 'lanternGlass', 'candle'];
 const LANTERN_MULT = [2.4, 2.2, 1.1, 3.0];
 const GLASS_NIGHT = '#ffb35c'; // glass emissive is tinted toward this at night so it reads amber, not cream
 const MAX_LANTERNS = 64, MAX_PARTS = MAX_LANTERNS * 4;
+export const UNLIT = 0.05; // [power] emissive scale of an unpowered light (base * UNLIT)
 const STAR_COUNT = 700, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 600;
 const SUN_RADIUS = Math.hypot(-15, 28, 12);
 // The one shadow-casting light is the sun by day and the moon by night. Its direction swaps when the
@@ -415,12 +416,13 @@ export function createDayNight(ctx) {
   const lanternGroups = new Array(MAX_LANTERNS).fill(null), lanternLocal = new Float32Array(MAX_LANTERNS * 3), lanternDist = new Float32Array(MAX_LANTERNS);
   const POOL_COLOR = new T.Color('#ffb35c'), lanternTint = Array.from({length:MAX_LANTERNS}, () => POOL_COLOR.clone()), lanternGain = new Float32Array(MAX_LANTERNS).fill(1); // per-lantern pool tint/gain (lanternGlow.userData.pool)
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
+  const lanternPower = new Array(MAX_LANTERNS).fill(null), lanternOn = new Uint8Array(MAX_LANTERNS).fill(1), lanternNoPool = new Uint8Array(MAX_LANTERNS), partOwner = new Uint8Array(MAX_PARTS); // [power] g.userData.power {lit} / noPool per lantern
   let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
   let scanRaft = null, scanFirst = null, scanLen = -1; // what raft.children looked like at the last scan
   function lanternSignature(raft, world) {
     let n = raft.children.length * 131;
     const decor = world?.decor;
-    if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'lantern' || decor[i]?.type === 'candle') n++; // [bees] candles glow too
+    if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'lantern' || decor[i]?.type === 'candle' || decor[i]?.type === 'stringlights' || decor[i]?.type === 'lamppost') n++; // [bees] candles glow too // [power] + stringlights, lamppost
     return n;
   }
   function restoreParts() {
@@ -435,7 +437,7 @@ export function createDayNight(ctx) {
     partCount = 0; lanternCount = 0;
     for (let c = 0; c < raft.children.length && lanternCount < MAX_LANTERNS; c++) {
       const g = raft.children[c];
-      if (g.name !== 'craft_lantern' && g.name !== 'craft_candle') continue; // [bees]
+      if (g.name !== 'craft_lantern' && g.name !== 'craft_candle' && g.name !== 'craft_stringlights' && g.name !== 'craft_lamppost') continue; // [bees] // [power] + stringlights, lamppost
       let found = false;
       for (let k = 0; k < g.children.length; k++) {
         const m = g.children[k];
@@ -443,7 +445,7 @@ export function createDayNight(ctx) {
         const pi = LANTERN_PARTS.indexOf(m.name);
         if (pi < 0 || partCount >= MAX_PARTS) continue;
         const e = m.material.emissive;
-        partMat[partCount] = m.material; partBase[partCount] = m.material.emissiveIntensity; partMult[partCount] = LANTERN_MULT[pi];
+        partMat[partCount] = m.material; partBase[partCount] = m.material.emissiveIntensity; partMult[partCount] = LANTERN_MULT[pi]; partOwner[partCount] = lanternCount; // [power] partOwner
         partTint[partCount] = pi === 2 && e?.isColor ? 1 : 0;
         if (e?.isColor) { partColor[partCount * 3] = e.r; partColor[partCount * 3 + 1] = e.g; partColor[partCount * 3 + 2] = e.b; }
         partCount++;
@@ -457,6 +459,7 @@ export function createDayNight(ctx) {
         }
       }
       if (!found) { lanternTint[lanternCount].copy(POOL_COLOR); lanternGain[lanternCount] = 1; lanternLocal[lanternCount * 3] = g.position.x + 0.3; lanternLocal[lanternCount * 3 + 1] = g.position.y + 1.24; lanternLocal[lanternCount * 3 + 2] = g.position.z; }
+      lanternPower[lanternCount] = g.userData.power ?? null; lanternOn[lanternCount] = lanternPower[lanternCount] ? (lanternPower[lanternCount].lit ? 1 : 0) : 1; lanternNoPool[lanternCount] = g.userData.noPool ? 1 : 0; // [power]
       lanternGroups[lanternCount++] = g;
     }
     for (let i = lanternCount; i < MAX_LANTERNS; i++) lanternGroups[i] = null;
@@ -468,6 +471,7 @@ export function createDayNight(ctx) {
   function rankLanterns(raft, cam) {
     for (let i = 0; i < POOL_LIGHTS; i++) poolPick[i] = -1;
     for (let i = 0; i < lanternCount; i++) {
+      if (!lanternOn[i] || lanternNoPool[i]) continue; // [power] unlit lights and String Lights never take a pool light
       vTmp.set(lanternLocal[i * 3], lanternLocal[i * 3 + 1], lanternLocal[i * 3 + 2]);
       raft.localToWorld(vTmp);
       lanternDist[i] = cam ? vTmp.distanceToSquared(cam.position) : i;
@@ -602,12 +606,13 @@ export function createDayNight(ctx) {
         const sig = lanternSignature(raft, ctx.world);
         if (stale || sig !== signature) { signature = sig; scanLanterns(raft); lastNf = -1; }
       }
+      for (let i = 0; i < lanternCount; i++) { const p = lanternPower[i]; if (p && (p.lit ? 1 : 0) !== lanternOn[i]) { lanternOn[i] = p.lit ? 1 : 0; lastNf = -1; rankClock = 1e9; } } // [power] lit flips re-write emissive and re-rank at once
       if (nf !== lastNf) {
         lastNf = nf;
         for (let i = 0; i < partCount; i++) {
-          const m = partMat[i];
-          m.emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf);
-          if (partTint[i]) m.emissive.setRGB(partColor[i * 3], partColor[i * 3 + 1], partColor[i * 3 + 2]).lerp(cGlassNight, 0.7 * nf);
+          const m = partMat[i], on = lanternOn[partOwner[i]];
+          m.emissiveIntensity = on ? partBase[i] * (1 + (partMult[i] - 1) * nf) : partBase[i] * UNLIT; // [power] unlit: base * UNLIT
+          if (partTint[i]) m.emissive.setRGB(partColor[i * 3], partColor[i * 3 + 1], partColor[i * 3 + 2]).lerp(cGlassNight, on ? 0.7 * nf : 0);
         }
       }
       rankClock += dt;
@@ -731,5 +736,5 @@ export function createDayNight(ctx) {
     },
   };
 
-  return { name: 'daynight', update, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get rain() { return W.rain; } };
+  return { name: 'daynight', update, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get night() { return L.nightFactor; } /* [power] */, get rain() { return W.rain; } };
 }

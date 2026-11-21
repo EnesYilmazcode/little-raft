@@ -711,6 +711,7 @@ Left for later:
 - slow bounded GL buffer creep (+52 buffers over minutes 2-8 of play)
 - "Discover at a Tinker's Desk" heading squeezed to 3 px (pre-existing UI bug)
 - `ocean.sampleAt` to remove double-argument boxing in `updateItems`
+
 ## 2026-11-21 · loop-features-202611210648 (features)
 Base: origin/claude/raft-master (8cfdbcd). Branch: claude/loop-features-202611210648.
 
@@ -781,3 +782,48 @@ Checks: `npm test` 568/568 (was 533); shoot.py `errors: []`.
 Known limits: live two-peer co-op not run (co-op reviewed by code and unit tests). Mixed-version co-op unsupported (older builds drop the new decor and reset bags holding new kinds). Removing a barrel, sprinkler or hive with the hammer discards its contents. Fishing labels over 48 characters get cut off.
 Next ideas: hammer pickup that refunds contents, a placeable music stand, flower variety, sprinkler range ring while aiming.
 
+## 2026-11-21 · loop-features-202611210735 (features)
+Base: origin/claude/raft-master (c96002e), plus the two round-1 commits that missed the master merge (the prompt fix).
+Branch: claude/loop-features-202611210735.
+
+Features (research in docs/features, specs in docs/specs):
+- **Fish Trap**:
+  - Placed on edge tiles only, via a new `placeBlock` content hook. A woven creel hangs off the raft edge into the water.
+  - Catches a fish every 240 s, or every 150 s with seaweed bait (5 charges). Catches use `rollCatch` on a seeded host RNG; up to 3 fish.
+  - E collects all-or-nothing into the bag and the collector's journal (`recordTrapCatch`).
+  - Tails poke above the rim when the trap holds fish; a seaweed tuft shows when baited.
+  - State in `world.ext.fishtrap`. Files: dist/fish-trap.js, fish-trap-model.js.
+- **Power**:
+  - Wind Turbine, Battery, String Lights and Lamp Post. Turbines beside a battery charge it from the daynight wind; lights within 3 tiles glow and drain it at night.
+  - Only the charge is synced (`world.ext.power`); each peer works out lit state itself.
+  - No new PointLights: the Lamp Post shares the lantern pool lights, and new `night` getter and per-light lit flag in daynight.
+  - Files: dist/power.js, power-model.js.
+- **Display Shelf + Trophy Stand**:
+  - E puts or takes the held item in the aimed slot, through atomic host actions with `expect`.
+  - Items are fitted to the slot: tools stand upright, long items lie flat.
+  - The stand mounts a cosmetic trophy of a fish species from your journal, with a plaque.
+  - State in `world.ext.display`. Shared per-kind model templates; 48-model cap. Files: dist/display.js, display-model.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+
+Review fixes:
+- Fish trap:
+  - Fish can still be collected from a trap that no longer sits on an edge.
+  - The waiting percent no longer goes over 100.
+  - The bob animation is skipped off-screen.
+- Power: old-host prompts on lights; slimmer wooden turbine; brighter powered bulbs and darker unpowered ones; battery charge gauge on the top face.
+- Display: items fitted to slots, using instanced-mesh bounds; plaque textures stay alive while shown.
+
+QA regression fixed: round 1's game-aim provider hid the placement hint while holding a crate or bench. Place mode now shows the hint, with the aim prompt stacked below it.
+Also fixed:
+- muted status prompts get a dark pill
+- the caught-fish viewmodel also expires on wall-clock time
+- new tests/syntax.test.mjs runs `node --check` on every dist module, after a broken game.js passed `npm test`
+
+Checks: `npm test` 605/605 (was 568); shoot.py `errors: []`.
+Known limits:
+- Live two-peer co-op not run; mixed-version co-op is unsupported.
+- Decor still cannot be removed (a refund helper exists for shelves).
+- Trap catches don't count toward fish achievements.
+- The trap's placement ghost doesn't face the water.
+Next ideas: decor pickup with refunds, achievement hooks for content modules, flower variety, power for the receiver and purifier.
