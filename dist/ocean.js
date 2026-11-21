@@ -68,6 +68,7 @@ uniform vec2 uFlow; // [sailing] raft travel relative to the water (sailing-worl
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform vec3 uSky;
+uniform vec3 uFarSea; // far water colour: the sea darkens to this at the horizon, under a lighter sky
 uniform vec3 uZenith;
 uniform vec3 uDeep;
 uniform vec3 uShallow;
@@ -100,9 +101,9 @@ void ripple(vec2 d, float a, float k, float w, vec2 p, inout vec2 g) {
 void main() {
   vec3 toCam = cameraPosition - vWorld;
   float dist = length(toCam.xz);
-  // Beyond uFadeFar the fade below is exactly 1, so the pixel is pure uSky: skip all shading.
+  // Beyond uFadeFar the fade below is exactly 1, so the pixel is pure uFarSea: skip all shading.
   if (dist >= uFadeFar) {
-    gl_FragColor = vec4(uSky, 1.0);
+    gl_FragColor = vec4(uFarSea, 1.0);
     #include <colorspace_fragment>
     return;
   }
@@ -124,7 +125,7 @@ void main() {
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
 
   float ndv = max(dot(n, V), 0.0);
-  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.5);
+  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.32);
   vec3 R = reflect(-V, n);
   vec3 skyRefl = mix(uSky, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.25));
 
@@ -178,8 +179,8 @@ void main() {
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
-  // Fade toward the (untonemapped) sky colour after tone mapping so the horizon matches the background.
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, uSky, smoothstep(uFadeNear, uFadeFar, dist));
+  // Fade toward the (untonemapped) far-sea colour after tone mapping: a darker sea meets the sky at a crisp horizon.
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, uFarSea, smoothstep(uFadeNear, uFadeFar, dist));
   #include <colorspace_fragment>
 }
 `;
@@ -199,7 +200,8 @@ export function createOcean(T, options = {}) {
     uFlow: { value: new T.Vector2() }, // [sailing] wave-field offset written by sailing-world.js
     uSunDir: { value: sun.clone().normalize() },
     uSunColor: { value: new T.Color('#fff3d6') },
-    uSky: { value: new T.Color(options.skyColor ?? '#a6e9f2') },
+    uSky: { value: new T.Color(options.skyColor ?? '#86dcef') },
+    uFarSea: { value: new T.Color(options.farSeaColor ?? '#3d97c8') },
     uZenith: { value: new T.Color(options.zenith ?? '#2a8fd6') },
     uDeep: { value: new T.Color('#08355f') },
     uShallow: { value: new T.Color('#1a78b0') },
