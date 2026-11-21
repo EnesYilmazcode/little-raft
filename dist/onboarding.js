@@ -308,24 +308,29 @@ function boot() {
   // ----- title screen -----
   const welcome = $('#welcome'), card = welcome?.querySelector('.welcome-card');
   if (welcome && card) {
-    const raw = store.get(SAVE_KEY), auto = store.get(AUTOSTART, true) === '1';
+    const auto = store.get(AUTOSTART, true) === '1';
     if (auto) store.del(AUTOSTART, true);
     const logo = document.createElement('div');
     logo.className = 'ob-logo';
     logo.innerHTML = '<h2 class="ob-logo-name"><svg class="ob-sail" viewBox="0 0 48 48" aria-hidden="true"><use href="icons.svg#icon-sail"></use></svg>Little Raft</h2><p class="ob-tag">A little ocean. A big adventure.</p>';
     const menu = document.createElement('nav');
     menu.className = 'ob-menu'; menu.setAttribute('aria-label', 'Main menu');
-    const sub = raw != null ? saveSummary(raw) : '';
-    menu.innerHTML = `${raw != null ? `<button type="button" class="ob-item" data-act="continue">Continue${sub ? `<small>${hintHTML(sub)}</small>` : ''}</button>` : ''}
-      <button type="button" class="ob-item" data-act="new">${auto && raw == null ? 'Set sail' : 'New Game'}</button>
+    let newBtn = null, newLabel = '', armed = 0;
+    // Built from the current save every time the title is shown, so "Save and quit" lands on Continue.
+    function renderMenu(first = false) {
+      const raw = store.get(SAVE_KEY), sub = raw != null ? saveSummary(raw) : '';
+      clearTimeout(armed); armed = 0;
+      menu.innerHTML = `${raw != null ? `<button type="button" class="ob-item" data-act="continue">Continue${sub ? `<small>${hintHTML(sub)}</small>` : ''}</button>` : ''}
+      <button type="button" class="ob-item" data-act="new">${first && auto && raw == null ? 'Set sail' : 'New Game'}</button>
       <button type="button" class="ob-item" data-act="crew">Play together</button>
       <button type="button" class="ob-item" data-act="settings">Settings</button>
       <small class="ob-savenote">Saves automatically in this browser</small>`;
+      newBtn = menu.querySelector('[data-act="new"]'); newLabel = newBtn.textContent;
+    }
+    renderMenu(true);
     welcome.prepend(logo); card.prepend(menu); welcome.classList.add('ob-on'); document.body.classList.add('ob-title-ready');
     const items = () => [...menu.querySelectorAll('.ob-item')];
     const solo = () => $('#solo');
-    const newBtn = menu.querySelector('[data-act="new"]'), newLabel = newBtn.textContent;
-    let armed = 0;
     const disarm = () => { clearTimeout(armed); armed = 0; newBtn.textContent = newLabel; newBtn.classList.remove('ob-confirm'); };
     function wipe() {
       wiping = true;
@@ -350,8 +355,14 @@ function boot() {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
       e.preventDefault(); list[(i + (e.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length]?.focus();
     });
-    newBtn.addEventListener('blur', () => { if (armed) setTimeout(() => { if (document.activeElement !== newBtn) disarm(); }, 0); });
+    menu.addEventListener('focusout', e => { if (armed && e.target === newBtn) setTimeout(() => { if (document.activeElement !== newBtn) disarm(); }, 0); });
     const syncDisabled = () => { const off = !!solo()?.disabled; for (const b of items()) if (b.dataset.act === 'continue' || b.dataset.act === 'new') b.disabled = off; };
+    // Back on the title (pause menu "Save and quit"): rebuild from the fresh save.
+    new MutationObserver(() => {
+      if (welcome.hidden) return;
+      renderMenu(); syncDisabled();
+      try { (items()[0])?.focus({preventScroll:true}); } catch {}
+    }).observe(welcome, {attributes:true, attributeFilter:['hidden']});
     setInterval(syncDisabled, 500); syncDisabled();
     try { (items()[0])?.focus({preventScroll:true}); } catch {}
   }
