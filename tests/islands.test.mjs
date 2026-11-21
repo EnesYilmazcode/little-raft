@@ -11,7 +11,7 @@ const { createIslands } = await import(new URL('islands.js', base));
 const { Bag, SLOT_COUNT, STACK_SIZE } = await import(new URL('inventory-state.js', base));
 const { PlayerPhysics, PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base));
 const { ISLAND, layoutFor, sinkAt, relPos, spawnSpot, travelOf, driftState, clean, lootFor, groundHeight, nextDelay, dockOffset, applyGather, standOnSand, SHORE_U } = L;
-const { SAIL, defaultSailing, stepSailing } = await import(new URL('sailing-core.js', base));
+const { SAIL, defaultSailing, stepSailing, currentVector } = await import(new URL('sailing-core.js', base));
 
 const RAFT3 = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
 const SEEDS = Array.from({ length: 300 }, (_, i) => (i * 2654435761) >>> 0);
@@ -93,7 +93,8 @@ test('spawnSpot: 120-160 m ahead along the travel, seeded 0-40 m to the side', (
 
 test('travelOf and driftState', () => {
   const t = {};
-  assert.deepEqual(travelOf({ vx: 0, vz: 0, anchored: false }, t), { x: SAIL.CURRENT_X, z: SAIL.CURRENT_Z });
+  { const c = currentVector({ windDir: 0.4 }, {}), tr = travelOf({ vx: 0, vz: 0, windDir: 0.4, anchored: false }, t);
+    assert.ok(Math.abs(tr.x - c.x) < 1e-9 && Math.abs(tr.z - c.z) < 1e-9, 'travel follows the wind-driven current'); }
   assert.deepEqual(travelOf({ vx: 1, vz: -2, anchored: true }, t), { x: 0, z: 0 });
   assert.deepEqual(travelOf(null, t), { x: 0, z: 0 });
   assert.equal(driftState(0, 100, 0, 1), 'ok');

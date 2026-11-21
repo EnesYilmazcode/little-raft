@@ -2,7 +2,7 @@
 // seabed: they spawn ahead of the raft and it drifts past them), save validation and migration, loot rules,
 // the host gather check and the stand-on-sand step. See docs/features/islands.md.
 import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
-import { SAIL, wrapAxis } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
+import { SAIL, wrapAxis, currentVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 
 export const ISLAND = Object.freeze({
   FIRST: 90,            // first island in a fresh world (s)
@@ -157,7 +157,8 @@ export function spawnSpot(seed, fx, fz, out) {
 export function travelOf(s, out) {
   out.x = 0; out.z = 0;
   if (!s || s.anchored) return out;
-  out.x = (fin(s.vx) ? s.vx : 0) + SAIL.CURRENT_X; out.z = (fin(s.vz) ? s.vz : 0) + SAIL.CURRENT_Z;
+  currentVector(s, out); // the current follows the (constant) wind
+  out.x += fin(s.vx) ? s.vx : 0; out.z += fin(s.vz) ? s.vz : 0;
   return out;
 }
 
