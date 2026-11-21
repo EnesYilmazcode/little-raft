@@ -22,6 +22,7 @@ const CATEGORY_OF = Object.freeze({
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
+  cropplot: 'survival', cookedbeet: 'survival', cookedpotato: 'survival', // [crops]
   researchtable: 'building', grill: 'building', smelter: 'building',
 });
 
@@ -83,6 +84,11 @@ export const ITEM_TEXT = Object.freeze({
   wax:        { desc: 'Soft beeswax from the comb.', use: 'Make beeswax candles.' }, // [bees]
   candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
+  beet:       { desc: 'A crunchy red beet.', use: 'Eat raw (+10 food), grill it, or plant it in a crop plot.' }, // [crops]
+  potato:     { desc: 'A knobbly brown potato.', use: 'Eat raw (+10 food), grill it, or plant it in a crop plot.' }, // [crops]
+  cookedbeet: { desc: 'A beet grilled sweet and soft.', use: 'A tasty snack (+15 food).' }, // [crops]
+  cookedpotato: { desc: 'A potato baked on the grill.', use: 'A warm, filling snack (+15 food).' }, // [crops]
+  cropplot:   { desc: 'A three-slot box of dark soil.', use: 'Plant beets or potatoes; water each slot with fresh water.' }, // [crops]
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
@@ -300,6 +306,10 @@ export const ITEM_SOURCE = Object.freeze({
   sharkmeat:   Object.freeze({ tag: 'shark', how: 'Fight off the shark for good, then harvest its body with E.' }), // shark lane
   sharkhead:   Object.freeze({ tag: 'shark', how: 'Fight off the shark for good, then harvest its body with E.' }),
   cookedsharkmeat: Object.freeze({ tag: 'grill', how: 'Grill raw shark meat.' }),
+  cookedbeet:  Object.freeze({ tag: 'grill', how: 'Grill a beet.' }), // [crops]
+  cookedpotato: Object.freeze({ tag: 'grill', how: 'Grill a potato.' }), // [crops]
+  beet:        Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow beets in a crop plot.' }), // [crops]
+  potato:      Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow potatoes in a crop plot.' }), // [crops]
 });
 
 /**
