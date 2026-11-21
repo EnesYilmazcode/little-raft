@@ -20,3 +20,22 @@ shared materials), fewer shadow casters, cheaper fragments and adaptive resoluti
 Revisit if: a CPU-side simulation appears (e.g. many-body water/buoyancy, crowd of
 fish, pathfinding, procedural mesh generation at runtime) that costs >1 ms/frame
 after JS optimization.
+
+## Round 202611210748 (branch claude/loop-perf-202611210748, base raft-master 7294e26)
+
+CPU profile (CDP Profiler 200 µs, 320x180 and 640x360, idle + perf_gate play cycle):
+
+| Hot spot | Measured cost | Verdict |
+|---|---|---|
+| Gulls (`wildlife.js` updateGulls/gullPlan) | ~0.2 ms/frame | **No.** Wing-matrix cache in JS cut it to ~0.02 ms. |
+| Fish schools | ~0.015 ms/frame | **No.** Fixed layout now precomputed once. |
+| Ocean getHeight/sample | 0.03-0.04 ms/frame | **No.** Already allocation-free. |
+| three.js updateMatrix/updateMatrixWorld | ~0.2 ms/frame | **No.** Engine code; cut ~30% of calls by freezing static parts. |
+| All game logic in frame() | ~1 ms of a 150-560 ms SwiftShader frame (95-97% GPU) | **No.** |
+
+The largest JS costs were DOM/layout (tooltip forced layout, onboarding/prompts deep state copies),
+fixed in JS. Startup's longest task is synchronous world build in `mount()` (~1.3 s: debris variants,
+raft floor, islands, viewmodels); that is geometry construction, which a WASM port would not help
+much (it ends in three.js BufferGeometry objects either way). Deferring/caching it is the better path.
+
+Conclusion: still no WASM. Revisit with the same >1 ms/frame bar.
