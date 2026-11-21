@@ -289,17 +289,20 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   the sky colour.
 - The starter raft is 3x3 tiles of 2 m, so 6x6 m (`dist/game.js:114`). An island is therefore only
   about 1.7x the raft's width, it never comes closer, and there are always several in view
-  (against C14 and C16).
+  (against C14 and C16). **[VERIFIED: game.js:300 exact. 10 m / (2*75*tan 53.5 deg) = 4.9 % W;
+  4.8 m / (2*75*tan 37.5 deg) = 4.2 % H; fog (75-25)/100 = 50 %.]**
 
 **Water clarity, reefs and underwater**
 - The ocean is opaque: the ShaderMaterial is not transparent and writes alpha 1.0
-  (`dist/ocean.js:145`). There is no seafloor, reef or shallow tint (against C17).
+  (`dist/ocean.js:145`). There is no seafloor, reef or shallow tint (against C17). **[VERIFIED:
+  ocean.js:145 `vec4(col, 1.0)`; the ShaderMaterial at :175-182 sets no `transparent`.]**
 - The swimmer's eye stays 0.45 m above the water (`dist/player-physics.js:22`), so there is no
   underwater view (C18 does not apply yet).
 
 **Splashes**
 - `dist/waterfx.js` (48 pooled drops and 8 rings) is not imported anywhere, so hook landings and
-  water entries have no splash or ring.
+  water entries have no splash or ring. **[VERIFIED: waterfx.js exports `createWaterEffects` (:16,
+  :240); no dist/ file imports it.]**
 
 **Branch `origin/wip/fleet/world`** (one WIP commit, fe9f146):
 - It wires `sky.js` into game.js: `SKY.horizon #d6ecf2`, fog 40 to 140, ocean fade 40 to 130.
