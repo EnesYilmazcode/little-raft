@@ -4,7 +4,8 @@
 //   const hands = createHands(THREE, createHook(THREE));
 //   camera.add(hands.group);              // camera must be in the scene
 //   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion });
-//   hands.handTip.getWorldPosition(v);    // rope anchor (left hand / coil)
+//   hands.handTip.getWorldPosition(v);    // rope anchor (left hand / coil; the left arm is parked off-screen
+//                                         // until the hook is out or reeling, the anchor keeps working)
 //
 // Static parts under each animated node (frame, hand, spool) are merged into one vertex-colored mesh
 // per material after building, so the viewmodel costs ~8 draw calls of its own.
@@ -68,46 +69,92 @@ export function createHands(T, hookModel) {
     mesh.quaternion.setFromUnitVectors(UP, d.normalize());
     parent.add(mesh); return mesh;
   };
-  const sphereGeo = G(new T.SphereGeometry(1, 12, 8));
+  const sphereGeo = G(new T.SphereGeometry(1, 16, 12));
   const ellipsoid = (parent, m, p, rx, ry, rz, rotY = 0) => {
     const mesh = finish(new T.Mesh(sphereGeo, m));
     mesh.position.copy(p); mesh.scale.set(rx, ry, rz); mesh.rotation.y = rotY;
     parent.add(mesh); return mesh;
   };
 
+  // Tube with a per-point radius along a polyline (smooth normals, uv so it merges with the lathe parts).
+  const tubeGeo = (pts, radii, radial = 10) => {
+    const n = pts.length, pos = [], uv = [], idx = [];
+    const t = V(), nrm = V(), bin = V(), ref = V(0, 1, 0);
+    for (let i = 0; i < n; i++) {
+      t.copy(pts[Math.min(i + 1, n - 1)]).sub(pts[Math.max(i - 1, 0)]).normalize();
+      nrm.crossVectors(ref, t); if (nrm.lengthSq() < 1e-8) nrm.set(1, 0, 0); nrm.normalize();
+      bin.crossVectors(t, nrm).normalize();
+      for (let k = 0; k <= radial; k++) {
+        const th = (k / radial) * Math.PI * 2, c = Math.cos(th), sn = Math.sin(th);
+        pos.push(pts[i].x + (nrm.x * c + bin.x * sn) * radii[i], pts[i].y + (nrm.y * c + bin.y * sn) * radii[i], pts[i].z + (nrm.z * c + bin.z * sn) * radii[i]);
+        uv.push(k / radial, i / (n - 1));
+      }
+    }
+    for (let i = 0; i < n - 1; i++) for (let k = 0; k < radial; k++) {
+      const a = i * (radial + 1) + k, b = a + 1, c = a + radial + 1, d = c + 1;
+      idx.push(a, b, c, b, d, c);
+    }
+    const g = new T.BufferGeometry();
+    g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals();
+    return G(g);
+  };
+  const tube = (parent, m, pts, radii, radial) => {
+    parent.add(finish(new T.Mesh(tubeGeo(pts, radii, radial), m)));
+    ellipsoid(parent, m, pts[0], radii[0], radii[0], radii[0]);                       // round both ends
+    const e = pts.length - 1; ellipsoid(parent, m, pts[e], radii[e], radii[e], radii[e]);
+  };
+
   // ---------------- fist (right-hand layout; mirrored for left) ----------------
   // Grip axis = local Y through origin, gripR = radius of the gripped object.
-  // Fingers wrap from the knuckles (right/back, +X) around the front (-Z) to the left side;
-  // thumb closes over the index finger from the top-left. Returns wrist point.
+  // Angles a go round the grip: 0 = +X (back of hand side), 90 = -Z (front), 180 = -X, 270 = +Z (wrist side).
+  // Each finger is one smooth curled tube that hugs the grip from its knuckle (a ~0) round the front to a tip
+  // tucked in at the rear-left (a ~205), where the thumb-ball pad meets it; the palm closes the rear-right, and
+  // the thumb comes up off the pad and lies across the index finger. So the grip is enclosed all the way round.
+  // Returns the wrist point.
   function buildFist(parent, gripR) {
     const k = (gripR + 0.010) / 0.042;           // scale of palm/thumb placement to grip size
     const P = (aDeg, R, y) => V(R * Math.cos(aDeg * DEG), y, -R * Math.sin(aDeg * DEG));
-    // palm / back of hand + thumb pad
-    ellipsoid(parent, skin, V(0.016 * k, -0.004, 0.047 * k), 0.030 * k, 0.050, 0.040 * k, -0.22);
-    ellipsoid(parent, skinPalm, V(-0.010 * k, 0.024, 0.050 * k), 0.020 * k, 0.022, 0.028 * k, 0.3);
+    // palm / back of hand (rear-right) + thumb-ball pad (rear-left, where the fingertips tuck in)
+    ellipsoid(parent, skin, V(0.020 * k, -0.002, 0.040 * k), 0.028 * k, 0.050, 0.036 * k, -0.35);
+    // thumb-ball pad: lies over the near face of the grip and hides the tucked fingertips
+    const pad = (a, R, y, rt, ry, rr) => ellipsoid(parent, skinPalm, P(a, R, y), rt, ry, rr, (a + 90) * DEG);
+    pad(250, gripR + 0.014, -0.012, 0.024 * k, 0.040, 0.016 * k);
+    pad(226, gripR + 0.019, 0.004, 0.022 * k, 0.034, 0.013 * k);
     const fingers = [
-      { y: 0.029, r: 0.0098, a1: 72, a2: 150 },  // index
-      { y: 0.009, r: 0.0104, a1: 75, a2: 156 },  // middle
-      { y: -0.011, r: 0.0098, a1: 73, a2: 152 }, // ring
-      { y: -0.029, r: 0.0086, a1: 68, a2: 144 }, // pinky
+      { y: 0.028, r: 0.0106, a0: 4, a1: 214 },   // index (lies under the thumb)
+      { y: 0.007, r: 0.0112, a0: -2, a1: 228 },  // middle
+      { y: -0.014, r: 0.0106, a0: -8, a1: 226 }, // ring
+      { y: -0.033, r: 0.0094, a0: -16, a1: 218 },// pinky
     ];
+    const N = 18;
     fingers.forEach((f, i) => {
-      const R = gripR + f.r * 1.02;
-      const mcp = P(-12, R + 0.003, f.y);
-      const pip = P(f.a1, R, f.y);
-      const tip = P(f.a2, R * 0.97, f.y + (i === 0 ? 0.001 : 0));
-      seg(parent, skin, mcp, pip, f.r * 1.05, f.r * 0.96);           // proximal (knuckle bump at mcp)
-      seg(parent, skin, pip, tip, f.r * 0.96, f.r * 0.78);           // middle+distal
-      if (i < 3) {                                                   // knuckle crease on dorsal PIP
-        const c = P(f.a1 + 3, R + f.r * 0.9, f.y);
-        seg(parent, crease, c.clone().setY(f.y - 0.0052), c.clone().setY(f.y + 0.0052), 0.0013, 0.0013, 6);
+      const pts = [], radii = [];
+      for (let j = 0; j <= N; j++) {
+        const t = j / N, a = f.a0 + (f.a1 - f.a0) * t;
+        const bump = 1 + 0.10 * Math.exp(-(((t - 0.40) / 0.05) ** 2)) + 0.07 * Math.exp(-(((t - 0.72) / 0.045) ** 2)); // PIP / DIP knuckles
+        const r = f.r * (1.06 - 0.22 * t) * bump;
+        const R = gripR + f.r * 0.92 + 0.004 * (1 - smooth(0, 0.25, t)) - 0.0015 * smooth(0.8, 1, t); // knuckle clears, tip presses in
+        pts.push(P(a, R, f.y + 0.002 * Math.sin(t * Math.PI) * (i === 0 ? 1 : -0.5)));
+        radii.push(r);
       }
+      tube(parent, skin, pts, radii, 10);
+      ellipsoid(parent, skin, P(f.a0 - 4, gripR + f.r * 1.15, f.y), f.r * 1.2, f.r * 1.05, f.r * 1.1);  // MCP knuckle
     });
-    // thumb closes over the index from top-left
-    const t0 = V(0.0, 0.032, 0.055 * k), t1 = V(-0.036 * k, 0.047, 0.028 * k), t2 = V(-0.047 * k, 0.045, -0.008 * k);
-    seg(parent, skin, t0, t1, 0.0135, 0.0118);
-    seg(parent, skin, t1, t2, 0.0118, 0.0094);
-    return V(0.018 * k, -0.006, 0.084 * k);
+    // thumb: rises off the pad at the rear-left, lies across the top of the curled index, tip at the front-left
+    {
+      const pts = [], radii = [];
+      const key = [[268, gripR + 0.018, -0.004, 0.0150], [245, gripR + 0.024, 0.022, 0.0138], [212, gripR + 0.026, 0.034, 0.0126], [182, gripR + 0.024, 0.034, 0.0114], [160, gripR + 0.019, 0.029, 0.0100]];
+      const curve = new T.CatmullRomCurve3(key.map(([a, R, y]) => P(a, R, y)));
+      for (let j = 0; j <= 14; j++) {
+        const t = j / 14; pts.push(curve.getPoint(t));
+        const s = t * (key.length - 1), i0 = Math.min(key.length - 2, Math.floor(s));
+        radii.push(key[i0][3] + (key[i0 + 1][3] - key[i0][3]) * (s - i0));
+      }
+      tube(parent, skin, pts, radii, 10);
+    }
+    return V(0.020 * k, -0.006, 0.080 * k);
   }
 
   // ---------------- arm builder ----------------
@@ -137,7 +184,12 @@ export function createHands(T, hookModel) {
     return { pose, frame, wrist, hand, qBase, toLocal, basePos: basePos.clone(), u, f, r };
   }
 
-  const R = buildArm({ name: 'rightArm', basePos: V(0.38, -0.32, -0.80), u: V(0.27, 0.95, -0.15), F: V(0.35, -0.50, 1.0), gripR: 0.032, mirror: false });
+  // A tool may say how big it wants to be in hand (userData.viewScale) and how thick its grip is (userData.gripRadius,
+  // model units); the right fist is then built to that exact radius so the fingers sit on the grip surface.
+  const ud = (hookModel && hookModel.userData) || {};
+  const viewScale = TOOL_SCALE * (ud.viewScale || 1);
+  const gripRight = ud.gripRadius ? ud.gripRadius * viewScale : 0.032;
+  const R = buildArm({ name: 'rightArm', basePos: V(0.38, -0.32, -0.80), u: V(0.27, 0.95, -0.15), F: V(0.35, -0.50, 1.0), gripR: gripRight, mirror: false });
   const L = buildArm({ name: 'leftArm', basePos: V(-0.34, -0.35, -0.70), u: V(0.85, 0.30, 0.10), F: V(-0.40, -0.50, 1.0), gripR: 0.028, mirror: true });
   root.add(R.pose, L.pose);
 
@@ -153,7 +205,7 @@ export function createHands(T, hookModel) {
   const handleLocal = V(0.19, -0.272, 0.11);
   const inner = hookModel && hookModel.children && hookModel.children[0];
   if (inner && hookModel.userData && hookModel.userData.size) handleLocal.set(0.2 + inner.position.x, -0.27 + inner.position.y, inner.position.z);
-  const toolOffset = handleLocal.clone().multiplyScalar(-TOOL_SCALE);
+  const toolOffset = handleLocal.clone().multiplyScalar(-viewScale);
   const savedFlags = [];
   if (hookModel) {
     toolHolder.add(hookModel);
@@ -202,10 +254,10 @@ export function createHands(T, hookModel) {
   root.userData.toolScale = TOOL_SCALE;
 
   // ---------------- animation state (weights only; transforms are rebuilt every frame) ----------------
-  const st = { walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0 };
+  const st = { walkW: 0, reelW: 0, outW: 0, leftW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0 };
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
   // returned every frame; written in place so update() allocates nothing
-  const last = { charge: 0, chargeEased: 0, throw: 0, pull: 0, walkW: 0, reelW: 0, hookOutW: 0, toolW: 1, spool: 0,
+  const last = { leftShown: 0, charge: 0, chargeEased: 0, throw: 0, pull: 0, walkW: 0, reelW: 0, hookOutW: 0, toolW: 1, spool: 0,
     rightOffset: { pos: [0, 0, 0], rot: [0, 0, 0], wrist: [0, 0, 0] },
     leftOffset: { pos: [0, 0, 0], rot: [0, 0, 0] } };
   const set3 = (a, x, y, z) => { a[0] = x; a[1] = y; a[2] = z; };
@@ -233,6 +285,7 @@ export function createHands(T, hookModel) {
     st.walkW += ((walking ? 1 : 0) - st.walkW) * k(5);
     st.reelW += ((reeling ? 1 : 0) - st.reelW) * k(9);
     st.outW += ((hasHookOut ? 1 : 0) - st.outW) * k(7);
+    st.leftW += ((hasHookOut || reeling ? 1 : 0) - st.leftW) * k(6);   // left arm only comes up to handle the rope
     st.toolW = hasHookOut ? 0 : st.toolW + (1 - st.toolW) * k(8);
     if (casting > 0 && (st.lastCasting <= 0 || casting > st.lastCasting + 0.25)) st.releaseCharge = Math.max(st.chargeS, charge, 0.35);
     st.lastCasting = casting;
@@ -280,7 +333,9 @@ export function createHands(T, hookModel) {
     const lrx = -0.10 * ce + 0.30 * pull * rW + 0.008 * amp * brL;
     const lry = 0.08 * ce;
     const lrz = -0.15 * pull * rW - 0.03 * wA * Math.sin(ph);
-    applyArm(L, lpx, lpy, lpz, lrx, lry, lrz, 0.22 * pull * rW - 0.08 * ce, 0, -0.10 * ce + 0.12 * a);
+    const hideL = 1 - smooth(0, 1, st.leftW);                   // 1 = parked below the bottom-left edge
+    applyArm(L, lpx - 0.10 * hideL, lpy - 0.38 * hideL, lpz + 0.05 * hideL, lrx + 0.5 * hideL, lry, lrz, 0.22 * pull * rW - 0.08 * ce, 0, -0.10 * ce + 0.12 * a);
+    L.pose.visible = hideL < 0.98;
 
     // ---- coil: spool turns while reeling (in) / casting (out); pendulum swing about grip axis
     st.spool = (st.spool + dt * (rW * 7.0 - casting * 12.0)) % (Math.PI * 2);
@@ -293,12 +348,12 @@ export function createHands(T, hookModel) {
       hookModel.visible = !hasHookOut;
       hookModel.position.copy(toolOffset);
       hookModel.quaternion.identity();
-      hookModel.scale.setScalar(TOOL_SCALE);
+      hookModel.scale.setScalar(viewScale);
     }
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
 
     last.charge = chargeEff; last.chargeEased = ce; last.throw = a; last.pull = pull * rW; last.walkW = st.walkW;
-    last.reelW = rW; last.hookOutW = oW; last.toolW = tw; last.spool = st.spool;
+    last.reelW = rW; last.hookOutW = oW; last.leftShown = 1 - hideL; last.toolW = tw; last.spool = st.spool;
     set3(last.rightOffset.pos, rpx, rpy, rpz); set3(last.rightOffset.rot, rrx, rry, rrz); set3(last.rightOffset.wrist, rwx, 0, rwz);
     set3(last.leftOffset.pos, lpx, lpy, lpz); set3(last.leftOffset.rot, lrx, lry, lrz);
     return last;
