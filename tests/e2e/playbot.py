@@ -515,8 +515,12 @@ class Bot:
         if i is None:
             self.act(f'no {kind} in hotbar')
             return False
+        self.act(f'select {kind} Digit{i + 1}')
         self.page.keyboard.press(f'Digit{i + 1}')
-        self.wait(250)
+        if not self.until(f'raftDebug.state.selectedIndex === {i}'):
+            self.fail('hotbar_select_failed', f'Digit{i + 1} did not select hotbar slot {i} ({kind}) within 6 s '
+                      f'(selectedIndex still {self.page.evaluate("raftDebug.state.selectedIndex")})')
+            return False
         return True
 
     def wait_idle_hook(self, max_s):
