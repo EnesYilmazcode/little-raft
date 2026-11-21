@@ -6,6 +6,12 @@ Perf vs main 912d941 (median of 3): 99-103 vs 185-197 ms, 45-49 vs 46-52 draw ca
 Open review nits (not blocking): display items all cast shadows; zipline re-uploads rope matrices with no lines; photoframe:set has no reach check; HELD lacks camera and new placeables; shelves/stands have no pickup hook yet.
 Needs a worker rebase: loop-ux-0743, loop-fidelity-0747, loop-perf-0720.
 
+Integrator B round 6 (10:00 UTC): independently gated fd3724d (the sha A merged): 1402/1402 tests, no page errors, hook-only spawn,
+Esc from the bag keeps the lock with no pause (escape_lock 3/3), prompts beside the crosshair; perf 126/96 ms vs main 255/159 ms, 51/45 vs 50/50 draw calls.
+B merged: loop-fidelity-0804 (7 missing commits), -0821 (2), loop-ux-0648/-0833 (new pieces only), loop-visuals-0805 (hook tines, sky/sea, foam rings, deck underlay; warm-wood menu restyle dropped: clashes with the glass UI and brings back backdrop blur), loop-perf-0708 (docs).
+B also needs a worker rebase: loop-ux-0742 (851 behind, 23 conflicting files; its input/hammer/save fixes are worth having).
+Open PR: #6 (round 7).
+
 Previous:
 Updated: 2026-11-21 09:25 UTC, integrator B round 4. PR #5 (round 6) open at 9b3ba49, under review.
 Gate at 9b3ba49: 1023/1023 tests, no page errors, hook-only spawn, Esc from inventory stays in play, prompts beside the crosshair,

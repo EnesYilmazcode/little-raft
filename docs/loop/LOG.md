@@ -1205,3 +1205,11 @@ No regressions. Intended differences:
 - PR #5 review (2 reviewers, comments on the PR). Fixed: juicer hopper never added to the model; string lights turned on the point-light pool (19 shader links mid-game); photo frame cast 9 shadows; picking up a linked glide post dropped its rope (posts now refuse pickup); misleading "Empty it first" text. The photo album's exit-lock fix had already landed.
 - Gate at fd3724d: 1398/1398, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause. Perf vs main: 99-103 vs 185-197 ms, 45-49 vs 46-52 draw calls.
 - Merged PR #5 into main (c3a29df).
+
+## Integrator B, round 6 (09:30-10:00 UTC)
+- Merges (one subagent each, tests + shoot after each): loop-fidelity-0804/-0821 (only commits another integrator had not taken), loop-ux-0648 via -0833 (most of 0833 was a stale copy; took build rules, crate/desk keyboard nav, chip/lock wording, logbook back-to-pause), loop-visuals-0805 (partial, menu restyle dropped), loop-perf-0708 (docs). features-0814 was already merged by another integrator.
+- Skipped, need a worker rebase: loop-ux-0742, loop-ux-0743 (23 conflicting files each).
+- PR #5 reviews posted (code + visual). Fixed: junk pickups now drawn by the item batch with no shadows; content first() skips modules without the hook (no per-frame arrays); look and album panels release the lock via exitLock; duplicate craft-book key; fish-trap tails cast no shadow; compass, vitals and journal chip hidden while the bag is open.
+- Not bugs: the pause-menu double highlight is a headless stale-cursor hover. esc-relock.py is out of date (uses #newGame and #crewButton).
+- Gate at fd3724d: 1402/1402, no errors, hook-only spawn, Esc OK, perf 126/96 vs 255/159 ms, draws 51/45 vs 50/50. A merged it into main (c3a29df); PR #6 open.
+
