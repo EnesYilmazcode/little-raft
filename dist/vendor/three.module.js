@@ -27963,9 +27963,23 @@ function WebGLMaterials( renderer, properties ) {
 
 	}
 
+	// little-raft patch: cache the fog colour conversion (linear -> output space) instead of redoing it
+	// (and allocating) for every material refresh; recomputed when the fog colour or colour space changes.
+	const _fogSrc = new Color( NaN, NaN, NaN ), _fogOut = new Color();
+	let _fogSpace = null;
+
 	function refreshFogUniforms( uniforms, fog ) {
 
-		fog.color.getRGB( uniforms.fogColor.value, getUnlitUniformColorSpace( renderer ) );
+		const colorSpace = getUnlitUniformColorSpace( renderer ), c = fog.color;
+
+		if ( c.r !== _fogSrc.r || c.g !== _fogSrc.g || c.b !== _fogSrc.b || colorSpace !== _fogSpace ) {
+
+			_fogSrc.copy( c ); _fogSpace = colorSpace;
+			c.getRGB( _fogOut, colorSpace );
+
+		}
+
+		uniforms.fogColor.value.copy( _fogOut );
 
 		if ( fog.isFog ) {
 

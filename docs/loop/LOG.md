@@ -666,6 +666,7 @@ The two item-icon modules became one shared cache.
 - Play together is still a separate centred dialog.
 - The Hammer and Fishing Rod icons are still dim on their tiles.
 
+
 ## 2026-11-21 · loop-features-202611210722 (features, round 3)
 Base: origin/claude/raft-master (6ab9b24, already holding round 1) + round 2 (loop-features-202611210534) merged in (re-based 3-way merge; kiln metal now uses master's `metalingot`/`glass`/`brick`; decor-pack rotation kept via `userData.ownRot`). raft-integration (newer timestamp) was skipped as base: it is a divergent line 558 commits behind master without the lanes.
 Avoided features already taken by other loop-features runs (paint, sleep, motor/wheel, beehive, rain barrel, instruments, treasure, map table, customise).
@@ -787,6 +788,7 @@ Left for later:
 - slow bounded GL buffer creep (+52 buffers over minutes 2-8 of play)
 - "Discover at a Tinker's Desk" heading squeezed to 3 px (pre-existing UI bug)
 - `ocean.sampleAt` to remove double-argument boxing in `updateItems`
+
 ## 2026-11-21 · loop-features-202611210648 (features)
 Base: origin/claude/raft-master (8cfdbcd). Branch: claude/loop-features-202611210648.
 

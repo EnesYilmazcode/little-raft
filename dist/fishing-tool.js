@@ -16,12 +16,12 @@
 //   gripAxis    Vector3  unit rod axis (+Y, butt -> tip)
 //   float       Group    float (hide while the line is cast out)
 //   leader      Mesh     tip -> float line (hide while cast out)
-//   rodLine     Mesh     reel -> guides -> tip line (always visible)
-//   reelSpool   Mesh     spool (rotate .rotation.x to animate reeling; axis is model X)
+//   rodLine     Mesh     the baked static rod (blank, handle, caps, wraps, guides, reel frame, reel -> tip line)
+//   reelSpool   Mesh     spool + crank (rotate .rotation.x to animate reeling; axis is model X)
 //   size        {x,y,z}  approximate bounds
-//   meshCount   number   (15: static brass / steel parts on the root are merged per material)
+//   meshCount   number   meshes after baking (4: rod, spool, float, leader)
 //   dispose()   frees all owned geometries and materials
-import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
+import { createPalette, bakeGeometry } from './bake.js?build=v3-survival-ae77fa84ac2b';
 
 export function createFishingTool(T) {
   const root = new T.Group();
@@ -264,8 +264,30 @@ export function createFishingTool(T) {
     leader.name = 'leader';
   }
 
-  // ---------- merge static unnamed parts sharing a material (brass caps, steel tip top + reel plate) ----------
-  for (const m of mergeChildMeshes(T, root, { skip: (c) => !!c.name })) G(m.geometry);
+  // ---------- bake: static rod parts -> 1 mesh, spool + crank -> 1, float -> 1 (leader stays as is) ----------
+  {
+    const pal = createPalette({ size: 16 });
+    mats.push(pal);                                           // dispose() frees the palette too
+    const mk = (geo, name) => { const m = new T.Mesh(G(geo), pal.material); m.name = name; m.castShadow = m.receiveShadow = false; m.frustumCulled = false; m.userData.baked = true; return m; };
+    const old = new Set();
+    const parts = root.children.filter((c) => c.isMesh && c !== spool && c !== leader);
+    const rod = mk(bakeGeometry(parts, root, pal), 'rodBaked');
+    for (const c of parts) { root.remove(c); old.add(c.geometry); }
+    root.add(rod);
+    rodLine = rod;
+    const spoolParts = [spool, ...spool.children];
+    const spoolBaked = mk(bakeGeometry(spoolParts, spool, pal), 'reelSpool');
+    spoolBaked.position.copy(spool.position); spoolBaked.quaternion.copy(spool.quaternion); spoolBaked.scale.copy(spool.scale);
+    root.remove(spool); root.add(spoolBaked);
+    spoolParts.forEach((m) => old.add(m.geometry));
+    spool = spoolBaked;
+    const floatParts = float.children.slice();
+    const floatBaked = mk(bakeGeometry(floatParts, float, pal), 'floatBaked');
+    floatParts.forEach((m) => { float.remove(m); old.add(m.geometry); });
+    float.add(floatBaked);
+    for (const g of old) { g.dispose(); const i = geos.indexOf(g); if (i >= 0) geos.splice(i, 1); }
+    for (const m of mats.splice(0, mats.length - 1)) if (m !== lineMat) m.dispose(); else mats.push(m);
+  }
   meshCount = 0; root.traverse((o) => { if (o.isMesh) meshCount++; });
 
   // ---------- reference nodes ----------

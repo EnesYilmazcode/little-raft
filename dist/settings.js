@@ -67,7 +67,7 @@ const CSS = `
 #options{position:fixed;inset:0;width:100vw;height:100vh;max-width:none;max-height:none;margin:0;padding:0;border:0;border-radius:0;
   overflow:hidden;background:transparent;box-shadow:none;color:var(--cream,#f4efe2);font:500 15px/1.4 var(--ui-font,system-ui,sans-serif)}
 #options[open]{display:flex}
-#options::backdrop{background:rgba(6,10,12,.42);backdrop-filter:blur(4px) saturate(.8)}
+#options::backdrop{background:rgba(6,10,12,.55);-webkit-backdrop-filter:none;backdrop-filter:none} /* no blur: it re-blurs the live canvas every frame */
 #options .rs-form{display:flex;align-items:stretch;gap:0;width:100%;height:100%;margin:0;padding:0}
 #options .rs-menu{display:flex;flex-direction:column;justify-content:center;align-items:stretch;flex:none;width:clamp(260px,26vw,340px);padding:0 0 0 clamp(24px,3.5vw,48px);
   background:linear-gradient(180deg,#141b1ef2,#0b1012f7);box-shadow:inset -1px 0 0 #ffffff17,18px 0 50px rgba(0,0,0,.3)}
