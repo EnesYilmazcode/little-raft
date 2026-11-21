@@ -456,6 +456,18 @@ export function createFishingCooking(T, host) {
     pointerDown, pointerUp, interact, update, applyAction, onNet, dispose,
     get prompt() { return prompt; },
     hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
+    recordTrapCatch(list) { // [fishtrap] fish from a fish trap land in the collector's own journal (cleaned by recordCatch)
+      if (!Array.isArray(list)) return;
+      let fullOnce = false;
+      for (const c of list.slice(0, 3)) {
+        const sp = speciesById(c?.species); if (!sp) continue;
+        const prev = journal.entry(sp.id), res = journal.recordCatch({ species: c.species, cm: c.cm, stars: c.stars });
+        if (res.isNew) toast(`New species! ${sp.name} added to your journal`);
+        else if (res.isRecord && prev) toast(`New record! ${sp.name} ${journal.entry(sp.id).bestCm.toFixed(1)} cm (was ${prev.bestCm.toFixed(1)})`);
+        if (res.basketed === false && !fullOnce) { fullOnce = true; toast('Basket full. Cook a few on a grill.', true); }
+      }
+      dirty = true;
+    },
     get rodReeling() { return !!session && session.stage === 'reeling' && session.holding; },
     capture() { save(); return { v: 1, journal: journal.snapshot(), grills: isGuest(lastRole) ? (stash || []) : snapshots() }; },
     // test/QA helpers

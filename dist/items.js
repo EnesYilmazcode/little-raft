@@ -183,6 +183,28 @@ const LIST = [
   item('candle', 'Beeswax Candle', 'decor', { placeable: true, iconTint: '#ffd27a',
     recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
     tip: 'A little jar candle that glows warmly at night.' }),
+  // [power] wind turbine, battery, string lights and lamp post (dist/power.js, models in dist/power-model.js).
+  // Lights share daynight's 64-lantern cap with lanterns and candles (raft order); one past the cap never brightens.
+  item('turbine', 'Wind Turbine', 'decor', { placeable: true, iconTint: '#e9eef1', // [power]
+    recipe: hand({ wood: 4, metalingot: 2, bolt: 2, rope: 2 }), unlock: research('metalingot', 'bolt'),
+    tip: 'Spins in the breeze and charges a battery next to it.' }),
+  item('battery', 'Battery', 'decor', { placeable: true, iconTint: '#7dff9a', // [power]
+    recipe: hand({ copperingot: 2, metalingot: 1, plastic: 2 }), unlock: research('copperingot'),
+    tip: 'Stores wind power. Lights within 3 tiles share it at night.' }),
+  item('stringlights', 'String Lights', 'decor', { placeable: true, iconTint: '#ffc070', // [power]
+    recipe: hand({ glass: 2, copperingot: 1, rope: 2 }), unlock: research('glass', 'copperingot'),
+    tip: 'A little post with a wire of warm bulbs. Needs a charged battery nearby.' }),
+  item('lamppost', 'Lamp Post', 'decor', { placeable: true, iconTint: '#ffe2a8', // [power]
+    recipe: hand({ wood: 3, glass: 1, copperingot: 1, nail: 2 }), unlock: research('glass', 'copperingot'),
+    tip: 'A tall lamp that lights the deck at night. Needs a charged battery nearby.' }),
+  item('fishtrap', 'Fish Trap', 'decor', { placeable: true, iconTint: '#b98a4e', recipe: hand({ wood: 3, rope: 3, leaf: 2 }), unlock: discover('fish'), // [fishtrap] see dist/fish-trap.js
+    tip: 'A woven basket that hangs off the raft edge. Fish swim in while you relax.' }),
+  item('shelf', 'Display Shelf', 'decor', { placeable: true, iconTint: '#b4824b', // [display] see dist/display.js
+    recipe: hand({ wood: 4, nail: 2 }), unlock: discover('nail'),
+    tip: 'A little shelf for showing off your favourite finds.' }), // [display]
+  item('trophystand', 'Trophy Stand', 'decor', { placeable: true, iconTint: '#c9a24a', // [display]
+    recipe: hand({ wood: 3, scrap: 1 }), unlock: discover('fish'),
+    tip: 'A small pedestal for one treasure, or a trophy of your best catch.' }), // [display]
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
     recipe: hand({ wood: 4, rope: 3, leaf: 3 }), unlock: discover('rope', 'plastic'),
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
@@ -219,6 +241,9 @@ export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
   smelter: 0.5, researchtable: 0.55, grill: 0.45,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
+  shelf: 0.45, trophystand: 0.25, // [display]
+  turbine: 0.2, battery: 0.3, stringlights: 0.1, lamppost: 0.12, // [power]
+  fishtrap: 0.2, // [fishtrap] only the post stands on the deck
 });
 
 /** Fuel units per item put into a station. Plastic is never burned (friendly seas). */
@@ -275,6 +300,7 @@ export const PROGRESSION_PLAN = deepFreeze([
   { minute: 85, goal: 'Craft the Metal Hook (3x longer lasting)', ids: ['metalhook'] },
   { minute: 100, goal: 'Melt sand into glass and smelt copper', ids: ['glass', 'copperingot'] },
   { minute: 110, goal: 'Craft binoculars and go barrel spotting', ids: ['binoculars'] },
+  { minute: 115, goal: 'Light the raft with wind power', ids: ['turbine', 'battery', 'stringlights'] }, // [power]
   { minute: 120, goal: 'A cosy, well-equipped raft', ids: [] },
 ]);
 

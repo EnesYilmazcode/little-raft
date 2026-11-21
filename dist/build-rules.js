@@ -9,6 +9,7 @@ export const BLOCK_TEXT = Object.freeze({
   bound: 'Raft can’t grow further this way',
   cap: 'Raft can’t grow further this way',
   reach: 'Too far away: step closer',
+  edge: 'Fish traps hang on an edge tile, next to open water', // [fishtrap]
 });
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];

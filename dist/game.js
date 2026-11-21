@@ -748,7 +748,7 @@ export function mount(transfer = null) {
     if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
     let why;
     if (kind === 'hammer') why = floorBlock(world.tiles, x, z);
-    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z); } // [fishing-cooking] grill tiles
+    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z) || content?.placeBlock(kind, x, z) || null; } // [fishing-cooking] grill tiles // [fishtrap] placeBlock
     else return null;
     if (why && !BLOCK_TEXT[why]) return null;
     if (!why && !inReach(physics.x, physics.z, x, z)) why = 'reach';
@@ -757,7 +757,7 @@ export function mount(transfer = null) {
   function placementCandidates(kind) {
     const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
     if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
-    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z) && !fc?.hasGrill(x, z) && ok(x, z)) out.push({x, z});
+    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z) && !fc?.hasGrill(x, z) && !content?.placeBlock(kind, x, z) && ok(x, z)) out.push({x, z}); // [fishtrap] placeBlock
     return out;
   }
   let placeRot = 0, pointing = false; // decor placement rotation (radians) and the pointing-hand pose
@@ -779,6 +779,7 @@ export function mount(transfer = null) {
   function effect(e) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
+    if (Array.isArray(e.trapFish)) fc?.recordTrapCatch?.(e.trapFish); // [fishtrap]
     if (prog?.effect(e)) return; // [progression-hook]
     if (e.loot && typeof e.loot === 'object') { for (const [k, n] of Object.entries(e.loot)) if (ITEM_INFO[k] && isInt(n) && n > 0) pickupFeed.add(k, n); } // pickup feed rows with icons
     else if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
@@ -885,6 +886,7 @@ export function mount(transfer = null) {
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
         if (decorBlock(world.tiles, world.decor, a.x, a.z)) return; if (fc?.hasGrill(a.x, a.z)) return; // [fishing-cooking] grill tiles
+        { const eb = content?.placeBlock(a.recipe, a.x, a.z); if (eb) { emit({kind:'notice', text:BLOCK_TEXT[eb] ?? 'Can’t place that here'}, actor); return; } } // [fishtrap]
         if (a.recipe === 'receiver' && world.decor.some(d => d.type === 'receiver')) { emit({kind:'notice', text:'Your raft already has a receiver'}, actor); return; }
         const sel = bag.slots[bag.selectedIndex];
         if (sel?.kind === a.recipe) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; }
