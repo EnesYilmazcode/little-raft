@@ -63,6 +63,7 @@ import { createVitalsUI } from './vitals-ui.js'; // [vitals] HUD bars, damage vi
 import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
 import { createWaterEffects } from './waterfx.js?build=v3-survival-ae77fa84ac2b'; // shark lane: bite splashes
 import { cleanNets, copyNets, migrateDeckNets, netSpot, netBlock, netOnCell, catchNet, netAt, findNet, netDistance, emptyNet, createNetView, createNetModel, netEdgeX, netEdgeZ, netYaw, netCenterX, netCenterZ, NET_CAPACITY, NET_REACH } from './nets.js?build=v3-survival-ae77fa84ac2b'; // [nets] edge collection nets
+import { cleanCrop, withoutCrops } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [crops] crop plot slots live on the decor entry
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -188,7 +189,9 @@ export function mount(transfer = null) {
       if (!d || !DECOR_TYPES.includes(d.type) || !isInt(d.x) || !isInt(d.z)) continue;
       const k = d.x + ',' + d.z; if (!seen.has(k) || used.has(k)) continue;
       const rot = Number.isFinite(d.rot) ? Math.round(wrapRot(d.rot) * 1000) / 1000 : 0; // placement rotation (R / shift+wheel while placing)
-      used.add(k); decor.push(rot ? {type:d.type, x:d.x, z:d.z, rot} : {type:d.type, x:d.x, z:d.z});
+      used.add(k); const e = rot ? {type:d.type, x:d.x, z:d.z, rot} : {type:d.type, x:d.x, z:d.z};
+      if (d.type === 'cropplot') e.crop = cleanCrop(d.crop); // [crops] old saves: empty slots
+      decor.push(e);
     }
     const nets = cleanNets(v.nets, tiles), deckNets = decor.filter(d => d.type === 'net'); // [nets] old deck nets move to the raft edge
     if (deckNets.length) { const left = new Set(migrateDeckNets(deckNets, tiles, nets)); for (let i = decor.length - 1; i >= 0; i--) if (decor[i].type === 'net' && !left.has(decor[i])) decor.splice(i, 1); }
@@ -207,7 +210,7 @@ export function mount(transfer = null) {
       ...cleanWatering(v, decor, {seedMissing:true}), ...cleanRain(v, decor)};
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
-    return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => ({...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})}, pieces:Array.isArray(w.pieces) ? w.pieces.map(p => ({...p})) : [],
+    return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => (d.crop ? {...d, crop:cleanCrop(d.crop)} : {...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})}, pieces:Array.isArray(w.pieces) ? w.pieces.map(p => ({...p})) : [],
       fish:isInt(w.fish) ? w.fish : 0, collected:isInt(w.collected) ? w.collected : 0, signal:cleanSignal(w.signal), ext:cleanExt(w.ext), sailing:cleanSailing(w.sailing), // content + sailing hooks
       ...cleanProgress(w), // fresh, validated notes/achievements arrays
       tileHp:cleanTileHp(w.tileHp, w.tiles), tileArmor:cleanTileArmor(w.tileArmor, w.tiles), shark:cleanShark(w.shark), nets:copyNets(w.nets), // shark lane; [armor]
@@ -689,7 +692,7 @@ export function mount(transfer = null) {
     if (tipCache.size > 200) tipCache.clear(); tipCache.set(html, t); return t;
   }
   function updateEatTip(dialog) {
-    const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && netAim < 0 && !waterAim?.click ? eatKind() : null; // [nets] E on a net wins
+    const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && netAim < 0 && !waterAim?.click && !content?.claims(selectedKind(), frameAim) ? eatKind() : null; // [nets] E on a net wins; [crops] a click plants/waters instead
     if (!k) { eatTip = null; return; }
     if (eating) { EATING_TIP.label = FOOD[k].food > 0 ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
     eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
@@ -1160,6 +1163,7 @@ export function mount(transfer = null) {
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
     if (instruments?.use(kind)) { swing = .7; return; } // [instruments]
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' ? spearRep?.useHammer() : kind === 'armor' && spearRep?.useArmor()) return; // [spear-repair] thrust / repair a damaged tile; [armor] fit armor
+    if (content?.use(kind, aim)) { swing = 1; return; } // [crops] content: plant / water a crop plot slot (before eating)
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
       if (w?.click) { swing = 1; action(w.click); } else startEat(kind);
@@ -1754,7 +1758,7 @@ export function mount(transfer = null) {
         if (!Array.isArray(data.world.pieces) && !first) w.pieces = world.pieces; // building-pieces lane hook: host omits unchanged pieces
         if (!Array.isArray(data.world.nets) && !first) w.nets = world.nets; // [nets] older host: keep what we had
         const netsDiffer = JSON.stringify(world.nets) !== JSON.stringify(w.nets); // [nets]
-        const changed = first || JSON.stringify([world.tiles, world.decor]) !== JSON.stringify([w.tiles, w.decor]), piecesChanged = w.pieces !== world.pieces;
+        const changed = first || JSON.stringify([world.tiles, world.decor], withoutCrops) !== JSON.stringify([w.tiles, w.decor], withoutCrops), piecesChanged = w.pieces !== world.pieces;
         world = w; other = validPose(data.other);
         if (data.bag) { // canonical bag once the host has applied all of our sent actions
           const acked = first || !isInt(data.ack) || data.ack >= seq || performance.now() - lastSeqSent > ACK_TIMEOUT;
