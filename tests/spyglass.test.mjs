@@ -191,6 +191,22 @@ test('module: zoom gate, debug force/snap, menus snap to 1, nothing saved', () =
   assert.equal(globalThis.raftSpyglass, undefined);
 });
 
+test('module: fainted (hp 0) never zooms; an idle frame with another tool never queries the UI', () => {
+  const f = fakeCtx('hammer');
+  let uiCalls = 0; const ui = f.ctx.uiOpen; f.ctx.uiOpen = () => { uiCalls++; return ui(); };
+  const m = createSpyglass(f.ctx);
+  for (let i = 0; i < 10; i++) { m.update(1 / 60); m.zoom(); m.prompt(null); }
+  assert.equal(uiCalls, 0, 'hammer in hand: gate stops at the kind check');
+  f.ctx.vitals = { hp: 0 };
+  m.debug.force('spyglass', { snap: true });
+  assert.equal(m.zoom(), 1, 'faint card: no zoom');
+  m.update(1 / 60); assert.equal(m.debug.t(), 0);
+  f.ctx.vitals = { hp: 50 };
+  m.debug.force('spyglass', { snap: true });
+  assert.equal(m.zoom(), 3, 'awake again');
+  m.dispose();
+});
+
 test('zoomed crosshair CSS targets the current graphics.css dot, not the old ring markup', async () => {
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('spyglass.js', base), 'utf8');

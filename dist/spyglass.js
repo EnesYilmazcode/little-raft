@@ -122,14 +122,17 @@ export function createSpyglass(ctx) {
     return s ? s.kind : null;
   }
   // The zoomable kind in hand right now, or null (not running, menu, swimming, diving, hidden tab, other kind).
+  // Cheapest checks first: the kind test means an idle frame never touches the DOM (uiOpen queries dialog[open]).
   function gate() {
-    if (!ctx.running || (ctx.uiOpen && ctx.uiOpen()) || ctx.physics?.swimming) return null;
+    if (!ctx.running) return null;
+    const k = forced || heldKind();
+    if (!zoomFor(k)) return null;
+    if (ctx.physics?.swimming || (ctx.vitals && ctx.vitals.hp <= 0)) return null; // fainted: hp stays 0 until the wake-up
     const cam = ctx.camera, sea = ctx.ocean?.mesh?.position?.y ?? 0;
     if (cam && cam.position && cam.position.y < sea) return null;
     const d = doc(); if (d && d.hidden) return null;
-    if (forced) return forced;
-    const k = heldKind();
-    return zoomFor(k) ? k : null;
+    if (ctx.uiOpen && ctx.uiOpen()) return null;
+    return k;
   }
   function held() {
     if (forced) return true;
