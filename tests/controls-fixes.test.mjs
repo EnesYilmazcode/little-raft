@@ -150,3 +150,14 @@ test('CTL-2: controls routes pad menu presses to menuBack and game.js closes + r
   assert.match(gameSrc, /onResume:guard\(\(\) => \{ play\('close'\); requestLock\(\); \}\)/);
   assert.match(gameSrc, /createSettings\(\{[^\n]*onResume:\(\) => \{ quality\?\.reset\(\); requestLock\(\); \}/);
 });
+
+// ---------------------------------------------------------------- CTL-3
+
+test('CTL-3: pad RT runs rod fishing v2 (fc.pointerDown/pointerUp) before the legacy use path, like the mouse', () => {
+  const down = /\buseDown:\(\) => \{([^\n]*)/.exec(gameSrc)?.[1] ?? '', up = /\buseUp:\(\) => \{([^\n]*?)\}, useCancel/.exec(gameSrc)?.[1] ?? '';
+  assert.ok(down.includes('fc?.pointerDown()') && down.indexOf('fc?.pointerDown()') < down.indexOf('useSelected('), 'useDown: fc first');
+  assert.ok(down.includes("reelCast('click')") && down.indexOf("reelCast('click')") < down.indexOf('castOut()'));
+  assert.ok(up.includes('fc?.pointerUp()') && up.indexOf('fc?.pointerUp()') < up.indexOf('releaseCharge('), 'useUp: fc first');
+  const mouse = gameSrc.slice(gameSrc.indexOf("on(canvas, 'pointerdown'"), gameSrc.indexOf("on(canvas, 'pointermove'"));
+  assert.ok(mouse.indexOf('fc?.pointerDown()') < mouse.indexOf('useSelected('), 'mouse path is the reference');
+});
