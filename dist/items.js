@@ -183,6 +183,9 @@ const LIST = [
   item('candle', 'Beeswax Candle', 'decor', { placeable: true, iconTint: '#ffd27a',
     recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
     tip: 'A little jar candle that glows warmly at night.' }),
+  item('scarecrow', 'Scarecrow', 'decor', { placeable: true, iconTint: '#c9a46a', // [scarecrow] model in dist/scarecrow-model.js
+    recipe: hand({ wood: 3, leaf: 4, rope: 2, plastic: 1 }), unlock: discover('rope'),
+    tip: 'A friendly driftwood scarecrow. Gulls leave nearby planters alone and sit on its hat instead.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
     recipe: hand({ wood: 4, rope: 3, leaf: 3 }), unlock: discover('rope', 'plastic'),
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
@@ -219,6 +222,7 @@ export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
   smelter: 0.5, researchtable: 0.55, grill: 0.45,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
+  scarecrow: 0.25, // [scarecrow]
 });
 
 /** Fuel units per item put into a station. Plastic is never burned (friendly seas). */

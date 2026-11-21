@@ -27,8 +27,9 @@ import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
 import { createStorage } from './storage-research.js?build=v3-survival-ae77fa84ac2b';
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
+import { createScarecrow } from './scarecrow.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
 
-const FEATURES = [createIslands, createWildlife, createStorage, createDayNight, createBees]; // [bees] + createBees
+const FEATURES = [createIslands, createWildlife, createScarecrow, createStorage, createDayNight, createBees]; // [bees] + createBees, [scarecrow] + createScarecrow
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -38,8 +39,9 @@ export function cleanExt(v) { // used by game.js cleanWorld(); modules validate 
 
 export function createContent(ctx, features = FEATURES) {
   const mods = [];
+  const peer = name => mods.find(m => m.name === name && !m.dead) ?? null; // [scarecrow] lets a module find another
   for (const make of features) {
-    try { const m = make(ctx); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
+    try { const m = make(ctx, peer); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
   // A failing module is disabled and disposed once, so shared engine state (fog, lights…) is restored.
   const off = m => { if (m.dead) return; m.dead = true; console.error('content module disabled:', m.name); try { m.dispose?.(); } catch (e) { console.error(`content ${m.name}.dispose failed`, e); } };
@@ -58,6 +60,8 @@ export function createContent(ctx, features = FEATURES) {
     prompt: aim => first('prompt', aim),
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     decorModel: type => first('decorModel', type),
+    pecked() { const m = peer('scarecrow'); return m?.pecked ?? null; }, // [scarecrow] palm keys paused by a pecking gull (host)
+    palmPrompt(aim, base) { const m = peer('scarecrow'); try { return m?.palmPrompt?.(aim, base) ?? null; } catch (e) { console.error('content scarecrow.palmPrompt failed', e); off(m); return null; } }, // [scarecrow]
     rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };

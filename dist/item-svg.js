@@ -267,6 +267,19 @@ export const ITEM_ICONS = Object.freeze({
     <circle cx="12" cy="24" r="1.4" fill="${O}"/>
     <path d="M17 22 C20 21 22 21.5 24 22" fill="none" stroke="#ffe39a" stroke-width="1.5" stroke-linecap="round"/>`,
 
+  // [scarecrow] driftwood post, crossbar with rags, leaf skirt, sack head and a bucket hat
+  scarecrow: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M22.5 18 H25.5 V44 H22.5 Z" fill="#cdbb9a"/>
+    <path d="M14 44 H34" fill="none" stroke="#9e8e73" stroke-width="3"/>
+    <rect x="7" y="22" width="34" height="3.4" rx="1.2" fill="#cdbb9a"/>
+    <path d="M9 25 L7.5 32 L11 31 Z" fill="#8fb8d8" stroke-width="1.4"/><path d="M39 25 L40.5 32 L37 31 Z" fill="#e8d6a8" stroke-width="1.4"/>
+    <path d="M17 27 H31 L34 38 L29 36 L27 39 L24 36 L21 39 L19 36 L14 38 Z" fill="#6fae4f"/>
+    <circle cx="24" cy="14.5" r="5.5" fill="#d8c08e"/>
+    <path d="M13 10 H35 C34 11.8 14 11.8 13 10 Z" fill="#e07a4f"/>
+    <path d="M18 10 C18 5 20 3.5 24 3.5 C28 3.5 30 5 30 10 Z" fill="#e07a4f"/></g>
+    <g fill="${O}"><circle cx="22" cy="14" r=".9"/><circle cx="26" cy="14" r=".9"/></g>
+    <path d="M21.5 16.8 C23 18.3 25 18.3 26.5 16.8" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round" stroke-dasharray=".1 1.3"/>`,
+
   seaweed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M16 44 C8 36 18 29 12 21 C8 15 11 9 14 4 C23 9 21 16 25 22 C29 30 22 36 24 44 Z" fill="#3f8f5a"/>
     <path d="M25 44 C21 35 30 30 27 20 C26 14 30 9 36 7 C39 15 35 19 37 25 C39 33 32 37 33 44 Z" fill="#5fae6b"/>
