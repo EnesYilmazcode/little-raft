@@ -1,8 +1,9 @@
 // Item kind -> 3D model + icon pose, for baking inventory icons from the game's own models.
-// Every kind in ITEM_INFO (dist/inventory-state.js) has an entry. 8 kinds use dist builders
-// unchanged (hammer, plastic, leaf debris, palm/bench/crate crafts... see makeIconItems), the sail
-// is the craft model squashed; fish and rope have no world model yet, so two small procedural
-// ones live here, plus icon-only variants for kinds whose world model does not read at 40 px.
+// Every kind in ITEM_INFO (dist/inventory-state.js) has an entry (15). 5 use dist builders
+// unchanged (createPlastic, createDebris leaf, createCraft palm/bench/crate); 2 use a dist model
+// rescaled (hammer fattened, sail squashed); fish and rope have no world model yet, so two small
+// procedural ones live here; 6 are icon-only variants because the world model does not read at
+// 40 px (wood, scrap, hook = the held scrap hook redrawn, fishing rod, lantern, net).
 //
 // makeIconItems(T, getMaterial) -> [{ kind, make: () => Object3D, pose, dispose(obj) }]
 //   getMaterial(color) is the engine's shared material cache (game.js `mat`). Materials it hands
@@ -38,20 +39,23 @@ export async function bakeItemIcons(T, renderer, getMaterial, build = 'dev', kin
 // Icon pose per kind (degrees, applied in ZXY order with the camera fixed on +Z).
 // Long tools lie on the diagonal, handle bottom-left (Raft / Minecraft convention);
 // placeables get a 3/4 view from slightly above; flat items are tipped up so their face reads.
+// look: per-icon resolve overrides. Thin dark tools get a light rim outside the navy outline so
+// they stay readable on the dark brown slots (recipe list at 34 px, hotbar at 40 px).
+const THIN = { rimPx: 1.6 };
 export const ICON_POSES = {
   wood:       { yaw: -22, pitch: 18,  roll: 0,  pad: 1.06 },
   leaf:       { yaw: 90,   pitch: 75,  roll: 45 },
   plastic:    { yaw: -30, pitch: 15,  roll: -8 },
-  scrap:      { yaw: -15, pitch: 35,  roll: 8,  pad: 1.04 },
+  scrap:      { yaw: -15, pitch: 35,  roll: 8,  pad: 1.0 },
   rope:       { yaw: 0,   pitch: 55,  roll: 0 },
   fish:       { yaw: -15, pitch: 10,  roll: 35 },
-  hook:       { yaw: -15, pitch: 8,   roll: -22, pad: 1.03 },
-  hammer:     { yaw: -60, pitch: 15,  roll: -40, pad: 1.02 },
-  fishingrod: { yaw: 0,   pitch: 0,   roll: -45, pad: 1.03 },
+  hook:       { yaw: -12, pitch: 6,   roll: 16, pad: 1.1,  look: THIN },
+  hammer:     { yaw: -60, pitch: 15,  roll: -40, pad: 1.1,  look: { ...THIN, exposure: 1.15 } },
+  fishingrod: { yaw: 0,   pitch: 0,   roll: -45, pad: 1.08, look: THIN },
   sail:       { yaw: -40, pitch: 10,  roll: -18, pad: 1.0 },
   palm:       { yaw: -35, pitch: 20 },
   lantern:    { yaw: -35, pitch: 14,  roll: -10, pad: 1.04 },
-  net:        { yaw: -35, pitch: 50 },
+  net:        { yaw: -30, pitch: 42 },
   bench:      { yaw: -35, pitch: 25 },
   crate:      { yaw: -35, pitch: 25 },
 };
@@ -189,35 +193,85 @@ function createRodIcon(T) {
   return g;
 }
 
-// Classic J fish hook: straight shank, eye at the top with a rope tied through, round bend,
-// point rising on the right with a barb.
-function createJHook(T) {
-  const g = new T.Group(); g.name = 'jHook';
-  const steel = new T.MeshStandardMaterial({ color: '#a9bcc0', roughness: 0.28, metalness: 0.75 });
-  const V = (x, y) => new T.Vector3(x, y, 0);
-  const curve = new T.CatmullRomCurve3([V(0, 0.42), V(0, 0.15), V(0, -0.08), V(0.04, -0.26), V(0.17, -0.36), V(0.31, -0.31), V(0.39, -0.17), V(0.4, 0.02)], false, 'centripetal');
-  const R = 0.055;
-  addMesh(T, g, new T.TubeGeometry(curve, 64, R, 12, false), steel);
-  const endP = curve.getPoint(1), endT = curve.getTangent(1).normalize(), up = new T.Vector3(0, 1, 0);
-  const tip = addMesh(T, g, new T.ConeGeometry(R, 0.14, 12), steel);
-  tip.quaternion.setFromUnitVectors(up, endT); tip.position.copy(endP).addScaledVector(endT, 0.07);
-  const barb = addMesh(T, g, new T.ConeGeometry(0.03, 0.13, 8), steel);
-  barb.quaternion.setFromUnitVectors(up, new T.Vector3(0.55, -1, 0).normalize());
-  barb.position.set(endP.x - 0.06, endP.y + 0.03, 0);
-  addMesh(T, g, new T.TorusGeometry(0.085, 0.04, 10, 24), steel, 0, 0.52, 0);
-  // rope: through the eye, a knot, two loose ends curling up and left
-  const tan = new T.Color('#d9a76a'), dark = new T.Color('#6b4a2b');
-  const ropeTube = (pts, r) => {
-    const geo = new T.TubeGeometry(new T.CatmullRomCurve3(pts.map(([x, y, z = 0]) => new T.Vector3(x, y, z))), 48, r, 8, false);
-    const radial = 9;
-    return vcol(T, geo, (v, c, i) => { const k = Math.floor(i / radial), j = i % radial; c.copy(dark).lerp(tan, Math.pow(0.5 + 0.5 * Math.sin(k * 1.3 + j / 8 * Math.PI * 4), 0.6)); });
-  };
-  const rm = stdv(T, { roughness: 0.95 });
-  addMesh(T, g, ropeTube([[-0.02, 0.6, 0.06], [0.0, 0.5, 0.07], [0.04, 0.44, 0.0], [0.0, 0.46, -0.06], [-0.07, 0.56, -0.02], [-0.12, 0.63, 0.04]], 0.042), rm);
-  addMesh(T, g, ropeTube([[-0.12, 0.63, 0.04], [-0.2, 0.72, 0.03], [-0.22, 0.86, 0.0], [-0.13, 0.95, -0.01], [-0.02, 0.98, 0.0]], 0.042), rm);
-  addMesh(T, g, ropeTube([[-0.12, 0.63, 0.04], [-0.24, 0.62, 0.05], [-0.32, 0.68, 0.04], [-0.36, 0.78, 0.02]], 0.04), rm);
-  const knot = new T.SphereGeometry(0.065, 12, 8); vcol(T, knot, (v, c) => c.copy(dark).lerp(tan, 0.5 + 0.4 * Math.sin(v.x * 90 + v.y * 60)));
-  addMesh(T, g, knot, rm, -0.12, 0.63, 0.04);
+// The held scrap hook (dist/hook.js createHook) redrawn for 40 px: the same curved steel hook,
+// barb, riveted ferrule and rope-wrapped wooden handle, but laid out flat in the X-Y plane (the
+// world model's bend leans toward -Z, which foreshortens it) and about twice as thick, so the
+// silhouette survives the downsample. Handle at -Y, the point curls back down at the top.
+function createScrapHookIcon(T) {
+  const g = new T.Group(); g.name = 'scrapHookIcon';
+  const steel = new T.MeshStandardMaterial({ color: '#a9c2c6', roughness: 0.3, metalness: 0.7 });
+  const darkSteel = new T.MeshStandardMaterial({ color: '#63787b', roughness: 0.45, metalness: 0.75 });
+  const HX = 0.2, flat = ([x, y, z]) => new T.Vector3(HX + (x - HX) * 1.05 + z * 0.35, y, 0);
+  // hook.js control points, with the -Z lean folded into X so the hook reads in profile
+  const pts = [[HX, -0.08, 0], [HX, 0.12, -0.01], [0.17, 0.27, -0.05], [0.06, 0.38, -0.12], [-0.1, 0.40, -0.2], [-0.25, 0.34, -0.26],
+    [-0.34, 0.20, -0.28], [-0.33, 0.06, -0.25], [-0.24, 0.0, -0.2], [-0.15, 0.04, -0.16], [-0.11, 0.11, -0.13]].map(flat);
+  const curve = new T.CatmullRomCurve3(pts, false, 'centripetal'), R = 0.042;
+  addMesh(T, g, new T.TubeGeometry(curve, 96, R, 12, false), steel);
+  const up = new T.Vector3(0, 1, 0), endP = curve.getPoint(1), endT = curve.getTangent(1).normalize();
+  const tip = addMesh(T, g, new T.ConeGeometry(R, 0.12, 12), steel);
+  tip.quaternion.setFromUnitVectors(up, endT); tip.position.copy(endP).addScaledVector(endT, 0.06);
+  // barb: back-swept spur on the inside of the curl, near the point
+  const bp = curve.getPoint(0.93), bt = curve.getTangent(0.93).normalize(), out = new T.Vector3(bt.y, -bt.x, 0);
+  const mid = curve.getPoint(0.6);
+  if (out.dot(bp.clone().sub(mid)) < 0) out.negate();
+  const bdir = bt.clone().multiplyScalar(-0.7).addScaledVector(out, 0.7).normalize();
+  const barb = addMesh(T, g, new T.ConeGeometry(0.028, 0.11, 8), steel);
+  barb.quaternion.setFromUnitVectors(up, bdir); barb.position.copy(bp).addScaledVector(out, R * 0.5).addScaledVector(bdir, 0.045);
+  // ferrule + rivets + lashing collar
+  addMesh(T, g, new T.CylinderGeometry(0.075, 0.08, 0.1, 16), darkSteel, HX, -0.1, 0);
+  const rv = new T.SphereGeometry(0.018, 8, 6), rivetMat = new T.MeshStandardMaterial({ color: '#d3ddd9', roughness: 0.35, metalness: 0.6 });
+  for (const [dx, dy] of [[-0.04, -0.08], [0.04, -0.12]]) addMesh(T, g, rv, rivetMat, HX + dx, dy, 0.07);
+  addMesh(T, g, new T.TorusGeometry(R + 0.01, 0.012, 6, 16), darkSteel, HX, 0.05, 0).rotation.x = Math.PI / 2;
+  // weathered wooden handle with a tan rope wrap (stripes in vertex colors) and dark tie bands
+  const hTop = -0.15, hBot = -0.5, wTop = -0.2, wBot = -0.44;
+  const hGeo = new T.CylinderGeometry(0.068, 0.074, hTop - hBot, 16, 32); hGeo.translate(HX, (hTop + hBot) / 2, 0);
+  const wood = new T.Color('#9a7650'), woodD = new T.Color('#6a4d30'), rope = new T.Color('#e0c288'), ropeD = new T.Color('#9a7c4a');
+  vcol(T, hGeo, (v, c) => {
+    const a = Math.atan2(v.z, v.x - HX);
+    if (v.y < wTop && v.y > wBot) c.copy(ropeD).lerp(rope, Math.pow(0.5 + 0.5 * Math.sin(v.y * 130 + a), 0.5));
+    else c.copy(wood).lerp(woodD, 0.5 + 0.5 * Math.sin(a * 9 + v.y * 40));
+  });
+  addMesh(T, g, hGeo, stdv(T, { roughness: 0.9 }));
+  const band = new T.TorusGeometry(0.076, 0.014, 6, 20), bandMat = new T.MeshStandardMaterial({ color: '#7a5f3c', roughness: 1 });
+  for (const y of [wTop + 0.01, wBot - 0.01]) addMesh(T, g, band, bandMat, HX, y, 0).rotation.x = Math.PI / 2;
+  addMesh(T, g, new T.CylinderGeometry(0.072, 0.066, 0.035, 16), darkSteel, HX, hBot - 0.017, 0);
+  // knot + short dangling cord on the right of the grip
+  addMesh(T, g, new T.SphereGeometry(0.026, 8, 6), bandMat, HX + 0.075, wTop + 0.005, 0.02);
+  const cord = new T.CatmullRomCurve3([[HX + 0.08, wTop], [HX + 0.12, wTop - 0.06], [HX + 0.14, wTop - 0.15], [HX + 0.155, wTop - 0.2]].map(([x, y]) => new T.Vector3(x, y, 0.03)));
+  addMesh(T, g, new T.TubeGeometry(cord, 16, 0.013, 6, false), new T.MeshStandardMaterial({ color: '#c9aa70', roughness: 0.95 }));
+  return g;
+}
+
+// Hammer: the dist model with its handle and head fattened for the icon (the world model's
+// handle is 5 cm across, a 1 px hairline at 40 px).
+function createHammerIcon(T) {
+  const h = createHammer(T), g = new T.Group(); g.name = 'hammerIcon';
+  h.scale.set(1.9, 1, 1.45); g.add(h);
+  return g;
+}
+
+// Net: the craft net is 1.6 m of dark 1 cm cords, a dark square at 18 px. Icon version: light
+// wooden frame, a coarse grid of thick tan rope with darker knots, orange corner floats.
+function createNetIcon(T) {
+  const g = new T.Group(); g.name = 'netIcon';
+  const E = 0.5, wood = stdv(T, { roughness: 0.85 }), ropeM = new T.MeshStandardMaterial({ color: '#e3c78e', roughness: 0.95 });
+  for (const s of [-1, 1]) for (const ax of ['x', 'z']) {
+    const geo = new T.BoxGeometry(ax === 'x' ? 2 * E + 0.12 : 0.09, 0.08, ax === 'x' ? 0.09 : 2 * E + 0.12);
+    const c0 = new T.Color('#b88a55'), c1 = new T.Color('#7a5532');
+    vcol(T, geo, (v, c) => c.copy(c0).lerp(c1, 0.25 + 0.25 * Math.sin((v.x + v.z) * 40)));
+    addMesh(T, g, geo, wood, ax === 'x' ? 0 : s * E, 0, ax === 'x' ? s * E : 0);
+  }
+  const lines = [-0.3, -0.1, 0.1, 0.3];
+  for (const u of lines) {
+    const a = new T.CylinderGeometry(0.024, 0.024, 2 * E, 8); a.rotateZ(Math.PI / 2);
+    addMesh(T, g, a, ropeM, 0, 0.03, u);
+    const b = new T.CylinderGeometry(0.024, 0.024, 2 * E, 8); b.rotateX(Math.PI / 2);
+    addMesh(T, g, b, ropeM, u, 0.03, 0);
+  }
+  const knot = new T.SphereGeometry(0.036, 8, 6), knotM = new T.MeshStandardMaterial({ color: '#8b6c42', roughness: 1 });
+  for (const x of lines) for (const z of lines) addMesh(T, g, knot, knotM, x, 0.035, z);
+  const fl = new T.SphereGeometry(0.1, 14, 10), flM = new T.MeshStandardMaterial({ color: '#ec6a3a', roughness: 0.55 });
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) addMesh(T, g, fl, flM, sx * E, 0.07, sz * E).scale.set(1, 0.7, 1);
   return g;
 }
 
@@ -243,13 +297,13 @@ function createScrapIcon(T) {
     p.setXYZ(i, tmp.x, tmp.y, tmp.z);
   }
   geo.computeVertexNormals();
-  const zinc = new T.Color('#d8e0e3'), zinc2 = new T.Color('#a7b3b8'), rust = new T.Color('#a5521f'), rust2 = new T.Color('#d0803a');
+  const zinc = new T.Color('#e6ecee'), zinc2 = new T.Color('#8d9ba1'), rust = new T.Color('#b0501a'), rust2 = new T.Color('#e48a3a');
   const uv = geo.attributes.uv;
   vcol(T, geo, (v, c, i) => {
     const u = uv.getX(i) - 0.5, w = uv.getY(i) - 0.5, edge = Math.max(Math.abs(u) * 2, Math.abs(w) * 2);
     const n = vnoise(u * 9 + 11, w * 9), n2 = vnoise(u * 26, w * 26 + 4);
     c.copy(zinc).lerp(zinc2, 0.5 + 0.5 * Math.sin(u * W / 0.075 * Math.PI));   // corrugation shading in the albedo
-    const r = Math.min(1, Math.max(0, (n * 0.6 + edge * 0.8 - 0.95) * 3.5));
+    const r = Math.min(1, Math.max(0, (n * 0.6 + edge * 0.8 - 0.82) * 3.5));
     c.lerp(r > 0.5 ? rust : rust2, r * (0.65 + 0.35 * n2));
   });
   addMesh(T, g, geo, stdv(T, { roughness: 0.4, metalness: 0.15 }));
@@ -332,14 +386,15 @@ export function makeIconItems(T, getMaterial) {
     plastic: () => createPlastic(T),
     rope: () => createRopeCoil(T),
     fish: () => createFishModel(T),
-    hook: () => createJHook(T),
-    hammer: () => createHammer(T),
+    hook: () => createScrapHookIcon(T),
+    hammer: () => createHammerIcon(T),
+    net: () => createNetIcon(T),
     fishingrod: () => createRodIcon(T),
   };
   builders.lantern = () => createLanternIcon(T);
   // sail: the 3.8 m mast makes a tall sliver; squash height for the icon only
   builders.sail = () => { const g = createCraft(T, 'sail'); g.scale.set(1, 0.68, 1); return g; };
-  for (const k of ['palm', 'net', 'bench', 'crate']) builders[k] = () => createCraft(T, k);
+  for (const k of ['palm', 'bench', 'crate']) builders[k] = () => createCraft(T, k);
   return Object.keys(ICON_POSES).map(kind => ({
     kind, pose: ICON_POSES[kind], make: builders[kind],
     dispose: obj => disposeTree(obj, shared),

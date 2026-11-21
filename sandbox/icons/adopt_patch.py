@@ -45,7 +45,7 @@ SURVIVAL_UI = [
     (".sv-slot .sv-icon{display:block;width:100%;height:100%;filter:drop-shadow(0 1px 1px #0008)}\n",
      ".sv-slot .sv-icon{display:block;width:100%;height:100%;filter:drop-shadow(0 1px 1px #0008)}\n"
      ".sv-icon.sv-baked{filter:none;object-fit:contain;-webkit-user-drag:none;user-select:none;pointer-events:none}\n"
-     ".sv-slot .sv-icon.sv-baked{margin:-4px 0 0 -4px;width:calc(100% + 4px);height:calc(100% + 4px)}\n"
+     ".sv-slot .sv-icon.sv-baked{margin:-2px 0 0 -2px;width:calc(100% + 2px);height:calc(100% + 2px)}\n"
      "#inventory .sv-req .sv-icon.sv-baked{width:22px;height:22px;margin:-2px}\n"),
     # 4. slot signature includes the icon revision so already painted slots repaint once
     ("return s.kind + ':' + s.count + ':' + (f == null ? '' : Math.round(f * 100));\n",
