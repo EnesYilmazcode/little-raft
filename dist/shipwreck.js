@@ -18,6 +18,7 @@ const CLEARED = 'Wreck cleared! Nothing left but kelp and fish.';
 const HINT = 'Bubbles below: dive (C) to explore the wreck';
 const LABEL = { crate: 'Hold E · Open crate', barrel: 'Hold E · Open barrel', chest: "Hold E · Open captain's chest" };
 const fin = v => typeof v === 'number' && Number.isFinite(v);
+const r2 = v => Math.round(v * 100) / 100; // 1 cm / 10 ms: keeps the ext slice small in every state message (~8/s)
 const known = id => !!ITEM_INFO[id];
 const itemName = k => (ITEM_INFO[k] && ITEM_INFO[k].name) || k;
 
@@ -50,9 +51,8 @@ export function createShipwreck(ctx) {
     lay = s ? layoutFor(s.seed) : null; openSt.lay = lay;
     hoverSlot = -1; targets.length = 0; built = false; posFloorOk = false;
     if (!s) { model?.clear(); return; }
-    let ok = true;
-    fillSlotPos(lay, s, (x, z) => { const y = floorAt(x, z); if (!fin(y)) ok = false; return y; }, slotPos);
-    posFloorOk = ok;
+    fillSlotPos(lay, s, floorAt, slotPos);
+    posFloorOk = fin(floorAt(s.x, s.z)); // same test as the late-floor retry in update: never rebuild every frame
     for (let k = 0; k < lay.slots.length; k++) {
       const kind = lay.slots[k].kind, kk = k, id = 'sw:' + s.seed + ':' + k;
       targets.push({ id, x: slotPos[k * 3], y: slotPos[k * 3 + 1] + SLOT_CENTRE, z: slotPos[k * 3 + 2], secs: kind === 'chest' ? 1.6 : 1.2, label: LABEL[kind],
@@ -72,10 +72,10 @@ export function createShipwreck(ctx) {
     const side = isl && isl.phase !== 'gone' ? (-Math.sign(isl.cx) || 1) : (seed & 1 ? 1 : -1);
     const off = offsetFor(raftEdge(ctx.world && ctx.world.tiles, side));
     candidates(seed, side, off, dockZFor(seed), cand);
-    for (const [x, z] of cand) {
-      const y = floorAt(x, z);
+    for (const [cx, cz] of cand) {
+      const x = r2(cx), z = r2(cz), y = r2(floorAt(x, z)); // stored rounded so host, guest and saves agree exactly
       if (fin(y) && y >= SW.FLOOR_MIN && y <= SW.FLOOR_MAX) {
-        st.site = { seed, born: st.clock, dock: SW.DOCK, x, z, y, opened: 0 };
+        st.site = { seed, born: r2(st.clock), dock: SW.DOCK, x, z, y, opened: 0 };
         warned = false; rebuild(); emitAll(SPAWN);
         return true;
       }
@@ -166,10 +166,10 @@ export function createShipwreck(ctx) {
 
   // ---------- save / net ----------
   function serialize() {
-    out.clock = st.clock; out.next = st.next;
+    out.clock = r2(st.clock); out.next = r2(st.next);
     const s = st.site;
     if (!s) out.site = null;
-    else { outSite.seed = s.seed; outSite.born = s.born; outSite.dock = s.dock; outSite.x = s.x; outSite.z = s.z; outSite.y = s.y; outSite.opened = s.opened; out.site = outSite; }
+    else { outSite.seed = s.seed; outSite.born = r2(s.born); outSite.dock = r2(s.dock); outSite.x = s.x; outSite.z = s.z; outSite.y = s.y; outSite.opened = s.opened; out.site = outSite; }
     return out;
   }
   function load(data, from) {
