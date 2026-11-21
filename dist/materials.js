@@ -16,7 +16,7 @@ import { createSky } from './sky.js';
 // repeat = tiles per UV unit. normalScale = strength of the baked normal.
 export const PRESETS = {
   planks:  { cell: 'planks',  roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1] },
-  plank:   { cell: 'plank',   roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1] },
+  plank:   { cell: 'plank',   roughness: 1,    metalness: 0,    normalScale: 0.9, repeat: [1, 3] }, // deck board: u across (0.34 m), v along
   bark:    { cell: 'bark',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 1] },
   plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 1.3, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
   leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], alphaTest: 0.5, side: 'double' },
@@ -33,10 +33,10 @@ export const PRESETS = {
 // ocean* = ocean.js uniforms retinted by applyOceanLook().
 export const LIGHTING = {
   background: '#cde6f2', fog: '#cde6f2', fogNear: 35, fogFar: 150,
-  hemiSky: '#bfe3ff', hemiGround: '#5c8f96', hemiIntensity: 1.1,
-  sun: '#ffeccc', sunIntensity: 3.2, exposure: 1.1,
-  skyDome: true, skyZenith: '#6fb4e6', skyCloudLit: '#ffffff', skyCloudShade: '#d3e3ee', skyCoverage: 0.35,
-  oceanDeep: '#0b5f7a', oceanShallow: '#1fb0b5', oceanZenith: '#7cc0e8',
+  hemiSky: '#bfe3ff', hemiGround: '#86b6bc', hemiIntensity: 1.1,
+  sun: '#ffeccc', sunIntensity: 3.2, exposure: 1.05,
+  skyDome: true, skyZenith: '#6fb4e6', skyCloudLit: '#ffffff', skyCloudShade: '#d3e3ee', skyCoverage: 0.42,
+  oceanDeep: '#064f78', oceanShallow: '#13a0b0', oceanZenith: '#4f9fd6',
 };
 
 // Game palette hex -> preset. Explicit, so avatars, UI ghosts and the hook keep their own materials.
