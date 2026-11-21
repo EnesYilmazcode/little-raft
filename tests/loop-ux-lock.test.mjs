@@ -44,6 +44,14 @@ test('C2: drag-look fallback never hides the cursor waiting for a relock', () =>
   assert.match(s, /!document\.body\.classList\.contains\('drag-look'\)\) document\.body\.classList\.add\('relock'\)/);
 });
 
+const shell = () => readFileSync(new URL('../desktop/main.cjs', import.meta.url), 'utf8');
+
+test('C4: desktop window accepts the first click (macOS) and does not relock on focus', () => {
+  const m = shell();
+  assert.match(m, /new BrowserWindow\(\{[^}]*acceptFirstMouse:true/);
+  assert.doesNotMatch(m, /on\('focus'[^\n]*requestPointerLock/);
+});
+
 test('C3: window blur drops body.relock so the away resume hint is visible', () => {
   const s = read('settings.js');
   assert.match(s, /window\.addEventListener\('blur', \(\) => document\.body\.classList\.remove\('relock'\)/);
