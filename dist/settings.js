@@ -5,6 +5,7 @@
 // so closing a menu can relock the mouse without a click.
 
 import { createEscGate } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 const STORAGE_KEY = 'little-raft-settings';
 const DIALOG_ID = 'options';
@@ -30,7 +31,7 @@ const DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(SPEC).map(([k, 
 const KEYS = Object.keys(SPEC);
 const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio']];
 const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
-  ['1 - 8 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Repair hook'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
+  [`1 - ${Math.min(HOTBAR_SIZE, 9)}${HOTBAR_SIZE >= 10 ? ', 0' : ''} / Wheel`, 'Pick hotbar slot'], ['Q / Right-click', 'Build wheel (hammer)'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Repair hook'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
 
 export function validateSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};

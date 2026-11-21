@@ -1,5 +1,7 @@
 // Little Raft build menu: the hammer's radial piece wheel + a small "current piece" HUD chip.
-// DOM only (no THREE). createBuildMenu({ pieces, onPick, root }) -> controller (see bottom of file).
+// DOM only (no THREE). createBuildMenu({ pieces, onPick, root, countOf, nameOf }) -> controller (see bottom of file).
+// countOf(kind) -> how many the player has: each cost line is then coloured on its own (have / need).
+// nameOf(kind) -> the bag's display name (wood is 'Plank' there).
 
 const STYLE_ID = 'lr-build-menu-style';
 const SPRITE = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
@@ -82,22 +84,33 @@ function sectorPath(a0, a1) {
   return `M${pt(R_OUT, a0)}A${R_OUT} ${R_OUT} 0 ${big} 1 ${pt(R_OUT, a1)}L${pt(R_IN, a1)}A${R_IN} ${R_IN} 0 ${big} 0 ${pt(R_IN, a0)}Z`;
 }
 
-export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
+export function costParts(cost, haveOf = null, nameOf = null, canAfford = () => true) {
+  const ks = Object.keys(cost || {}).filter(k => cost[k] > 0);
+  const all = canAfford(cost);
+  return ks.map(k => {
+    const need = cost[k], have = haveOf ? Math.max(0, Number(haveOf(k)) || 0) : null;
+    let name = null; try { name = nameOf?.(k) || null; } catch { name = null; }
+    return { kind: k, need, have, name: String(name || MAT_NAME[k] || k), short: have == null ? !all : have < need };
+  });
+}
+
+export function createBuildMenu({ pieces, onPick, root = document.body, countOf = null, nameOf = null } = {}) {
   if (!document.getElementById(STYLE_ID)) {
     const st = document.createElement('style'); st.id = STYLE_ID; st.textContent = CSS; document.head.appendChild(st);
   }
   const list = (pieces || []).map(p => ({ id: String(p.id), name: String(p.name ?? p.id), cost: p.cost || {} }));
   const n = Math.max(1, list.length), step = 360 / n;
   const byId = new Map(list.map((p, i) => [p.id, i]));
+  let haveOf = typeof countOf === 'function' ? countOf : null;
   let canAfford = () => true, selected = byId.has('foundation') ? 'foundation' : (list[0]?.id ?? null);
   let open = false, hot = -1, vx = 0, vy = 0, cx = 0, cy = 0, scale = 1;
 
+  // Each material is red or not on its own; with a count source it reads have/need like the bag.
   const costHtml = cost => {
-    const ks = Object.keys(cost).filter(k => cost[k] > 0);
-    if (!ks.length) return '<span class="bm-free">Free</span>';
-    const ok = canAfford(cost);
-    return ks.map(k => `<span class="bm-req${ok ? '' : ' bm-short'}">${MAT_SPRITE[k]
-      ? `<svg viewBox="0 0 48 48" aria-hidden="true"><use href="${SPRITE}#icon-${MAT_SPRITE[k]}"/></svg>` : ''}${cost[k]}<em>${esc(MAT_NAME[k] || k)}</em></span>`).join('');
+    const parts = costParts(cost, haveOf, nameOf, canAfford);
+    if (!parts.length) return '<span class="bm-free">Free</span>';
+    return parts.map(p => `<span class="bm-req${p.short ? ' bm-short' : ''}" aria-label="${esc(p.name)}: ${p.have == null ? '' : `have ${p.have}, `}need ${p.need}">${MAT_SPRITE[p.kind]
+      ? `<svg viewBox="0 0 48 48" aria-hidden="true"><use href="${SPRITE}#icon-${MAT_SPRITE[p.kind]}"/></svg>` : ''}${p.have == null ? p.need : `${Math.min(p.have, 999)}/${p.need}`}<em>${esc(p.name)}</em></span>`).join('');
   };
 
   // ---- wheel ----
@@ -120,15 +133,19 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
   const chip = document.createElement('div');
   chip.className = 'bm-chip'; chip.hidden = true; chip.setAttribute('role', 'status');
   chip.innerHTML = '<i></i><div><span class="bm-row"><b></b><span class="bm-cost"></span></span>' +
-    '<span class="bm-hint"><kbd>Right-click</kbd> pieces · <kbd>R</kbd> rotate · <kbd>X</kbd> remove</span><span class="bm-status"></span></div>';
+    '<span class="bm-hint"><kbd>Q</kbd> / <kbd>Right-click</kbd> pieces · <kbd>R</kbd> rotate · <kbd>X</kbd> remove</span><span class="bm-status"></span></div>';
   const chipIcon = chip.querySelector('i'), chipName = chip.querySelector('b'), chipCost = chip.querySelector('.bm-cost'), chipStatus = chip.querySelector('.bm-status');
   root.appendChild(chip);
-  let chipShown = false, chipText = '';
+  let chipShown = false, chipText = '', chipSig = '';
 
+  // Cheap to call every frame: the DOM is only touched when the piece or a count changed.
   function renderChip() {
     const p = list[byId.get(selected)];
     if (!p) return;
-    chipIcon.innerHTML = iconSvg(p.id, 26); chipName.textContent = p.name; chipCost.innerHTML = costHtml(p.cost);
+    const cost = costHtml(p.cost), sig = p.id + '|' + cost;
+    if (sig === chipSig) return;
+    chipSig = sig;
+    chipIcon.innerHTML = iconSvg(p.id, 26); chipName.textContent = p.name; chipCost.innerHTML = cost;
   }
   function renderMid() {
     const i = hot >= 0 ? hot : byId.get(selected) ?? -1, p = list[i];
@@ -202,6 +219,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
     get selected() { return selected; },
     setSelected(id) { if (byId.has(id) && id !== selected) { selected = id; renderChip(); if (open) { refreshAfford(); renderMid(); } } },
     setAfford(fn) { canAfford = typeof fn === 'function' ? fn : () => true; api.refresh(); },
+    setCount(fn) { haveOf = typeof fn === 'function' ? fn : null; api.refresh(); },
     refresh() { if (chipShown) renderChip(); if (open) { refreshAfford(); renderMid(); } },
     setVisible(v) { v = !!v; if (v === chipShown) return; chipShown = v; chip.hidden = !v; if (v) renderChip(); },
     setChip(text) { text = text ? String(text) : ''; if (text !== chipText) { chipText = text; chipStatus.textContent = text; } },
