@@ -14,12 +14,14 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
+import { createSpear } from './spear-model.js'; // [spear-repair]
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
 export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds']);
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
-const TOOL_KINDS = ['hook', 'hammer', 'fishingrod'];
+const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'spear', 'metalspear'];
+const SPEAR_SCALE = 0.62; // [spear-repair]
 const HOOK_SCALE = 0.4;                     // compact: the held hook stays in the lower-right corner
 // Right-hand kinds that still prefer the shared models.js mesh (so the held cup matches its icon and the world).
 const FACTORY_FIRST = ['cup', 'water'];
@@ -30,6 +32,9 @@ export const HOLD = Object.freeze({
   hook:       { hand: 'right', pose: 'grip' },
   hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2 },
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
+  // [spear-repair] held low on the right, point forward and a little up/left; thrust = metres the shaft slides through the fist on a jab
+  spear:      { hand: 'right', pose: 'grip', rx: -1.245, ry: 0, rz: 0.7, thrust: 0.31 },
+  metalspear: { hand: 'right', pose: 'grip', rx: -1.245, ry: 0, rz: 0.7, thrust: 0.31 },
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
   leaf:       { hand: 'right', pose: 'grip', rx: -0.35, ry: 0.4, rz: 0.35 },
   scrap:      { hand: 'right', pose: 'grip', rx: 1.1, ry: 0.3, rz: -0.3 },
@@ -167,6 +172,14 @@ export function buildItemModel(T, kind, factory = null) {
     root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
     root.userData.grip = [gp.x, gp.y, gp.z];
     root.userData.model = m;                                     // rod: userData.float/leader/tipNode live here
+  } else if (kind === 'spear' || kind === 'metalspear') { // [spear-repair] dist/spear-model.js, shaft along +Y
+    const m = createSpear(T, { metal: kind === 'metalspear' }), s = SPEAR_SCALE;
+    m.scale.setScalar(s);
+    root = new T.Group(); root.add(m);
+    const gp = m.userData.grip.clone().multiplyScalar(s);
+    root.userData.size = { x: 0.08 * s, y: 1.9 * s, z: 0.08 * s };
+    root.userData.grip = [gp.x, gp.y, gp.z];
+    root.userData.model = m;
   } else if (kind === 'wood' || kind === 'leaf' || kind === 'scrap') {
     const d = createDebris(T, kind, matCache(T), { seed: 7 });
     const lie = new T.Group(); lie.add(d);

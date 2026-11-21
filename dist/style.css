@@ -17,8 +17,8 @@ dialog{max-height:calc(100dvh - 30px);overflow:auto;overscroll-behavior:contain}
 .guide-note{font-size:13px;line-height:1.6;margin:0 0 16px}
 @media(max-height:760px){dialog{padding:26px 30px}dialog h2{font-size:26px}.guide{margin:14px 0 10px;gap:6px}.guide kbd{padding:4px}.welcome-card p{line-height:1.6}.pills{margin:18px 0 22px}h1{margin-bottom:16px}.save-note{margin-top:16px}}
 @media(max-width:760px){header{inset:15px}.brand{font-size:17px}.brand small,#connection{display:none}.brand-icon{width:38px;height:38px}.header-right{gap:7px}.header-right button{padding:10px;font-size:12px}.welcome-card{margin:0 22px;max-width:500px}h1{font-size:49px}.welcome-card p{font-size:13px}.welcome-card>.secondary{margin:12px 0 0;display:block}.inventory{top:78px;left:15px;padding:12px 15px}.inventory>div{gap:17px}.controls{gap:9px;font-size:9px}.controls span:nth-child(3),.controls span:nth-child(4),.controls span:nth-child(5){display:none}.overlay{background:linear-gradient(180deg,#e2fff6e0 0%,#d8f9f0b0 60%,#d8f9f040 100%)}.welcome-card .pills{flex-wrap:wrap}.guide kbd{flex-basis:62px;font-size:11px}.guide li{font-size:13px}#resumeHint{font-size:12px}#recipes{max-width:95vw;overflow-x:auto}#recipes button{min-width:72px}.tools button{width:83px;height:68px}.bottom{bottom:15px}.welcome-caption{display:none}dialog{padding:28px 23px}}
-/* Pickup feed (bottom-left): icon tile + "+3 Wood", newest at the bottom, fades out */
-#pickupFeed{position:fixed;left:22px;bottom:44px;z-index:40;display:flex;flex-direction:column;align-items:flex-start;gap:5px;pointer-events:none;font:600 15px/1 var(--ui-font);color:#f6ecd6}
+/* Pickup feed (bottom-left): icon tile + "+3 Wood", newest at the bottom, fades out. Sits above the vitals bars (vitals-ui.js). */
+#pickupFeed{position:fixed;left:22px;bottom:132px;z-index:40;display:flex;flex-direction:column;align-items:flex-start;gap:5px;pointer-events:none;font:600 15px/1 var(--ui-font);color:#f6ecd6}
 .pf-row{display:flex;align-items:center;gap:10px;min-height:44px;padding:2px 44px 2px 6px;border-radius:7px 0 0 7px;background:linear-gradient(90deg,#1a120bc0 0%,#1a120b80 60%,#1a120b00 100%);text-shadow:0 1px 2px #000d;white-space:nowrap;animation:pf-in .22s cubic-bezier(.2,.9,.3,1.25) both;transition:opacity .45s ease,transform .45s ease}
 .pf-row.out{opacity:0;transform:translateX(-14px)}
 .pf-row.bump .pf-icon{animation:pf-bump .25s ease-out}
@@ -29,7 +29,7 @@ dialog{max-height:calc(100dvh - 30px);overflow:auto;overscroll-behavior:contain}
 .pf-note i{flex:none;width:6px;height:6px;transform:rotate(45deg);background:var(--amber,#e9a640)}
 @keyframes pf-in{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
 @keyframes pf-bump{40%{transform:scale(1.18)}}
-@media(max-width:760px){#pickupFeed{left:10px;bottom:96px;font-size:13px}.pf-icon,.pf-icon>*{width:32px;height:32px}}
+@media(max-width:760px){#pickupFeed{left:10px;bottom:184px;font-size:13px}.pf-icon,.pf-icon>*{width:32px;height:32px}}
 @media(prefers-reduced-motion:reduce){.pf-row,.pf-row.bump .pf-icon{animation:none;transition:opacity .2s}}
 /* Interaction prompt sits just above the hotbar, never on the reticle */
 body #contextPrompt{top:auto;bottom:108px;padding:5px 12px;border-radius:6px;background:#1a120b99;font-size:13px;text-shadow:0 1px 1px #000a}

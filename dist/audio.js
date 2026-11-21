@@ -21,7 +21,7 @@
 // Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
 export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
-  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny']);
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'eat', 'drink', 'jab']);
 // friendlier names other modules may use; play() resolves them to a recipe above
 export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
@@ -29,7 +29,7 @@ export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
 const OUTPUT_SCALE = 0.5;       // keeps full volume comfortable
 const MAX_VOICES = 24;
 const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, place: 0.06, plant: 0.12, water: 0.25, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
-  step: 0.16, swim: 0.3, reel: 0.4, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15 };
+  step: 0.16, swim: 0.3, reel: 0.4, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15, eat: 0.1, drink: 0.1, jab: 0.1 };
 const SILENT = 0.0001;
 // calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
 const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];
@@ -390,6 +390,29 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       const f = burst(v, t, 'bandpass', 2000, 1.2, 0.12 * s, 0.02, 0.12);
       f.frequency.exponentialRampToValueAtTime(650, t + 0.14);
       knock(v, t + 0.09, s * 0.25, 220);
+    },
+    eat(v, t, s) {
+      // [vitals] two crunchy bites: low grainy noise chomps with a soft jaw thud
+      for (let i = 0; i < 2; i++) {
+        const st = t + i * rand(0.12, 0.15), k = i ? 0.75 : 1;
+        burst(v, st, 'bandpass', rand(900, 1300), 1.6, 0.22 * s * k, 0.004, 0.07);
+        tone(v, st, 'sine', rand(110, 130), 0.14 * s * k, 0.003, 0.06, 80);
+      }
+    },
+    drink(v, t, s) {
+      // [vitals] two gulps: hollow falling sine bubbles through a lowpass, a little wet swish
+      const lp = filter(v, 'lowpass', 1400, 0.7, v.bus);
+      for (let i = 0; i < 2; i++) {
+        const st = t + i * rand(0.14, 0.18), f = rand(300, 340) * (i ? 0.85 : 1);
+        tone(v, st, 'sine', f, 0.2 * s, 0.006, 0.1, f * 0.55, lp);
+      }
+      water(v, t, s * 0.25, 0.18, 900, 300);
+    },
+    jab(v, t, s) {
+      // [spear-repair] spear thrust: quick airy whoosh rising in pitch
+      const f = burst(v, t, 'bandpass', 600, 1.4, 0.2 * s, 0.03, 0.12);
+      f.frequency.setValueAtTime(rand(500, 650), t);
+      f.frequency.exponentialRampToValueAtTime(rand(1800, 2300), t + 0.13);
     },
     deny(v, t, s) {
       tone(v, t, 'triangle', 330, 0.07 * s, 0.003, 0.08, 300);

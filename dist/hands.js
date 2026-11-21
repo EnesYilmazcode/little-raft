@@ -8,7 +8,8 @@
 //     left hand when the right holds a tool such as the hammer). Blends in, no lower/raise.
 //     'throw': forces the wind-up (full charge) pose.
 //   hands.setModelFactory(fn | null);              // swap the model source later; rebuilds cached models
-//   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch, fov });
+//   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch, fov, thrust });
+//     thrust 0..1: a jab (spears): the right arm lunges and the held item slides holdFor(kind).thrust m along its grip axis.
 //   hands.ropeAnchor().getWorldPosition(v);        // rope start: rod tip, right fist while the hook is out, else left hand
 //   hands.itemModel('fishingrod')                  // the held model (rod userData: float, leader, tipNode)
 //
@@ -303,7 +304,7 @@ export function createHands(T, { modelFactory = null } = {}) {
       }
       pivot.add(item); prep(pivot); pivot.visible = false;
       (h.hand === 'left' ? leftHolder : toolHolder).add(pivot);
-      m = { pivot, item, own };
+      m = { pivot, item, own, restY: item.position.y };
     }
     mounts.set(kind, m);
     return m;
@@ -379,7 +380,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const t = params.time ?? st.t;
     const charge0 = clamp01(params.charge || 0);
     const casting = clamp01(params.casting || 0);
-    const reeling = !!params.reeling, walking = !!params.walking;
+    const reeling = !!params.reeling, walking = !!params.walking, th = clamp01(params.thrust || 0);
     const amp = clamp01(params.motion ?? 0.35) / 0.35;
     const k = (rate) => 1 - Math.exp(-rate * dt);
 
@@ -451,9 +452,9 @@ export function createHands(T, { modelFactory = null } = {}) {
 
     // ---- right arm
     // hook out: the fist closes on the line and comes in toward the middle; reeling pulls it back and down
-    const rpx = 0.03 * ce - 0.10 * a + 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.7) - 0.03 * oW + (0.03 * pullR - 0.015) * rW + trem;
-    const rpy = 0.06 * a - 0.012 * wA * bob + 0.0045 * amp * br + 0.035 * oW + (0.015 - 0.045 * pullR) * rW - 0.025 * catchDip + trem * 0.7 - 0.45 * down - 0.45 * (1 - rIn);
-    const rpz = 0.04 * ce - 0.20 * a - 0.04 * oW + (0.10 * pullR - 0.05) * rW;
+    const rpx = -0.008 * th + 0.03 * ce - 0.10 * a + 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.7) - 0.03 * oW + (0.03 * pullR - 0.015) * rW + trem;
+    const rpy = 0.012 * th + 0.06 * a - 0.012 * wA * bob + 0.0045 * amp * br + 0.035 * oW + (0.015 - 0.045 * pullR) * rW - 0.025 * catchDip + trem * 0.7 - 0.45 * down - 0.45 * (1 - rIn);
+    const rpz = -0.035 * th + 0.04 * ce - 0.20 * a - 0.04 * oW + (0.10 * pullR - 0.05) * rW;
     const rrx = 0.35 * ce - 0.65 * a + 0.010 * amp * br - 0.15 * oW + 0.30 * pullR * rW + 0.12 * catchDip - 0.5 * down;
     const rry = 0.20 * ce - 0.15 * a;
     const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down;
@@ -479,11 +480,13 @@ export function createHands(T, { modelFactory = null } = {}) {
       const hm = mounts.get('hook');
       if (hm) hm.pivot.visible = !hasHookOut;
     }
+    const sm = st.shown && mounts.get(st.shown);           // jab: the held item slides along its grip axis
+    if (sm) sm.item.position.y = sm.restY + (holdFor(st.shown).thrust || 0) * th;
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
 
     last.lag[0] = st.lagX; last.lag[1] = st.lagY;
     Object.assign(last, { held: st.shown, target: st.target, pose, pointHand: pointer, dip: down, charge: chargeEff, chargeEased: ce, throw: a,
-      pull: pull * rW, pullR: pullR * rW, rightHand: handPoses.R, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
+      pull: pull * rW, pullR: pullR * rW, thrust: th, rightHand: handPoses.R, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
     return last;
   }
 

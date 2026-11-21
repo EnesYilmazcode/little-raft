@@ -36,7 +36,7 @@ const POSE = {
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
 };
 // models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
-const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
+const PROVIDER_POSE = { hook: [0, 0.5, -0.75], spear: [0, 0.5, -0.78], metalspear: [0, 0.5, -0.78] };
 
 // ---------- fallback models ----------
 const mats = new Map(), shared = new Set();

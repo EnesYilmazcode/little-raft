@@ -8,12 +8,13 @@ const T = await import(new URL('vendor/three.module.js', base));
 const { ITEM_KINDS } = await import(new URL('inventory-state.js', base));
 const { createHands, buildItemModel, isPlaceable } = await import(new URL('hands.js?build=v3-survival-ae77fa84ac2b', base));
 
+const LONG = { spear: 1.3, metalspear: 1.3 }; // spears are long poles held low on the right (spear-model.js, 1.9 m x 0.62)
 const fits = (m, kind) => {
   assert.ok(m?.isObject3D, kind);
   assert.equal(m.userData.kind, kind);
   assert.equal(m.userData.grip.length, 3);
   const s = m.userData.size;
-  assert.ok(Math.max(s.x, s.y, s.z) < 1, `${kind} fits in a hand`);
+  assert.ok(Math.max(s.x, s.y, s.z) < (LONG[kind] ?? 1), `${kind} fits in a hand`);
 };
 
 test('buildItemModel makes a small model with a grip for every kind, known or not', () => {

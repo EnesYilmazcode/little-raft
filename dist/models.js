@@ -4,6 +4,7 @@
 // Materials are shared module-wide and never disposed. Placeables/items stand on y = 0,
 // handheld tools (hook, hammer, rod) have their grip at the origin, working end +Y, face -Z.
 import * as T from './vendor/three.module.js';
+import { createSpear } from './spear-model.js'; // [spear-repair]
 
 // ------------------------------------------------------------------ palette
 const C = {
@@ -610,13 +611,23 @@ export const MODEL_ALIASES = Object.freeze({
   seedling: 'palmSeedling', growing: 'palmYoung',
 });
 const ALIAS = MODEL_ALIASES;
-export const hasModel = kind => !!B[ALIAS[kind] || kind];
+// Lane tools with their own model modules, registered here so getModel() (icons, held items, avatars) covers them.
+// Same convention as the core tools: grip at the origin, working end +Y. Not in MODEL_KINDS (own budgets/tests).
+function spearModel(metal) { // [spear-repair] dist/spear-model.js
+  const s = createSpear(T, { metal }), g = new T.Group(), gy = s.userData.grip.y;
+  s.position.y = -gy; g.add(s);
+  g.userData.kind = metal ? 'metalspear' : 'spear'; g.userData.grip = [0, 0, 0]; g.userData.tip = [0, s.userData.tip.y - gy, 0];
+  g.userData.dispose = s.userData.dispose;
+  return g;
+}
+const EXTRA = { spear: () => spearModel(false), metalspear: () => spearModel(true) };
+export const hasModel = kind => !!(B[ALIAS[kind] || kind] || EXTRA[ALIAS[kind] || kind]);
 export const MODEL_KINDS = Object.freeze(Object.keys(B));
 const AO = { sail: { h: 0.5 }, lantern: { h: 0.4 }, hook: { min: 1 }, hammer: { min: 1 }, rod: { min: 1 }, net: { h: 0.3 }, sprout: { min: 0.8 }, young: { h: 0.08 }, mature: { h: 0.1 }, harvestable: { h: 0.12 }, palmSeedling: { min: 0.8 }, palmSprout: { h: 0.1 }, nails: { min: 0.85 }, cup: { min: 0.8 }, water: { min: 0.8 } };
 
 export function buildModel(kind, { lod = 0 } = {}) {
   const k = ALIAS[kind] || kind, build = B[k];
-  if (!build) return null;
+  if (!build) return EXTRA[k] ? EXTRA[k]() : null;
   const K = kit(k, lod ? 1 : 0);
   build(K);
   return K.finish(AO[k]);
