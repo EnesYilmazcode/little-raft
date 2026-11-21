@@ -859,7 +859,10 @@ test('pickup feed: no borrowed sprite for placeholder items (water is not a barr
   const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
   feed.add('water', 1); feed.add('seed', 1);
   const box = r => doc.getElementById('pickupFeed').children[r].children[0];
-  assert.equal(box(0).children.length, 0); assert.equal(box(1).children.length, 0);
+  for (const r of [0, 1]) { // a neutral tile, never an empty gap or another item's sprite
+    const svg = box(r).children[0];
+    assert.equal(svg.tagName, 'SVG'); assert.deepEqual(svg.children.map(e => e.tagName), ['RECT']);
+  }
 });
 
 test('pickup feed: refresh swaps in an icon that finished rendering late', () => {
@@ -1103,4 +1106,12 @@ test('audio waits for a gesture, starts ambience once and frees every one-shot v
   assert.equal(a.play('build'), false, 'muted master skips scheduling');
   a.destroy();
   assert.equal(live.size, 0, 'destroy disconnects the whole graph');
+});
+
+test('slack rope to a floating hook stays on the water surface, never sags under the sea', () => {
+  const cast = new HookCast(T, { origin: { x: 0, y: 1.2, z: 0 }, direction: { x: 0, y: 0, z: -1 } });
+  cast.stage = 'floating'; cast.tension = 0; cast.position.set(0, WATER_Y, -10);
+  const pts = cast.ropePoints({ x: 0, y: 1.2, z: 0 }, 16);
+  const mid = pts.slice(1, -1); // the hook end itself sits at the waterline
+  assert.ok(mid.every(p => p.y >= WATER_Y + 0.029), `lowest ${Math.min(...mid.map(p => p.y))}`);
 });

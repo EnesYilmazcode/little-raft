@@ -11,7 +11,7 @@
 //     target    : LEGACY ONLY. Used solely to derive a direction (target - origin) when `direction`
 //                 is missing/invalid. The hook is never snapped/teleported to it.
 //     maxRange  : rope length (m), measured horizontally from the *current* hand.
-//     charge    : [0,1]; launch speed = 7 + charge * 11 m/s (+1.0 m/s upward throw boost).
+//     charge    : [0,1]; launch speed = BASE_SPEED + charge * CHARGE_SPEED = 5 + charge * 7 m/s (+1.0 m/s upward throw boost).
 //     drift     : optional {x,z} m/s water drift for the floating hook. Default mirrors game.js
 //                 item drift (z += .22/s, x += sin(time*.13)*.04/s) so hook and supplies co-drift.
 //     deck      : optional (x, z) -> deck surface y, or null over water. A hook coming down onto
@@ -380,7 +380,8 @@ export class HookCast {
     const span = len3(p.x - h.x, p.y - h.y, p.z - h.z);
     const slack = this.stage === 'flying' ? (this.tethered ? 0 : 0.15) : 1 - this.tension;
     const sag = span * 0.12 * slack;
-    const floorY = WATER_Y - MAX_SAG_BELOW;
+    // While the hook floats the slack line rests on the surface; a dip under the opaque sea would cut it from view.
+    const floorY = this.stage === 'flying' ? WATER_Y - MAX_SAG_BELOW : WATER_Y + 0.03;
     for (let i = 0; i <= n; i++) {
       const t = i / n, q = pts[i];
       q.set(h.x + (p.x - h.x) * t, h.y + (p.y - h.y) * t, h.z + (p.z - h.z) * t);

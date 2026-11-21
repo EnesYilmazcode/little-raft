@@ -32,8 +32,13 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
       return got.isConnected ? got.cloneNode(true) : got;
     }
     const sym = ITEM_INFO[kind]?.icon;
-    if (!sym || ITEM_INFO[kind].placeholder) return null; // a borrowed sprite would name the wrong item
+    if (!sym) return null;
     const svg = doc.createElementNS(SVG, 'svg'); svg.setAttribute('viewBox', '0 0 48 48'); svg.setAttribute('aria-hidden', 'true');
+    if (ITEM_INFO[kind].placeholder) { // a borrowed sprite would name the wrong item: neutral tile until the 3D icon lands
+      const r = doc.createElementNS(SVG, 'rect');
+      for (const [k, v] of [['x', 10], ['y', 10], ['width', 28], ['height', 28], ['rx', 6], ['fill', '#ffffff1c'], ['stroke', '#ffffff55'], ['stroke-width', 1.5]]) r.setAttribute(k, String(v));
+      svg.appendChild(r); return svg;
+    }
     const use = doc.createElementNS(SVG, 'use'); use.setAttribute('href', `icons.svg#${sym}`); svg.appendChild(use);
     return svg;
   }
