@@ -46,7 +46,7 @@ export function createCoop(ctx, saved = null) {
   const hand = new T.Vector3(), sample = {};
   const ac = new AbortController();
   let conn = null, peer = null;            // peer = their hello, once received on this connection
-  let settled = false, lastSend = 0, lastSent = null, lastRecv = now(), lastItems = null, lastItemsAt = 0, itemKey = '';
+  let helloAt = -1e9, settled = false, lastSend = 0, lastSent = null, lastRecv = now(), lastItems = null, lastItemsAt = 0, itemKey = '';
   let lastHook = null, throwAt = -1, emote = null, lastPose = null, errors = 0, aboard = !!saved?.aboard; // aboard: guest had a live session
   let rejoin = saved?.rejoin ?? null;      // {since, attempt, next} while a guest is reconnecting
   let peerName = saved?.peerName ?? 'Brother'; avatar.setName(peerName);
@@ -60,7 +60,7 @@ export function createCoop(ctx, saved = null) {
     const c = ctx.conn();
     if (c === conn) return;
     if (!rejoin) aboard = false; // a brand-new join is not a rejoin
-    conn = c; peer = null; enc.reset(); dec.reset(); buffer.reset(); lastSent = null; lastItems = null; itemKey = ''; lastRecv = now();
+    conn = c; peer = null; helloAt = -1e9; enc.reset(); dec.reset(); buffer.reset(); lastSent = null; lastItems = null; itemKey = ''; lastRecv = now();
   }
 
   // ---------- outgoing (game.js send() hook) ----------
@@ -122,6 +122,7 @@ export function createCoop(ctx, saved = null) {
       h:Math.max(0, HELD.indexOf(l.held ?? null)), c:Math.round((l.charge || 0) * 100), k:hook, g};
   }
   function sendPose(t) {
+    if (t - lastSend < SEND_MS) return; // cheap gate before building the snapshot
     const s = snapshot(ctx.local()), key = JSON.stringify(s), moving = key !== lastSent;
     // The first unchanged snap still goes out on the 15 Hz tick so the receiver sees the stop promptly (no overshoot).
     if (t - lastSend < (moving || !settled ? SEND_MS : IDLE_MS)) return;
@@ -143,7 +144,8 @@ export function createCoop(ctx, saved = null) {
     avatar.update(dt, {x:s.x, y:s.y - 1.6, z:s.z, yaw:s.yaw, pitch:s.pitch, speed:s.speed ?? 0, swimming:L.swimming, grounded:L.grounded,
       held:L.held, charge:L.charge, reeling:L.reeling, hookOut:!!L.hook, stage:L.stage, emote:em, throwAge:throwAt >= 0 ? (t - throwAt) / 1000 : null}, time, ctx.camera);
     avatar.handWorld(hand);
-    rope.update(dt, hand, s.hook ? {...s.hook, stage:L.stage} : null, ctx.ocean, time);
+    if (s.hook) s.hook.stage = L.stage; // s.hook is the buffer's reusable sample object
+    rope.update(dt, hand, s.hook, ctx.ocean, time);
     ghost.update(L.ghost, ctx.deckY(), time);
   }
 
@@ -194,7 +196,7 @@ export function createCoop(ctx, saved = null) {
     if (errors > 20) return;
     try {
       const t = now(); track();
-      if (conn?.open && !peer && t - lastSend > 1000) { lastSend = t; event('hello', {v:COOP_VERSION, id:coopId, name:readName()}); }
+      if (conn?.open && !peer && t - helloAt > 1000) { helloAt = t; event('hello', {v:COOP_VERSION, id:coopId, name:readName()}); }
       if (peer && conn?.open) sendPose(t);
       const role = ctx.role();
       if (role === 'guest' && ctx.ready()) aboard = true; else if (role === 'solo') aboard = false;
