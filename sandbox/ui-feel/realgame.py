@@ -174,7 +174,7 @@ with sync_playwright() as p:
     log['craftReady'] = ready.count(); log['craftToppedUp'] = None
     if not ready.count() or '--topup' in argv:  # nothing craftable from this pickup: give one rope's worth (2 leaf), reopen
         pg.keyboard.press('Tab'); pg.wait_for_function('!raftDebug.state.inventoryOpen')
-        log['craftToppedUp'] = pg.evaluate("raftDebug.give('leaf', 2)")
+        log['craftToppedUp'] = pg.evaluate("raftDebug.give('leaf', 2)")  # leftover that did not fit: 0 = all added
         pg.keyboard.press('Tab'); pg.wait_for_function('raftDebug.state.inventoryOpen'); pg.wait_for_timeout(500)
         log['craftReady'] = ready.count()
     if ready.count():
@@ -257,7 +257,7 @@ fa = log.get('flyArt') or []
 checks = {
     'flyIconsNonEmpty': bool(fa) and all(f['artChars'] > 0 and f['art'] != 'none' for f in fa),
     'heldWhileFlying': bool(log.get('heldWhileFlying')),
-    'crafted': log.get('craftToppedUp') != -1 and bool(log.get('craft')) and all(c['flashed'] is True for c in log['craft']),
+    'crafted': log.get('craftToppedUp') in (None, 0) and bool(log.get('craft')) and all(c['flashed'] is True for c in log['craft']),
     'buildMarkerOwnOnly': log.get('buildMarker') == {'partner (by:guest)': 0, 'no owner': 0, 'mine (by:host)': 1},
     'reticleIsMains': 'uf-xm' in log['reticle']['cls'] and 'uf-xh' not in log['reticle']['cls'] and log['reticle']['width'] == '4px'
                       and log['reticle']['usableWidth'] == '8px' and len(log['reticle']['parts']) == 1 and log['reticle']['parts'][0].startswith('uf-x uf-x-hit') and not log['reticle']['chargeMeterHiddenByFeel'],
