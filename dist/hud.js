@@ -52,3 +52,12 @@ export function nextHint(done, ctx) {
   const h = HINTS.find(x => !done.has(x.id));
   return h && h.when(ctx || {}) ? h : null;
 }
+
+// Where the bottom-left feed lives while a panel is open. The bag and the pause rail each have a lane
+// for it inside the panel, so rows never paint over panel controls; reading dialogs (help, crew) leave
+// the transient rows under their backdrop. 'hud' is the normal corner during play.
+export function feedPlacement({inventoryOpen = false, optionsOpen = false, dialog = false} = {}) {
+  if (inventoryOpen) return 'inventory';
+  if (optionsOpen) return 'options';
+  return dialog ? 'hidden' : 'hud';
+}

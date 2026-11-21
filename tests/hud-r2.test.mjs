@@ -30,3 +30,23 @@ test('HUD-1: the engine routes live notices into the feed, and the fallback pill
   assert.match(rule, /left:22px;bottom:26px/);
   assert.doesNotMatch(liveSrc, /import\(['"]\.\/pickup-feed\.js['"]\)/, 'no second, unversioned feed instance');
 });
+
+// ---------------------------------------------------------------- HUD-2 / HUD-4 feed over open panels
+
+const H = await import(new URL('hud.js', base));
+
+test('HUD-2/HUD-4: the feed docks into the bag or pause rail, and hides under reading dialogs', () => {
+  assert.equal(H.feedPlacement({}), 'hud');
+  assert.equal(H.feedPlacement({inventoryOpen:true, dialog:true}), 'inventory');
+  assert.equal(H.feedPlacement({optionsOpen:true, dialog:true}), 'options');
+  assert.equal(H.feedPlacement({dialog:true}), 'hidden', 'help / crew: never raised over them');
+});
+
+test('HUD-2/HUD-4: a docked feed is an in-flow box inside the panel lane, not a top-layer popover', () => {
+  const fn = gameSrc.slice(gameSrc.indexOf('function updateNotices('), gameSrc.indexOf('const esc = s =>'));
+  assert.match(fn, /feedLane\(place\)/);
+  assert.match(fn, /removeAttribute\('popover'\); el\.classList\.add\('docked'\)/);
+  assert.match(fn, /if \(place === 'hud'\) el\.showPopover\(\)/, 'only the play HUD re-raises the popover');
+  assert.match(gameSrc, /\$\('#inventory \.sv-bag'\) : place === 'options' \? \$\('#options \.rs-menu'\)/);
+  assert.match(gameSrc, /#pickupFeed\.docked\{position:static/);
+});
