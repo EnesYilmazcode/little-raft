@@ -166,9 +166,9 @@ const LIST = [
     recipe: hand({ wood: 4, rope: 2 }), unlock: START,
     tip: 'Builds new floor tiles (2 planks + 2 plastic each). Make room for friends!' }),
   item('fishingrod', 'Fishing Rod', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#c69860',
-    tool: true, durability: 40,
+    tool: true, durability: 10, // Raft: a wooden rod lasts 10 catches, then snaps
     recipe: hand({ wood: 6, rope: 8 }), unlock: discover('rope'),
-    tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 40 catches between repairs.' }),
+    tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 10 catches before it snaps.' }),
   item('spear', 'Wooden Spear', 'tool', { iconTint: '#bb8650', tool: true, durability: 20,
     recipe: hand({ wood: 8, rope: 3 }), unlock: discover('rope'),
     tip: 'A long pole with a sharp lashed tip. Click to jab at things in the water; wears only when it lands.' }),
@@ -305,6 +305,10 @@ const LIST = [
   item('net', 'Collection Net', 'build', { icon: 'icon-net', placeholder: false, placeable: true,
     recipe: hand({ wood: 6, rope: 8, nail: 2 }), unlock: discover('nail'),
     tip: 'Hang it off the raft edge. Debris drifting into it stays there (up to 10, even barrels). Press E to empty it.' }),
+  // Raft's Throwable Anchor (2 planks, 4 rope, 4 stone): placed on an edge tile, E drops / raises it (anchor-rules.js)
+  item('anchor', 'Anchor', 'build', { iconTint: '#5e5a52', placeable: true,
+    recipe: hand({ wood: 2, rope: 4, stone: 4 }), unlock: discover('rope', 'stone'),
+    tip: 'A stone anchor on a rope reel. Place it at the raft edge, then press E on it to stop the raft or let it drift again.' }),
   item('maptable', 'Map Table', 'decor', { iconTint: '#c9a46a', stack: 5, placeable: true,
     recipe: hand({ wood: 6, rope: 3, nail: 2, copperingot: 1 }), unlock: research('copperingot'),
     tip: 'A little chart table. It remembers the islands you meet and points the sail where you like.' }),
@@ -359,6 +363,7 @@ export const BLOCK_RADII = deepFreeze({
   scarecrow: 0.25, // [scarecrow]
   skyrocket: 0.1, // [fireworks]
   glidepost: 0.15, glidestep: 0.15, // [zipline]
+  anchor: 0.3, // [anchor]
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
@@ -445,31 +450,36 @@ export const PROGRESSION_PLAN = deepFreeze([
 ]);
 
 /**
- * Barrel loot: BARREL_ROLLS.basic picks from the 'basic' pool (min..max each)
- * plus BARREL_ROLLS.treasure picks from the 'treasure' pool (always 1 of the
- * kind, so mid-game materials trickle in steadily with low variance).
- * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 111, incl. beet 5 and potato 4): ~5.3
- * basics plus clay .18, stone .12, metal ore .10, sand .12, seaweed .08 (x1.5), copper ore
- * .06, flower seed .06, scrap .29. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
- * least every 5-13 barrels (a few more when two are overdue at once), so the real rates are
- * clay .24, stone .19, metal ore .18, sand .14, copper ore .09, seaweed .05 (x1.5).
+ * Barrel loot, Raft-style: every barrel holds BARREL_ROLLS.min..max single items (4-6).
+ * One of them is the 'treasure' pick (mid-game materials with bad-luck protection, see
+ * BARREL_PITY); the other 3-5 are rolled one by one from the 'basic' pool, whose weights
+ * follow Raft's barrel table: plank 37.7%, leaf 18.9%, plastic 14.2%, scrap 9.4%, rope 7.1%,
+ * stone 6.1%, then seeds and food 6.6% (flower seed 1.7%, beet 1.7%, potato 1.6%, coconut 1.6%).
+ * Plain treasure odds (total 90): clay .20, stone .13, metal ore .11, sand .13, seaweed .09,
+ * copper ore .07, scrap filler .27; with the caller's luck state the mid-game kinds come at
+ * least every 4-12 barrels (a few more when two are overdue at once).
+ * Per barrel on average: ~1.5 planks, .76 leaves, .57 plastic, .38+.27 scrap, .28 rope, .25+.13 stone;
+ * about 1 barrel in 8 holds a beet or potato so a new player can start farming [crops].
  */
-export const BARREL_ROLLS = deepFreeze({ basic: 3, treasure: 1 });
+export const BARREL_ROLLS = deepFreeze({ min: 4, max: 6, treasure: 1 });
 export const BARREL_LOOT = deepFreeze([
-  { kind: 'wood', min: 2, max: 3, weight: 30, pool: 'basic' },
-  { kind: 'leaf', min: 1, max: 3, weight: 22, pool: 'basic' },
-  { kind: 'plastic', min: 1, max: 2, weight: 22, pool: 'basic' },
-  { kind: 'scrap', min: 1, max: 2, weight: 16, pool: 'basic' },
+  { kind: 'wood', min: 1, max: 1, weight: 377, pool: 'basic' },
+  { kind: 'leaf', min: 1, max: 1, weight: 189, pool: 'basic' },
+  { kind: 'plastic', min: 1, max: 1, weight: 142, pool: 'basic' },
+  { kind: 'scrap', min: 1, max: 1, weight: 94, pool: 'basic' },
+  { kind: 'rope', min: 1, max: 1, weight: 71, pool: 'basic' },
+  { kind: 'stone', min: 1, max: 1, weight: 61, pool: 'basic' },
+  { kind: 'flowerseed', min: 1, max: 1, weight: 17, pool: 'basic' }, // [bees]
+  { kind: 'beet', min: 1, max: 1, weight: 17, pool: 'basic' }, // [crops] a new player can start farming
+  { kind: 'potato', min: 1, max: 1, weight: 16, pool: 'basic' }, // [crops]
+  { kind: 'coconut', min: 1, max: 1, weight: 16, pool: 'basic' }, // [juicer] keep last: rand=1 picks it
   { kind: 'clay', min: 1, max: 1, weight: 18, pool: 'treasure' },
   { kind: 'stone', min: 1, max: 1, weight: 12, pool: 'treasure' },
   { kind: 'metalore', min: 1, max: 1, weight: 10, pool: 'treasure' },
   { kind: 'sand', min: 1, max: 1, weight: 12, pool: 'treasure' },
-  { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
+  { kind: 'seaweed', min: 1, max: 1, weight: 8, pool: 'treasure' },
   { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },
-  { kind: 'flowerseed', min: 1, max: 1, weight: 6, pool: 'treasure' }, // [bees]
-  { kind: 'beet', min: 1, max: 2, weight: 5, pool: 'treasure' }, // [crops] a new player can start farming
-  { kind: 'potato', min: 1, max: 1, weight: 4, pool: 'treasure' }, // [crops]
-  { kind: 'scrap', min: 1, max: 1, weight: 30, pool: 'treasure' },
+  { kind: 'scrap', min: 1, max: 1, weight: 24, pool: 'treasure' },
 ]);
 const POOLS = Object.freeze(Object.fromEntries(['basic', 'treasure'].map((p) => {
   const rows = BARREL_LOOT.filter((e) => e.pool === p);
@@ -515,7 +525,8 @@ function luckMisses(luck) {
 export function rollBarrel(rand = Math.random, luck = null) {
   const out = {};
   const misses = luckMisses(luck);
-  for (let i = 0; i < BARREL_ROLLS.basic; i++) pickFrom(POOLS.basic, rand, out);
+  const items = BARREL_ROLLS.min + Math.floor(unit(rand) * (BARREL_ROLLS.max - BARREL_ROLLS.min + 1));
+  for (let i = 0; i < items - BARREL_ROLLS.treasure; i++) pickFrom(POOLS.basic, rand, out);
   for (let i = 0; i < BARREL_ROLLS.treasure; i++) {
     let forced = null, worst = 1;
     if (misses) for (const k of PITY_KINDS) { const due = misses[k] / BARREL_PITY[k]; if (due >= worst && (!forced || due > worst)) { forced = k; worst = due; } }

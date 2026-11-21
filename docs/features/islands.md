@@ -1,8 +1,41 @@
 # Islands
 
-Small islands drift past the raft every few minutes. You swim over, walk on the sand, gather
-from palms, bushes, rocks and sand patches by tapping E, and swim back before the island drifts
-off. Nothing hurts you, and nobody gets stranded.
+Small islands stay put in the world, like Raft's. One appears ahead of the raft every few minutes
+and the raft drifts toward it; steer (sail, paddle) and drop the anchor to stay, or drift past. You
+swim over, walk on the sand, gather from palms, bushes, rocks and sand patches, and swim back
+before the raft drifts too far. Nothing hurts you, and nobody gets stranded.
+
+## Islands stay put (fidelity r2b)
+
+This supersedes the old approach/dock/depart timeline (`pathAt`, `DOCK` 180-600 s), which the
+sections below still describe in places. Research: `docs/loop/research/fidelity-r2b-world.md`, gap 1.
+
+- **Seabed position.** An island is stored by its seabed-absolute base `(bx, bz)`. It is drawn at
+  `islandRel` = `wrap(b - g)`, where `g` is the sailing seabed offset (`world.sailing.gx/gz`, shown
+  through `sailing.groundOffset()`, the same smoothed offset `moveDrifters` uses for the scenery). So
+  it moves at the raft's speed over the seabed: about 0.3 m/s on the current, about 1.6 m/s under
+  full sail, and not at all while anchored.
+- **Spawn.** After the calm (`FIRST` 90 s in a fresh world, then `CALM_MIN..MAX` 150-240 s),
+  `spawnRel(seed, v + current)` places it 120-160 m ahead of the travel direction and 20-40 m to
+  a seeded side. Everyone gets "Land ahead! Steer for it and drop anchor to stay", and the sailing
+  compass shows a small island glyph on its ring pointing at it (`sailing.markIsland`).
+- **Despawn.** `shouldDespawn`: more than `DESPAWN` 150 m away and behind the travel (dot with this
+  frame's seabed step < 0), or more than `FAR` 220 m in any direction. Never while a player is within
+  `R + 6` m. It then sinks over 4 s (`isl.end`), and the next calm starts.
+- **Grounding.** The island hands `sailing.addBlocker` a `{x, z, r}` blocker each frame
+  (`r = 1.05 R SHORE_U + GROUND_CLEAR + raftR`), so the raft beaches on it like on the scenery islands.
+- **Riding.** A player standing on the sand moves with the island; if the raft drifts more than
+  `R + 20` m off, they are told once ("Your raft is drifting away from the island!").
+  `PlayerPhysics` still puts a player back aboard past 50 m from the raft.
+- **Save v2.** `{v: 2, clock, next, isl: {seed, born, bx, bz, used, end?}}`. A v1 save is migrated:
+  its island goes where it was on the old timeline at save time (relative to the raft, against the
+  saved seabed offset), already risen. A v1 island that had already left is dropped.
+- **Co-op.** The host owns spawn and despawn and sends `bx/bz`. The guest draws from the same
+  synced seabed offset, so both see the island in the same place.
+- **Map table.** An island is charted when it comes within `CHART_R` 80 m, at `(bx, bz)`.
+- **QA.** `raftDebug.content.islands`: `spawnAhead(seed?)` (the real spawn), `spawnNear(seed?, age)`
+  (a short swim off the raft, as before), `phase()` (`rise|here|sink|calm`, raft-relative `x, z,
+  dist`), `blocker()`, `anchor(on)`.
 
 This revision targets the content registry (`dist/content.js`, `docs/features/content-hooks.md`).
 Everything lives in `dist/islands.js` (plus an optional `dist/islands-layout.js` for pure logic)

@@ -2,58 +2,66 @@
 // Category grouping, item descriptions, needed-vs-owned rows, the hold-to-craft repeat schedule
 // and tooltip anchoring maths all live here so they can be unit-tested in node.
 
-// Tabs, in display order. `icon` is a symbol id in icons.svg.
+// Tabs, in display order (Raft-like: tools, navigation, food & water, materials, building, other).
+// `icon` is a symbol id in icons.svg; `name` is the short tab label, `title` the full name
+// (tooltip / aria-label, and what shows when the label is hidden on narrow screens).
 export const CATEGORIES = Object.freeze([
-  Object.freeze({ id: 'tools',     name: 'Tools',     icon: 'hammer' }),
-  Object.freeze({ id: 'materials', name: 'Materials', icon: 'wood' }),
-  Object.freeze({ id: 'survival',  name: 'Survival',  icon: 'net' }),
-  Object.freeze({ id: 'building',  name: 'Building',  icon: 'floor' }),
+  Object.freeze({ id: 'tools',      name: 'Tools',   title: 'Tools',        icon: 'hammer' }),
+  Object.freeze({ id: 'navigation', name: 'Sailing', title: 'Navigation',   icon: 'wheel' }),
+  Object.freeze({ id: 'food',       name: 'Food',    title: 'Food & Water', icon: 'cup' }),
+  Object.freeze({ id: 'materials',  name: 'Parts',   title: 'Materials',    icon: 'wood' }),
+  Object.freeze({ id: 'building',   name: 'Build',   title: 'Building',     icon: 'floor' }),
+  Object.freeze({ id: 'other',      name: 'Other',   title: 'Other & Decor', icon: 'lantern' }),
 ]);
 
 // Recipe output kind -> category id. Unknown kinds fall back by shape (see categoryOf).
 const CATEGORY_OF = Object.freeze({
-  hook: 'tools', hammer: 'tools', fishingrod: 'tools',
-  rope: 'materials',
-  net: 'survival', palm: 'survival', lantern: 'survival',
-  sail: 'building', bench: 'building', crate: 'building',
-  // progression catalogue (items.js)
+  // tools: things you hold or carry to work with
+  hook: 'tools', hammer: 'tools', fishingrod: 'tools', brush: 'tools',
   metalhook: 'tools', binoculars: 'tools', spyglass: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools', paddle: 'tools', axe: 'tools', // [spyglass] spyglass
-  drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
-  camera: 'tools', photoframe: 'survival', // [camera]
-  canteen: 'survival', // [canteen] not 'tools' through info.tool
-  nail: 'materials', bolt: 'materials', hinge: 'materials',
-  flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
-  juicer: 'survival', berrycup: 'survival', coconutcup: 'survival', mixcup: 'survival', // [juicer]
-  perch: 'survival', // [gull]
-  shelf: 'survival', trophystand: 'survival', // [display]
-  musicbox: 'survival', // [musicbox]
-  turbine: 'survival', battery: 'survival', stringlights: 'survival', lamppost: 'survival', // [power]
-  fishtrap: 'survival', // [fishtrap]
-
-  taskboard: 'survival', // [tasks]
-  skyrocket: 'survival', // [fireworks]
-  scarecrow: 'survival', // [scarecrow]
-  glidepost: 'building', glidestep: 'building', glidehandle: 'tools', // [zipline] (no 'decor' tab exists)
-  rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
-  cropplot: 'survival', cookedbeet: 'survival', cookedpotato: 'survival', // [crops]
-  researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
-  rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
-  flagpole: 'building', // [flags]
-  kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
-  nestbox: 'survival', cushion: 'building', // raft animals
-  goatpen: 'survival', bucket: 'survival', // raft goats
-  stormrod: 'building', stormlamp: 'survival', stormglass: 'building', // storm
-  // content (engine, sleep, paint)
-  motor: 'building', wheel: 'building', bed: 'building', brush: 'tools', driftboard: 'tools', // [paddleboard]
+  fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools', sinker: 'tools',
+  camera: 'tools', // [camera]
+  glidehandle: 'tools', // [zipline]
+  driftboard: 'tools', // [paddleboard]
+  // navigation: moving and steering the raft, finding the way
+  sail: 'navigation', anchor: 'navigation', motor: 'navigation', wheel: 'navigation', receiver: 'navigation', antenna: 'navigation', maptable: 'navigation',
+  // food & water: drink, cooking, growing
+  cup: 'food', purifier: 'food', grill: 'food', cookpot: 'food', bowl: 'food', palm: 'food',
+  rainbarrel: 'food', sprinkler: 'food', // [rain-sprinkler]
+  juicer: 'food', berrycup: 'food', coconutcup: 'food', mixcup: 'food', // [juicer]
+  flowerbox: 'food', beehive: 'food', honeyfish: 'food', // [bees]
+  nestbox: 'food', // raft animals (puff eggs)
+  goatpen: 'food', bucket: 'food', // raft goats (pen and milk pail)
+  cropplot: 'food', cookedbeet: 'food', cookedpotato: 'food', // [crops]
+  scarecrow: 'food', // [scarecrow] guards the crop plots
+  fishtrap: 'food', // [fishtrap]
+  canteen: 'food', // [canteen] not 'tools' through info.tool
+  // materials: crafted parts that go into other recipes
+  rope: 'materials', nail: 'materials', bolt: 'materials', hinge: 'materials',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
+  battery: 'materials', // [power]
+  // building: furniture, work stations and raft structure
+  bench: 'building', crate: 'building', research: 'building', researchtable: 'building', smelter: 'building', kiln: 'building', bed: 'building',
   armor: 'building', // foundation armor (dist/armor.js)
-  cup: 'survival', purifier: 'survival', // water: scoop the sea, purify it
-  fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
-  cookpot: 'building', bowl: 'survival',
-  shellwreath: 'building',
-  research: 'building', antenna: 'building', receiver: 'building',
-  courseflag: 'building', scoreboard: 'building', // buoy ring course (buoycourse.js)
-  gametable: 'building', // game table (gametable.js)
+  glidepost: 'building', glidestep: 'building', // [zipline]
+  turbine: 'building', // [power]
+  stormrod: 'building', // [storm]
+  recycler: 'building', // [recycler] sorting tub
+  // other: lights, music, decor and odds and ends
+  lantern: 'other', glasslamp: 'other', candle: 'other', net: 'other', perch: 'other', // [gull]
+  drum: 'other', pipes: 'other', bells: 'other', // [instruments]
+  rug: 'other', pennant: 'other', fern: 'other', chime: 'other', hammock: 'other', pots: 'other', sign: 'other', // decor pack
+  cushion: 'other', shellwreath: 'other',
+  photoframe: 'other', // [camera]
+  shelf: 'other', trophystand: 'other', // [display]
+  musicbox: 'other', // [musicbox]
+  stringlights: 'other', lamppost: 'other', // [power]
+  taskboard: 'other', // [tasks]
+  skyrocket: 'other', // [fireworks]
+  flagpole: 'other', // [flags]
+  stormlamp: 'other', stormglass: 'other', // [storm]
+  courseflag: 'other', scoreboard: 'other', // buoy ring course (buoycourse.js)
+  gametable: 'other', // game table (gametable.js)
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -78,6 +86,7 @@ export const ITEM_TEXT = Object.freeze({
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
   motor:      { desc: 'A little outboard motor that burns leaves, wood or plastic.', use: 'Place it, fuel it, and it pushes the raft along.' },
   wheel:      { desc: 'A rope-lashed steering wheel.', use: 'Place it, then grab it to steer the raft.' },
+  anchor:     { desc: 'A stone anchor on a rope reel.', use: 'Place it at the raft edge; E drops or raises it. Remove it with the hammer (X).' },
   bed:        { desc: 'A wooden frame with a leaf-thatch mattress.', use: 'E at night to sleep till morning (+40 health, -20 food and water). You wake up at your last bed.' }, // [bed]
   brush:      { desc: 'A paint brush with stiff bristles.', use: 'Click walls, floors or deck to paint; right click picks a colour.' },
   paint_seafoam:  { desc: 'A pot of soft seafoam green paint.', use: 'One pot paints one piece with the brush.' },
