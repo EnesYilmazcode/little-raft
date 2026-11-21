@@ -365,10 +365,7 @@ export function createDolphin(ctx, opts = {}) {
     if (ui) go(ui); else loadUI()?.then(go);
     return true;
   }
-  function onBond() { // this client gave the 3rd fish: name it
-    ctx.notice?.(`${friendName()} wants to stay with your raft!`, 3000);
-    openRename();
-  }
+  function onBond() { openRename(); } // this client gave the 3rd fish: name it (the host's bond notice reaches everyone)
 
   // ------------------------------------------------------------------ actions (host)
 

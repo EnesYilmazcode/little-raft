@@ -105,3 +105,21 @@ Also re-run `tests/content.test.mjs` (FEATURES count/name uniqueness) and the ar
 
 ## Acceptance
 `npm test` green; `shoot2.py` errors `[]`. In the browser: `spawnWild()`, hold fish, E ×3 (use `advance(8)` between tosses) -> bond notice + name dialog; the friend loops/leaps near the raft; `swimAt` puts the player in the water and the friend escorts within ~2 m; conch click -> it comes; `nudgeNow()` moves a debris item toward the deck; in co-op loopback a guest toss/pat/call works and both see the same friend.
+
+## Implementation notes
+Built as specified in `dist/dolphin-core.js`, `dist/dolphin.js` and `tests/dolphin.test.mjs` (12 tests). Both new modules are listed in `PRELOAD` (`dist/live.js`). Where the build differs from the spec, or fills in something the spec left open:
+- **Core signatures.** `pointPose(seed, t, centre, target, out, ext = centre.r)` takes the raft half-size for its loop blend, because `loopPose` needs it. `nudgePose(it, centre, out, t = 0)` takes `t` for the porpoise bob. `pickNudge(items, centre, players, nets, held = null)` skips tokens in `held`. The module passes the kite builder's `ctx.heldTokens?.()`, and the 6 m player rule stays as the fallback. The host also ends a nudge if the item gets hooked. `lerpAngle`, `newPose`, `SHOW_LEAP = 1.4` and `NUDGE_TYPES` are exported as well.
+- **Nudge sync.** `cleanDolphin` always drops `nudge`, so it is null after a save or restore. The guest's `load(data, 'net')` copies back a valid synced `{tok, at}`, so guests draw the nudge too.
+- **Loop radius test.** The test checks `>= 7 - 1.5 + pushOut`, because the spec's own formula includes the ±1.5 m `sin(0.07t)` wobble.
+- **One dolphin, not two.** While you have a friend, the module hides the wildlife circler's `dolphin` mesh each frame (wildlife updates first), so a visiting wild dolphin doesn't show up next to your friend.
+- **Texts.** These were left open in the spec:
+  - Host toss refusals are "Step a little closer to the dolphin" and "The dolphin swam off".
+  - A pat always sends a notice: "Name loves that ♥ n" with a heart, or "Name clicks happily" on cooldown.
+  - E on the wild dolphin without fish in hand shows the hint locally and sends no action.
+- **Bond notice.** The bond notice is the host's emit to 'all' ("Name wants to stay with your raft!", sound catch). The client that gave the 3rd fish only opens the name dialog, so it does not get a second copy of the notice.
+- **Conch row.** The craft book shows the conch as craftable before you befriend a dolphin, because `recipeGate` in game.js only covers `shellwreath`. Crafting is still refused with "Befriend a dolphin first". There is no game.js edit.
+- **Chirp.** The chirp fires on each wrap of the active mode's leap phase: every 3 s in loop, point, escort and call, every 1.4 s in show, and never during a nudge.
+- **Extra debug helpers:** `shown()` (the drawn mode after the target fallback), `wild()`, `pin(t)` (QA: freezes the drawn pose clock for screenshots), `pick(aim)`, `openRename()`, `closeRename()` and `burst()`.
+- **Shared files.**
+  - In `content.js`, FEATURES has no inline comment after `createDolphin`, because the cookpot, gametable and paddleboard tests parse the array with `[^\]]*`.
+  - The tools list in `tests/survival.test.mjs` now includes `'conch'` after the kites.
