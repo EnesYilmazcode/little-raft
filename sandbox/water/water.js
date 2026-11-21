@@ -1,11 +1,14 @@
-// Little Raft water lab: one Gerstner ocean, three quality tiers (see docs/tech/water.md).
-//   tier 'a' single pass: Jacobian crest foam, sky/sun reflection, SoT-style subsurface,
-//            analytic contact foam + fake shadow from a raft distance field, no extra passes.
-//   tier 'b' a + half-res opaque prepass (color + depth): true intersection foam around
-//            anything, see-through shallows, refraction, depth absorption.
-//   tier 'c' b + quarter-res planar reflection of the raft and sky.
-// API mirrors dist/ocean.js: { mesh, update(t, camera), getHeight, getSlope, uniforms,
-// setRaft(tiles, x, z, yaw), setFloaters([[x,z,r],...]), render(renderer, scene, camera), dispose }.
+// Little Raft ocean (see docs/tech/water.md). Same Gerstner wave set, speed and base height as the
+// shipping dist/ocean.js, so getHeight/getSlope are bit-identical (sandbox/water/parity.mjs).
+//   tier 'a' (ship this) single pass: crest lace from the Gerstner Jacobian (vertex shader), sky/sun
+//            fresnel reflection, glitter sun path, crest subsurface tint, lacy contact foam + fake deck
+//            shadow + under-deck occlusion from a CPU-baked raft distance field, foam rings around floaters.
+//   tier 'b' a + half-res opaque prepass (colour + depth): intersection foam around any mesh, refraction,
+//            depth absorption. Costs ~2x a frame for almost no visible change in this game (see doc).
+//   tier 'c' b + quarter-res planar reflection. Same verdict.
+// API = dist/ocean.js { mesh, update(t, camera), getHeight, getSlope, uniforms, material, dispose }
+//   + setRaft(tiles, x, z, yaw), setRaftPose(x, z, yaw), setFloaters([[x, z, r], ...], camX, camZ),
+//   + render(renderer, scene, camera) (only needed for tiers b/c). createOcean() = tier 'a' drop-in.
 
 const WAVES = [
   [1.0, 0.35, 0.10, 31.0, 0.50],
