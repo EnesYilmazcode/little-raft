@@ -198,9 +198,10 @@ export function setSmelterGlow(group, amount = 0, timeSec = 0) {
   if (!glow || !glow.material) return;
   const a = Math.max(0, Math.min(1, Number(amount) || 0)), t = Number(timeSec) || 0;
   const flicker = 0.82 + 0.1 * Math.sin(t * 7.3) + 0.06 * Math.sin(t * 13.1 + 1.7) + 0.05 * Math.sin(t * 23.7 + 0.4);
-  glow.material.emissiveIntensity = a * 1.25 * flicker;
-  // hot = orange-yellow, dying = deep red
-  glow.material.emissive.setRGB(1, 0.16 + 0.22 * a * flicker, 0.03 + 0.04 * a);
+  // kept under ~1 so ACES tone mapping does not wash the mouth out to cream
+  glow.material.emissiveIntensity = a * 0.95 * flicker;
+  // hot = orange, dying = deep red
+  glow.material.emissive.setRGB(1, 0.12 + 0.18 * a * flicker, 0.02 + 0.03 * a);
 }
 
 // ---------------------------------------------------------------- RESEARCH TABLE (~1.12 x 0.7, ~0.95 tall)
