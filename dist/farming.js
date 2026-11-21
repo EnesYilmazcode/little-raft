@@ -54,8 +54,8 @@ export function normalizeDecor(decor) {
 // Advances one plant by dt seconds. Mutates p. Returns true when its look changed
 // (new stage or the soil just dried), so the view and co-op sync know to refresh.
 export function tickPlant(p, dt) {
-  if (!p || !(dt > 0) || p.s < SEEDLING || p.w <= 0) return false;
-  if (p.s >= MATURE) { p.w = Math.max(0, p.w - dt); return p.w === 0; } // grown palms just let the soil dry
+  if (!p || !(dt > 0) || p.s < EMPTY || p.w <= 0) return false;
+  if (p.s >= MATURE || p.s === EMPTY) { p.w = Math.max(0, p.w - dt); return p.w === 0; } // grown palms and empty planters just let the soil dry
   const wet = Math.min(dt, p.w);
   p.w -= wet; p.g += wet;
   let changed = p.w <= 0;
