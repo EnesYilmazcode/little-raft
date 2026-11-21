@@ -21,6 +21,7 @@ transformed.y -= 0.06 * fu * fu * (1.2 - uStr);
  * Paint a flag design with the canvas 2D API only (+ a Path2D constructor), so it is testable with fakes.
  * Canvas x = 0 is the hoist (pole side). d = [bg, pat, patCol, emb, embCol] (already cleaned).
  */
+const DARK = new Set([4, 5, 6, 7]); // Lagoon, Navy, Charcoal, Plum: outline these in cream
 export function paintFlag(g, d, w = 128, h = 64, P2D = globalThis.Path2D) {
   const [bg, pat, pc, emb, ec] = d;
   const u = h / 64;
@@ -42,8 +43,14 @@ export function paintFlag(g, d, w = 128, h = 64, P2D = globalThis.Path2D) {
     g.save();
     g.translate((w - 64 * k) / 2, (h - 64 * k) / 2);
     g.scale(k, k);
-    g.fillStyle = PALETTE[ec] ?? PALETTE[5];
-    g.fill(new P2D(path));
+    const ecol = PALETTE[ec] ?? PALETTE[5], shape = new P2D(path);
+    // outline (outer half of a stroke under the fill, ~2 px at 64 px tall): the background colour, or a contrasting
+    // one when the emblem is the background colour, so the emblem still reads on a same-coloured pattern
+    g.strokeStyle = ecol !== (PALETTE[bg] ?? PALETTE[1]) ? (PALETTE[bg] ?? PALETTE[1]) : DARK.has(ec) ? '#fff4dc' : '#153e49';
+    g.lineWidth = 4 * u / k; g.lineJoin = 'round';
+    g.stroke(shape);
+    g.fillStyle = ecol;
+    g.fill(shape);
     g.restore();
   }
   // hem at the hoist: a thin darker line where the cloth wraps the halyard
