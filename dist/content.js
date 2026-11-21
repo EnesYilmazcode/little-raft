@@ -22,6 +22,8 @@
 //   alt(aim, kind)            right click while holding `kind`. Return true if consumed (paint: brush colour).
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
+//   placed(type, x, z, actor) host, after a decor piece was built on tile x,z ([bed]: a new bed is its placer's home)
+//   respawnSpot(out)          -> {x, z} (raft metres) where the LOCAL player wakes after passing out, or null ([bed])
 //   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
@@ -99,6 +101,8 @@ export function createContent(ctx, features = FEATURES) {
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
+    placed(type, x, z, actor) { for (const m of mods) call(m, 'placed', type, x, z, actor); }, // [bed]
+    respawnSpot: out => first('respawnSpot', out), // [bed]
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     decorModel: (type, d) => first('decorModel', type, d),
     sailPush: (s, out) => !!first('sailPush', s, out),
