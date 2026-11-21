@@ -84,7 +84,7 @@ export function pickAttackTile(tiles, rng, isProtected = null) {
 
 // env (read every step, the caller reuses one object): {mode: MODES entry {sharkRaft, sharkBites} or null,
 //   tiles, players: [{id, x, z, swimming}] (reused objects, may hold nulls), isProtected(tx, tz)}.
-// Callbacks (optional, set on the brain): onAttack(tx, tz), onTileDestroyed(tx, tz) -> bool (false = could not),
+// Callbacks (optional, set on the brain): onAttack(tx, tz) (sets off), onRaftBite(tx, tz) (teeth in), onTileDestroyed(tx, tz) -> bool (false = could not),
 //   onBite(playerId), onDriveOff(), onDeath(x, z), onRespawn().
 export function createSharkBrain({ seed = 0x5ea5eed } = {}) {
   const rng = mulberry32(seed);
@@ -92,7 +92,7 @@ export function createSharkBrain({ seed = 0x5ea5eed } = {}) {
     state: 'inactive', hp: SHARK_HP, x: 0, z: 0, yaw: 0, t: 0, timer: 0, raftTimer: 0, dealt: 0,
     angle: rng() * TAU, dir: rng() < 0.5 ? -1 : 1, tx: 0, tz: 0, sx: 0, sz: 0, ax: 0, az: 0, targetId: null, ring: RING_MARGIN + 3,
     get alive() { return this.state !== 'dead' && this.state !== 'sink' && this.state !== 'gone' && this.state !== 'inactive'; },
-    onAttack: null, onTileDestroyed: null, onBite: null, onDriveOff: null, onDeath: null, onRespawn: null,
+    onAttack: null, onRaftBite: null, onTileDestroyed: null, onBite: null, onDriveOff: null, onDeath: null, onRespawn: null,
     step, hit, forceAttack, reset,
   };
   let tilesRef = null, tilesLen = -1, extCache = 0;
@@ -169,7 +169,7 @@ export function createSharkBrain({ seed = 0x5ea5eed } = {}) {
         const ang = Math.atan2(b.az, b.ax), cur = Math.atan2(b.z, b.x), da = wrap(ang - cur);
         if (Math.abs(da) > 0.45) { // swing round the outside of the raft first, never through it
           const a = cur + Math.sign(da) * 0.6; steer(Math.cos(a) * b.ring, Math.sin(a) * b.ring, APPROACH_SPEED, dt);
-        } else if (steer(b.ax, b.az, APPROACH_SPEED, dt, true)) { b.state = 'bite'; b.timer = 0; }
+        } else if (steer(b.ax, b.az, APPROACH_SPEED, dt, true)) { b.state = 'bite'; b.timer = 0; if (b.onRaftBite) b.onRaftBite(b.tx, b.tz); }
         if (b.timer > 60) endAttack('circle'); // stuck: give up
         break;
       }
@@ -233,7 +233,7 @@ export function createSharkBrain({ seed = 0x5ea5eed } = {}) {
     if (!env || !env.mode) return null;
     if (b.state === 'inactive' || !b.alive) spawn();
     if (!beginAttack(env)) return null;
-    if (instant) { b.x = b.ax; b.z = b.az; b.yaw = Math.atan2(-b.sx, -b.sz); b.state = 'bite'; b.timer = 0; }
+    if (instant) { b.x = b.ax; b.z = b.az; b.yaw = Math.atan2(-b.sx, -b.sz); b.state = 'bite'; b.timer = 0; if (b.onRaftBite) b.onRaftBite(b.tx, b.tz); }
     return { tx: b.tx, tz: b.tz };
   }
 
@@ -250,7 +250,7 @@ export function sharkPose(state, t, timer, out) {
   switch (state) {
     case 'circle': case 'retreat': out.y = -0.52 + 0.04 * Math.sin(t * 0.9); out.roll = 0.05 * Math.sin(t * 0.7); break;
     case 'approach': out.y = -0.42; out.sway = 1.4; break;
-    case 'bite': out.y = -0.18 + 0.06 * Math.sin(t * 9); out.pitch = -0.22; out.roll = 0.38 * Math.sin(t * 13); out.sway = 2; break;
+    case 'bite': out.y = -0.14 + 0.07 * Math.sin(t * 9); out.pitch = -0.3; out.roll = 0.38 * Math.sin(t * 13); out.sway = 2; break;
     case 'hunt': out.y = -0.4; out.sway = 1.6; break;
     case 'recoil': out.y = -0.55; out.sway = 1.2; break;
     case 'dead': out.y = -0.05 + 0.03 * Math.sin(t * 1.3); out.roll = Math.PI; out.sway = 0; break;
@@ -340,4 +340,109 @@ export function createSharkModel(T) {
   mesh.userData.uniforms = uniforms;
   mesh.userData.dispose = () => { geo.dispose(); mat.dispose(); };
   return mesh;
+}
+
+// ------------------------------------------------------------------ runtime (browser glue, used by game.js)
+
+const STATES = ['inactive', 'circle', 'approach', 'bite', 'hunt', 'recoil', 'retreat', 'dead', 'sink', 'gone'];
+
+// host: {T, scene, ocean, bus, modes (MODES), role() -> 'solo'|'host'|'guest', tiles() -> world tiles,
+//   local() -> {x, z, swimming} (this player), other() -> remote pose or null,
+//   isProtected(tx, tz), destroyTile(tx, tz) -> bool, emit(e, to), play(name, vol), action(a)}
+// Host/solo simulate the brain; a guest renders the pose from netLoad(). bus.shark is set here.
+export function createSharkRuntime(host) {
+  const T = host.T, brain = createSharkBrain({ seed: (Date.now() ^ 0x5ea5eed) | 0 });
+  const mesh = createSharkModel(T); host.scene.add(mesh);
+  const uni = mesh.userData.uniforms.uSway.value;
+  const pose = { y: 0, pitch: 0, roll: 0, sway: 1, visible: false };
+  const v3 = new T.Vector3(), q4 = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'YXZ'), one = new T.Vector3(1, 1, 1);
+  const P0 = { id: 'host', x: 0, z: 0, swimming: false }, P1 = { id: 'guest', x: 0, z: 0, swimming: false };
+  const env = { mode: null, tiles: null, players: [P0, P1], isProtected: (x, z) => !!host.isProtected(x, z) };
+  const position = { x: 0, y: 0, z: 0 };
+  const guest = { has: false, x: 0, z: 0, yaw: 0, s: 'inactive', tm: 0, rx: 0, rz: 0, ryaw: 0 }; // received + rendered
+  let debugMode = null, phase = 0, chomp = 0, disposed = false;
+  const isGuest = () => host.role() === 'guest';
+  const modeNow = () => debugMode || (host.modes && host.modes[host.bus.mode]) || null;
+
+  const api = {
+    hit(damage, point) {
+      if (isGuest()) { // the host owns the shark: forward the hit
+        if (!api.alive || !fin(damage) || damage <= 0) return false;
+        host.action({ kind: 'sharkHit', d: Math.min(200, damage) }); return true;
+      }
+      return brain.hit(damage, point);
+    },
+    get state() { return isGuest() ? guest.s : brain.state; },
+    get alive() { const s = api.state; return s !== 'dead' && s !== 'sink' && s !== 'gone' && s !== 'inactive'; },
+    get hp() { return brain.hp; },
+    position,
+    onDeath: null, // the spear lane sets this to drop meat: onDeath({x, y, z})
+  };
+  host.bus.shark = api;
+
+  brain.onRaftBite = () => { host.emit({ kind: 'notice', text: 'Something is biting the raft!', sound: 'splash' }, 'all'); };
+  brain.onTileDestroyed = (x, z) => !!host.destroyTile(x, z);
+  brain.onBite = id => host.emit({ kind: 'sharkBite', text: 'The shark bit you!', sound: 'deny' }, id === 'guest' ? 'guest' : 'host');
+  brain.onDriveOff = () => host.emit({ kind: 'notice', text: 'The shark swims off', sound: 'splash' }, 'all');
+  brain.onDeath = (x, z) => {
+    host.emit({ kind: 'notice', text: 'The shark is dead', sound: 'splash' }, 'all');
+    position.x = x; position.z = z;
+    try { if (typeof api.onDeath === 'function') api.onDeath({ x, y: position.y, z }); } catch (e) { console.warn('shark onDeath failed', e); }
+  };
+
+  function update(dt, elapsed) {
+    if (disposed) return;
+    let x, z, yaw, s, tm;
+    if (isGuest()) {
+      if (!guest.has) { mesh.visible = false; return; }
+      const k = Math.min(1, dt * 6);
+      const jump = Math.hypot(guest.x - guest.rx, guest.z - guest.rz) > 12;
+      guest.rx = jump ? guest.x : guest.rx + (guest.x - guest.rx) * k; guest.rz = jump ? guest.z : guest.rz + (guest.z - guest.rz) * k;
+      guest.ryaw = wrap(guest.ryaw + wrap(guest.yaw - guest.ryaw) * k); guest.tm += dt;
+      x = guest.rx; z = guest.rz; yaw = guest.ryaw; s = guest.s; tm = guest.tm;
+    } else {
+      const l = host.local(), o = host.other();
+      P0.x = l ? l.x : 0; P0.z = l ? l.z : 0; P0.swimming = !!(l && l.swimming);
+      P1.swimming = !!(o && o.swimming && fin(o.x) && fin(o.z)); P1.x = P1.swimming ? o.x : 0; P1.z = P1.swimming ? o.z : 0;
+      env.mode = modeNow(); env.tiles = host.tiles();
+      brain.step(dt, env);
+      x = brain.x; z = brain.z; yaw = brain.yaw; s = brain.state; tm = brain.timer;
+    }
+    sharkPose(s, elapsed, tm, pose);
+    mesh.visible = pose.visible;
+    position.x = x; position.z = z;
+    if (!pose.visible) return;
+    const h = host.ocean ? host.ocean.getHeight(x, z) : 0;
+    position.y = h + pose.y;
+    v3.set(x, position.y, z); eul.set(pose.pitch, yaw, pose.roll, 'YXZ'); q4.setFromEuler(eul);
+    mesh.matrix.compose(v3, q4, one); mesh.matrixWorldNeedsUpdate = true;
+    phase += dt * (3 + 3 * pose.sway); uni.x = phase; uni.y = pose.sway;
+    if (s === 'bite') { chomp += dt; if (chomp > 2.6) { chomp = 0; host.play('splash', 0.45); } } else chomp = 0;
+  }
+
+  // Host -> guest pose, sent with each state snapshot (~8 Hz). null while there is no shark.
+  function netPose() {
+    if (isGuest() || brain.state === 'inactive') return null;
+    return { x: Math.round(brain.x * 100) / 100, z: Math.round(brain.z * 100) / 100, yaw: Math.round(brain.yaw * 1000) / 1000, s: brain.state, tm: Math.round(brain.timer * 10) / 10 };
+  }
+  function netLoad(p) {
+    if (!p || typeof p !== 'object' || !fin(p.x) || !fin(p.z) || !fin(p.yaw) || !STATES.includes(p.s) || Math.abs(p.x) > 500 || Math.abs(p.z) > 500) { guest.has = false; guest.s = 'inactive'; return; }
+    if (!guest.has) { guest.rx = p.x; guest.rz = p.z; guest.ryaw = p.yaw; }
+    guest.has = true; guest.x = p.x; guest.z = p.z; guest.yaw = p.yaw; guest.s = p.s;
+    if (fin(p.tm)) guest.tm = p.tm;
+  }
+  // QA: start a raft attack now (host/solo). In a mode without raft attacks it uses Normal rules from then on.
+  function debugAttack(instant = true) {
+    if (isGuest()) return null;
+    const m = modeNow(); if (!modeHasShark(m) || m.sharkRaft === 0) debugMode = host.modes.normal;
+    env.mode = modeNow(); env.tiles = host.tiles();
+    return brain.forceAttack(env, instant);
+  }
+  function dispose() {
+    disposed = true; mesh.removeFromParent(); mesh.userData.dispose();
+    if (host.bus.shark === api) host.bus.shark = null;
+  }
+  return { update, netPose, netLoad, debugAttack, dispose, brain, mesh, api,
+    debug: () => ({ state: api.state, hp: brain.hp, x: position.x, y: position.y, z: position.z, tile: brain.state === 'approach' || brain.state === 'bite' ? [brain.tx, brain.tz] : null, timer: brain.timer, raftTimer: brain.raftTimer, mode: debugMode ? 'debug-normal' : host.bus.mode }),
+    clearDebugMode() { debugMode = null; } };
 }
