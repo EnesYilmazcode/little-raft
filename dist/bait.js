@@ -78,9 +78,9 @@ export const baitFloating = b => b.stage === BAIT_STAGE.floating;
 // A floating bait on (or drifted onto) a docked island's sand rolls back out to sea, far enough past the
 // waterline that the shark's LURE circle stays in the water, and past any raft tiles in the way (a docked raft
 // sits right off the shore). isl: {cx, cz, R, groundAt(x, z) -> y | NaN}.
+const wet = y => !(y === y) || y < BAIT.WATER_Y - 0.15; // no sand here (NaN) or sand under the water
 export function offIsland(b, isl, tiles = null, clear = 2.6) {
   if (!baitFloating(b) || !isl || !(isl.R > 0) || typeof isl.groundAt !== 'function') return false;
-  const wet = y => !(y === y) || y < BAIT.WATER_Y - 0.15;
   if (wet(isl.groundAt(b.x, b.z))) return false;
   let dx = b.x - isl.cx, dz = b.z - isl.cz, l = Math.hypot(dx, dz);
   if (l < 1e-3) { dx = 1; dz = 0; l = 1; }
