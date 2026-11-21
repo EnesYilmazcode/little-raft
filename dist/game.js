@@ -22,6 +22,8 @@ import { createControls } from './controls.js'; // controls lane: input map, gam
 import { createSailing } from './sailing-world.js?build=v3-survival-ae77fa84ac2b'; // [sailing] see docs/cloud/sailing.md
 import { cleanSailing } from './sailing-core.js?build=v3-survival-ae77fa84ac2b'; // [sailing]
 import { createCoop } from './coop.js?build=v3-survival-ae77fa84ac2b'; // coop: co-op layer (docs/cloud/coop.md)
+import { createDiving, DIVE } from './diving.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook (docs/cloud/diving.md)
+import { nodeById, NODE_LOOT } from './seafloor.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -253,6 +255,7 @@ export function mount(transfer = null) {
 
   // ---------- Small mesh helpers ----------
   const materialCache = new Map();
+  let diving = null; const islands = []; // diving lane hook
   function mat(color) {
     if (!materialCache.has(color)) {
       let m = null;
@@ -319,13 +322,15 @@ export function mount(transfer = null) {
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
     clothMat = new T.MeshStandardMaterial({color:'#fff3cf', side:T.DoubleSide, roughness:1});
     buildViewmodels();
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past
+    islands.length = 0; // diving lane hook: seafloor rises toward these
+    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
     for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scene.add(g); clouds.push(g); scenery.push([g, 0]); } // content + sailing: clouds
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     building = createBuilding(T, scene); // building-pieces lane hook
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked()}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
+    try { diving = createDiving({T, scene, camera, ocean, islands, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); refreshPointerUI(true);
@@ -427,7 +432,7 @@ export function mount(transfer = null) {
     const el = $('#toast'); if (!el) return; el.textContent = s; el.classList.add('show');
     toastTimer = cancelTimer(toastTimer); toastTimer = later(() => { toastTimer = 0; el.classList.remove('show'); }, 2600);
   }
-  function beep(f = 500) { if (!sound || !(options?.volume > 0)) return; try { audio ??= new AudioContext(); audio.resume(); const o = audio.createOscillator(), g = audio.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f, audio.currentTime); o.frequency.exponentialRampToValueAtTime(f * 1.4, audio.currentTime + .12); g.gain.setValueAtTime(.12 * options.volume, audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .22); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + .23); } catch {} }
+  function beep(f = 500) { if (!sound || !(options?.volume > 0)) return; try { audio ??= new AudioContext(); audio.resume(); const o = audio.createOscillator(), g = audio.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f, audio.currentTime); o.frequency.exponentialRampToValueAtTime(f * 1.4, audio.currentTime + .12); g.gain.setValueAtTime(.12 * options.volume, audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .22); o.connect(g).connect(diving ? diving.audioOut(audio) : audio.destination); /* diving lane hook: muffled underwater */ o.start(); o.stop(audio.currentTime + .23); } catch {} }
   let contextHtml = null;
   function updateContext(dialog) {
     let html = '';
@@ -618,6 +623,14 @@ export function mount(transfer = null) {
       if (r.ok) { rebuildRaft(); emit({kind:'build', text:r.text}, 'all'); } else if (r.text) emit({kind:'notice', text:r.text}, actor);
       return;
     }
+    if (a.kind === 'gather') { // diving lane hook: seafloor node, validated by id + diver distance
+      const n = nodeById(a.id, islands), p = actor === 'guest' ? other : physics; if (!n || !p) return;
+      if (Math.hypot(n.x - p.x, n.y - p.y, n.z - p.z) > DIVE.REACH + 1.5) return;
+      const scratch = new Bag(bag.snapshot()), loot = NODE_LOOT[n.type];
+      for (const [k, c] of Object.entries(loot)) if (scratch.add(k, c) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
+      commit(bag, scratch); if (actor !== 'host') diving?.markGathered(n.id);
+      emit({kind:'loot', text:'+ ' + Object.entries(loot).map(([k, c]) => `${c} ${itemName(k)}`).join(' · ')}, actor); return;
+    }
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
@@ -651,7 +664,7 @@ export function mount(transfer = null) {
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:hookIndex(bag)}); }
   function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); }
   function interact() {
-    if (!running || uiBlocked()) return;
+    if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
     if (sailing?.interact()) return; // [sailing] E on a sail / anchor
     const target = pickupFrom(currentAim());
     if (target) {
@@ -732,7 +745,8 @@ export function mount(transfer = null) {
     if (!running) { walking = false; return; }
     const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
     const surf = building ? building.preStep(physics, deckY()) : null; // building-pieces lane hook
-    const ev = physics.update(dt, {forward:fwd, strafe:side, yaw, jump:ci ? ci.jump : input && held('Space'), sprint:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'),
+    const dive = diving?.move(dt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
+    const ev = dive ? null : physics.update(dt, {forward:fwd, strafe:side, yaw, jump:ci ? ci.jump : input && held('Space'), sprint:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'),
       tiles:surf ? surf.tiles : world.tiles, deckY:surf ? surf.deckY : deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
     controls?.afterMove(dt, physics, ev); // controls lane: footstep bob, crouch, landing dip
     building?.postStep(physics, deckY()); // building-pieces lane hook
@@ -882,7 +896,7 @@ export function mount(transfer = null) {
     ocean.update(elapsed, camera);
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
     movePlayer(dt, running && !dialog);
-    updateAvatars(dt); updateCamera(dt);
+    updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim() : null;
     pickTarget = pickupFrom(frameAim);
@@ -899,7 +913,7 @@ export function mount(transfer = null) {
     if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose()}); } }
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog);
-    renderer.render(scene, camera);
+    renderer.render(scene, camera); diving?.render(renderer); // diving lane hook
   }
   function animate() {
     if (!active || disposed) return;
@@ -1218,10 +1232,12 @@ export function mount(transfer = null) {
         raft:raft ? {y:raft.position.y, pitch:raft.rotation.x, roll:raft.rotation.z} : null,
         sailing:sailing ? sailing.debug() : null, // [sailing]
         hand:{x:handPos.x, y:handPos.y, z:handPos.z}, hover:hover ? {...hover} : null,
+        dive:diving?.state ?? null, // diving lane hook
       };
     },
     get content() { return content?.debug ?? {}; }, // content hook: per-module QA helpers
     project,
+    swimAt(x, z, p = pitch, w = yaw) { physics = new PlayerPhysics({x:+x, y:ocean.getHeight(+x, +z) + .45, z:+z, swimming:true}); pitch = clamp(+p, -PITCH_LIMIT, PITCH_LIMIT); yaw = +w; }, // diving lane hook: test helper
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};
@@ -1259,6 +1275,7 @@ export function mount(transfer = null) {
   function disposeScene() {
     if (!scene) return;
     try { building?.dispose(); } catch {} building = null; // building-pieces lane hook
+    try { diving?.dispose(); } catch {} diving = null; // diving lane hook
     const mats = new Set(), geos = new Set();
     scene.traverse(o => {
       if (o.geometry) geos.add(o.geometry);
