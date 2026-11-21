@@ -95,7 +95,7 @@ test('UX-2: the bag keeps its top edge across crafting tabs (pinned top, fixed-h
   assert.match(book, /;height:var\(--ph\)/, 'fixed height, so the panel height does not follow the tab');
   assert.match(ui, /#inventory\.sv-inv\{[^}]*--ph:min\(600px,calc\(94vh - 36px\)\)/);
   assert.match(ui, /#inventory\.sv-inv\{[^}]*margin:max\(16px,calc\(50vh - 300px\)\) auto auto;/, 'top edge pinned, not margin:auto');
-  assert.match(ui, /@media\(max-width:900px\),\(max-height:520px\)[^@]*#inventory \.sv-craft\{height:auto;max-height:none/, 'stacked layout resets the height');
+  assert.match(ui, /@media\(max-width:760px\),\(max-height:520px\)[^@]*#inventory \.sv-craft\{height:auto;max-height:none/, 'stacked layout resets the height');
 });
 
 // ---------------------------------------------------------------- co-op feed stacking
