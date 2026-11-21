@@ -223,6 +223,7 @@ export function createCamera(T, host = {}) {
 
   const api = {
     use, update, onNet, share, request, foreign, onPhoto, dispose, prompt, capture,
+    get netReady() { return netOk(); }, clearForeign: () => foreignCache.clear(),
     get store() { return store; }, storeReady: storeP,
     get debug() {
       return { shots, busy, lastShot, lastBytes, lastId, foreign: foreignCache.keys(), store: store?.kind ?? null, count: store?.count ?? 0,

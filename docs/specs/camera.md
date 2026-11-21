@@ -158,3 +158,18 @@ Run the whole `npm test` too (progression, survival craft-book, content and audi
    guest frames own photo, host sees it; guest leaves -> host frame shows placeholder; save never contains image data
    (`JSON.stringify(world).length` unchanged by ~KB-scale). Host state size unaffected.
 8. Perf: frame-time spike for one snap < 2 normal frames; quality level does not drop after 10 snaps.
+
+## Build notes
+Built as specced except:
+- `newId` adds 6 random base36 chars, not 4, so 1000 quick ids never clash (still matches ID_RE).
+- The JPEG is re-encoded at .6 (then .45) when it is bigger than 17 KB, not 20 KB, so its data URL stays under MAX_DATA (24000 chars) and can be shared. Real 256x144 shots come out at about 7 KB at .75.
+- `busy` lasts until the encode and store write finish, so a new shot can't start while one is still being saved. On a slow GPU this gap can be longer than the 0.6 s cooldown.
+- `day` comes from `raftDebug.content.daynight.state().day`, because the daynight debug object has no `day` field. `quality` is passed to createCamera as a getter.
+- `game.js prepareDom()` replaces `#help .guide` at mount, so the P line is in both places: index.html and game.js's guide list.
+- Pick mode passes its callback in the open event (`detail.onPick`). game.js does not wire `onPick`. In the large view, Escape goes back to the grid; in the grid, it closes the album.
+- Held camera: `HOLD.camera.ry = 0` (with `Math.PI` the lens faced the player) and `SIZE.camera = 0.13`.
+- The frame prompt provider uses priority 2, so when you aim at a frame "E Choose/Change photo" shows instead of the camera's own Snap prompt.
+- If the co-op link drops, the foreign photo cache is cleared and the partner's frames go back to the placeholder. camera.js exposes `photoNet.current` (`share`, `request`, `foreign`, `onPhoto`, `netReady`, `clearForeign`) to the frame module.
+- `rebuildRaft()`'s disposeGeometry also disposes the frame textures. They are uploaded again on the next draw, and the frame module marks itself dirty when its rescan sees new groups.
+- QA helpers: `raftDebug.camera` (shots, count, store kind, `snap()`, `list()`, `dataURL(id)`), `raftDebug.album`, and `raftDebug.content.photoframe` (`place`, `frames`, `textures`, `state`, `pick`).
+- Not yet verified: a two-tab co-op run (QA step 7) and diving-overlay capture.

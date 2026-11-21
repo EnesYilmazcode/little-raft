@@ -26,7 +26,7 @@ const CSS = `
 #photoAlbum .pa-close svg{width:22px;height:22px}
 #photoAlbum .pa-body{background:#3a2716eb;border-radius:4px;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544;padding:10px;overflow:auto;overscroll-behavior:contain;scrollbar-color:#b48d55 #2a1b0e;min-height:0;flex:1}
 #photoAlbum .pa-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0;padding:0;list-style:none}
-#photoAlbum .pa-thumb{display:flex;flex-direction:column;gap:4px;padding:5px 5px 4px;background:#f3e6c4;border:0;border-radius:3px;box-shadow:0 2px 0 #24170c;cursor:pointer;color:#5b4126;font:600 11px/1.2 ${FONT};text-align:left;transform:none;min-width:0}
+#photoAlbum .pa-thumb{display:flex;flex-direction:column;gap:4px;padding:5px 5px 4px;background:#f3e6c4;border:0;border-radius:3px;box-shadow:0 2px 0 #24170c;cursor:pointer;color:#5b4126;font:600 11px/1.2 ${FONT};text-align:left;transform:none;min-width:0;width:100%;box-sizing:border-box}
 #photoAlbum .pa-thumb:hover{transform:none;filter:brightness(1.05)}
 #photoAlbum .pa-thumb:focus-visible,#photoAlbum .pa-btn:focus-visible,#photoAlbum .pa-close:focus-visible{outline:2px solid #ffe3a6;outline-offset:2px}
 #photoAlbum .pa-thumb img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#1f6f86;border-radius:2px}
@@ -34,7 +34,7 @@ const CSS = `
 #photoAlbum .pa-empty{margin:24px 8px;text-align:center;color:#e8d3a8}
 #photoAlbum .pa-hint{margin:0 0 8px;color:#e8d3a8;font-size:13px}
 #photoAlbum .pa-large{display:flex;flex-direction:column;gap:10px;align-items:center}
-#photoAlbum .pa-large img{display:block;width:100%;max-width:768px;max-height:min(432px,58dvh);object-fit:contain;background:#1f2a2e;border:6px solid #f3e6c4;border-radius:3px;box-shadow:0 3px 0 #24170c;box-sizing:border-box}
+#photoAlbum .pa-large img{display:block;width:100%;height:auto;aspect-ratio:16/9;max-width:min(768px,calc(min(432px,58dvh) * 16 / 9));object-fit:cover;background:#1f2a2e;border:6px solid #f3e6c4;border-radius:3px;box-shadow:0 3px 0 #24170c;box-sizing:border-box}
 #photoAlbum .pa-cap{color:#e8d3a8;font-size:13px}
 #photoAlbum .pa-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
 #photoAlbum .pa-btn{background:linear-gradient(180deg,#5a3f28e8,#3d2a19e8);box-shadow:inset 0 0 0 1px #d4b07a55;border:0;border-radius:4px;padding:8px 14px;color:#fff2cc;font:600 14px/1.2 ${FONT};cursor:pointer;transform:none;text-decoration:none;min-height:36px;box-sizing:border-box;display:inline-flex;align-items:center}
@@ -72,9 +72,9 @@ function mountDialog() {
   return d;
 }
 
-export function photoDate(m) {
+export function photoDate(m, short = false) {
   let s = '';
-  try { s = new Date(m.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { s = ''; }
+  try { s = new Date(m.at).toLocaleString(undefined, short ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { s = ''; }
   return Number.isInteger(m.day) ? `Day ${m.day + 1} · ${s}` : s;
 }
 
@@ -106,12 +106,11 @@ export function createPhotoAlbumUI({ store, onPause, onResume, onPick } = {}) {
     gridView.hidden = view >= 0; large.hidden = view < 0;
     if (view >= 0) { await showLarge(photos, token); return; }
     empty.hidden = photos.length > 0;
-    grid.innerHTML = photos.map((m, i) => `<li><button type="button" class="pa-thumb" data-i="${i}" aria-label="Photo ${i + 1}, ${esc(photoDate(m))}"><img alt="" loading="lazy" data-id="${esc(m.id)}"><span>${esc(photoDate(m))}</span></button></li>`).join('');
-    for (const el of grid.querySelectorAll('img[data-id]')) {
+    grid.innerHTML = photos.map((m, i) => `<li><button type="button" class="pa-thumb" data-i="${i}" aria-label="Photo ${i + 1}, ${esc(photoDate(m))}"><img alt="" data-id="${esc(m.id)}"><span>${esc(photoDate(m, true))}</span></button></li>`).join('');
+    await Promise.all([...grid.querySelectorAll('img[data-id]')].map(async el => {
       const u = await st?.url(el.dataset.id).catch(() => null);
-      if (token !== renderToken) return;
-      if (u) el.src = u;
-    }
+      if (u && token === renderToken) el.src = u;
+    }));
   }
 
   async function showLarge(photos, token) {

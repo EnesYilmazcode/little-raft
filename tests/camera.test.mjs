@@ -159,3 +159,45 @@ test('cooldown: shotGate blocks inside 0.6 s and while busy', () => {
   assert.deepEqual(C.centerCrop(390, 844), { sx: 0, sy: 312, sw: 390, sh: 219 });
   assert.deepEqual(C.centerCrop(1000, 1000), { sx: 0, sy: 218, sw: 1000, sh: 562 });
 });
+
+test('frame state: cleanFrames validates keys, ids, owners and decor; host set / clear rules', async () => {
+  const F = await import(new URL('photo-frame.js', base));
+  assert.deepEqual(F.cleanFrames(undefined), { v: 1, f: {} });
+  assert.deepEqual(F.cleanFrames([1, 2]), { v: 1, f: {} });
+  const decor = [{ type: 'photoframe', x: 0, z: 1 }, { type: 'photoframe', x: -2, z: 3 }, { type: 'bench', x: 5, z: 5 }];
+  const raw = { v: 1, f: {
+    '0,1': { id: 'p1234567', owner: 'host' }, '-2,3': { id: 'p7654321', owner: 'guest' },
+    '5,5': { id: 'p1111111', owner: 'host' }, '9,9': { id: 'p2222222', owner: 'host' },
+    'x,1': { id: 'p3333333', owner: 'host' }, '01,1': { id: 'p3333333', owner: 'host' },
+  } };
+  assert.deepEqual(Object.keys(F.cleanFrames(raw, decor).f).sort(), ['-2,3', '0,1']);
+  assert.equal(Object.keys(F.cleanFrames(raw).f).length, 4, 'no decor given: keys only checked for shape');
+  const bad = { f: { '0,1': { id: 'BAD', owner: 'host' }, '-2,3': { id: 'p7654321', owner: 'pirate' } } };
+  assert.deepEqual(F.cleanFrames(bad, decor).f, {});
+  const many = { f: {} }, md = [];
+  for (let i = 0; i < 80; i++) { many.f[i + ',0'] = { id: 'p' + String(i).padStart(7, '0'), owner: 'host' }; md.push({ type: 'photoframe', x: i, z: 0 }); }
+  assert.equal(Object.keys(F.cleanFrames(many, md).f).length, F.FRAME_CAP);
+
+  // module: host action on a non-frame tile is handled but changes nothing; null id clears
+  const world = { tiles: [[0, 0], [0, 1]], decor: [{ type: 'photoframe', x: 0, z: 1 }], ext: {} };
+  const mod = F.createPhotoFrame({ T: null, world, role: 'solo', raft: null });
+  mod.load(undefined, 'save');
+  assert.deepEqual(mod.serialize(), { v: 1, f: {} });
+  assert.equal(mod.action({ kind: 'photoframe:set', key: '0,0', id: 'p1234567' }, 'host'), true);
+  assert.deepEqual(mod.serialize().f, {});
+  assert.equal(mod.action({ kind: 'photoframe:set', key: '0,1', id: 'p1234567' }, 'guest'), true);
+  assert.deepEqual(mod.serialize().f, { '0,1': { id: 'p1234567', owner: 'guest' } });
+  assert.equal(mod.action({ kind: 'photoframe:set', key: '0,1', id: 'javascript:1' }, 'host'), true);
+  assert.equal(mod.serialize().f['0,1'].id, 'p1234567', 'bad id ignored');
+  assert.equal(mod.action({ kind: 'other' }, 'host'), false);
+  world.decor.length = 0;
+  assert.deepEqual(mod.serialize().f, {}, 'removed frame is pruned');
+  world.decor.push({ type: 'photoframe', x: 0, z: 1 });
+  mod.action({ kind: 'photoframe:set', key: '0,1', id: 'p1234567' }, 'host');
+  mod.action({ kind: 'photoframe:set', key: '0,1', id: null }, 'host');
+  assert.deepEqual(mod.serialize().f, {});
+  mod.load({ v: 1, f: { '0,1': { id: 'p7654321', owner: 'host' } } }, 'net');
+  assert.equal(mod.serialize().f['0,1'].id, 'p7654321');
+  assert.equal(JSON.stringify(mod.serialize()).includes('data:'), false, 'never image bytes in the save');
+  mod.dispose();
+});

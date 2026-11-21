@@ -29,9 +29,10 @@ import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
 import { createStorage } from './storage-research.js?build=v3-survival-ae77fa84ac2b';
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
+import { createPhotoFrame } from './photo-frame.js?build=v3-survival-ae77fa84ac2b'; // [camera] photo frame decor
 import { createTasks } from './tasks.js?build=v3-survival-ae77fa84ac2b'; // [tasks]
 
-const FEATURES = [createIslands, createWildlife, createStorage, createDayNight, createBees, createTasks]; // [bees] + createBees, [tasks] + createTasks
+const FEATURES = [createIslands, createWildlife, createStorage, createDayNight, createBees, createTasks, createPhotoFrame]; // [bees] + createBees, [tasks] + createTasks // [camera] + createPhotoFrame
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
