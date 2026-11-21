@@ -3,7 +3,7 @@
 //   scene, raft, ocean, camera, signal, rodModel, role(), netReady(), send(o), action(a), notice(s, ms?), beep(f),
 //   selectedKind(), aim(), rodTip(), player(), hasTile(x,z), decorAt(x,z), bagCount(k), running(), uiBlocked(), busy()
 // api: pointerDown() pointerUp() releaseInput() interact() update(dt,time) applyAction(a,actor,bag) onNet(msg,from)
-//      prompt rodReeling capture() dispose()
+//      alt() (right-click: cycle bait [bait]) prompt rodReeling capture() dispose()
 // Keys: G places a grill (4 wood + 2 scrap) on the aimed raft tile, J toggles the journal.
 // Save: localStorage 'little-raft-fc-v1' {v:1, journal, grills}. Grills are the player's own (host world); while a
 // guest, own grills are stashed and the host's broadcast grills are shown instead.
@@ -14,6 +14,7 @@ import { Journal, createJournalPanel, BASKET_MAX } from './fish-journal.js?build
 import { SPECIES, speciesById, dishName } from './fish-species.js?build=v3-survival-ae77fa84ac2b';
 import { GrillState, COOK_TUNING, cookTime, createGrillModel, createSmoke } from './cooking.js?build=v3-survival-ae77fa84ac2b';
 import { createFishModel, setFishState, wiggle } from './fish-models.js?build=v3-survival-ae77fa84ac2b';
+import { BAIT, pickBait, nextPref, baitLabel } from './bait.js?build=v3-survival-ae77fa84ac2b'; // [bait]
 
 export const FC_SAVE_KEY = 'little-raft-fc-v1';
 export const MAX_GRILLS = 6, GRILL_REACH = 2.2, GRILL_COST = Object.freeze({ wood: 4, scrap: 2 });
@@ -31,7 +32,10 @@ color:#fffdf4;background:#0d2a3a99;padding:5px 9px;border-radius:10px;text-shado
 padding:7px 14px;box-shadow:0 4px 14px #0005;animation:fcIn .25s ease-out;transition:opacity .4s}
 #fcToast div.soft{background:#d7e8f2f0;border-color:#8fb4c9}#fcToast div.out{opacity:0}
 @keyframes fcIn{from{transform:translateY(-14px);opacity:0}}
-@media(max-width:900px){#fcChip{bottom:auto;top:12px}}`;
+@media(max-width:900px){#fcChip{bottom:auto;top:12px}}
+#fcBait{position:absolute;left:calc(var(--px) + var(--s) / 2);bottom:calc(100% - 4px);z-index:3;pointer-events:none;
+transform:translateX(calc(var(--i,0) * (var(--s) + var(--g)) - 50%));font:700 11px/1 system-ui;padding:3px 7px;border-radius:8px;
+color:#fffdf4;background:#2d5a3acc;white-space:nowrap}#fcBait.dim{background:#0d2a3a88;opacity:.8}#fcBait[hidden]{display:none}`; // [bait]
 
 function cleanFish(f) {
   const sp = f && speciesById(f.species);
@@ -197,10 +201,13 @@ export function createFishingCooking(T, host) {
 
   // ---------- DOM: chip, toast, journal ----------
   let chip = null, toastBox = null, chipN = -1, chipAt = -1e9, panel = null, ownStyle = null;
+  let baitPref = 'auto', baitEl = null, baitKey = ''; // [bait] memory only: resets to auto on reload
+  const count = (k) => host.bagCount(k); // [bait]
   const toasts = [];
   if (HAS_DOC) {
     if (!document.getElementById('fc-style-glue')) { ownStyle = document.createElement('style'); ownStyle.id = 'fc-style-glue'; ownStyle.textContent = CSS; document.head.appendChild(ownStyle); }
     chip = document.createElement('div'); chip.id = 'fcChip'; chip.setAttribute('aria-hidden', 'true'); document.body.appendChild(chip);
+    baitEl = document.createElement('b'); baitEl.id = 'fcBait'; baitEl.setAttribute('aria-hidden', 'true'); baitEl.hidden = true; // [bait]
     toastBox = document.createElement('div'); toastBox.id = 'fcToast'; toastBox.setAttribute('role', 'status'); document.body.appendChild(toastBox);
   }
   function toast(text, soft = false) {
@@ -221,6 +228,19 @@ export function createFishingCooking(T, host) {
       if (n !== chipN) { chipN = n; chip.textContent = `🎣 Fish ${n}/${SPECIES.length} · J`; }
     }
     if (chip.hidden === show) chip.hidden = !show;
+    updateBaitChip(show);
+  }
+  function updateBaitChip(running) { // [bait] chip over the rod's hotbar slot; writes only when the key changes
+    if (!baitEl) return;
+    if (!baitEl.isConnected) { const tools = document.querySelector('.tools'); if (!tools) return; tools.appendChild(baitEl); baitKey = ''; }
+    const shown = running && host.selectedKind() === 'fishingrod';
+    const frozen = lineOut() ? session.bait : undefined;
+    const lab = !shown ? { text: '', dim: false } : frozen ? { text: `🪱 ${BAIT[frozen].name} ×${count(frozen)}`, dim: false } : frozen === null ? { text: baitPref === 'none' ? 'Bait off' : 'No bait', dim: true } : baitLabel(baitPref, count);
+    const i = shown ? (host.slot?.() ?? 0) : 0;
+    const key = `${lab.text}|${lab.dim}|${i}|${shown}`;
+    if (key === baitKey) return;
+    baitKey = key; baitEl.hidden = !shown; if (!shown) return;
+    baitEl.textContent = lab.text; baitEl.className = lab.dim ? 'dim' : ''; baitEl.style.setProperty('--i', String(i));
   }
   function toggleJournal() {
     if (!HAS_DOC) return;
@@ -251,6 +271,14 @@ export function createFishingCooking(T, host) {
   let session = null, downHeld = false;
   const origin = new T.Vector3(), castDir = new T.Vector3(0, 0, -1), tipV = new T.Vector3();
   const fxOpts = { tip: null, origin, dir: castDir, time: 0 }; // reused every frame (no per-frame object)
+  const lineOut = () => !!session && !['idle', 'charging', 'done'].includes(session.stage); // [bait]
+  function alt() { // [bait] right-click / LT with the rod: cycle the bait preference for the next cast
+    if (host.selectedKind() !== 'fishingrod' || !host.running() || host.uiBlocked()) return false;
+    baitPref = nextPref(baitPref, count);
+    const id = pickBait(baitPref, count);
+    const text = baitPref === 'none' ? 'Bait: off' : baitPref === 'auto' ? `Bait: Auto · ${id ? `${BAIT[id].name} ×${count(id)}` : 'none in your bag'}` : `Bait: ${BAIT[baitPref].name} ×${count(baitPref)}`;
+    host.notice(text + (lineOut() ? ' (next cast)' : ''), 1600); host.beep(700); return true;
+  }
   const canFish = () => host.selectedKind() === 'fishingrod' && host.running() && !host.uiBlocked() && !host.busy();
   function clampToWater() { // push the landing point past raft tiles so the bobber lands in the water
     const pl = host.player(); origin.set(pl.x, pl.y, pl.z);
@@ -273,7 +301,7 @@ export function createFishingCooking(T, host) {
     if (!session) return true;
     const wasCharging = session.stage === 'charging';
     session.release();
-    if (wasCharging && session.stage === 'flying') { camera.getWorldDirection(castDir); clampToWater(); }
+    if (wasCharging && session.stage === 'flying') { session.setBait(pickBait(baitPref, count)); camera.getWorldDirection(castDir); clampToWater(); } // [bait] frozen at release
     return true;
   }
   // Focus or pointer lock lost mid-press: the matching pointerup never arrives, so drop the hold here. A charging cast
@@ -285,17 +313,18 @@ export function createFishingCooking(T, host) {
   }
   let held = null, heldT = 0, heldUntil = 0; // heldUntil: wall-clock deadline, so the caught fish leaves on time when game dt is clamped on slow frames
   function dropHeld() { if (!held) return; held.parent?.remove(held); held.userData.dispose?.(); held = null; }
-  function onCatch(c) {
+  function onCatch(c, bait = null) {
     const sp = speciesById(c?.species); if (!sp) return;
     const prev = journal.entry(sp.id), res = journal.recordCatch(c);
-    host.action({ kind: 'fish' });
+    host.action(bait ? { kind: 'fish', bait } : { kind: 'fish' }); // [bait] the field only when a bait was frozen
+    if (bait) journal.recordBait(bait); // [bait]
     const stars = Math.max(1, Math.min(3, c.stars | 0 || 1));
     host.notice(`${sp.name} · ${c.cm.toFixed(1)} cm ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, 2600);
     host.beep(sp.rarity === 'legendary' ? 880 : 660);
     if (sp.rarity === 'legendary') toast(`✦ Legendary! ${sp.name} ✦`);
     if (res.isNew) toast(`New species! ${sp.name} added to your journal`);
     else if (res.isRecord) toast(`New record! ${sp.name} ${c.cm.toFixed(1)} cm (was ${prev.bestCm.toFixed(1)})`);
-    else if (sp.rarity !== 'legendary') toast(`Caught a ${sp.name} · ${c.cm.toFixed(1)} cm`);
+    else if (sp.rarity !== 'legendary') toast(BAIT[bait]?.boost[sp.rarity] > 1 ? `${BAIT[bait].name} worked! ${sp.name} · ${c.cm.toFixed(1)} cm` : `Caught a ${sp.name} · ${c.cm.toFixed(1)} cm`); // [bait]
     if (!res.basketed) toast('Basket full. Cook a few on a grill.', true);
     if (host.netReady() && host.role() !== 'solo') host.send({ type: 'fc', catchFx: { species: sp.id, cm: c.cm } });
     dropHeld();
@@ -314,7 +343,7 @@ export function createFishingCooking(T, host) {
       case 'nibble': host.beep(900); break;
       case 'bite': host.beep(180); host.notice('Bite! Click!', 1100); break;
       case 'missed': host.notice('It nibbled and swam off… stay ready'); break;
-      case 'caught': onCatch(ev.catch); break;
+      case 'caught': onCatch(ev.catch, session?.bait ?? null); break; // [bait]
       case 'escaped': host.notice(ESCAPE_TEXT[ev.reason] || ESCAPE_TEXT.missed, 2200); if (ev.reason === 'snapped') toast('The line slipped. It got away!', true); break;
     }
   }
@@ -328,7 +357,7 @@ export function createFishingCooking(T, host) {
     if (session && session.stage !== 'idle' && session.stage !== 'done') {
       const s = session.stage;
       return s === 'reeling' ? 'Hold to reel · let go when it turns red' : s === 'bite' ? '<kbd>Click</kbd> Strike!'
-        : s === 'waiting' || s === 'nibble' ? 'Waiting for a bite… (click early and it’ll spook)' : '';
+        : s === 'waiting' || s === 'nibble' ? (session.bait ? `Waiting for a bite… · ${esc(BAIT[session.bait].name)} (click early and it’ll spook)` : 'Waiting for a bite… (click early and it’ll spook)') : ''; // [bait]
     }
     const pl = host.player(); let best = GRILL_REACH * GRILL_REACH;
     for (const g of grills.values()) { worldOf(g, tmp); const d = (tmp.x - pl.x) ** 2 + (tmp.z - pl.z) ** 2; if (d <= best) { best = d; near = g; } }
@@ -445,7 +474,7 @@ export function createFishingCooking(T, host) {
     for (const g of [...grills.values()]) removeGrill(g);
     grillGroup.parent?.remove(grillGroup);
     scene?.remove(smoke.points); smoke.dispose(); fx.dispose();
-    panel?.destroy(); chip?.remove(); toastBox?.remove();
+    panel?.destroy(); chip?.remove(); toastBox?.remove(); baitEl?.remove(); // [bait]
     if (HAS_DOC && !document.getElementById('fcChip')) document.getElementById('fc-style-glue')?.remove(); // hot swap: the new engine still uses it
     if (typeof window !== 'undefined' && window.raftFC === debug) delete window.raftFC;
   }
@@ -467,6 +496,7 @@ export function createFishingCooking(T, host) {
 
   return {
     pointerDown, pointerUp, releaseInput, interact, update, applyAction, onNet, dispose,
+    alt, // [bait]
     get prompt() { return prompt; },
     hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
     dropTile(x, z) { const g = grillAt(x, z); if (!g || isGuest(host.role())) return false; removeGrill(g); markChanged(); return true; }, // shark lane: a destroyed foundation takes its grill with it

@@ -26,6 +26,7 @@ import { createCoop } from './coop.js?build=v3-survival-ae77fa84ac2b'; // coop: 
 import { createDiving, DIVE } from './diving.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook (docs/cloud/diving.md)
 import { nodeById, NODE_LOOT } from './seafloor.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook
 import { createFishingCooking } from './fishing-cooking.js?build=v3-survival-ae77fa84ac2b'; // [fishing-cooking] lane hook, see docs/cloud/fishing-cooking.md
+import { isBait } from './bait.js?build=v3-survival-ae77fa84ac2b'; // [bait]
 import { createInstruments } from './instruments.js?build=v3-survival-ae77fa84ac2b'; // [instruments] held drum / pipes / bells (docs/specs/instruments.md)
 import { createCamera } from './camera.js?build=v3-survival-ae77fa84ac2b'; // [camera] Little Camera + photo album (docs/specs/camera.md)
 import { createPhotoAlbumUI } from './photo-album-ui.js?build=v3-survival-ae77fa84ac2b'; // [camera]
@@ -564,7 +565,7 @@ export function mount(transfer = null) {
   function fcHost() {
     return {scene, raft, ocean, camera, signal, get rodModel() { return hands?.itemModel('fishingrod') ?? null; }, role:() => role, netReady:() => networkReady, send, action, notice, beep,
       selectedKind, aim:() => currentAim(), rodTip:() => handPos, player:() => ({x:physics.x, y:physics.y, z:physics.z, yaw}),
-      hasTile, decorAt:(x, z) => world.decor.some(d => d.x === x && d.z === z), bagCount:k => localBag().count(k),
+      hasTile, decorAt:(x, z) => world.decor.some(d => d.x === x && d.z === z), bagCount:k => localBag().count(k), slot:() => localBag().selectedIndex, // [bait] slot: chip position
       running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging, observe:(ev, actor) => content?.observe(ev, actor)}; // [tasks] observe
   }
   function fallbackAvatar(color) {
@@ -1347,6 +1348,7 @@ export function mount(transfer = null) {
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
+      if (isBait(a.bait) && bag.count(a.bait) > 0) bag.remove(a.bait, 1); // [bait] one bait per landed fish; stale/missing bait: fish still granted
       world.fish++; emit({kind:'loot', text:'You caught a fish!', loot:{fish:1}}, actor);
       award({kind:'fish'}); content?.observe({kind:'fish'}, actor); return; // [tasks] observe
     }
@@ -1899,6 +1901,7 @@ export function mount(transfer = null) {
   });
   on(canvas, 'pointerdown', e => {
     if (e.button === 2 && running && building && heldKind() === 'hammer' && !uiBlocked()) { building.menu.open(); return; } // building-pieces lane hook
+    if (e.button === 2 && running && !uiBlocked() && heldKind() === 'fishingrod' && fc?.alt?.()) return; // [bait]
     if (e.button === 2 && running && !uiBlocked() && content?.alt(isLocked() ? pickCenter() : currentAim(), heldKind())) return; // content hook (paint: brush colour)
     if (!running || !scene || e.button !== 0 || uiBlocked()) return;
     if (building?.menu.isOpen) { building.menu.close(isLocked()); return; } // building-pieces lane hook (unlocked: a click off the wheel cancels)
@@ -1996,7 +1999,8 @@ export function mount(transfer = null) {
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
       menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard
       useDown:() => { if (fc?.pointerDown()) return; if (reelCast('click')) return; if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
-      useUp:() => { reeling = false; if (fc?.pointerUp()) return; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; fc?.releaseInput(); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
+      useUp:() => { reeling = false; if (fc?.pointerUp()) return; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; fc?.releaseInput(); }, reelDown:() => { if (castOut()) reeling = true; else if (heldKind() === 'fishingrod') fc?.alt?.(); }, // [bait]
+      reelUp:() => { reeling = false; }});
     signal.addEventListener('abort', () => controls?.dispose());
   } catch (e) { console.error('controls lane failed to start', e); controls = null; }
   on(document, 'visibilitychange', () => { quality?.reset(); });
