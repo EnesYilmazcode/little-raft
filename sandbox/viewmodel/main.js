@@ -1,25 +1,25 @@
-// Viewmodel lab: the real game viewmodels (dist/hands.js + hook/hammer/rod) on a raft deck, rendered through
-// ./viewmodel.js (proposed dist/viewmodel.js) or through the game's current depth-clear marker for comparison.
+// Viewmodel lab: the game's real first-person hands (dist/hands.js single controller, held models from held-items.js
+// and models.js) on a raft deck, rendered through ./viewmodel.js (proposed dist/viewmodel.js) or through the game's
+// current depth-clear marker for comparison.
 // URL params:
-//   mode=vm|legacy|naive   vm = proposed layer (default), legacy = dist/game.js today, naive = plain camera child
-//   scene=idle|walk|charge|throw|swap|use|look|wall|shade|rod|hammer|rope   scripted state (see SCENES)
-//   fov=75 (world FOV, the game's options.fov), vmfov=62, motion=.35 (options.cameraMotion), t=<seconds> freeze time
+//   mode=vm|legacy|naive   vm = proposed layer + ./hands.js (default), legacy = dist/game.js today, naive = plain camera child
+//   scene=idle|walk|charge|throw|swap|use|look|wall|shade|rod|hammer|rope|reselect|pickup|crate   scripted state (see SCENES)
+//   fov=75 (world FOV, the game's options.fov), vmfov=70, motion=.35 (options.cameraMotion), t=<seconds> freeze time
 //   auto=0 do not run requestAnimationFrame (shoot.py drives the clock through window.vmLab)
 import * as T from '../../dist/vendor/three.module.js';
-import { createHook } from '../../dist/hook.js';
-import { createHammer } from '../../dist/hammer.js';
-import { createFishingTool } from '../../dist/fishing-tool.js';
 import { createOcean } from '../../dist/ocean.js';
 import { createFloor } from '../../dist/deck.js';
 import { createViewmodel } from './viewmodel.js';
+import { getModel } from '../../dist/models.js';
 
 const P = new URLSearchParams(location.search);
 const MODE = P.get('mode') || 'vm', SCENE = P.get('scene') || 'idle';
 const WORLD_FOV = +(P.get('fov') || 75), VM_FOV = +(P.get('vmfov') || 70), MOTION = +(P.get('motion') ?? 0.35);
 const AUTO = P.get('auto') !== '0', FREEZE = P.has('t') ? +P.get('t') : null;
 const CHARGE_MS = 900;
-// vm mode uses the proposed hands.js (hammer strike, longer sleeve); legacy/naive use the game's dist/hands.js as shipped
-const { createHands } = await import(MODE === 'vm' ? './hands.js' : '../../dist/hands.js');
+// vm mode uses the proposed hands.js (prepare hook, hammer strike, long sleeve, re-select fix); legacy/naive use dist/hands.js
+const { createHands, isPlaceable } = await import(MODE === 'vm' ? './hands.js' : '../../dist/hands.js');
+const modelOf = (k) => { try { return getModel(k); } catch { return null; } };   // same factory as dist/game.js
 
 // ---------- renderer + world, same settings as dist/game.js init() ----------
 const renderer = new T.WebGLRenderer({ antialias: true });
@@ -58,36 +58,25 @@ if (SCENE === 'shade') { // sail between the eye and the sun: the hands should f
   sail.position.copy(EYE).addScaledVector(dir, 1.5); sail.castShadow = true; sail.receiveShadow = true; scene.add(sail);
 }
 
-// ---------- viewmodels, built exactly like dist/game.js buildViewmodels() ----------
-function holdable(model, grip, { rx = 0, ry = 0, rz = 0, scale = 1 } = {}) {
-  const w = new T.Group(), p = new T.Group();
-  p.position.set(0.19, -0.272, 0.11); p.rotation.set(rx, ry, rz); p.scale.setScalar(scale / 0.55);
-  if (grip) model.position.copy(grip).negate();
-  p.add(model); w.add(p); return w;
-}
-const hammer = createHammer(T), rodModel = createFishingTool(T);
-const H = {
-  hook: createHands(T, createHook(T)),
-  hammer: createHands(T, holdable(hammer, hammer.userData.grip, { ry: Math.PI / 2, rz: 0.2, scale: 0.6 }), { use: 'strike' }),
-  fishingrod: createHands(T, holdable(rodModel, rodModel.userData.grip, { rx: -0.15, rz: 0.6, scale: 0.55 })),
-};
-let vm = null;
+// ---------- viewmodels, built exactly like dist/game.js buildViewmodels() (today, or with the ADOPT edits) ----------
+let vm = null, hands;
 if (MODE === 'vm') {
   vm = createViewmodel(T, { camera, fov: VM_FOV });
   if (P.get('fill') === '0') vm.setFill(0, 0);
-  for (const [k, h] of Object.entries(H)) vm.add(k, h, k === 'hammer' ? { use: 'strike' } : {});
+  hands = createHands(T, { modelFactory: modelOf, prepare: vm.prepare }); hands.preload(['hook']);
+  vm.attach(hands);
 } else {
+  hands = createHands(T, { modelFactory: modelOf }); hands.preload(['hook']);
   if (MODE === 'legacy') { // verbatim from dist/game.js buildViewmodels()
     const depthClear = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, transparent: true }));
     depthClear.frustumCulled = false; depthClear.renderOrder = 999; depthClear.position.set(0, 0, -0.1);
     depthClear.onBeforeRender = (r, _s, cam) => { if (cam !== camera) return; r.state?.buffers?.depth?.setMask?.(true); r.clearDepth(); };
     camera.add(depthClear);
   }
-  for (const h of Object.values(H)) {
-    h.group.traverse((c) => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; c.frustumCulled = false; if (MODE === 'legacy') { c.renderOrder = 1000; for (const m of [].concat(c.material)) { if (!m.transparent) { m.transparent = true; } m.needsUpdate = true; } } } });
-    h.group.visible = false; camera.add(h.group);
-  }
+  camera.add(hands.group);
 }
+// a world crate built from the same models.js factory: its shared materials must stay untouched by the vm patch
+const worldCrate = getModel('crate'); if (worldCrate) { worldCrate.position.set(-1.2, 0.2, -1.6); scene.add(worldCrate); }
 // world rope from the hand, like dist/game.js setRope(): shows whether the rope start lines up with the fist
 const ropeGeo = new T.BufferGeometry().setFromPoints([new T.Vector3(), new T.Vector3()]);
 const rope = new T.Line(ropeGeo, new T.LineBasicMaterial({ color: '#e9d39a' })); rope.frustumCulled = false; rope.visible = false; scene.add(rope);
@@ -97,21 +86,25 @@ const SCENES = {
   idle: () => ({ kind: 'hook' }),
   walk: (t) => ({ kind: 'hook', walking: true, yaw: Math.sin(t * 0.8) * 0.12 }),
   charge: (t) => ({ kind: 'hook', charge: t > 0.5 ? Math.min(1, (t - 0.5) * 1000 / CHARGE_MS) : 0 }),
-  use: (t) => ({ kind: 'hammer', swing: t > 1 ? Math.max(0, 1 - (t - 1) * 3) : 0 }),
+  use: (t) => ({ kind: 'hammer', swing: t > 1 ? Math.max(0, 1 - (t - 1) * 3) : 0 }),          // build: swing = 1
+  pickup: (t) => ({ kind: 'hammer', swing: t > 1 ? Math.max(0, 0.6 - (t - 1) * 3) : 0 }),     // pickup tap: swing = .6
   throw: (t) => ({ kind: 'hook', charge: t > 0.5 && t < 1.5 ? Math.min(1, (t - 0.5) * 1000 / CHARGE_MS) : 0, swing: t > 1.5 ? Math.max(0, 1 - (t - 1.5) * 3) : 0 }),
   swap: (t) => ({ kind: t < 1 ? 'hook' : t < 2.2 ? 'hammer' : 'fishingrod' }),
+  reselect: (t) => ({ kind: t > 1 && t < 1.07 ? 'hammer' : 'hook' }),                          // back to the hook mid-lower
   look: (t) => ({ kind: 'hook', yaw: t < 1 ? 0 : Math.min(1, (t - 1) / 0.35) * 0.9 }),
   wall: () => ({ kind: 'hook' }),
   shade: () => ({ kind: 'hook' }),
   rod: () => ({ kind: 'fishingrod' }),
   hammer: () => ({ kind: 'hammer' }),
+  crate: () => ({ kind: 'crate' }),
   rope: () => ({ kind: 'hook', hookOut: true }),
 };
 const script = SCENES[SCENE] || SCENES.idle;
-let t = 0, walkPhase = 0, swingPrev = 0, lastState = {};
+let t = 0, walkPhase = 0, lastState = {};
 const handPos = new T.Vector3(), ropeEnd = new T.Vector3();
 const frameMs = [], updMs = [], px = new Uint8Array(4); let SYNC = false;
 
+// same order as dist/game.js updateCamera()
 function step(dt) {
   t += dt;
   const s = { yaw: 0, pitch: -0.12, walking: false, charge: 0, swing: 0, hookOut: false, ...script(t % 4) }; lastState = s;
@@ -120,17 +113,13 @@ function step(dt) {
   const bob = s.walking ? Math.sin(walkPhase) * 0.025 * MOTION : 0;   // same camera bob as game.js updateCamera()
   camera.position.set(EYE.x, EYE.y + bob, EYE.z); camera.rotation.set(s.pitch, s.yaw, 0);
   const u0 = performance.now();
-  let shown = s.kind;
-  if (vm) shown = vm.update({ dt, kind: s.kind, yaw: s.yaw, pitch: s.pitch, walking: s.walking, walkPhase, grounded: true, charge: s.charge, swing: s.swing, motion: MOTION }).shown;
-  for (const [k, h] of Object.entries(H)) {
-    if (!vm) h.group.visible = k === s.kind;
-    if (k === shown) h.update({ dt, time: t, charge: s.charge, casting: s.swing, walking: s.walking, hasHookOut: s.hookOut, motion: MOTION });
-  }
+  hands.setHeld(s.kind);
+  hands.setPose(isPlaceable(s.kind) ? 'point' : null);
+  hands.update({ dt, time: t, charge: s.charge, casting: s.swing, walking: s.walking, hasHookOut: s.hookOut, motion: MOTION, yaw: s.yaw, pitch: s.pitch });
+  vm?.update({ dt, held: hands.state.held, grounded: true, charge: s.charge, swing: s.swing, motion: MOTION });
   camera.updateMatrixWorld(true);
-  if (shown === 'hook' && s.hookOut) {
-    if (vm) vm.anchor(H.hook.handTip, handPos); else H.hook.handTip.getWorldPosition(handPos);
-    ropeEnd.set(3, -0.2, -9); ropeGeo.setFromPoints([handPos, ropeEnd]); rope.visible = true;
-  }
+  if (vm) vm.anchor(hands.ropeAnchor(), handPos); else hands.ropeAnchor().getWorldPosition(handPos);
+  if (s.hookOut) { ropeEnd.set(3, -0.2, -9); ropeGeo.setFromPoints([handPos, ropeEnd]); rope.visible = true; }
   updMs.push(performance.now() - u0);
 }
 function render() {
@@ -139,9 +128,14 @@ function render() {
   if (SYNC) renderer.getContext().readPixels(0, 0, 1, 1, 0x1908, 0x1401, px); // wait for the GPU (SwiftShader) so the timing is the whole frame
   frameMs.push(performance.now() - r0);
 }
+function worldMatsPatched() { // true would mean the vm patch leaked into a material the world also uses
+  let bad = false; worldCrate?.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) if (String(m.customProgramCacheKey?.()).startsWith('vm|')) bad = true; }); return bad;
+}
 function info() {
   const i = renderer.info, avg = (a) => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
-  return { mode: MODE, scene: SCENE, t: +t.toFixed(3), shown: vm ? vm.shown : lastState.kind, equip: vm ? +vm.equip.toFixed(3) : 1,
+  const v = hands.state;
+  return { mode: MODE, scene: SCENE, t: +t.toFixed(3), held: v.held, dip: +v.dip.toFixed(3), throw: +v.throw.toFixed(3), strike: v.strike === undefined ? null : +v.strike.toFixed(3),
+    hand: handPos.toArray().map((x) => +x.toFixed(3)), worldMatPatched: worldMatsPatched(),
     renderAvgMs: +avg(frameMs).toFixed(2), renderWorstMs: +Math.max(0, ...frameMs).toFixed(2), updateAvgMs: +avg(updMs).toFixed(3),
     calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs.length };
 }
@@ -149,12 +143,12 @@ window.vmLab = {
   advance(seconds, dt = 1 / 60) { const n = Math.round(seconds / dt); for (let i = 0; i < n; i++) step(dt); render(); return info(); },
   // CPU: renderer.render() submit time, no GPU wait (what three.js + the viewmodel cost on the main thread).
   // synced: same plus a 1-pixel readPixels, so it includes SwiftShader raster time (relative only).
-  // vmUpdateUs: vm.update() alone, 2000 calls (pure JS: springs, equip, sway).
+  // vmUpdateUs: vm.update() alone, 2000 calls (pure JS: land/kick springs, charge brace).
   bench(frames = 120, dt = 1 / 60) {
     const run = (sync) => { SYNC = sync; frameMs.length = 0; updMs.length = 0; for (let i = 0; i < frames; i++) { step(dt); render(); } SYNC = false; return info(); };
     const cpu = run(false), synced = run(true);
     let vmUpdateUs = null;
-    if (vm) { const n = 2000, t0 = performance.now(); for (let i = 0; i < n; i++) vm.update({ dt, kind: 'hook', yaw: Math.sin(i * 0.01), pitch: 0, walking: true, walkPhase: i * 0.15, charge: 0, swing: 0, motion: MOTION }); vmUpdateUs = +((performance.now() - t0) / n * 1000).toFixed(2); }
+    if (vm) { const n = 2000, t0 = performance.now(); for (let i = 0; i < n; i++) vm.update({ dt, held: 'hook', grounded: i % 90 > 10, vy: -2, charge: (i % 120) / 120, swing: i % 60 === 0 ? 1 : 0, motion: MOTION }); vmUpdateUs = +((performance.now() - t0) / n * 1000).toFixed(2); }
     return { ...synced, cpuRenderAvgMs: cpu.renderAvgMs, cpuRenderWorstMs: cpu.renderWorstMs, syncedRenderAvgMs: synced.renderAvgMs, syncedRenderWorstMs: synced.renderWorstMs, stepAvgMs: cpu.updateAvgMs, vmUpdateUs };
   },
   info,
