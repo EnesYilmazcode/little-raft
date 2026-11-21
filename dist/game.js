@@ -325,7 +325,7 @@ export function mount(transfer = null) {
   let crossUsable = false, lastDraw = 0;
   let blockList = [];
   let controls = null; // controls lane: set in the Input section
-  let sailing = null; const scenery = [], sailFlow = {x:0, z:0}, aimNdc = {x:0, y:0}; // [sailing]
+  let sailing = null; const scenery = [], sailFlow = {x:0, z:0}, sailBase = {x:0, z:.22}, aimNdc = {x:0, y:0}; // [sailing]
   function getAimNdc() { // [sailing] same aim point as currentAim(): screen centre when locked, else the drag-mode mouse
     if (isLocked()) { aimNdc.x = 0; aimNdc.y = 0; return aimNdc; }
     if (!lockFallback || !mouse.inside) return null;
@@ -1368,7 +1368,7 @@ export function mount(transfer = null) {
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = (aim?.dir ?? camera.getWorldDirection(new T.Vector3())).clone();
     direction.y += THROW_LOFT; direction.normalize(); // a little loft so a level throw carries
-    hook = new HookCast(T, {origin:throwOrigin(handPos, new T.Vector3()), direction, maxRange, charge, deck:deckAt});
+    hook = new HookCast(T, {origin:throwOrigin(handPos, new T.Vector3()), direction, maxRange, charge, deck:deckAt, drift:sailing ? sailBase : undefined}); // [sailing] the floating hook co-drifts with debris along the current
     castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; play('throw', charge); hintDone('throw');
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
@@ -1565,7 +1565,7 @@ export function mount(transfer = null) {
   }
   function updateItems(dt) {
     const heldTokens = allHeldTokens();
-    if (sailing) sailing.itemFlow(sailFlow); // [sailing]
+    if (sailing) { sailing.itemFlow(sailFlow); sailing.debrisBase?.(sailBase); } // [sailing] baseline drift follows the current
     if (role !== 'guest') {
       let respawned = false, maxZ = -Infinity, maxX = -Infinity;
       for (const t of world.tiles) { if (t[1] > maxZ) maxZ = t[1]; const ax = Math.abs(t[0]); if (ax > maxX) maxX = ax; }
@@ -1573,12 +1573,12 @@ export function mount(transfer = null) {
       for (const it of world.items) {
         if (it.type === 'cache') continue; // the signal cache drifts in signalTick, never respawns
         if (heldTokens.has(it.token)) continue; // a hook (ours or the guest's) holds it; don't let it drift away or respawn
-        it.z += dt * .22; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
+        it.x += sailBase.x * dt; it.z += sailBase.z * dt; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
         it.x += sailFlow.x * dt; it.z += sailFlow.z * dt; // [sailing] water flows past a sailing/anchored raft
         if ((sailing ? sailing.outOfRange(it) : it.z > end || Math.abs(it.x) > side) || hasTile(Math.round(it.x / 2), Math.round(it.z / 2))) { Object.assign(it, makeItem(it.id)); sailing?.respawned(it); respawned = true; } // [sailing] flow-aware despawn replaces the +z box
       }
       if (respawned) syncItems();
-    } else for (const it of world.items) if (!heldTokens.has(it.token)) { it.x += sailFlow.x * dt; it.z += (sailFlow.z + .22) * dt; } // [sailing] guest dead-reckons debris between host snapshots
+    } else for (const it of world.items) if (!heldTokens.has(it.token)) { it.x += (sailFlow.x + sailBase.x) * dt; it.z += (sailFlow.z + sailBase.z) * dt; } // [sailing] guest dead-reckons debris between host snapshots
     for (const it of world.items) {
       const m = itemMeshes.get(it.token); if (!m) continue;
       m.visible = !isPending(it); m.scale.setScalar(1);
