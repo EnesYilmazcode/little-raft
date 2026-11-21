@@ -126,3 +126,27 @@ test('seeds rest in the hand and point only on request; cups use the shared mode
   const factory = (k) => (k === 'water' ? new T.Mesh(new T.CylinderGeometry(1, 1, 2)) : null);
   assert.equal(buildItemModel(T, 'water', factory).userData.shared, true);
 });
+
+test('held placeables stay small, the hammer is compact, rope and fish read in the fist', () => {
+  const box = () => new T.Mesh(new T.BoxGeometry(2, 1, 1));
+  for (const [k, f] of [['crate', null], ['bench', box], ['lantern', null], ['sail', null], ['seed', null], ['planter', null]]) {
+    const s = buildItemModel(T, k, f).userData.size;
+    assert.ok(Math.max(s.x, s.y, s.z) <= 0.0751, `${k} capped: ${Math.max(s.x, s.y, s.z)}`);
+  }
+  assert.ok(buildItemModel(T, 'hammer').userData.size.y < 0.4, 'hammer about 0.7 of its old size');
+  assert.ok(Math.max(...Object.values(buildItemModel(T, 'rope').userData.size)) > 0.2, 'rope coil is big enough to read');
+  const fish = buildItemModel(T, 'fish').userData.size;
+  assert.ok(fish.x > fish.y * 2, 'fish held sideways');
+});
+
+test('both fists hold the line while reeling', () => {
+  const h = createHands(T);
+  h.setHeld('hook'); for (let i = 0; i < 40; i++) h.update({ dt: 1 / 60 });
+  for (let i = 0; i < 60; i++) h.update({ dt: 1 / 60, time: i / 60, hasHookOut: true });
+  assert.equal(h.state.leftHand, 'grip', 'left keeps the coil while the hook is only out');
+  for (let i = 0; i < 60; i++) h.update({ dt: 1 / 60, time: 1 + i / 60, hasHookOut: true, reeling: true });
+  assert.equal(h.state.leftHand, 'fist'); assert.ok(h.state.ropeW > 0.9);
+  const L = h.group.getObjectByName('leftArm');
+  assert.ok(L.visible && L.position.x > 0.1 && L.position.y > -0.33, `left fist up on the line: ${L.position.x.toFixed(2)},${L.position.y.toFixed(2)}`);
+  h.dispose();
+});
