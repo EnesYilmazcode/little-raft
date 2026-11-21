@@ -125,8 +125,8 @@ export const PALETTE_KEYS = Object.freeze([
   //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
   key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // sunrise peach
   key(0.04, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // ... held a little
-  key(0.13, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'), // bright tropical day (visuals loop)
-  key(0.54, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'),
+  key(0.13, '#86dcef', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'), // bright tropical day (visuals loop)
+  key(0.54, '#86dcef', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'),
   key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#ffc9b0'), // dusk coral
   key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#2c3b55', '#8e88b2'), // blue hour
   key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#1f3044', '#5e6f98'), // cosy blue night
@@ -500,7 +500,7 @@ export function createDayNight(ctx) {
     // sky, fog (nothing else writes these per frame, so they only change here)
     if (scene) {
       if (scene.background?.isColor) scene.background.copy(cHorizon);
-      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 60 - 44 * wet; scene.fog.far = 260 - 180 * wet; }
+      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 90 - 74 * wet; scene.fog.far = 260 - 180 * wet; }
     }
     // sun / moon direction
     const th = sunAngle(phaseAt(phase * DAY_SECONDS));
@@ -522,8 +522,12 @@ export function createDayNight(ctx) {
     const u = ctx.ocean?.uniforms;
     if (u) {
       u.uSky?.value.copy(cHorizon); u.uZenith?.value.copy(cZenith);
+      if (u.uFarSea) { // far sea: shallow tint lifted a third toward the horizon (more with a low warm sun), darker after dusk
+        const k = 0.32 + 0.2 * (1 - smooth(0.1, 0.5, Math.abs(L.sunHeight))), d = 1 - 0.35 * Math.max(nf, smooth(0.2, 0, L.sunHeight));
+        u.uFarSea.value.setRGB((PAL[9] + (PAL[0] - PAL[9]) * k) * d, (PAL[10] + (PAL[1] - PAL[10]) * k) * d, (PAL[11] + (PAL[2] - PAL[11]) * k) * d, T.SRGBColorSpace).multiplyScalar(1 - 0.3 * wet).lerp(cHorizon, 0.45 * wet); // rain: hazier horizon
+      }
       u.uDeep?.value.copy(cDeep).multiplyScalar(1 - 0.3 * wet); u.uShallow?.value.copy(cShallow).multiplyScalar(1 - 0.3 * wet);
-      if (u.uFadeFar && scene?.fog) u.uFadeFar.value = Math.min(scene.fog.far, 190); // camera.far is 200
+      if (u.uFadeFar && scene?.fog) u.uFadeFar.value = Math.min(scene.fog.far, 140); // ocean plane half-size: past its edge the sky dome shows far sea
       if (u.uFadeNear) u.uFadeNear.value = fadeNear0 * (1 - 0.55 * Math.max(nf, smooth(0.2, 0, L.sunHeight))); // no light band at the horizon after sunset
       u.uSunDir?.value.copy(vDir);
       if (u.uSunColor) {
