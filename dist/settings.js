@@ -337,9 +337,14 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
 
   // body.relock is a short pending state: a granted-then-revoked or refused relock brings the resume hint back.
   let relockTimer = 0;
+  // game.js raftShell.relockWaiting: Escape is still held and the relock waits for its release (L1).
+  const escWaiting = () => { try { return !!window.raftShell?.relockWaiting; } catch { return false; } };
   function endRelock(event) {
     const locked = !!document.pointerLockElement;
-    if (relockPending({ locked, event, elapsed: event ? 0 : RELOCK_TIMEOUT })) return;
+    if (relockPending({ locked, event, elapsed: event ? 0 : RELOCK_TIMEOUT, escWaiting: !event && escWaiting() })) {
+      if (!event) { clearTimeout(relockTimer); relockTimer = setTimeout(guard(() => endRelock(null)), RELOCK_TIMEOUT); } // re-arm
+      return;
+    }
     clearTimeout(relockTimer); relockTimer = 0;
     document.body.classList.remove('relock');
   }

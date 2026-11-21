@@ -2211,6 +2211,7 @@ export function mount(transfer = null) {
   const shellApi = {
     hold:guard(() => { escHeld = true; relockOnEscUp = false; }),
     released:guard(() => { escReleased(true); }),
+    get relockWaiting() { return running && escHeld && relockOnEscUp; }, // settings.js keeps body.relock (no cursor) until the release
     refocus:guard(() => refocus()), // desktop/main.cjs, on window focus, with a gesture
     escapeBuild:guard(() => escapeBuild()), // settings.js escape(): true when Escape belonged to the build wheel
   };

@@ -52,10 +52,13 @@ export function dragLook({ running, supported = true, fallback = false } = {}) {
 
 // body.relock (no cursor, no resume hint) is a short pending state after a panel closes unlocked. It ends
 // when the lock arrives, a pointerlockchange leaves the page unlocked, pointerlockerror fires, or after
-// timeout ms, so a refused or revoked relock always shows the resume hint again.
+// timeout ms, so a refused or revoked relock always shows the resume hint again. While the relock waits on a
+// held Escape (escWaiting: game.js defers it to the key's release), the timeout does not end it: the clock
+// restarts, and the release's relock (or its refusal) ends it instead.
 export const RELOCK_TIMEOUT = 600;
-export function relockPending({ locked = false, event = null, elapsed = 0, timeout = RELOCK_TIMEOUT } = {}) {
+export function relockPending({ locked = false, event = null, elapsed = 0, timeout = RELOCK_TIMEOUT, escWaiting = false } = {}) {
   if (locked || event === 'unlocked' || event === 'error') return false;
+  if (escWaiting && !event) return true;
   return elapsed < timeout;
 }
 
