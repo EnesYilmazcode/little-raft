@@ -1,5 +1,5 @@
 // Low-poly wildlife models for dist/wildlife.js. Every builder returns ONE merged BufferGeometry with
-// position, normal and color attributes, so all creatures share one vertex-coloured Lambert material.
+// position, (per-face) normal and color attributes, so all creatures share one vertex-coloured matte material.
 // Conventions: nose points +z, up is +y. Built once at startup, never per frame.
 
 function tri(T, pts) { // pts: flat [x,y,z, ...] list of triangles -> geometry with face normals
@@ -30,16 +30,16 @@ function part(T, geo, color, place) {
 
 function merge(T, parts) {
   let n = 0; for (const p of parts) n += p.attributes.position.count;
-  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
   let o = 0;
   for (const p of parts) {
-    pos.set(p.attributes.position.array, o); nor.set(p.attributes.normal.array, o); col.set(p.attributes.color.array, o);
+    pos.set(p.attributes.position.array, o); col.set(p.attributes.color.array, o);
     o += p.attributes.position.count * 3; p.dispose();
   }
   const g = new T.BufferGeometry();
   g.setAttribute('position', new T.BufferAttribute(pos, 3));
-  g.setAttribute('normal', new T.BufferAttribute(nor, 3));
   g.setAttribute('color', new T.BufferAttribute(col, 3));
+  g.computeVertexNormals(); // non-indexed: per-face normals, the faceted look without a flatShading program
   g.computeBoundingSphere();
   return g;
 }

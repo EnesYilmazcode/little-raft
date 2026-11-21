@@ -74,17 +74,20 @@ export function createFinder(T) {
   return recentre(T, root, inner, new T.Vector3(0, 0.08, 0));
 }
 
+// Per-face normals baked into the geometry: the faceted look of flatShading without its separate shader variant.
+const facet = (g) => { const f = g.toNonIndexed(); g.dispose(); f.computeVertexNormals(); return f; };
+
 export function createMoundKit(T) {
   const geos = {
     hole: new T.CircleGeometry(0.32, 20).rotateX(-Math.PI / 2),
-    mound: new T.SphereGeometry(1, 9, 4, 0, Math.PI * 2, 0, Math.PI / 2), // low-poly heap, flat shaded like the island rocks
+    mound: facet(new T.SphereGeometry(1, 9, 4, 0, Math.PI * 2, 0, Math.PI / 2)), // low-poly heap, faceted like the island rocks
     box: new T.BoxGeometry(0.28, 0.18, 0.2),
     lid: new T.BoxGeometry(0.3, 0.05, 0.22),
     puff: new T.SphereGeometry(0.3, 10, 6),
   };
   const mats = {
     hole: new T.MeshStandardMaterial({ color: 0x6e5230, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
-    mound: new T.MeshStandardMaterial({ color: 0xdcb877, roughness: 1, flatShading: true }),
+    mound: new T.MeshStandardMaterial({ color: 0xdcb877, roughness: 1 }),
     wood: new T.MeshStandardMaterial({ color: 0xbb8650, roughness: 0.85 }),
     lid: new T.MeshStandardMaterial({ color: 0x9a6b3f, roughness: 0.85 }),
     puff: new T.MeshBasicMaterial({ color: 0xf1dca8, transparent: true, opacity: 0, depthWrite: false }),

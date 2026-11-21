@@ -26,35 +26,40 @@ const PING_LIFE = 5, PER_OWNER = 3, BEAM_H = 7;
 const XRAY_A = 1 - Math.sqrt(0.7); // two see-through layers (front and back faces) add up to the old single 0.3 layer
 
 export function createPings(T, scene) {
-  // shared geometry: a tall diamond, an open beam whose vertex alpha fades upward, a thin flat ring
-  const diamondGeo = new T.OctahedronGeometry(0.3, 0); diamondGeo.scale(1, 1.45, 1);
-  const beamGeo = new T.CylinderGeometry(0.03, 0.07, BEAM_H, 10, 6, true); beamGeo.translate(0, BEAM_H / 2, 0);
-  { const p = beamGeo.attributes.position, c = new Float32Array(p.count * 4);
-    for (let i = 0; i < p.count; i++) { const a = 1 - p.getY(i) / BEAM_H; c.set([1, 1, 1, a * a * a], i * 4); }
-    beamGeo.setAttribute('color', new T.BufferAttribute(c, 4)); }
-  const ringGeo = new T.RingGeometry(0.78, 1, 40); ringGeo.rotateX(-Math.PI / 2); ringGeo.translate(0, 0.12, 0);
-  const coreGeo = new T.CircleGeometry(0.16, 24); coreGeo.rotateX(-Math.PI / 2); coreGeo.translate(0, 0.12, 0);
-  // every ping material shares one program (vertex colors, double sided, tone mapped): plain white rgba on the rest
-  for (const geo of [diamondGeo, ringGeo, coreGeo]) geo.setAttribute('color', new T.BufferAttribute(new Float32Array(geo.attributes.position.count * 4).fill(1), 4));
-
+  // Built on the first ping (own or a peer's), so a solo game that never pings compiles no ping program.
   const slots = [];
-  for (let i = 0; i < PER_OWNER * 2; i++) {
-    const mine = i < PER_OWNER, col = new T.Color(mine ? MINE : THEIRS);
-    const basic = o => new T.MeshBasicMaterial({ color: col, transparent: true, depthWrite: false, fog: false, vertexColors: true, side: T.DoubleSide, forceSinglePass: true, ...o });
-    const g = new T.Group(); g.visible = false; g.name = 'coopPing';
-    const diamond = new T.Mesh(diamondGeo, basic({ depthWrite: true }));
-    const xray = new T.Mesh(diamondGeo, basic({ depthTest: false })); // faint see-through copy (front + back layer)
-    const beam = new T.Mesh(beamGeo, basic({ depthTest: false, blending: T.AdditiveBlending }));
-    const ring = new T.Mesh(ringGeo, basic({}));
-    const core = new T.Mesh(coreGeo, basic({}));
-    xray.renderOrder = 20; beam.renderOrder = 19;
-    for (const m of [diamond, xray, beam, ring, core]) { m.frustumCulled = false; g.add(m); }
-    scene.add(g);
-    slots.push({ g, diamond, xray, beam, ring, core, mine, born: -1, age: 0, x: 0, y: 0, z: 0, label: '' });
+  let diamondGeo = null, beamGeo = null, ringGeo = null, coreGeo = null;
+  function build() {
+    // shared geometry: a tall diamond, an open beam whose vertex alpha fades upward, a thin flat ring
+    diamondGeo = new T.OctahedronGeometry(0.3, 0); diamondGeo.scale(1, 1.45, 1);
+    beamGeo = new T.CylinderGeometry(0.03, 0.07, BEAM_H, 10, 6, true); beamGeo.translate(0, BEAM_H / 2, 0);
+    { const p = beamGeo.attributes.position, c = new Float32Array(p.count * 4);
+      for (let i = 0; i < p.count; i++) { const a = 1 - p.getY(i) / BEAM_H; c.set([1, 1, 1, a * a * a], i * 4); }
+      beamGeo.setAttribute('color', new T.BufferAttribute(c, 4)); }
+    ringGeo = new T.RingGeometry(0.78, 1, 40); ringGeo.rotateX(-Math.PI / 2); ringGeo.translate(0, 0.12, 0);
+    coreGeo = new T.CircleGeometry(0.16, 24); coreGeo.rotateX(-Math.PI / 2); coreGeo.translate(0, 0.12, 0);
+    // every ping material shares one program (vertex colors, double sided, tone mapped): plain white rgba on the rest
+    for (const geo of [diamondGeo, ringGeo, coreGeo]) geo.setAttribute('color', new T.BufferAttribute(new Float32Array(geo.attributes.position.count * 4).fill(1), 4));
+
+    for (let i = 0; i < PER_OWNER * 2; i++) {
+      const mine = i < PER_OWNER, col = new T.Color(mine ? MINE : THEIRS);
+      const basic = o => new T.MeshBasicMaterial({ color: col, transparent: true, depthWrite: false, fog: false, vertexColors: true, side: T.DoubleSide, forceSinglePass: true, ...o });
+      const g = new T.Group(); g.visible = false; g.name = 'coopPing';
+      const diamond = new T.Mesh(diamondGeo, basic({ depthWrite: true }));
+      const xray = new T.Mesh(diamondGeo, basic({ depthTest: false })); // faint see-through copy (front + back layer)
+      const beam = new T.Mesh(beamGeo, basic({ depthTest: false, blending: T.AdditiveBlending }));
+      const ring = new T.Mesh(ringGeo, basic({}));
+      const core = new T.Mesh(coreGeo, basic({}));
+      xray.renderOrder = 20; beam.renderOrder = 19;
+      for (const m of [diamond, xray, beam, ring, core]) { m.frustumCulled = false; g.add(m); }
+      scene.add(g);
+      slots.push({ g, diamond, xray, beam, ring, core, mine, born: -1, age: 0, x: 0, y: 0, z: 0, label: '' });
+    }
   }
 
   function add({ x, y, z, mine = false, label = '' } = {}) {
     if (!fin3(x, y, z)) return null;
+    if (!slots.length) build();
     // reuse a free slot of this owner, else the oldest one
     let s = null;
     for (const c of slots) {
@@ -100,7 +105,7 @@ export function createPings(T, scene) {
   function dispose() {
     for (const s of slots) for (const m of [s.diamond, s.xray, s.beam, s.ring, s.core]) m.material.dispose();
     for (const s of slots) s.g.parent?.remove(s.g);
-    diamondGeo.dispose(); beamGeo.dispose(); ringGeo.dispose(); coreGeo.dispose();
+    diamondGeo?.dispose(); beamGeo?.dispose(); ringGeo?.dispose(); coreGeo?.dispose();
     slots.length = 0;
   }
   return { add, update, dispose, get active() { return slots.filter(s => s.born >= 0).length; } };

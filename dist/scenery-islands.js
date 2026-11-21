@@ -50,7 +50,7 @@ let shared = null;
 function materials(T) {
   if (shared) return shared;
   shared = {
-    solid: new T.MeshStandardMaterial({vertexColors:true, flatShading:true, roughness:.95, metalness:0}),
+    solid: new T.MeshStandardMaterial({vertexColors:true, roughness:.95, metalness:0}), // faceted: builder normals are per-face
     foam: new T.MeshBasicMaterial({color:'#ffffff', vertexColors:true, transparent:true, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2}),
     shallow: new T.MeshBasicMaterial({vertexColors:true, transparent:true, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1}),
   };
