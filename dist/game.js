@@ -343,8 +343,18 @@ export function mount(transfer = null) {
     buildViewmodels();
     try { fc = createFishingCooking(T, fcHost()); } catch (e) { console.error('fishing-cooking failed', e); fc = null; } // [fishing-cooking]
     islands.length = 0; // diving lane hook: seafloor rises toward these
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); mergeLocal(g); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
-    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; mergeLocal(g); scene.add(g); clouds.push(g); scenery.push([g, 0]); } // content + sailing: clouds
+    // [sailing] islands drift past; diving: seafloor rises toward these. Every island is the same model, so one
+    // vertex-coloured geometry is drawn once for all of them; the empty groups stay as drift handles (see instanceProxies).
+    const isleModel = new T.Group(); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, isleModel); sphere(3.4, '#4f9b72', 0, 1.4, 0, isleModel); palm(isleModel, 0, 1, 0, 1.4);
+    const isleProxies = [];
+    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); g.name = 'island'; scene.add(g); isleProxies.push(g); scenery.push([g, 6]); }
+    instanceProxies(bakeColors(isleModel), new T.MeshStandardMaterial({vertexColors:true, roughness:.85, metalness:0}), isleProxies, false);
+    // content + sailing: clouds. Each cloud group keeps one hidden stub mesh so day/night can swap its material; the
+    // instanced mesh drawing all 24 picks that material up every frame.
+    const cloudModel = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, cloudModel);
+    const cloudGeo = bakeColors(cloudModel);
+    for (let i = 0; i < 24; i++) { const g = new T.Group(), stub = new T.Mesh(cloudGeo, mat('#e7f9eb')); stub.visible = false; g.add(stub); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; g.name = 'cloud'; scene.add(g); clouds.push(g); scenery.push([g, 0]); }
+    instanceProxies(cloudGeo, mat('#e7f9eb'), clouds, true);
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     building = createBuilding(T, scene); // building-pieces lane hook
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
@@ -413,23 +423,37 @@ export function mount(transfer = null) {
     const d = Math.hypot(...SUN_OFFSET), cam = sun.shadow.camera;
     Object.assign(cam, {left:-r, right:r, top:r, bottom:-r, near:Math.max(.5, d - r - 6), far:d + r + 6}); cam.updateProjectionMatrix();
   }
-  // Bakes every mesh under `root` (world transforms) into one non-shadow-casting mesh per material; disposes the parts.
-  // Collapse a static group's meshes into one mesh per material in the group's own space, so the group can still move
-  // (sailing drifts islands/clouds, day/night retints cloud materials). Distant scenery never casts shadows.
-  function mergeLocal(g) { const ms = mergeStatic(g, true); g.clear(); for (const m of ms) g.add(m); return g; }
-  function mergeStatic(root, local = false) {
+  // Bakes every mesh under `root` into one geometry in root's own space, each part's mat() colour written as a vertex
+  // colour (wood parts take their base timber colour). Source geometries are disposed.
+  function bakeColors(root) {
     root.updateMatrixWorld(true);
-    const inv = local ? root.matrixWorld.clone().invert() : null, rel = new T.Matrix4();
-    const byMat = new Map();
-    root.traverse(o => { if (!o.isMesh) return; if (!byMat.has(o.material)) byMat.set(o.material, []); byMat.get(o.material).push(o); });
-    const out = [];
-    for (const [material, meshes] of byMat) {
-      const parts = meshes.map(m => { const g = m.geometry.clone().applyMatrix4(local ? rel.multiplyMatrices(inv, m.matrixWorld) : m.matrixWorld); for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal' && n !== 'uv') g.deleteAttribute(n); return g; });
-      const merged = new T.Mesh(mergeGeometries(T, parts), material); merged.castShadow = false; merged.receiveShadow = false; merged.matrixAutoUpdate = false;
-      for (const g of parts) g.dispose(); for (const m of meshes) m.geometry.dispose();
-      out.push(merged);
-    }
-    return out;
+    const inv = root.matrixWorld.clone().invert(), rel = new T.Matrix4(), col = new T.Color(), parts = [];
+    const hexOf = new Map([...materialCache].map(([hex, m]) => [m, hex]));
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      const g = o.geometry.clone().applyMatrix4(rel.multiplyMatrices(inv, o.matrixWorld));
+      for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal') g.deleteAttribute(n);
+      col.set(hexOf.get(o.material) ?? o.material.color); const n = g.attributes.position.count, c = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; }
+      g.setAttribute('color', new T.BufferAttribute(c, 3)); parts.push(g); o.geometry.dispose();
+    });
+    const out = mergeGeometries(T, parts); for (const g of parts) g.dispose(); return out;
+  }
+  // One InstancedMesh draws `geo` at every proxy group's transform. The proxies stay ordinary scene children, so sailing
+  // can drift them and day/night can move/scale clouds; it is added after them and copies their transforms during the
+  // scene's matrix walk each frame. stubMaterial: follow the material of proxies[0]'s first child (day/night swaps it).
+  // Distant scenery never casts or receives shadows.
+  function instanceProxies(geo, material, proxies, stubMaterial) {
+    const im = new T.InstancedMesh(geo, material, proxies.length); im.name = 'scenery-instances';
+    im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false; im.matrixAutoUpdate = false; im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    const base = im.updateMatrixWorld;
+    im.updateMatrixWorld = function (force) {
+      for (let i = 0; i < proxies.length; i++) { const p = proxies[i]; p.updateMatrix(); this.setMatrixAt(i, p.matrix); }
+      this.instanceMatrix.needsUpdate = true;
+      if (stubMaterial) { const m = proxies[0]?.children[0]?.material; if (m && m !== this.material) this.material = m; }
+      base.call(this, force);
+    };
+    scene.add(im); return im;
   }
   // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
