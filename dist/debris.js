@@ -4,8 +4,11 @@
 //   getMaterial(colorString) -> shared MeshStandardMaterial (owned by engine, never disposed here)
 //   opts (optional): { seed:number, tilt:number (barrel axis tilt, radians; default ~0.2) }
 // Root is untransformed (engine positions/rotates it). Content is centered on the origin.
-// All geometry is created per call and owned by the returned group's meshes.
-// Per-instance metal materials are listed in root.userData.localMaterials.
+//   opts.shared: reuse cached geometry (one of VARIANTS per type, picked by seed) and module-wide
+//     materials; root and every mesh get userData.shared = true and must not be disposed.
+// Each model is flattened to 1-2 meshes (vertex-coloured; a textured getMaterial keeps its own mesh).
+// Otherwise geometry is created per call and owned by the returned group's meshes, and the
+// per-instance materials are listed in root.userData.localMaterials.
 
 const TYPES = ['wood', 'leaf', 'scrap', 'barrel'];
 
@@ -64,19 +67,67 @@ function place(T, g, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = 1) {
   return g;
 }
 
+// Builders add placeholder meshes; flatten() bakes them into the final merged meshes.
 function mesh(T, geo, mat, parent) {
   const m = new T.Mesh(geo, mat);
-  m.castShadow = true;
-  m.receiveShadow = true;
   parent.add(m);
   return m;
 }
 
-function metalMat(T, root, color, extra = {}) {
-  const m = new T.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.5, ...extra });
-  root.userData.localMaterials.push(m);
-  return m;
+// Placeholder only (never rendered): marks the part for the shared metal material and gives its tint.
+function metalMat(T, root, color) {
+  return { isMetalTint: true, color: new T.Color(color) };
 }
+
+const VARIANTS = 4;
+const sharedMats = {};
+// Thin open surfaces (leaf blades, scrap sheet) need double-sided materials; closed models (plank nail,
+// barrel) stay front-sided so the gaps between barrel staves still show the dark interior.
+const DOUBLE = { leaf: true, scrap: true };
+function makeMats(T, double) {
+  const side = double ? T.DoubleSide : T.FrontSide;
+  return {
+    std: new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side }),
+    metal: new T.MeshStandardMaterial({ vertexColors: true, metalness: 0.55, roughness: 0.5, side }),
+  };
+}
+function getSharedMats(T, double) {
+  if (!sharedMats[double]) {
+    sharedMats[double] = makeMats(T, double);
+    for (const m of Object.values(sharedMats[double])) { m.name = 'debris-shared'; m.userData.shared = true; }
+  }
+  return sharedMats[double];
+}
+
+// Bake every placeholder mesh under inner (transforms + material colour) into one merged geometry per
+// material slot: 'std', 'metal', or the getMaterial colour of a textured material. First slot = main mesh.
+function flatten(T, inner, colorOf) {
+  inner.updateMatrixWorld(true);
+  const slots = new Map();
+  const meshes = [];
+  inner.traverse((o) => { if (o.isMesh) meshes.push(o); });
+  for (const o of meshes) {
+    const src = o.material, g = o.geometry;
+    const key = src.isMetalTint ? 'metal' : src.map ? colorOf.get(src) : 'std';
+    g.applyMatrix4(o.matrixWorld);
+    if (key === 'std' || key === 'metal') {
+      const n = g.attributes.position.count, c = src.color, old = g.attributes.color;
+      const col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        col[i * 3] = c.r * (old ? old.getX(i) : 1);
+        col[i * 3 + 1] = c.g * (old ? old.getY(i) : 1);
+        col[i * 3 + 2] = c.b * (old ? old.getZ(i) : 1);
+      }
+      g.setAttribute('color', new T.BufferAttribute(col, 3));
+    }
+    if (!slots.has(key)) slots.set(key, []);
+    slots.get(key).push(g);
+  }
+  return [...slots].map(([key, geos], i) => ({ key, geo: merge(T, geos, key === 'std' || key === 'metal'), cast: i === 0 }));
+}
+
+// Recycled models per getMaterial (WeakMap: a new engine instance starts a fresh cache).
+const modelCache = new WeakMap();
 
 // Center content on origin; uniformly shrink if xz footprint exceeds maxXZ.
 function fit(T, inner, maxXZ) {
@@ -137,7 +188,7 @@ function leafletGeo(T, base, dir, len, wid, droop, out) {
   // out = {pos:[], idx:[]} single-sided top; mirrored later
   const up = new T.Vector3(0, 1, 0);
   const perp = new T.Vector3().crossVectors(up, dir).normalize();
-  const rows = 6, start = out.pos.length / 3;
+  const rows = 4, start = out.pos.length / 3;
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
     const prof = Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.92 + 0.08)), 0.8) * (1 - 0.35 * t);
@@ -170,21 +221,15 @@ function frondGeo(T, r, length, count) {
       leafletGeo(T, base.clone().add(new T.Vector3(0, 0, side * 0.006)), dir, len, 0.022 + 0.018 * (len / 0.34), 0.35 + r() * 0.2, out);
     }
   }
-  // build double-sided indexed geometry (smooth normals per side)
-  const n = out.pos.length / 3;
-  const pos = new Float32Array(n * 6), uv = new Float32Array(n * 4);
-  pos.set(out.pos, 0); pos.set(out.pos, n * 3);
-  uv.set(out.uv, 0); uv.set(out.uv, n * 2);
-  const idx = out.idx.slice();
-  for (let i = 0; i < out.idx.length; i += 3) idx.push(out.idx[i] + n, out.idx[i + 2] + n, out.idx[i + 1] + n);
+  // single-sided indexed geometry; the material is double-sided
   const blades = new T.BufferGeometry();
-  blades.setAttribute('position', new T.BufferAttribute(pos, 3));
-  blades.setAttribute('uv', new T.BufferAttribute(uv, 2));
-  blades.setIndex(idx);
+  blades.setAttribute('position', new T.Float32BufferAttribute(out.pos, 3));
+  blades.setAttribute('uv', new T.Float32BufferAttribute(out.uv, 2));
+  blades.setIndex(out.idx);
   blades.computeVertexNormals();
   // rachis (midrib of the frond)
   const curve = new T.CatmullRomCurve3([0, 0.25, 0.5, 0.75, 1].map(P));
-  const rib = new T.TubeGeometry(curve, 16, 0.009, 5, false);
+  const rib = new T.TubeGeometry(curve, 8, 0.009, 3, false);
   return merge(T, [blades, rib]);
 }
 
@@ -193,7 +238,7 @@ function buildLeaf(T, getMaterial, root, inner, r) {
   const fronds = 4;
   const sx = -0.42;
   for (let f = 0; f < fronds; f++) {
-    const g = frondGeo(T, r, 0.78 + r() * 0.12, 9);
+    const g = frondGeo(T, r, 0.78 + r() * 0.12, 8);
     const yaw = -0.5 + (f / (fronds - 1)) * 1.0 + (r() - 0.5) * 0.15;
     place(T, g, sx, 0.015 * f, 0, (r() - 0.5) * 0.35, yaw, 0.05 + r() * 0.06);
     mesh(T, g, getMaterial(greens[f % greens.length]), inner);
@@ -204,8 +249,8 @@ function buildLeaf(T, getMaterial, root, inner, r) {
   mesh(T, stem, getMaterial('#7d8a3d'), inner);
   // twine tie binding the bundle
   const tie = merge(T, [
-    place(T, new T.TorusGeometry(0.037, 0.008, 6, 14), sx - 0.08, 0.012, 0, 0, Math.PI / 2, 0),
-    place(T, new T.TorusGeometry(0.035, 0.008, 6, 14), sx - 0.045, 0.014, 0, 0, Math.PI / 2, 0),
+    place(T, new T.TorusGeometry(0.037, 0.008, 4, 8), sx - 0.08, 0.012, 0, 0, Math.PI / 2, 0),
+    place(T, new T.TorusGeometry(0.035, 0.008, 4, 8), sx - 0.045, 0.014, 0, 0, Math.PI / 2, 0),
   ]);
   mesh(T, tie, getMaterial('#b89a64'), inner);
 }
@@ -251,7 +296,7 @@ function buildScrap(T, getMaterial, root, inner, r) {
   p.needsUpdate = true;
   g.setAttribute('color', new T.BufferAttribute(col, 3));
   g.computeVertexNormals();
-  const sheetMat = metalMat(T, root, '#ffffff', { vertexColors: true, side: T.DoubleSide });
+  const sheetMat = metalMat(T, root, '#ffffff');
   mesh(T, g, sheetMat, inner);
 
   // bolts/rivets along the crease and the near edge
@@ -314,7 +359,7 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
       new T.Vector2(R + 0.015, y), new T.Vector2(R + 0.012, y + w - 0.004),
       new T.Vector2(R - 0.004, y + w), new T.Vector2(R - 0.004, y - w),
     ];
-    return new T.LatheGeometry(prof, 40);
+    return new T.LatheGeometry(prof, 20);
   });
   mesh(T, merge(T, hoops), hoopMat, body);
   const rivets = [];
@@ -322,7 +367,7 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
     const R = rad(y) + 0.014;
     for (let k = 0; k < 10; k++) {
       const a = (k / 10) * Math.PI * 2 + 0.2;
-      rivets.push(place(T, new T.SphereGeometry(0.011, 6, 4), Math.sin(a) * R, y, Math.cos(a) * R));
+      rivets.push(place(T, new T.SphereGeometry(0.011, 5, 3), Math.sin(a) * R, y, Math.cos(a) * R));
     }
   }
   mesh(T, merge(T, rivets), metalMat(T, root, '#6d757b', { roughness: 0.4 }), body);
@@ -344,23 +389,54 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   inner.add(pivot);
 }
 
+// Build the merged parts of one model: [{key, geo, cast}], plus its size.
+function buildParts(T, type, getMaterial, seed, opts) {
+  const r = rng(seed);
+  const colorOf = new Map();
+  const gm = (c) => { const m = getMaterial(c); colorOf.set(m, c); return m; };
+  const tmp = new T.Group(), inner = new T.Group();
+  tmp.add(inner);
+  if (type === 'wood') { buildWood(T, gm, tmp, inner, r); fit(T, inner, 1.6); }
+  else if (type === 'leaf') { buildLeaf(T, gm, tmp, inner, r); fit(T, inner, 1.75); }
+  else if (type === 'scrap') { buildScrap(T, gm, tmp, inner, r); fit(T, inner, 1.2); }
+  else { buildBarrel(T, gm, tmp, inner, r, opts); fit(T, inner, 1.25); }
+  const parts = flatten(T, inner, colorOf);
+  const box = new T.Box3();
+  for (const p of parts) { p.geo.computeBoundingBox(); box.union(p.geo.boundingBox); }
+  const size = box.getSize(new T.Vector3());
+  return { parts, size: { x: size.x, y: size.y, z: size.z } };
+}
+
 export function createDebris(T, type, getMaterial, opts = {}) {
   if (!TYPES.includes(type)) throw new Error(`createDebris: unknown type "${type}"`);
-  const r = rng(opts.seed != null ? opts.seed : Math.floor(Math.random() * 2 ** 31));
+  const shared = !!opts.shared;
+  let seed = opts.seed != null ? Number(opts.seed) >>> 0 : Math.floor(Math.random() * 2 ** 31);
+  let model;
+  if (shared) {
+    seed %= VARIANTS;
+    let byKey = modelCache.get(getMaterial);
+    if (!byKey) modelCache.set(getMaterial, (byKey = new Map()));
+    const key = `${type}:${seed}:${opts.tilt ?? ''}`;
+    model = byKey.get(key);
+    if (!model) byKey.set(key, (model = buildParts(T, type, getMaterial, seed, opts)));
+  } else model = buildParts(T, type, getMaterial, seed, opts);
+  const double = !!DOUBLE[type], mats = shared ? getSharedMats(T, double) : makeMats(T, double);
   const root = new T.Group();
   root.name = `debris-${type}`;
   root.userData.type = type;
-  root.userData.localMaterials = [];
+  root.userData.localMaterials = shared ? [] : Object.values(mats);
+  if (shared) root.userData.shared = true;
   const inner = new T.Group();
   inner.name = `debris-${type}-model`;
   root.add(inner);
-  if (type === 'wood') { buildWood(T, getMaterial, root, inner, r); fit(T, inner, 1.6); }
-  else if (type === 'leaf') { buildLeaf(T, getMaterial, root, inner, r); fit(T, inner, 1.75); }
-  else if (type === 'scrap') { buildScrap(T, getMaterial, root, inner, r); fit(T, inner, 1.2); }
-  else { buildBarrel(T, getMaterial, root, inner, r, opts); fit(T, inner, 1.25); }
-  inner.updateMatrixWorld(true);
-  const size = new T.Box3().setFromObject(inner).getSize(new T.Vector3());
-  root.userData.size = { x: size.x, y: size.y, z: size.z };
+  for (const p of model.parts) {
+    const m = new T.Mesh(p.geo, mats[p.key] || getMaterial(p.key));
+    m.castShadow = p.cast;
+    m.receiveShadow = true;
+    if (shared) m.userData.shared = true;
+    inner.add(m);
+  }
+  root.userData.size = { ...model.size };
   return root;
 }
 
