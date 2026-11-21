@@ -8,7 +8,7 @@ export const LEG_LEN = 0.36;
 export const LEG_HIPS = Object.freeze([[-0.16, 0.37, 0.24], [0.16, 0.37, 0.24], [-0.15, 0.36, -0.28], [0.15, 0.36, -0.28]]);
 
 const COL = { hide: 0x9a7a62, hideLo: 0x7e6350, belly: 0xb8987c, ridge: 0xc0652a, ridgeDk: 0x8c4520, snout: 0xe0a08e,
-  nostril: 0x3a2420, tusk: 0xfaf0d8, eye: 0x140e0c, ear: 0x8a6a56, hoof: 0x3a2e26, wart: 0xa88a72, tuft: 0x5a3a26, leg: 0x6e5644 };
+  nostril: 0x3a2420, tusk: 0xfaf0d8, eye: 0x140e0c, ear: 0x8a6a56, hoof: 0x58463a, wart: 0xa88a72, tuft: 0x5a3a26, leg: 0x8c705a };
 
 const hash = (a, b = 0) => { let h = Math.imul(a + 1, 0x9e3779b1) ^ Math.imul(b + 7, 0x85ebca6b); h ^= h >>> 13; return ((Math.imul(h, 0xc2b2ae35) >>> 0) % 1000) / 1000; };
 
@@ -82,4 +82,5 @@ export function boarLegGeometry(T) {
   ]);
 }
 
-export const boarMaterial = T => new T.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+// A faint warm emissive keeps the shadow side (and the thin legs) brown, not black, when the boar stands against the sun.
+export const boarMaterial = T => new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x2a1c12 });
