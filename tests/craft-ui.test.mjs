@@ -150,6 +150,41 @@ test('CRA2-1: the crafting column has a fixed height so tab switches do not move
   assert.match(src, /#inventory \.sv-craft\{[^}]*;height:min\(/);
 });
 
+test('CRA2-2: Esc or a backdrop click with a stack in hand puts it back instead of closing', () => {
+  assert.equal(CB.dismissAction(true), 'drop');
+  assert.equal(CB.dismissAction(false), 'close');
+  const src = readFileSync(new URL('survival-ui.js', base), 'utf8');
+  assert.match(src, /addEventListener\('cancel', e => \{ e\.preventDefault\(\); if \(dismissAction\(src != null\) === 'drop'\) \{ clearSrc\(\); return; \} close\(\); \}/);
+  assert.match(src, /if \(shut\) \{ if \(dismissAction\(src != null\) === 'drop'\) clearSrc\(\); else close\(\); \}/);
+});
+
+test('CRA2-3: a keyboard pick-up draws the held stack on the focused slot, not a stale pointer spot', () => {
+  assert.deepEqual(CB.slotCentre({ left: 100, top: 40, width: 56, height: 56 }), { x: 128, y: 68 });
+  const src = readFileSync(new URL('survival-ui.js', base), 'utf8');
+  assert.match(src, /if \(e\.detail === 0\) \{ kbdHeld = true; heldToSlot\(el\); \}/);
+  assert.match(src, /px = py = NaN; kbdHeld = false;/, 'pointer position reset on open');
+  assert.match(src, /if \(src != null && kbdHeld\) \{ heldToSlot\(el\); placeHeld\(\); \}/, 'follows focus');
+});
+
+test('CRA2-4: between 861px and 923px the slots shrink so the bag fits inside its panel', () => {
+  const src = readFileSync(new URL('survival-ui.js', base), 'utf8');
+  const m = src.match(/@media\(max-width:(\d+)px\) and \(min-width:861px\)[^{]*\{#inventory\.sv-inv\{--s:(\d+)px;--g:(\d+)px\}/);
+  assert.ok(m, 'mid-width rule');
+  const [, maxW, s, g] = m.map(Number);
+  assert.ok(maxW >= 923, 'covers up to 923px');
+  // craft column + gap + bag (8 slots + padding) + wrap padding must fit 96vw at 861px.
+  const need = 324 + 14 + (8 * s + 7 * g + 24) + 28;
+  assert.ok(need <= 861 * 0.96, `needs ${need}px`);
+  assert.match(src, /\.sv-hint\{margin:0;max-width:calc\(/, 'hint never widens the bag past the grid');
+});
+
+test('CRA2-6: tooltips follow keyboard focus; every ingredient row is focusable', () => {
+  const src = readFileSync(new URL('survival-ui.js', base), 'utf8');
+  assert.match(src, /dlg\.addEventListener\('focusin'/);
+  assert.match(src, /dlg\.addEventListener\('focusout'/);
+  assert.match(src, /<li class="sv-ing\$\{[^}]*\}" tabindex="0"/);
+});
+
 test('CRA2-5: bag and pickup feed share one flat fallback; placeholder items get their own drawing', async () => {
   const S = await import(new URL('item-sprites.js', base));
   for (const k of ['plastic', 'rope', 'fishingrod', 'bench', 'crate']) {

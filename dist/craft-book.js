@@ -243,6 +243,15 @@ export function recipeFor(kind, recipes) {
   return null;
 }
 
+/**
+ * What a backdrop click or Esc does while the bag is open: with a picked-up stack in hand it only
+ * puts the stack back ('drop'); with empty hands it closes the bag ('close').
+ */
+export const dismissAction = holding => (holding ? 'drop' : 'close');
+
+/** Centre of a slot rect: where a stack picked up with the keyboard is drawn (no pointer to follow). */
+export const slotCentre = r => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+
 // ---- pinned recipe tracker ----
 /** A saved pin is kept only when it names a recipe that still exists. */
 export function cleanPin(id, recipeIds) {

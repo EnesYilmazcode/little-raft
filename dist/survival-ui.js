@@ -3,7 +3,7 @@
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { iconSVG, itemName } from './item-sprites.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal, sortByCraftable, chipLabel, maxCraftable, clickCrafts, cleanPin, trackerModel, dockTop, gainedSlots, haveNeedLabel, singleCraft, pressCap, openingPick, recipeFor } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal, sortByCraftable, chipLabel, maxCraftable, clickCrafts, cleanPin, trackerModel, dockTop, gainedSlots, haveNeedLabel, singleCraft, pressCap, openingPick, recipeFor, dismissAction, slotCentre } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv4';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -123,7 +123,7 @@ const CSS = `
 #inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;z-index:2;min-width:16px;padding:2px 3px;border-radius:8px;
   background:#ffc66e;color:#1d1608;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-rope{width:100%;height:1px;margin:2px 0;background:linear-gradient(90deg,transparent,#ffffff2e 15%,#ffffff2e 85%,transparent)}
-#inventory .sv-hint{margin:0;max-width:${HB * 62}px;font:500 12px/1.35 ${FONT};color:#f4efe280;text-align:center}
+#inventory .sv-hint{margin:0;max-width:calc(${HB} * var(--s) + ${HB - 1} * var(--g));font:500 12px/1.35 ${FONT};color:#f4efe280;text-align:center}
 #inventory .sv-recipe:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
 #inventory .sv-rbody{display:block;min-width:0}
 #inventory .sv-empty-list{margin:6px;color:#f4efe299;font-size:14px}
@@ -180,7 +180,7 @@ const CSS = `
 #inventory .sv-cmax:empty{display:none}
 .sv-slot.sv-flash::before{content:"";position:absolute;inset:0;z-index:0;border-radius:inherit;pointer-events:none;animation:svFlash 1.1s ease-out forwards}
 @keyframes svFlash{0%{box-shadow:inset 0 0 0 2px #ffe08a,0 0 0 0 #ffe08a00;background:#ffe08a40}25%{box-shadow:inset 0 0 0 2px #ffe08a,0 0 16px 3px #ffe08a99;background:#ffe08a30}100%{box-shadow:inset 0 0 0 2px #ffe08a00,0 0 0 0 #ffe08a00;background:#ffe08a00}}
-#craftPin{position:fixed;right:14px;top:14px;z-index:4;box-sizing:border-box;width:200px;padding:8px 9px 9px;border-radius:9px;color:#f4efe2;font:600 13px/1.2 ${FONT};
+#craftPin{position:fixed;right:14px;top:14px;z-index:4;box-sizing:border-box;width:216px;padding:8px 9px 9px;border-radius:9px;color:#f4efe2;font:600 13px/1.2 ${FONT};
   background:linear-gradient(180deg,#1a2226d4,#0e1417e0);box-shadow:inset 0 0 0 1px #ffffff17,inset 3px 0 0 #e06a4a,0 8px 24px #0006;pointer-events:none;transition:box-shadow .25s}
 #craftPin.sv-ready{box-shadow:inset 0 0 0 1px #8fd36a8c,inset 3px 0 0 #8fd36a,0 0 14px #8fd36a40,0 8px 24px #0006}
 #craftPin .sv-ph{display:grid;grid-template-columns:34px 1fr 24px;gap:7px;align-items:center}
@@ -238,6 +238,7 @@ const CSS = `
   background:#0b1013f0;box-shadow:inset 0 0 0 1px #ffffff26,0 4px 12px #0008;color:#f8f3e6;font:700 14px/1.3 ${FONT}}
 #inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#f4efe299}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#ffc98f}
+@media(max-width:923px) and (min-width:861px) and (min-height:521px){#inventory.sv-inv{--s:46px;--g:5px}#inventory .sv-slot .sv-art{inset:4px}}
 @media(max-width:860px),(max-height:520px){#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
   #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:3px}}
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-recipe,.sv-art,.sv-cursor,.sv-label,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
@@ -371,7 +372,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   };
   const tip = dlg.querySelector('.sv-tip');
   const held = dlg.querySelector('.sv-held'), heldArt = held.firstElementChild, heldCnt = held.lastElementChild;
-  let heldKind = null, px = 0, py = 0;
+  let heldKind = null, px = NaN, py = NaN, kbdHeld = false; // px/py NaN until the pointer moves inside the bag
   const hintEl = dlg.querySelector('.sv-hint');
   const invEls = [];
   dlg.querySelectorAll('.sv-slot[data-index]').forEach(el => {
@@ -472,7 +473,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       delete D.art.dataset.tipKind; // the card already shows name and use
       D.name.textContent = v.r.name + (v.r.out.count > 1 ? ' ×' + v.r.out.count : '');
       D.desc.textContent = t?.use || t?.desc || '';
-      D.ings.innerHTML = v.r.reqs.map(q => `<li class="sv-ing${recipeFor(q.kind, recipes) ? ' sv-link" tabindex="0' : ''}" data-tip-kind="${esc(q.kind)}" data-goto="${esc(recipeFor(q.kind, recipes) || '')}">${art(q.kind)}<span class="sv-iname">${esc(itemName(q.kind))}</span><b class="sv-iamt"></b></li>`).join('') || '<li class="sv-ing sv-ok"><span></span><span class="sv-iname">Nothing</span><b class="sv-iamt"></b></li>';
+      D.ings.innerHTML = v.r.reqs.map(q => `<li class="sv-ing${recipeFor(q.kind, recipes) ? ' sv-link' : ''}" tabindex="0" data-tip-kind="${esc(q.kind)}" data-goto="${esc(recipeFor(q.kind, recipes) || '')}">${art(q.kind)}<span class="sv-iname">${esc(itemName(q.kind))}</span><b class="sv-iamt"></b></li>`).join('') || '<li class="sv-ing sv-ok"><span></span><span class="sv-iname">Nothing</span><b class="sv-iamt"></b></li>';
       ingEls = [...D.ings.querySelectorAll('.sv-ing')].map(el => ({ el, amt: el.querySelector('.sv-iamt') }));
       D.count.textContent = '';
     }
@@ -808,7 +809,11 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     heldCnt.textContent = srcAmt > 1 ? String(srcAmt) : '';
     held.hidden = false; placeHeld();
   }
-  function placeHeld() { held.style.transform = `translate(${px - 26}px,${py - 26}px)`; }
+  function heldToSlot(el) { if (!el) return; const c = slotCentre(el.getBoundingClientRect()); px = c.x; py = c.y; }
+  function placeHeld() {
+    if (!Number.isFinite(px) || !Number.isFinite(py)) heldToSlot(src != null ? invEls[src] : null);
+    held.style.transform = `translate(${px - 26}px,${py - 26}px)`;
+  }
   function clearSrc() {
     if (src != null && invEls[src]) {
       const el = invEls[src];
@@ -957,6 +962,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!alive || isOpen) return;
     isOpen = true;
     downOnBackdrop = upOnBackdrop = false;
+    px = py = NaN; kbdHeld = false; // stale pointer position from the last time the bag was open
     clearSrc(); clearSay();
     safe(onPause);
     if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
@@ -990,7 +996,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
   const slotFrom = e => e.target?.closest?.('#inventory .sv-slot[data-index]') || null;
 
-  dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, opt);
+  dlg.addEventListener('cancel', e => { e.preventDefault(); if (dismissAction(src != null) === 'drop') { clearSrc(); return; } close(); }, opt);
   dlg.addEventListener('close', () => {
     if (!isOpen) return;
     isOpen = false; stopHold(); endDrag(false); clearSrc(); clearDeny(); hideTip(); hoverIdx = null;
@@ -1001,7 +1007,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   dlg.addEventListener('pointerdown', e => { downOnBackdrop = e.target === dlg; upOnBackdrop = false; }, opt);
   dlg.addEventListener('pointerup', e => { upOnBackdrop = e.target === dlg; }, opt);
   dlg.addEventListener('click', e => {
-    if (e.target === dlg) { const shut = backdropCloses(downOnBackdrop, upOnBackdrop); downOnBackdrop = upOnBackdrop = false; if (shut) close(); return; }
+    if (e.target === dlg) { const shut = backdropCloses(downOnBackdrop, upOnBackdrop); downOnBackdrop = upOnBackdrop = false; if (shut) { if (dismissAction(src != null) === 'drop') clearSrc(); else close(); } return; }
     downOnBackdrop = upOnBackdrop = false;
     const tb = e.target.closest?.('.sv-tab');
     if (tb) { setTab(tb.dataset.cat); return; }
@@ -1017,6 +1023,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     }
     const el = slotFrom(e); if (!el) return;
     const i = +el.dataset.index, s = curSlots[i], has = !!slotSig(s);
+    if (e.detail === 0) { kbdHeld = true; heldToSlot(el); } // Enter / Space: no pointer to follow
     if (src == null) { if (has) setSrc(i, s.count); return; }
     if (i === src) { clearSrc(); return; }
     if (!slotSig(curSlots[src])) { clearSrc(); return; }
@@ -1098,10 +1105,23 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (tipAnchor) hideTip();
   }, opt);
   dlg.addEventListener('pointermove', e => {
-    px = e.clientX; py = e.clientY;
+    px = e.clientX; py = e.clientY; kbdHeld = false;
     if (src != null) placeHeld();
   }, opt);
   dlg.addEventListener('pointerleave', () => { hoverIdx = null; hideTip(); }, opt);
+  dlg.addEventListener('focusin', e => {
+    if (dragging) return;
+    const el = slotFrom(e);
+    if (el) {
+      const i = +el.dataset.index; hoverIdx = i; showTip(i);
+      if (src != null && kbdHeld) { heldToSlot(el); placeHeld(); } // the held stack follows keyboard focus
+      return;
+    }
+    hoverIdx = null;
+    const k = e.target?.closest?.('#inventory [data-tip-kind]');
+    if (k) showTipFor(k); else hideTip();
+  }, opt);
+  dlg.addEventListener('focusout', e => { if (!e.relatedTarget || !dlg.contains(e.relatedTarget)) { hoverIdx = null; hideTip(); } }, opt);
   rlist.addEventListener('scroll', () => { if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor); }, { ...opt, passive: true });
   // Hold-to-craft on the craft button (mouse, touch, pen; Enter / Space).
   D.btn.addEventListener('pointerdown', e => {
