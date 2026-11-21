@@ -373,15 +373,19 @@ export function createHands(T, { modelFactory = null } = {}) {
     A.wrist.rotation.set(wx, wy, wz);
   }
 
-  function update(params = {}) {
-    const dt = Math.min(Math.max(params.dt ?? 1 / 60, 0), 0.1);
+  // Per-frame helpers hoisted out of update() so it allocates nothing: k() eases at the current frame's dt.
+  let kDt = 0;
+  const k = (rate) => 1 - Math.exp(-rate * kDt);
+  const stroke = (q) => { q = ((q % 1) + 1) % 1; return q < 0.5 ? smooth(0, 0.5, q) : 1 - smooth(0.5, 1, q); };
+  const NO_PARAMS = {};
+  function update(params = NO_PARAMS) {
+    const dt = kDt = Math.min(Math.max(params.dt ?? 1 / 60, 0), 0.1);
     st.t += dt;
     const t = params.time ?? st.t;
     const charge0 = clamp01(params.charge || 0);
     const casting = clamp01(params.casting || 0);
     const reeling = !!params.reeling, walking = !!params.walking;
     const amp = clamp01(params.motion ?? 0.35) / 0.35;
-    const k = (rate) => 1 - Math.exp(-rate * dt);
 
     // ---- swap / pose change: ease down, switch while hidden, pop back up
     if (st.shown !== st.target) {
@@ -444,7 +448,6 @@ export function createHands(T, { modelFactory = null } = {}) {
 
     // ---- reel rhythm: hand over hand, one pull stroke every 0.4 s (2.5 Hz), the hands half a cycle apart.
     // stroke 0 = reached forward, 1 = pulled in to the body.
-    const stroke = (q) => { q = ((q % 1) + 1) % 1; return q < 0.5 ? smooth(0, 0.5, q) : 1 - smooth(0.5, 1, q); };
     const pullR = stroke(t * REEL_HZ / 2), pull = stroke(t * REEL_HZ / 2 + 0.5);
     const rW = st.reelW, oW = st.outW, tw = st.toolW;
     const catchDip = hasHookOut ? 0 : (1 - tw);
@@ -482,8 +485,9 @@ export function createHands(T, { modelFactory = null } = {}) {
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
 
     last.lag[0] = st.lagX; last.lag[1] = st.lagY;
-    Object.assign(last, { held: st.shown, target: st.target, pose, pointHand: pointer, dip: down, charge: chargeEff, chargeEased: ce, throw: a,
-      pull: pull * rW, pullR: pullR * rW, rightHand: handPoses.R, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
+    last.held = st.shown; last.target = st.target; last.pose = pose; last.pointHand = pointer; last.dip = down; last.charge = chargeEff;
+    last.chargeEased = ce; last.throw = a; last.pull = pull * rW; last.pullR = pullR * rW; last.rightHand = handPoses.R; last.walkW = st.walkW;
+    last.reelW = rW; last.hookOutW = oW; last.toolW = tw; last.spool = st.spool; last.models = mounts.size;
     return last;
   }
 
