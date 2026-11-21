@@ -420,13 +420,12 @@ export function mount(transfer = null) {
       running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging};
   }
   function fallbackAvatar(color) {
-    const g = new T.Group();
     if (color && typeof color === 'object') color = lookColors(color).shirt; // [look]
+    const g = new T.Group();
     cylinder(.21, .25, .58, color, 0, .64, 0, g); sphere(.23, '#f2c69b', 0, 1.14, 0, g); cylinder(.28, .28, .07, '#f7e7b5', 0, 1.32, 0, g); cylinder(.17, .19, .16, '#f7e7b5', 0, 1.4, 0, g);
     box(.13, .22, .15, '#314d53', -.13, .25, 0, g); box(.13, .22, .15, '#314d53', .13, .25, 0, g);
     return g;
   }
-  function makeAvatar(color) {
   // [look] local look changed in the Look dialog: save, recolour the FP hands, rebuild the third-person body.
   function applyLook(look) {
     lookState = {look, unlocked:lookState.unlocked}; saveLook(look, lookState.unlocked);
@@ -437,6 +436,7 @@ export function mount(transfer = null) {
     scene.remove(old); try { old.userData.dispose?.(); } catch {}
     player = next; scene.add(next);
   }
+  function makeAvatar(color) {
     try { const g = createAvatar(T, color); if (g?.isObject3D) { g.traverse(c => { if (c.isMesh) c.castShadow = true; }); return g; } }
     catch (e) { console.warn('createAvatar failed, using fallback avatar', e); }
     return fallbackAvatar(color);
@@ -445,8 +445,8 @@ export function mount(transfer = null) {
   // First-person viewmodel: one hands controller that swaps the held item model per hotbar kind.
   function buildViewmodels() {
     hands = createHands(T, {modelFactory:modelOf}); hands.preload(['hook']); // 3D models from models.js, built-ins as fallback
-    // Viewmodels draw last (transparent queue, renderOrder 1000) after a camera-owned marker clears depth, so the
     hands.setLook?.(lookColors(lookState.look)); // [look] sleeves = shirt, hands = skin tone
+    // Viewmodels draw last (transparent queue, renderOrder 1000) after a camera-owned marker clears depth, so the
     // world never clips them while fingers and tools still depth-sort correctly against each other.
     const depthClear = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({colorWrite:false, depthWrite:false, depthTest:false, transparent:true}));
     depthClear.name = 'viewmodelDepthClear'; depthClear.frustumCulled = false; depthClear.castShadow = false; depthClear.receiveShadow = false;
@@ -1261,11 +1261,11 @@ export function mount(transfer = null) {
     try { prog?.tick(dt); } catch (e) { console.error('progression tick failed', e); } // [progression-hook]
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
+    const achList = Array.isArray(world.achievements) ? world.achievements : [];
+    if (achList.length !== seenAch) { seenAch = achList.length; const n = noteAchievements(lookState.unlocked, achList); if (n.length) { saveLook(lookState.look, lookState.unlocked); lookUI?.refresh(); notice('New hat for your Look: ' + n.map(id => LOOK_HATS.find(h => h.id === id)?.label ?? id).join(', ')); } } // [look] hat unlocks (host or guest view of the list)
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
-    const achList = Array.isArray(world.achievements) ? world.achievements : [];
-    if (achList.length !== seenAch) { seenAch = achList.length; const n = noteAchievements(lookState.unlocked, achList); if (n.length) { saveLook(lookState.look, lookState.unlocked); lookUI?.refresh(); notice('New hat for your Look: ' + n.map(id => LOOK_HATS.find(h => h.id === id)?.label ?? id).join(', ')); } } // [look] hat unlocks (host or guest view of the list)
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
   // hidden; a hidden peer is never timed out (the data channel's 'close' still ends the session).
@@ -1407,10 +1407,10 @@ export function mount(transfer = null) {
   setHandler($('#solo'), 'onclick', () => { start(); requestLock(); });
   setHandler($('#crewButton'), 'onclick', () => openDialog('crew'));
   setHandler($('#welcomeCrew'), 'onclick', () => openDialog('crew'));
+  setHandler($('#welcomeLook'), 'onclick', () => lookUI?.open()); // [look]
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
   const soundLabel = () => setText('#soundButton', 'Sound: ' + (sound ? 'on' : 'off'));
-  setHandler($('#welcomeLook'), 'onclick', () => lookUI?.open()); // [look]
   setHandler($('#soundButton'), 'onclick', () => { sound = !sound; applyVolume(); soundLabel(); });
   soundLabel();
 
@@ -1675,10 +1675,10 @@ export function mount(transfer = null) {
       return {notes:[...world.notes], nextNote:nextNote(world.notes), achievements:[...world.achievements], totals:{notes:12, achievements:15}, bottleAfloat:world.items.some(i => i.type === 'bottle')};
     },
     get progression() { return prog?.debug ?? null; }, // [progression-hook]
+    look:() => ({look:{...lookState.look}, unlocked:[...lookState.unlocked], open:!!lookUI?.isOpen}), // [look]
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};
-    look:() => ({look:{...lookState.look}, unlocked:[...lookState.unlocked], open:!!lookUI?.isOpen}), // [look]
         return {id:it.id, token:it.token, type:it.type, x:p.x, y:p.y, z:p.z, distance:Math.hypot(it.x - physics.x, it.z - physics.z), pending:isPending(it), screen:project(p.x, p.y, p.z)};
       });
     },
@@ -1749,10 +1749,10 @@ export function mount(transfer = null) {
     try { fc?.dispose(); } catch {} fc = null; // [fishing-cooking]
     for (const id of ['signalReadout', 'signalMarker']) { const el = document.getElementById(id); if (el) el.hidden = true; }
     try { logbookUI?.destroy?.(); } catch {}
+    try { lookUI?.destroy?.(); } catch {} lookUI = null; // [look]
     try { prog?.dispose(); } catch {} // [progression-hook]
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
-    try { lookUI?.destroy?.(); } catch {} lookUI = null; // [look]
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
     disposeScene();
   }
@@ -1776,10 +1776,10 @@ export function mount(transfer = null) {
     });
     prog.installUI(); // [progression-hook]
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(clearInput), onResume:guard(() => requestLock())});
+    try { lookUI = createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(clearInput), onResume:guard(() => { if (running) requestLock(); })}); } catch (e) { console.error('look UI failed', e); lookUI = null; } // [look]
     if (role !== 'guest') retroAward();
     pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
-    try { lookUI = createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(clearInput), onResume:guard(() => { if (running) requestLock(); })}); } catch (e) { console.error('look UI failed', e); lookUI = null; } // [look]
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
     warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
