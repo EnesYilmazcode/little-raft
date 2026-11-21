@@ -10,6 +10,7 @@
 //   movePlayer: if (!diving?.move(dt, physics, {forward, strafe, yaw, pitch, up, down, fast, gather})) physics.update(...)
 //             (replacing `physics` mid-dive drops the dive automatically; diving.cancel() forces it.)
 //   frame:  diving?.update(dt, elapsed) after updateCamera(dt); diving?.render(renderer) after renderer.render.
+//   warm-up: diving?.warm(renderer) next to the scene shader warm-up (compiles the seafloor + underwater overlay).
 //   beep:   o.connect(g).connect(diving ? diving.audioOut(audio) : audio.destination)
 //   hot-swap: const saved = diving?.capture(); diving?.dispose(); ... createDiving({..., restore:saved})
 //   'raft:underwater' event / onChange detail: {underwater, depth, mount} (mount = instance counter).
@@ -284,6 +285,22 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
   return {
     move, update, audioOut, markGathered, cancel, mount,
     render(renderer) { if (!failed.has('fx')) { try { fx.render(renderer); } catch (e) { fail('fx', e); } } },
+    /** Compile the dive programs up front (call while on the surface): the seafloor group (hidden until the first
+     *  dive) and the underwater overlay, which lives in fx's own scene. fx.render() gets a stand-in renderer whose
+     *  render() only compiles, so nothing is drawn; fx is entered for that call and exited again right after. */
+    warm(renderer) {
+      if (!renderer || underwater || failed.size) return;
+      const compile = (s, c) => typeof renderer.compileAsync === 'function'
+        ? renderer.compileAsync(s, c).catch(e => console.warn('dive shader warm-up failed', e))
+        : renderer.compile?.(s, c);
+      try { seafloor.warm?.(renderer, camera, scene); } catch (e) { console.warn('seafloor warm-up failed', e); }
+      const off = { underwater: false, depth: 0, time: 0, lowOxygen: false, breath01: 1 };
+      try {
+        fx.update(1e-3, { ...off, underwater: true });
+        fx.render({ autoClear: renderer.autoClear, render: compile });
+      } catch (e) { console.warn('dive fx warm-up failed', e); }
+      finally { try { fx.update(0, off); } catch (e) { fail('fx', e); } }
+    },
     onChange(fn) { if (typeof fn === 'function') listeners.add(fn); return () => listeners.delete(fn); },
     capture() { return { oxygen, regrow: [...regrow] }; },
     get state() {
