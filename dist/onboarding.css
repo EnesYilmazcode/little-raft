@@ -1,7 +1,7 @@
 /* Little Raft onboarding (onboarding.js): top-right Notes tracker + left-aligned title menu. Nothing centred. */
-.ob-notes{--ob-cream:#f6ecd6;--ob-dim:#c9bfa8;--ob-bronze:#c9a46b;--ob-amber:#e9a640;--ob-plate:rgba(9,20,30,.8);
+.ob-notes{--ob-cream:#f6ecd6;--ob-dim:#c9bfa8;--ob-bronze:#c9a46b;--ob-amber:#e9a640;--ob-plate:rgba(43,29,18,.85);
   position:fixed;top:184px;right:16px;width:248px;z-index:20;display:none;box-sizing:border-box;padding:8px 14px 10px;border-radius:6px;
-  background:var(--ob-plate);box-shadow:0 0 0 1px rgba(201,164,107,.55),0 0 0 2px rgba(5,10,15,.85),0 10px 28px rgba(0,0,0,.45);
+  background:var(--ob-plate);box-shadow:0 0 0 1px rgba(201,164,107,.55),0 0 0 2px rgba(20,13,7,.85),0 10px 28px rgba(0,0,0,.45);
   color:var(--ob-cream);font:13px/1.3 var(--ui-font,system-ui,sans-serif);text-align:left;pointer-events:none;
   transform:translateX(var(--ob-shift,0px));transition:opacity .4s ease,transform .25s ease,width .6s ease,padding .6s ease}
 body.playing .ob-notes{display:block;animation:obFade .5s ease-out}

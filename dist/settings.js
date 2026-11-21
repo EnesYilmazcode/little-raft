@@ -59,13 +59,14 @@ const CSS = `
 #options{position:fixed;inset:0;width:100vw;height:100vh;max-width:none;max-height:none;margin:0;padding:0;border:0;border-radius:0;
   overflow:hidden;background:transparent;box-shadow:none;color:var(--cream,#f1e7d0);font:15px/1.4 var(--ui-font,system-ui,sans-serif)}
 #options[open]{display:flex}
-#options::backdrop{background:rgba(4,10,16,.42);backdrop-filter:blur(4px) saturate(.8)}
+#options::backdrop{background:rgba(24,15,8,.38);backdrop-filter:blur(4px) saturate(.8)}
 #options .rs-form{display:flex;align-items:stretch;gap:clamp(24px,5vw,72px);width:100%;height:100%;margin:0;padding:0 clamp(16px,5vw,80px) 0 0}
 #options .rs-menu{display:flex;flex-direction:column;justify-content:center;align-items:stretch;flex:none;width:clamp(280px,26vw,360px);padding:0 0 0 clamp(28px,4vw,56px);
-  background:linear-gradient(90deg,rgba(5,11,17,.94),rgba(5,11,17,.82));box-shadow:1px 0 0 rgba(201,164,107,.28),18px 0 50px rgba(0,0,0,.35)}
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.07) 0 1px,rgba(255,230,190,.03) 1px 2px,transparent 2px 88px),linear-gradient(90deg,rgba(74,50,32,.96),rgba(58,40,24,.94) 70%,rgba(48,33,20,.9));
+  box-shadow:inset -3px 0 0 rgba(30,20,11,.9),inset -4px 0 0 rgba(201,164,107,.55),18px 0 50px rgba(0,0,0,.35)}
 #options .rs-panel{align-self:flex-start;margin-top:max(24px,calc(50vh - 236px))} /* top edge stays put across tabs */
-#options .rs-foot{margin-top:34px;padding-right:28px;font:600 11px/1 var(--ui-font);letter-spacing:1.6px;text-transform:uppercase;color:var(--muted,#8f9aa0)}
-#options .rs-foot kbd{margin-right:8px;padding:3px 7px;border-radius:3px;color:var(--cream,#f1e7d0);background:rgba(0,0,0,.4);box-shadow:inset 0 0 0 1px rgba(201,164,107,.45);font:700 10px/1.3 var(--ui-font)}
+#options .rs-foot{margin-top:34px;padding-right:28px;font:600 11px/1 var(--ui-font);letter-spacing:1.6px;text-transform:uppercase;color:var(--muted,#a8977c)}
+#options .rs-foot kbd{margin-right:8px;padding:3px 7px;border-radius:3px;color:var(--cream,#f1e7d0);background:rgba(30,20,11,.55);box-shadow:inset 0 0 0 1px rgba(201,164,107,.55);font:700 10px/1.3 var(--ui-font)}
 #options .rs-eyebrow{font:600 11px/1 var(--ui-font);letter-spacing:3.2px;color:var(--bronze-lt,#c9a46b);margin-bottom:10px}
 #options .rs-menu h2{margin:0 0 30px;padding-right:28px;font:600 clamp(34px,4vw,52px)/1 var(--display-font,Georgia,serif);color:var(--cream,#f1e7d0);text-shadow:0 2px 14px rgba(0,0,0,.5)}
 #options .rs-menu button{position:relative;display:block;width:100%;text-align:left;cursor:pointer;background:none;border:0;border-radius:0;box-shadow:none;
@@ -74,11 +75,11 @@ const CSS = `
 #options .rs-menu button:hover,#options .rs-menu button:focus-visible,#options .rs-menu button[aria-expanded=true]{color:var(--amber-lt,#ffc96b);padding-left:28px;transform:none;outline:0;
   background:linear-gradient(90deg,rgba(233,166,64,.14),rgba(233,166,64,0) 85%)}
 #options .rs-menu button:hover::before,#options .rs-menu button:focus-visible::before,#options .rs-menu button[aria-expanded=true]::before{opacity:1;transform:translateY(-50%) scaleX(1)}
-#options .rs-menu .rs-quit{margin-top:22px;border-top:1px solid rgba(201,164,107,.18);padding-top:20px;font-size:clamp(16px,1.5vw,19px);color:var(--muted,#8f9aa0)}
-#options .rs-panel{width:min(520px,100%);max-height:calc(100vh - 80px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:var(--plate-strong,rgba(8,17,26,.92));
-  box-shadow:0 0 0 1px var(--bronze-lt,#c9a46b),0 0 0 4px var(--navy-0,#070f17),0 24px 70px rgba(0,0,0,.55)}
+#options .rs-menu .rs-quit{margin-top:22px;border-top:1px solid rgba(201,164,107,.3);padding-top:20px;font-size:clamp(16px,1.5vw,19px);color:var(--muted,#b8a68a)}
+#options .rs-panel{width:min(520px,100%);max-height:calc(100vh - 80px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:linear-gradient(180deg,rgba(255,230,190,.05),rgba(255,230,190,0) 30%),var(--plate-strong,rgba(36,24,14,.93));
+  box-shadow:0 0 0 1px var(--bronze-lt,#c9a46b),0 0 0 4px var(--navy-2,#3a2818),0 0 0 5px rgba(20,13,7,.9),0 24px 70px rgba(0,0,0,.55)}
 #options .rs-tabs{display:flex;gap:4px;margin:0 0 18px;border-bottom:1px solid rgba(201,164,107,.3)}
-#options .rs-tabs button{cursor:pointer;background:none;border:0;border-radius:0;box-shadow:none;padding:10px 14px;margin-bottom:-1px;color:var(--muted,#8f9aa0);
+#options .rs-tabs button{cursor:pointer;background:none;border:0;border-radius:0;box-shadow:none;padding:10px 14px;margin-bottom:-1px;color:var(--cream-dim,#c9bfa8);
   font:700 12px/1 var(--ui-font);letter-spacing:2px;text-transform:uppercase;border-bottom:2px solid transparent}
 #options .rs-tabs button[aria-selected=true]{color:var(--amber-lt,#ffc96b);border-bottom-color:var(--amber,#e9a640)}
 #options .rs-tabs button:hover{color:var(--cream,#f1e7d0);transform:none}
@@ -87,19 +88,19 @@ const CSS = `
 #options .rs-row label{color:var(--cream,#f1e7d0);font-weight:600}
 #options .rs-row output{color:var(--amber-lt,#ffc96b);font-variant-numeric:tabular-nums;min-width:4ch;text-align:right}
 #options .rs-row input[type=range]{grid-column:1/-1;width:100%;margin:0;padding:0;border:0;background:none;accent-color:var(--amber,#e9a640)}
-#options .rs-row input[type=checkbox]{appearance:none;width:42px;height:22px;margin:0;border:0;border-radius:11px;background:rgba(0,0,0,.5);cursor:pointer;position:relative;
+#options .rs-row input[type=checkbox]{appearance:none;width:42px;height:22px;margin:0;border:0;border-radius:11px;background:rgba(30,20,11,.7);cursor:pointer;position:relative;
   box-shadow:inset 0 0 0 1px rgba(201,164,107,.55);transition:background .15s;flex:none;padding:0}
 #options .rs-row input[type=checkbox]::after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:var(--cream-dim,#c9bfa8);transition:transform .15s}
 #options .rs-row input[type=checkbox]:checked{background:var(--amber,#e9a640)}
 #options .rs-row input[type=checkbox]:checked::after{transform:translateX(20px);background:#22170a}
 #options .rs-row select{grid-column:1/-1;width:100%;padding:8px 10px;border-radius:4px;border:0;box-shadow:inset 0 0 0 1px rgba(201,164,107,.6);
-  background:var(--navy-2,#112332);color:var(--cream,#f1e7d0);font:inherit;letter-spacing:0;text-transform:none}
+  background:var(--navy-2,#3a2818);color:var(--cream,#f1e7d0);font:inherit;letter-spacing:0;text-transform:none}
 #options .rs-keys{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:8px 12px;align-items:center;margin:0 0 6px;padding:0 0 14px;border-bottom:1px solid rgba(201,164,107,.2);font-size:13px}
-#options .rs-keys kbd{justify-self:start;padding:3px 7px;border-radius:3px;font:700 11px/1.3 var(--ui-font);color:var(--cream,#f1e7d0);background:rgba(0,0,0,.4);box-shadow:inset 0 0 0 1px rgba(201,164,107,.45)}
+#options .rs-keys kbd{justify-self:start;padding:3px 7px;border-radius:3px;font:700 11px/1.3 var(--ui-font);color:var(--cream,#f1e7d0);background:rgba(58,40,24,.75);box-shadow:inset 0 0 0 1px rgba(201,164,107,.5),0 1px 0 rgba(0,0,0,.4)}
 #options .rs-keys span{color:var(--cream-dim,#c9bfa8)}
-#options .rs-wide{cursor:pointer;justify-self:start;padding:9px 14px;border-radius:4px;border:0;background:rgba(7,15,23,.6);color:var(--cream,#f1e7d0);
+#options .rs-wide{cursor:pointer;justify-self:start;padding:9px 14px;border-radius:4px;border:0;background:rgba(58,40,24,.7);color:var(--cream,#f1e7d0);
   font:600 12px/1 var(--ui-font);letter-spacing:1.2px;text-transform:uppercase;box-shadow:inset 0 0 0 1px rgba(201,164,107,.6)}
-#options .rs-wide:hover{background:rgba(17,35,50,.85);transform:none}
+#options .rs-wide:hover{background:rgba(90,63,36,.9);transform:none}
 #options :focus-visible{outline:2px solid var(--amber,#e9a640);outline-offset:2px}
 @media (max-width:760px){#options .rs-form{flex-direction:column;align-items:stretch;justify-content:center;gap:18px;overflow:auto;padding:24px 16px}
   #options .rs-menu{width:auto;padding:20px 0 20px 20px;border-radius:6px}#options .rs-foot{display:none}
