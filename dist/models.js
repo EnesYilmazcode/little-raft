@@ -51,6 +51,7 @@ function mats() {
     metalFlat: S({ roughness: 0.55, metalness: 0.5, flatShading: true }),
     leaf: S({ roughness: 0.7, side: T.DoubleSide }),
     cloth: S({ roughness: 0.95, side: T.DoubleSide }),
+    glass: S({ roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.9 }),
     glow: S({ emissive: C.glow, emissiveIntensity: 1.6, roughness: 0.3 }),
   };
   for (const [k, m] of Object.entries(MATS)) m.name = 'model_' + k;
@@ -257,6 +258,28 @@ function beetBulb(K, y, s = 1) {
   K.add(lathe(prof.map(([r, yy]) => [r * s, yy * s]), K.seg(12)), C.beet, { m: 'plastic', p: [0, y, 0], col: (c, x, yy) => { if (yy > 0.02 * s) c.lerp(_c2.set(C.beetLight), 0.5); c.multiplyScalar(0.9 + 0.1 * Math.sin(yy * 220)); } });
 }
 
+function palmTree(K, base, segs, segH, r0, fronds, len, pairs, nuts) {
+  let p = base;
+  for (let i = 0; i < segs; i++) {
+    const n = [p[0] + (0.03 + i * 0.008) * segH / 0.22, p[1] + segH, p[2] + 0.01 * segH / 0.22], t = r0 / 0.095;
+    K.add(between(p, n, (0.095 - i * 0.007) * t, (0.075 - i * 0.007) * t, K.seg(7)), i % 2 ? C.log : C.drift, { m: 'flat', col: (c, x, y) => { if (y > n[1] - segH * 0.3) c.multiplyScalar(1.15); } });
+    p = n;
+  }
+  const nr = 0.055 * Math.min(1, len / 0.9);
+  for (let i = 0; i < nuts; i++) K.add(new T.SphereGeometry(nr, K.seg(8), K.seg(6)), 0x6b4a2a, { m: 'base', p: [p[0] + Math.cos(i * 2.1) * nr * 1.1, p[1] - nr, p[2] + Math.sin(i * 2.1) * nr * 1.1] });
+  for (let i = 0; i < fronds; i++) { K.push(p, [0, i * (Math.PI * 2 / fronds) + 0.3, 0]); K.push([0, 0, 0], [-0.4 - (i % 2) * 0.3, 0, 0]); frond(K, len, 0.5, pairs); K.pop(); K.pop(); }
+  return p;
+}
+function coconut(K, p, r = 0.07) {
+  K.add(new T.IcosahedronGeometry(r, 1), 0x6b4a2a, { m: 'flat', p, s: [1, 0.85, 1.1], perFace: true, col: (c, x, y, z, u, v, f) => c.multiplyScalar(0.85 + hash3(f, 2, 5) * 0.3) });
+}
+function cupBody(K) {
+  const prof = [[0, 0], [0.05, 0], [0.056, 0.006], [0.06, 0.04], [0.064, 0.08], [0.066, 0.1], [0.069, 0.13], [0.071, 0.15], [0.072, 0.16], [0.078, 0.165], [0.078, 0.175], [0.07, 0.175], [0.064, 0.02], [0, 0.02]];
+  K.add(lathe(prof, K.seg(14)), C.teal, { m: 'plastic', col: (c, x, y) => { if (y > 0.155) c.set(C.white); else if (y > 0.085 && y < 0.105) c.multiplyScalar(0.8); } });
+  // palm-leaf filter tied round the rim
+  K.add(new T.TorusGeometry(0.077, 0.007, 4, K.seg(14)), C.rope, { p: [0, 0.15, 0], r: [Math.PI / 2, 0, 0], col: ropeCol(0.48, 0.02) });
+}
+
 // ------------------------------------------------------------------ model builders
 const B = {
   plank(K) {
@@ -334,8 +357,8 @@ const B = {
       K.add(along(cyl(0.004, 0.024, 0.08, K.seg(8)), [tip[0] * ca, tip[1] - 0.01, tip[0] * sa], [(tip[0] - 0.07) * ca, tip[1] - 0.035, (tip[0] - 0.07) * sa]), C.teal, { m: 'plastic' });
     }
     // rope coil hanging off the butt
-    K.add(new T.TorusGeometry(0.085, 0.014, 5, K.seg(20)), C.rope, { p: [0.02, -0.29, 0], r: [0, Math.PI / 2, 0.2], col: ropeCol(0.53, 0.03) });
-    K.add(new T.TorusGeometry(0.075, 0.014, 5, K.seg(20)), C.rope, { p: [0.0, -0.3, 0.01], r: [0, Math.PI / 2 - 0.3, -0.1], col: ropeCol(0.47, 0.03) });
+    K.add(new T.TorusGeometry(0.085, 0.014, 5, K.seg(16)), C.rope, { p: [0.02, -0.29, 0], r: [0, Math.PI / 2, 0.2], col: ropeCol(0.53, 0.03) });
+    K.add(new T.TorusGeometry(0.075, 0.014, 5, K.seg(16)), C.rope, { p: [0.0, -0.3, 0.01], r: [0, Math.PI / 2 - 0.3, -0.1], col: ropeCol(0.47, 0.03) });
     K.add(tube([[0, -0.2, 0], [0.01, -0.22, 0], [0.02, -0.215, 0.0]], 0.012, 6, 5), C.rope, {});
     K.ud.grip = [0, 0, 0]; K.ud.tip = [0, 0.58, 0]; K.ud.iconRot = [0, 0, -0.6];
   },
@@ -391,9 +414,10 @@ const B = {
     K.ud.soilY = soilY + 0.01; K.ud.slots = [[-0.22, soilY + 0.01, 0], [0.22, soilY + 0.01, 0]];
   },
   seed(K) {
-    const prof = [[0, 0], [0.01, 0.003], [0.018, 0.014], [0.017, 0.03], [0.009, 0.048], [0, 0.058]];
-    const at = [[0, 0.016, 0, 1.45, 0.3], [0.035, 0.015, 0.02, 1.6, 2.1], [-0.025, 0.015, 0.03, 1.5, -1.2], [0.01, 0.04, 0.012, 1.2, 0.9]];
-    for (const [x, y, z, rx, ry] of at) K.add(lathe(prof, K.seg(10)), 0x3b3330, { m: 'plastic', perFace: true, p: [x, y, z], r: [rx, ry, 0], s: [1, 1, 0.55], jit: 0.08, col: (c, xx, yy, zz, u, v, f) => { if (Math.floor(f / 10) % 3 === 0) c.set(0xe8dcc0); if (yy > 0.05) c.multiplyScalar(0.7); } });
+    // palm seed: a small husked coconut with a pale sprouting eye
+    coconut(K, [0, 0.05, 0], 0.06);
+    K.add(new T.SphereGeometry(0.012, 6, 4), 0xe8dcc0, { m: 'base', p: [0.03, 0.09, 0.02] });
+    K.ud.iconRot = [0.3, 0, 0];
   },
   sprout(K) {
     mound(K, 0.07);
@@ -507,15 +531,58 @@ const B = {
     const pot = [[0, 0.02], [0.2, 0], [0.24, 0.04], [0.3, 0.34], [0.34, 0.36], [0.34, 0.42], [0.3, 0.42], [0.28, 0.38], [0, 0.38]];
     K.add(lathe(pot, K.seg(14)), C.terracotta, { m: 'base', col: (c, x, y) => { if (y > 0.35) c.multiplyScalar(1.12); if (Math.abs(y - 0.2) < 0.015) c.multiplyScalar(0.8); } });
     K.add(new T.CircleGeometry(0.29, K.seg(12)), C.soil, { m: 'flat', p: [0, 0.385, 0], r: [-Math.PI / 2, 0, 0] });
-    let p = [0, 0.38, 0];
-    for (let i = 0; i < 6; i++) {
-      const n = [p[0] + 0.03 + i * 0.008, p[1] + 0.22, p[2] + 0.01];
-      K.add(between(p, n, 0.095 - i * 0.007, 0.075 - i * 0.007, K.seg(7)), i % 2 ? C.log : C.drift, { m: 'flat', col: (c, x, y) => { if (y > 0.07) c.multiplyScalar(1.15); } });
-      p = n;
-    }
-    for (let i = 0; i < 3; i++) K.add(new T.SphereGeometry(0.055, K.seg(8), K.seg(6)), 0x6b4a2a, { m: 'base', p: [p[0] + Math.cos(i * 2.1) * 0.06, p[1] - 0.06, p[2] + Math.sin(i * 2.1) * 0.06] });
-    for (let i = 0; i < 7; i++) { K.push(p, [0, i * 0.9 + 0.3, 0]); K.push([0, 0, 0], [-0.4 - (i % 2) * 0.3, 0, 0]); frond(K, 0.95, 0.5, 10); K.pop(); K.pop(); }
+    palmTree(K, [0, 0.38, 0], 6, 0.22, 0.095, 7, 0.95, 10, 3);
   },
+  fish(K) {
+    const prof = [[0, 0], [0.03, 0.008], [0.058, 0.04], [0.074, 0.1], [0.07, 0.17], [0.05, 0.25], [0.024, 0.31], [0.013, 0.33], [0, 0.335]];
+    K.push([-0.17, 0.085, 0], [0, 0, -Math.PI / 2]);
+    // after the push, local -x is up: dark back, silver flank, cream belly
+    K.add(lathe(prof, K.seg(14)), 0x5f93ab, { m: 'plastic', s: [1, 1, 0.5], col: (c, x, y) => {
+      if (x > 0.03) c.set(0xeee4c8); else if (x > -0.02) c.lerp(_c2.set(0xc9dbe0), 0.55); else c.multiplyScalar(0.8);
+      if (x < 0 && Math.sin(y * 70) > 0.75) c.multiplyScalar(0.85);
+    } });
+    for (const z of [-1, 1]) {
+      K.add(new T.SphereGeometry(0.014, 6, 4), 0x1b2328, { m: 'plastic', p: [-0.018, 0.045, z * 0.028] });
+      K.add(blade(0.06, 0.035, 2, 0, 0), 0x4e7d92, { m: 'leaf', p: [0.03, 0.1, z * 0.03], r: [0, z * 0.5, 0], jit: 0 });
+    }
+    K.pop();
+    const fin = (pts, color, o) => { const sh = new T.Shape(pts.map(([x, y]) => new T.Vector2(x, y))); K.add(new T.ShapeGeometry(sh), color, Object.assign({ m: 'leaf' }, o)); };
+    fin([[0, 0], [0.1, 0.075], [0.075, 0], [0.1, -0.075]], 0x4e7d92, { p: [0.155, 0.085, 0], col: (c, x) => c.multiplyScalar(1 - x * 2) });
+    fin([[0, 0], [0.04, 0.06], [0.12, 0]], 0x4e7d92, { p: [-0.07, 0.15, 0] });
+    fin([[0, 0], [0.03, -0.035], [0.07, 0]], 0x6f9fb4, { p: [0.04, 0.025, 0] });
+  },
+  nails(K) {
+    const at = [[0, 0, 0.3, 0], [0.04, 0.02, -0.5, 1.2], [-0.035, 0.03, 1.4, 0.4], [0.015, -0.04, 2.3, -0.2], [-0.02, -0.01, 0.9, 1.5]];
+    at.forEach(([x, z, ry, rz], i) => {
+      K.push([x, 0.012 + (i > 2 ? 0.02 : 0), z], [0, ry, Math.PI / 2 + rz * 0.15]);
+      K.add(cyl(0.005, 0.005, 0.13, K.seg(6)), C.metal, { m: 'metal', p: [0, 0.01, 0], col: (c, xx, y) => { if (Math.sin(y * 90 + i) > 0.6) c.lerp(_c2.set(C.rust), 0.6); } });
+      K.add(cyl(0.004, 0.0002, 0.025, K.seg(6)), C.metal, { m: 'metal', p: [0, -0.067, 0] });
+      K.add(cyl(0.011, 0.011, 0.006, K.seg(8)), C.darkMetal, { m: 'metal', p: [0, 0.077, 0] });
+      K.pop();
+    });
+  },
+  cup(K) { cupBody(K); },
+  water(K) {
+    cupBody(K);
+    K.add(new T.CircleGeometry(0.069, K.seg(14)), 0x2f9fd8, { m: 'glass', p: [0, 0.152, 0], r: [-Math.PI / 2, 0, 0], jit: 0, col: (c, x, y) => c.lerp(_c2.set(0xbfe9f7), smooth(0.035, 0.069, Math.hypot(x, y)) * 0.7) });
+  },
+  planter(K) {
+    // terracotta pot sized for farming-view.js (height 0.5, open top r 0.36): the view adds its own soil disc
+    const pot = [[0, 0.01], [0.26, 0], [0.28, 0.03], [0.35, 0.44], [0.39, 0.45], [0.4, 0.5], [0.385, 0.52], [0.35, 0.52], [0.335, 0.47], [0, 0.47]];
+    K.add(lathe(pot, K.seg(16)), C.terracotta, { m: 'base', col: (c, x, y, z) => { if (y > 0.44) c.multiplyScalar(1.12); if (Math.abs(y - 0.18) < 0.02 || Math.abs(y - 0.3) < 0.012) c.multiplyScalar(0.8); if (y < 0.48 && y > 0.46 && Math.hypot(x, z) < 0.336) c.set(C.soil); } });
+    K.add(new T.TorusGeometry(0.33, 0.012, 4, K.seg(16)), C.rope, { p: [0, 0.18, 0], r: [Math.PI / 2, 0, 0], s: [1.05, 1.05, 1], col: ropeCol(2.1, 0.02) });
+  },
+  palmSeedling(K) {
+    coconut(K, [0, 0.03, 0], 0.06);
+    for (const [yaw, l] of [[0.4, 0.13], [2.6, 0.11], [4.4, 0.09]]) cropLeaf(K, [0, 0.06, 0], l, 0.05, yaw, 1.0, C.leafLight, C.stem, 0.35);
+  },
+  palmSprout(K) {
+    coconut(K, [0.03, 0.03, 0.02], 0.065);
+    K.add(cyl(0.012, 0.018, 0.12, K.seg(6)), C.stem, { p: [0, 0.07, 0] });
+    for (let i = 0; i < 3; i++) { K.push([0, 0.13, 0], [0, i * 2.1 + 0.4, 0]); K.push([0, 0, 0], [-0.55 - (i % 2) * 0.25, 0, 0]); frond(K, 0.28, 0.35, 5); K.pop(); K.pop(); }
+  },
+  palmYoung(K) { palmTree(K, [0, 0, 0], 3, 0.15, 0.06, 5, 0.55, 7, 0); },
+  palmMature(K) { palmTree(K, [0, 0, 0], 6, 0.22, 0.095, 7, 0.9, 10, 3); },
   beet(K) {
     K.push([0, 0.065, 0], [0, 0, 1.3]);
     beetBulb(K, 0, 1.15);
@@ -534,9 +601,17 @@ const B = {
 };
 
 // legacy names used by the game / item ids
-const ALIAS = { wood: 'plank', palmLeaf: 'leaf', fishingRod: 'rod', crop: 'beet', plot: 'cropPlot', palm: 'palmPlanter', can: 'wateringCan' };
+// Item and farming ids used by the game resolve here, so getModel(itemKind) works for every inventory item.
+export const MODEL_ALIASES = Object.freeze({
+  wood: 'plank', planks: 'plank', palmLeaf: 'leaf', fishingRod: 'rod', fishingrod: 'rod', crop: 'beet', plot: 'cropPlot',
+  palm: 'palmPlanter', can: 'wateringCan', wateringcan: 'wateringCan', nail: 'nails', seeds: 'seed', filterCup: 'cup', pot: 'planter',
+  'palm-0': 'palmSeedling', 'palm-1': 'palmSprout', 'palm-2': 'palmYoung', 'palm-3': 'palmMature',
+  seedling: 'palmSeedling', growing: 'palmYoung',
+});
+const ALIAS = MODEL_ALIASES;
+export const hasModel = kind => !!B[ALIAS[kind] || kind];
 export const MODEL_KINDS = Object.freeze(Object.keys(B));
-const AO = { sail: { h: 0.5 }, lantern: { h: 0.4 }, hook: { min: 1 }, hammer: { min: 1 }, rod: { min: 1 }, net: { h: 0.3 }, sprout: { min: 0.8 }, young: { h: 0.08 }, mature: { h: 0.1 }, harvestable: { h: 0.12 } };
+const AO = { sail: { h: 0.5 }, lantern: { h: 0.4 }, hook: { min: 1 }, hammer: { min: 1 }, rod: { min: 1 }, net: { h: 0.3 }, sprout: { min: 0.8 }, young: { h: 0.08 }, mature: { h: 0.1 }, harvestable: { h: 0.12 }, palmSeedling: { min: 0.8 }, palmSprout: { h: 0.1 }, nails: { min: 0.85 }, cup: { min: 0.8 }, water: { min: 0.8 } };
 
 export function buildModel(kind, { lod = 0 } = {}) {
   const k = ALIAS[kind] || kind, build = B[k];
