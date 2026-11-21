@@ -1263,6 +1263,8 @@ export function mount(transfer = null) {
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
+    // onboarding/prompts hook (docs/cloud/onboarding.md): lets dist/prompts.js raycast with the live camera.
+    try { window.raftMount = {T, scene, camera, debug:debugApi}; window.dispatchEvent(new CustomEvent('raft:mount', {detail:window.raftMount})); } catch {}
   } catch (e) {
     console.error(e); dispose();
     try { if (previousDebug && !Object.getOwnPropertyDescriptor(window, 'raftDebug')) Object.defineProperty(window, 'raftDebug', previousDebug); } catch {}
