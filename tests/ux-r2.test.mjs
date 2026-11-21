@@ -18,3 +18,13 @@ test('UX-3: slot tooltip words the stack size so it is not read as have/need', (
   assert.equal(book.stackLabel(3, 0), '3');
   assert.doesNotMatch(book.stackLabel(7, 20), /^\d+ \/ \d+$/);
 });
+
+test('UX-8: after a hold batch the button reports the craft, not "Missing materials"', () => {
+  assert.equal(book.craftButtonText('missing', { n: 6, name: 'Rope' }), 'Crafted 6 Rope');
+  assert.equal(book.craftButtonText('ready', { n: 1, name: 'Rope' }), 'Crafted 1 Rope');
+  assert.equal(book.craftButtonText('missing', null), 'Missing materials');
+  assert.equal(book.craftButtonText('ready'), 'Craft');
+  assert.equal(book.craftButtonText('full', { n: 0 }), 'Bag is full');
+  // The batch hint is computed from the cap taken before the first craft (6), not the 5 left after it.
+  assert.equal(book.holdHint(6), 'hold: up to 6');
+});

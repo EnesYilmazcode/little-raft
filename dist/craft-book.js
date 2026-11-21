@@ -292,6 +292,13 @@ export function trackerView(recipe, countOf, check = null) {
   };
 }
 
+/** Craft button label. Right after a batch (`done` = { n, name }) it reports the success, even
+ *  though the batch has usually used the materials up, instead of a grey 'Missing materials'. */
+export function craftButtonText(state, done = null) {
+  if (done && done.n > 0) return `Crafted ${done.n}${done.name ? ' ' + done.name : ''}`;
+  return state === 'ready' ? 'Craft' : state === 'full' ? 'Bag is full' : 'Missing materials';
+}
+
 /** Craft button hint: how many a hold would make right now ('' when one or none). */
 export function holdHint(times, cap = HOLD.max) {
   const n = Math.min(Number.isFinite(times) ? Math.floor(times) : cap, cap);
