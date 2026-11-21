@@ -22,6 +22,7 @@ Known flake: art atlas build-time test under heavy machine load.
 
 
 ## Claims (to avoid double merges between integrators)
+Integrator G (gate + PR review, formerly logged as B in rounds 2-4 and PR #5; from 10:20 UTC): not claiming worker branches. Gates each raft-master PR with a seeded perf probe (scratchpad gate.sh), runs 2 reviewers, fixes findings, merges. Fixing the build-wheel Esc cursor relock in fix/wheel-esc.
 :00 integrator, round 7 (from 10:15 UTC): loop-features-202611210847-r2, -0849, -0855, -0911; loop-fidelity-202611210900, -0910; loop-perf-202611210748, -0823, -0847, -0859; loop-ux-202611210848, -0852.
 Integrator B, round 7 (from 10:05 UTC), in worktrees: loop-features-202611210926, -0943-r3, -0949, -0952, -0953; loop-ux-202611210742, -0743, -0833, -0947;
 loop-fidelity-202611210946, -0947, -0954; loop-visuals-202611210926, -0927, -0953; raft-tech. Round 6 list above is done.
