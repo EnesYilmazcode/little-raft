@@ -29,7 +29,7 @@ export function createControls(g) {
 
   const onAction = (id, phase, info) => {
     if (info?.blocked) { // pad Y / Start / B while a menu is open: close it (never while a rebind is listening)
-      if (![...tabs].some(t => t.capturing)) { call('menuBack', id); input.clear(); }
+      if (![...tabs].some(t => t.capturing)) { call('menuBack', id); input.quiet(); } // quiet: keys held through the menu still count after it
       return;
     }
     const pad = input.activeDevice === 'pad';
@@ -55,13 +55,15 @@ export function createControls(g) {
   }
 
   // Call once per frame before physics. Returns the shaped input for physics.update().
-  function movement(dt, active, physics) {
+  // dt shapes movement feel (callers cap it); lookDt (default dt) is the real frame time for right-stick look,
+  // so turning speed in rad/s holds at low frame rates.
+  function movement(dt, active, physics, lookDt = dt) {
     if (radial?.isOpen && g.isBlocked?.()) radial.close(); // a dialog opened over the radial: cancel, never pick behind it
-    input.update(dt);
+    input.update(lookDt);
     const {dx, dy} = input.lookDelta();
     if (radial?.isOpen) { // look input steers a virtual stick (works for right stick and locked mouse)
       input.hotbarStep(); input.hotbarSlot(); // drain: bumpers pressed while choosing must not fire on close
-      const inv = map.settings[input.activeDevice === 'pad' ? 'padInvertY' : 'invertY'] ? -1 : 1; // radial is screen space (+y down)
+      const inv = input.activeDevice === 'pad' && map.settings.padInvertY ? -1 : 1; // radial is screen space (+y down); mouse dy is never inverted by input.js
       const c = cursor; c[0] += dx * 6; c[1] += dy * inv * 6; const l = Math.hypot(c[0], c[1]); if (l > 1) { c[0] /= l; c[1] /= l; }
       radial.update(c[0], c[1]); return {forward:0, strafe:0, sprint:false, jump:false}; }
     if (dx || dy) call('look', dx, dy);
