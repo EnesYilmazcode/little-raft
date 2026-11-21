@@ -56,13 +56,19 @@ RAD_PX = 1 / .005  # game.js DRAG_SENSITIVITY: 0.005 rad per dragged pixel
 
 # Each scene is a list of steps:
 #   ('frames', n)  advance the virtual clock n frames (1/60 s each)
-#   ('click', sel) DOM click (element.click())            ('key', key) press+release      ('hold', key, frames) key held for n frames
+#   ('click', sels) DOM click (element.click()) on the first VISIBLE match of a tuple of selectors, so one scene works
+#                  across title-screen variants (main's onboarding menu hides #solo; wip/fleet/menus hides #solo, a
+#                  Continue button, and starts with #newGame). No visible match fails the scene at once, no retry.
+#   ('expect', js, what)  JS that must be truthy now, else the scene fails at once with `what`
+#   ('key', key) press+release      ('hold', key, frames) key held for n frames
 #   ('yaw', rad) / ('pitch', rad)  drag-to-look by that many radians    ('down',) / ('up',) left mouse at centre
-START = [('frames', 10), ('click', '#solo'), ('frames', 90)]
+NEW_GAME = ('#newGame', '.ob-item[data-act="new"]', '#solo')
+START = [('frames', 10), ('click', NEW_GAME), ('frames', 90),
+         ('expect', '!!raftDebug.state.running', 'the game is running (raftDebug.state.running) 90 frames after the start click')]
 SCENES = {
     'title':        [('frames', 30)],
-    'title-help':   [('frames', 10), ('click', '#helpButton'), ('frames', 10)],
-    'title-crew':   [('frames', 10), ('click', '#welcomeCrew'), ('frames', 10)],
+    'title-help':   [('frames', 10), ('click', ('#helpButton', '.ob-item[data-act="settings"]')), ('frames', 10)],
+    'title-crew':   [('frames', 10), ('click', ('#welcomeCrew', '.ob-item[data-act="crew"]')), ('frames', 10)],
     'spawn':        START,
     'look-left':    START + [('yaw', 1.5708), ('frames', 20)],
     'look-right':   START + [('yaw', -1.5708), ('frames', 20)],
@@ -93,7 +99,8 @@ def describe(steps, seed):
     out = [f'serve the dist, inject tools/determinism.js as an init script, open /?seed={seed}&freeze=1 at {W}x{H}']
     for s in steps:
         k = s[0]
-        out.append({'frames': lambda: f'step {s[1]} frames', 'click': lambda: f'{s[1]}.click() in the page',
+        out.append({'frames': lambda: f'step {s[1]} frames', 'click': lambda: f'.click() the first visible of {" / ".join(s[1])}',
+                    'expect': lambda: f'expect {s[2]}',
                     'key': lambda: f'press {s[1]}', 'hold': lambda: f'hold {s[1]} for {s[2]} frames',
                     'yaw': lambda: f'drag-look yaw {s[1]:+.2f} rad', 'pitch': lambda: f'drag-look pitch {s[1]:+.2f} rad',
                     'down': lambda: 'mouse down at centre', 'up': lambda: 'mouse up'}[k]())
@@ -110,6 +117,19 @@ def drag(page, dx, dy):
         dx -= sx; dy -= sy
 
 
+class SceneError(Exception):
+    """The build under test cannot reach the scene (missing control, failed expectation). Deterministic: no retry."""
+
+
+# Clicks the first visible element among the selectors; else returns the visible buttons for the error message.
+CLICK_JS = '''sels => { const vis = e => !!e && !e.closest('[hidden]') && e.getClientRects().length > 0
+  && getComputedStyle(e).visibility !== 'hidden';
+for (const s of sels) { const e = [...document.querySelectorAll(s)].find(vis); if (e) { e.click(); return {clicked: s}; } }
+return {visible: [...document.querySelectorAll('button,[role=button],a[href]')].filter(vis).slice(0, 12)
+  .map(e => (e.id ? '#' + e.id : e.tagName.toLowerCase() + (e.className ? '.' + String(e.className).trim().split(/\\s+/).join('.') : ''))
+  + ' "' + (e.innerText || '').trim().slice(0, 30) + '"')}; }'''
+
+
 def run_steps(page, steps):
     step = lambda n: page.evaluate(f'window.__det.step({int(n)})')
     for s in steps:
@@ -118,10 +138,14 @@ def run_steps(page, steps):
         elif k == 'click':
             # A DOM click (the game's buttons use onclick), not a mouse click: Playwright's mouse click waits for the
             # element to be stable over two real compositor frames, which timed out at 10 s on a box at load 30, and
-            # a pointer parked over a button adds hover state that depends on when Chromium re-hit-tests.
-            loc = page.locator(s[1])
-            loc.wait_for(state='visible', timeout=60000)
-            loc.evaluate('e => e.click()', timeout=60000)
+            # a pointer parked over a button adds hover state that depends on when Chromium re-hit-tests. The DOM is
+            # a pure function of the virtual frames stepped so far, so there is nothing to wait for.
+            r = page.evaluate(CLICK_JS, list(s[1]))
+            if 'clicked' not in r:
+                raise SceneError(f'no visible element for {" / ".join(s[1])}; visible buttons: {r["visible"]}')
+        elif k == 'expect':
+            if not page.evaluate(f'(() => {{ try {{ return !!({s[1]}); }} catch (e) {{ return false; }} }})()'):
+                raise SceneError(f'expected {s[2]}, but `{s[1]}` is false')
         elif k == 'key': page.keyboard.press(s[1])
         elif k == 'hold':
             page.keyboard.down(s[1]); step(s[2]); page.keyboard.up(s[1])
@@ -182,6 +206,8 @@ def render_scene(browser, url, name, png):
             try: info['state'] = page.evaluate(STATE_JS)
             except Exception as e: info['errors'].append('state: ' + str(e).splitlines()[0][:200])
             info['ok'] = True
+        except SceneError as e:
+            info['exception'] = 'scene unreachable: ' + str(e)[:400]; info['sceneError'] = True
         except Exception as e:
             info['exception'] = str(e).splitlines()[0][:300]
     finally:
@@ -432,7 +458,7 @@ def main():
                             info['attempts'] = attempt
                             # A render that failed without any page error (a timeout or a crashed renderer on a busy
                             # box) is retried once; a real game failure fails the same way again.
-                            if info['ok'] or info['errors']: break
+                            if info['ok'] or info['errors'] or info.get('sceneError'): break
                             print(f'  {label}:{name} retrying after: {info.get("exception")}', file=sys.stderr)
                         with lock: metas[sub][name] = info
                         print(f'  {label}:{name} {"ok" if info["ok"] else "FAILED " + str(info.get("exception"))} '
@@ -455,6 +481,7 @@ def main():
     for _ in threads: launched.acquire()
     cache = {'status': 'off'}
     if errors and not versions:
+        for _ in threads: work.put(None)
         ready.set(); return infra(f'browser run failed: {errors[0]}')
     if mode == 'compare' and not args.no_cache:
         cdir = cache_root() / cache_key(base, args.seed, versions[0])
