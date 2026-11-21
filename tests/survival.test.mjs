@@ -602,3 +602,39 @@ test('a fresh bag (new game) holds only the hook', () => {
   const kinds = new Bag().slots.filter(Boolean).map(s => s.kind);
   assert.deepEqual(kinds, ['hook']);
 });
+
+// ---------------------------------------------------------------- placement
+
+const { floorTarget, decorCheck, normaliseDecor } = await import(new URL('placement.js', base));
+const DECOR = ['sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
+const tilesOf = list => { const s = new Set(list.map(([x, z]) => x + ',' + z)); return (x, z) => s.has(x + ',' + z); };
+const raft2 = tilesOf([[-1, 0], [0, 0], [-1, 1], [0, 1]]);
+
+test('placement: foundations snap next to the raft, aiming near an edge picks the neighbour', () => {
+  assert.deepEqual(floorTarget(raft2, 2.1, 0.2), { x: 1, z: 0 }, 'water beside the raft');
+  assert.deepEqual(floorTarget(raft2, 0.8, 0.1), { x: 1, z: 0 }, 'near the +x edge of tile 0,0');
+  assert.equal(floorTarget(raft2, 0.1, 0.1), null, 'middle of an existing tile');
+  assert.equal(floorTarget(raft2, 6, 6), null, 'not adjacent');
+});
+
+test('placement: decor sits anywhere on deck, near edges, but not off it or on other decor', () => {
+  const crate = (x, z, rot = 0) => ({ type: 'crate', x, z, rot });
+  assert.equal(decorCheck(raft2, [], crate(0.37, 0.1)), 'ok', 'off-centre, close to the edge');
+  assert.equal(decorCheck(raft2, [], crate(0.95, 0.1)), 'air', 'hangs over the water');
+  assert.equal(decorCheck(raft2, [], crate(-1, 1)), 'ok', 'straddling four tiles');
+  const placed = [crate(0, 0)];
+  assert.equal(decorCheck(raft2, placed, crate(0.5, 0.2)), 'blocked');
+  assert.equal(decorCheck(raft2, placed, crate(-1.1, 0)), 'ok', 'side by side');
+  const bench = { type: 'bench', x: -1, z: 1, rot: 0 };
+  assert.equal(decorCheck(raft2, [bench], crate(-1, 1.75)), 'ok', 'thin bench leaves room in front');
+  assert.equal(decorCheck(raft2, [{ ...bench, rot: Math.PI / 2 }], crate(-1, 1.75)), 'blocked', 'rotated bench does not');
+  assert.equal(decorCheck(raft2, [], { type: 'net', x: 0.9, z: 0, rot: 0 }), 'ok', 'nets may hang over the side');
+});
+
+test('placement: old tile-centred decor still loads, new entries keep floats and rotation', () => {
+  assert.deepEqual(normaliseDecor({ type: 'palm', x: 0, z: 1 }, DECOR, raft2), { type: 'palm', x: 0, z: 2, rot: 0 });
+  assert.deepEqual(normaliseDecor({ type: 'crate', x: 0.4567, z: 1.2, rot: -Math.PI / 2 }, DECOR, raft2), { type: 'crate', x: 0.457, z: 1.2, rot: 4.712 });
+  assert.equal(normaliseDecor({ type: 'crate', x: 9, z: 9 }, DECOR, raft2), null, 'off the raft');
+  assert.equal(normaliseDecor({ type: 'crate', x: 0.5, z: 0 }, DECOR, raft2), null, 'float without rot is not a legacy cell');
+  assert.equal(normaliseDecor({ type: 'rocket', x: 0, z: 0, rot: 0 }, DECOR, raft2), null);
+});
