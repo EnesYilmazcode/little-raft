@@ -42,7 +42,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   const tip = doc.createElement('div');
   tip.className = 'it-tip'; tip.id = 'it-tip-' + Math.random().toString(36).slice(2, 8);
   tip.setAttribute('role', 'tooltip'); tip.hidden = true;
-  let cur = null, px = 0, py = 0, prevDesc = null;
+  let cur = null, px = 0, py = 0, prevDesc = null, tw = -1, th = 0; // tw/th: card size, measured once per content change
 
   const call = fn => { try { return fn?.() ?? null; } catch (e) { console.error(e); return null; } };
   const slotsOf = bag => {
@@ -104,9 +104,12 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     return out;
   }
 
+  // Pointermove only repositions: the card size is cached (re-measured after a content write or
+  // resize) so moving the cursor never forces a synchronous layout.
   function place() {
     if (tip.hidden || !cur) return;
-    const w = tip.offsetWidth, h = tip.offsetHeight, vw = innerWidth, vh = innerHeight;
+    if (tw < 0) { tw = tip.offsetWidth; th = tip.offsetHeight; }
+    const w = tw, h = th, vw = innerWidth, vh = innerHeight;
     let x = px + 16, y = py + 20;
     if (x + w > vw - 6) x = px - w - 12;
     if (y + h > vh - 6) y = py - h - 12;
@@ -121,7 +124,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     if (cur && cur.el !== el) restoreDesc();
     if (!cur || cur.el !== el) { prevDesc = el.getAttribute('aria-describedby'); el.setAttribute('aria-describedby', tip.id); }
     cur = res; px = x; py = y;
-    tip.innerHTML = html(res);
+    tip.innerHTML = html(res); tw = -1;
     tip.hidden = false; place();
     requestAnimationFrame(() => { if (cur) tip.classList.add('it-on'); });
   }
@@ -150,6 +153,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   on(doc, 'scroll', () => { if (cur) hide(); }, { capture: true, passive: true });
   on(doc, 'keydown', e => { if (e.key === 'Escape' && cur) hide(); }, { capture: true });
   on(doc.defaultView || window, 'blur', hide);
+  on(doc.defaultView || window, 'resize', () => { tw = -1; });
 
   // Re-render the open card (e.g. after a craft/move changes counts); hides if the slot emptied.
   function refresh() { if (cur && cur.el.isConnected) show(cur.el, px, py); else if (cur) hide(); }
