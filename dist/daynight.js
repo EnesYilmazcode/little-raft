@@ -409,6 +409,54 @@ export function createDayNight(ctx) {
   }
   attach(scene0);
 
+  // ---- pool warm-up. three keys every lit program on the point-light count, so the first lantern
+  // would relink every program in the scene in one frame (seconds on software GL). Once a lantern can
+  // be crafted or is in the bag, the pool variants are compiled ahead, a couple of programs per frame,
+  // with the pool lights in the scene (intensity 0) only for that compile call. Each material keeps
+  // both programs, so the switch at the first placement links nothing. Nothing renders with them in.
+  const LANTERN_KINDS = ['lantern', 'glasslamp', 'candle'];
+  const WARM_PROGRAMS = 2, WARM_BUDGET_MS = 12, WARM_GAP_MS = 50;
+  let warmStage = 0, warmCheck = -1e9, warmLast = -1e9, warmList = null, warmAt = 0, warmCount = -1;
+  function lanternStage() {
+    let bag = null; try { bag = ctx.localBag?.(); } catch {}
+    if (!bag || typeof bag.count !== 'function') return 0;
+    for (const k of LANTERN_KINDS) if (bag.count(k) > 0) return 2;
+    if (typeof bag.canCraft === 'function') for (const k of LANTERN_KINDS) { try { if (bag.canCraft(k)?.ok) return 1; } catch {} }
+    return 0;
+  }
+  function checkWarm() {
+    if (poolOn > 0 || !attached || !ctx.camera || typeof renderer?.compile !== 'function' || typeof performance === 'undefined') { warmList = null; return; }
+    const now = performance.now();
+    if (warmList) { if (now - warmLast >= WARM_GAP_MS) { warmLast = now; warmSlice(attached, ctx.camera); } return; }
+    if (now - warmCheck < 1000) return; // wall clock, not dt: software GL runs a few fps
+    warmCheck = now;
+    const s = lanternStage(); if (s <= warmStage) return;
+    // stage 2 runs again after stage 1: the held lantern and its build ghost only exist once it is in the bag
+    warmStage = s; warmList = []; warmAt = 0; warmCount = poolCap(ctx.options?.graphics);
+    const seen = new Set();
+    attached.traverse(o => {
+      if (!(o.isMesh || o.isPoints || o.isLine || o.isSprite) || !o.material) return;
+      const ms = Array.isArray(o.material) ? o.material : [o.material], g = o.geometry?.attributes;
+      const k = ms.map(m => m.id).join(',') + (o.isInstancedMesh ? 'i' + (o.instanceColor ? 'c' : '') : '') + (o.isSkinnedMesh ? 's' : '') + (o.isBatchedMesh ? 'b' : '')
+        + (g?.color ? 'v' + g.color.itemSize : '') + (g?.tangent ? 't' : '') + (o.geometry?.morphAttributes?.position ? 'm' : '');
+      if (!seen.has(k)) { seen.add(k); warmList.push(o); }
+    });
+  }
+  function warmSlice(scene, cam) {
+    if (warmCount !== poolCap(ctx.options?.graphics)) { warmList = null; warmStage = 0; return; } // graphics changed the count: start over
+    const t0 = performance.now(), p0 = renderer.info?.programs?.length ?? 0;
+    for (let i = 0; i < warmCount; i++) { pool[i].intensity = 0; scene.add(pool[i]); }
+    try {
+      while (warmAt < warmList.length) {
+        const o = warmList[warmAt++];
+        if (o.parent) renderer.compile(o, cam, scene); // left the scene since the list was built: skip
+        if ((renderer.info?.programs?.length ?? 0) - p0 >= WARM_PROGRAMS || performance.now() - t0 > WARM_BUDGET_MS) break;
+      }
+    } catch (e) { console.warn('lantern light warm-up failed', e); warmAt = warmList.length; }
+    for (let i = 0; i < warmCount; i++) scene.remove(pool[i]);
+    if (warmAt >= warmList.length) warmList = null;
+  }
+
   // ---- lantern cache
   const partMat = new Array(MAX_PARTS).fill(null), partBase = new Float64Array(MAX_PARTS), partMult = new Float64Array(MAX_PARTS);
   const partColor = new Float64Array(MAX_PARTS * 3), partTint = new Uint8Array(MAX_PARTS); // base emissive rgb, 1 = glass (tinted at night)
@@ -609,6 +657,7 @@ export function createDayNight(ctx) {
       if (rankClock >= 0.5) { rankClock = 0; rankLanterns(raft, cam); }
     }
     sizePool();
+    checkWarm();
     poolLit = 0;
     for (let i = 0; i < poolOn; i++) {
       const l = pool[i], k = poolPick[i];
@@ -618,6 +667,14 @@ export function createDayNight(ctx) {
       l.intensity = poolI * (0.94 + 0.06 * Math.sin(time * 7.3 + k * 1.7)); // gentle candle flicker
       poolLit++;
     }
+  }
+
+  // content hook, end of rebuildRaft: scan now, so a loaded raft's lanterns bring in the pool lights before the
+  // mount-time shader warm-up (else that warm-up compiled every program without them and the first frame relinked them)
+  function afterRebuild() {
+    const raft = ctx.raft; if (!raft) return;
+    signature = lanternSignature(raft, ctx.world); scanLanterns(raft); scanClock = 0; lastNf = -1;
+    sizePool();
   }
 
   function update(dt) {
@@ -674,6 +731,7 @@ export function createDayNight(ctx) {
 
   function dispose() {
     DAYNIGHT_LIVE.ready = false;
+    warmList = null;
     restoreParts();
     attach(null);
     for (let i = 0; i < cloudMeshes.length; i++) cloudMeshes[i].material = cloudOrig[i];
@@ -718,12 +776,12 @@ export function createDayNight(ctx) {
       return {
         phase: Number.isFinite(pinPhase) ? pinPhase : phaseAt(clock), day: Math.floor(clock / DAY_SECONDS), clock, seed,
         nightFactor: L.nightFactor, light: L.light, weather: W.weather, weatherNext: W.weatherNext, blend: W.blend,
-        rain: W.rain, wind: W.wind, cloud: W.cloud, lanterns: lanternCount, poolLit,
+        rain: W.rain, wind: W.wind, cloud: W.cloud, lanterns: lanternCount, poolLit, poolWarm: { stage: warmStage, left: warmList ? warmList.length - warmAt : 0 },
         pinned: { phase: Number.isFinite(pinPhase) ? pinPhase : null, weather: pinWeather >= 0 ? WEATHERS[pinWeather] : null, optOut: false, frozen },
         role: ctx.role ?? role0,
       };
     },
   };
 
-  return { name: 'daynight', update, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get rain() { return W.rain; } };
+  return { name: 'daynight', update, afterRebuild, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get rain() { return W.rain; } };
 }
