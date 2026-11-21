@@ -19,7 +19,7 @@ const MAX_PER_KIND = [3, 4, 4, 3];
 // instead use a trunk capsule (PALM_PICK_R) plus a small sphere round the coconuts at the crown;
 // PICK_Y[0] is only the aim point QA scripts look at (mid trunk).
 const PICK_Y = [1.6, .45, .3, .08], PICK_R = [.3, .75, .55, .55];
-const PALM_PICK_R = .35;
+const PALM_PICK_R = .25; // trunk is ~0.15 m thick at mid height: about 10 cm of slack
 // Solid trunks and rocks the player walks around (radius times node scale; 0 = walk through).
 const SOLID_R = [.28, 0, .42, 0];
 const LOCAL_COOLDOWN = 0.35;
@@ -68,6 +68,7 @@ export function createIslands(ctx) {
   const extra = ['palmSpent', 'nuts'].map(k => {
     const m = new T.InstancedMesh(models.geos[k], models.mats[k], MAX_PER_KIND[0]);
     m.name = 'island-' + k; m.count = 0; m.castShadow = true; m.receiveShadow = true;
+    m.frustumCulled = false; // instances swap in after relayout, so a cached bounding sphere would be stale
     m.instanceMatrix.setUsage(T.DynamicDrawUsage);
     for (let j = 0; j < MAX_PER_KIND[0]; j++) m.setColorAt(j, new T.Color(1, 1, 1));
     return m;
@@ -169,7 +170,7 @@ export function createIslands(ctx) {
     // While rising or sinking, plants shrink with the sink so palm crowns never poke out of open sea.
     const grow = 1 - path.sink / ISLAND.SINK;
     for (let i = 0; i < veg.length; i++) veg[i].scale.setScalar(grow < 1e-3 ? 1e-3 : grow);
-    lagoon.position.set(cx, b + .05, cz);
+    lagoon.position.set(cx, b + .1, cz); // 10 cm up: clears the ocean mesh's ~4 cm interpolation error at grazing angles
     models.lagoonUniforms.uCentre.value.set(cx, cz);
     models.lagoonUniforms.uOpacity.value = 1 - path.sink / ISLAND.SINK;
     shown = group.visible = lagoon.visible = true;
@@ -357,7 +358,7 @@ export function createIslands(ctx) {
         d2 = raySeg(mx, my, mz, tx, ty - .1 * s, tz);
         if (d2 <= PALM_PICK_R * PALM_PICK_R && rayT <= reach) off = Math.min(off, Math.sqrt(d2) / Math.max(rayT, .3));
         d2 = raySeg(tx, ty - .17 * s, tz, tx, ty - .17 * s, tz); // coconut sphere
-        if (d2 <= (.3 * s) ** 2 && rayT <= reach) off = Math.min(off, Math.sqrt(d2) / Math.max(rayT, .3));
+        if (d2 <= (.25 * s) ** 2 && rayT <= reach) off = Math.min(off, Math.sqrt(d2) / Math.max(rayT, .3));
         if (off < palmOff) { palmOff = off; palm = k; }
         continue;
       }
@@ -436,7 +437,12 @@ export function createIslands(ctx) {
     yawTo() { const p = ctx.physics; return p && shown ? Math.atan2(-(cx - p.x), -(cz - p.z)) : null; },
     nodes() {
       if (!layout || !st.isl) return [];
-      return layout.nodes.map((n, i) => ({ i, kind: n.kind, used: st.isl.used[i], max: n.max, x: cx + n.x, y: gy + n.y, z: cz + n.z, cy: gy + n.y + PICK_Y[nodeKind[i]] * n.s }));
+      // (ax, cy, az): a point on the node to aim at. For a palm that is on the bent trunk, not above its base.
+      const bend = (PICK_Y[0] / PALM_H) ** 2 * PALM_BEND;
+      return layout.nodes.map((n, i) => {
+        const palm = nodeKind[i] === 0, ox = palm ? Math.cos(n.a) * bend * n.s : 0, oz = palm ? -Math.sin(n.a) * bend * n.s : 0;
+        return { i, kind: n.kind, used: st.isl.used[i], max: n.max, x: cx + n.x, y: gy + n.y, z: cz + n.z, cy: gy + n.y + PICK_Y[nodeKind[i]] * n.s, ax: cx + n.x + ox, az: cz + n.z + oz };
+      });
     },
     drain() { if (!st.isl) return false; st.isl.used.forEach((_, k) => { st.isl.used[k] = layout.nodes[k].max; writeNode(k); }); return true; },
     clear() { st.isl = null; st.next = st.clock + ISLAND.CALM_MIN; relayout(); place(); return debug.phase(); },

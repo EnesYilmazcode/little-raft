@@ -35,7 +35,7 @@ inventory-state.js are unchanged, and no new hook was needed.
   `0.7 R`, on dry sand.
 - **Shallow water is a lagoon overlay, not a sunken disc.** The ocean shader is opaque, so nothing
   under it shows. The lagoon is a ring mesh that reuses the ocean's own vertex shader (shared
-  `uTime`), so it rides the same waves 5 cm above them. It has a small fragment shader: wet sand
+  `uTime`), so it rides the same waves 10 cm above them (at 5 cm the coarser ocean grid poked through near the camera as a grey band). It has a small fragment shader: wet sand
   near the shore fades to turquoise and then teal, the alpha fades out by about 2.4 R, and there is
   a wobbling foam line plus foam rings rolling in. It shares `uSky` and the fade uniforms with the
   ocean, so it fogs out the same way. If the ocean has no `material.vertexShader` (as in tests), a
@@ -95,7 +95,7 @@ inventory-state.js are unchanged, and no new hook was needed.
   `GUEST_SLACK = 1.0` m extra reach. A gather that is out of reach answers "Get a little closer";
   a cooldown hit is ignored quietly. The local cooldown and the pop start only when the action was
   really sent (`ctx.action` returns `false` when a guest is not connected).
-- **Pick.** Palms are picked by a trunk capsule (r 0.35 m, two segments along the bend) plus a
+- **Pick.** Palms are picked by a trunk capsule (r 0.25 m, about 10 cm of slack round the bark, two segments along the bend) plus a
   small sphere round the coconuts, not a big crown sphere, so the sky between fronds, the raft or
   a sand patch next to a palm no longer says "Gather palm". Candidates are ranked by angle off the
   ray, and sand, bush and rock win over a palm when both are hit.
@@ -121,7 +121,8 @@ off. Nothing breaks, and a test covers that fallback.
 **Debug** (`raftDebug.content.islands`): `spawnNear(seed = 1234, t = 25)` (`t` is seconds into the
 timeline, so `t < 25` gives an approaching island), `phase()`, `skip(s)`, `teleportAshore(dx, dz)`,
 `aimAt(i)` (stands you on the inland side of node `i` and returns it with `yaw`, the camera yaw
-that faces it), `yawTo()`, `nodes()`, `pick()` (node under the screen centre), `drain()`,
+that faces it), `yawTo()`, `nodes()` (each with an aim point `ax, cy, az`; for a palm that is on
+the bent trunk), `pick()` (node under the screen centre), `drain()`,
 `clear()`, `state()`, `groundAt(x, z)`. Headless Chrome holds pointer lock, so screenshot scripts
 turn the view with synthetic `mousemove` `movementX/Y` events (0.0022 rad per pixel).
 

@@ -211,7 +211,10 @@ void main() {
   vec3 kS = clamp(uShallow / max(uShallow0, vec3(1e-3)), 0.0, 1.5);
   vec3 kD = clamp(uDeep / max(uDeep0, vec3(1e-3)), 0.0, 1.5);
   vec3 kF = clamp(uSeaFoam / max(uSeaFoam0, vec3(1e-3)), 0.0, 1.5);
-  vec3 col = mix(uSand * kS, uTurq * kS, smoothstep(0.0, 0.16, t));
+  // Sand under the water only gets darker (a luminance ratio), so it never turns orange or blue.
+  const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
+  float kL = clamp(dot(uShallow, LUM) / max(dot(uShallow0, LUM), 1e-3), 0.0, 1.2);
+  vec3 col = mix(uSand * kL, uTurq * kS, smoothstep(0.0, 0.16, t));
   col = mix(col, uTeal * kD, smoothstep(0.22, 0.75, t));
   col *= 0.92 + 0.16 * h;
   float alpha = (1.0 - smoothstep(0.08, 1.0, t)) * 0.9;

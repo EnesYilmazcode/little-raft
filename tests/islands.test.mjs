@@ -514,8 +514,11 @@ test('palm pick: trunk and coconuts count, sky above the crown does not', () => 
   const k = w.mod.debug.nodes().findIndex(n => n.kind === 'palm');
   const n = w.mod.debug.aimAt(k, 2.2); w.mod.update(0);
   const cam = w.ctx.camera, look = (x, y, z) => { cam.position.set(w.physics.x, w.physics.y, w.physics.z); cam.lookAt(x, y, z); cam.updateMatrixWorld(); };
-  look(n.x, n.cy, n.z);
+  look(n.ax, n.cy, n.az);
   assert.equal(w.mod.debug.pick(), k, 'aiming at the trunk');
+  // a hand's width beside the bark (0.35 m off the axis) is not the palm
+  { const vx = n.ax - w.physics.x, vz = n.az - w.physics.z, vl = Math.hypot(vx, vz);
+    look(n.ax - vz / vl * 0.35, n.cy, n.az + vx / vl * 0.35); assert.equal(w.mod.debug.pick(), -1, 'just beside the trunk'); }
   look(n.x, n.y + 20, n.z);
   assert.equal(w.mod.debug.pick(), -1, 'sky above the palm');
   // beside the trunk, between the fronds: sky, not palm
