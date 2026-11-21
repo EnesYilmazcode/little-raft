@@ -206,8 +206,8 @@ const LIST = [
     recipe: hand({ wood: 4, scrap: 1 }), unlock: discover('scrap'),
     tip: 'A sturdy wooden crate. Looks great stacked by the edge.' }),
   item('net', 'Collection Net', 'build', { icon: 'icon-net', placeholder: false, placeable: true,
-    recipe: hand({ wood: 3, rope: 3, nail: 2 }), unlock: discover('nail'),
-    tip: 'Place it near the edge and it scoops up passing debris (even barrels!) for you.' }),
+    recipe: hand({ wood: 6, rope: 8, nail: 2 }), unlock: discover('nail'),
+    tip: 'Hang it off the raft edge. Debris drifting into it stays there (up to 10, even barrels). Press E to empty it.' }),
 
   item('armor', 'Foundation Armor', 'build', { iconTint: '#8e9aa4',
     recipe: hand({ metalingot: 1, nail: 2 }), unlock: research('metalingot', 'nail'),

@@ -76,7 +76,7 @@ export const RECIPES = Object.freeze({
   sail:       recipe('sail',       'Sail',         1, { wood: 10, leaf: 20, scrap: 3 }), // Raft costs (items.js wins anyway)
   palm:       recipe('palm',       'Palm Planter', 1, { wood: 2, leaf: 3 }),
   lantern:    recipe('lantern',    'Lantern',      1, { wood: 2, scrap: 2 }),
-  net:        recipe('net',        'Net',          1, { wood: 3, rope: 3 }),
+  net:        recipe('net',        'Net',          1, { wood: 6, rope: 8, nail: 2 }),
   bench:      recipe('bench',      'Bench',        1, { wood: 3 }),
   crate:      recipe('crate',      'Crate',        1, { wood: 4, scrap: 1 }),
   ...CONTENT_RECIPES, // content hook
