@@ -1,7 +1,7 @@
 // Shooting-star mesh (docs/specs/stars.md): one fixed-buffer Points, 3 slots x 24 vertices (head + fading tail).
 // The vertex shader places each vertex on the sky sphere (radius 130 around the camera) from per-slot uniforms,
 // so nothing is rebuilt per frame. uT[i] = (u head progress 0..1, fade, tint index, flare); u < 0 hides the slot.
-export const SLOTS = 3, TAIL = 24, SKY_R = 130, TAIL_SPAN = 0.32;
+export const SLOTS = 3, TAIL = 24, SKY_R = 130, TAIL_SPAN = 0.45;
 
 const VS = /* glsl */`
 attribute float aSlot;
@@ -23,11 +23,11 @@ void main() {
   vec3 dir = normalize(mix(a, b, clamp(u, 0.0, 1.0)));
   float on = step(0.0, u) * step(0.0, t.x);
   float flare = t.w;
-  vAlpha = on * (1.0 - f) * (1.0 - f) * t.y * uSky * (1.0 + 1.5 * flare);
+  vAlpha = min(1.0, on * pow(1.0 - f, 1.6) * t.y * uSky * (1.25 + 1.5 * flare));
   vColor = t.z < 0.5 ? vec3(1.0) : t.z < 1.5 ? vec3(1.0, 0.914, 0.659) : vec3(0.749, 0.961, 0.902);
   vColor = mix(vColor, vec3(1.0), 0.35 * (1.0 - f));
   vec4 mv = modelViewMatrix * vec4(dir * ${SKY_R.toFixed(1)}, 1.0);
-  gl_PointSize = uPx * (1.6 + 3.4 * (1.0 - f) * (1.0 - f) + flare * 5.0 * step(f, 0.01));
+  gl_PointSize = uPx * (2.6 + 4.5 * (1.0 - f) * (1.0 - f) + flare * 12.0 * step(f, 0.01));
   gl_Position = projectionMatrix * mv;
 }`;
 const FS = /* glsl */`
@@ -35,7 +35,8 @@ varying float vAlpha;
 varying vec3 vColor;
 void main() {
   vec2 d = gl_PointCoord - 0.5;
-  float a = vAlpha * smoothstep(0.5, 0.05, length(d));
+  float g = smoothstep(0.5, 0.0, length(d));
+  float a = vAlpha * g * g * (3.0 - 2.0 * g);
   if (a < 0.004) discard;
   gl_FragColor = vec4(vColor * a, a);
 }`;

@@ -235,6 +235,7 @@ export function createStars(ctx, peer = () => null) {
     },
     wish(k) { const d = dn(); if (!d || !isInt(k)) return false; const day = Math.floor(d.clock / DAY_SECONDS); pendAt[k] = time; flash[k] = FLASH_S; ctx.play?.('twinkle'); ctx.action({ kind: 'stars.wish', day, k }); return true; },
     seed: () => lastSeed, clock: () => lastClock,
+    slots: () => (kit ? kit.uniforms.uT.value.map(v => v.toArray()) : null), // [u, fade, tint, flare] per slot
   };
 
   return { name: 'stars', update, serialize, load, action, effect, interact, prompt, logbookTabs, dispose, debug };
