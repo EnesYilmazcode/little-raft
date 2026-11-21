@@ -108,3 +108,14 @@ Texts: ok `"+ N honey · N beeswax"`, full `"Your bag is full"`, empty `"No hone
 9. items: `flowerbox`/`beehive`/`candle` craft from their costs, `honeyfish` from `{cookedfish:1, honey:1}`; `new Bag` accepts a snapshot holding all seven kinds.
 Also: islands flower rate assertion (section 3); a daynight test that a `craft_candle` group's `lanternGlow` gets the night multiplier, alongside `tests/daynight.test.mjs:337`.
 Run `npm test` and shoot.py. The `errors` list must be empty.
+
+## Build notes
+- Built as specified. New: `dist/bees.js`, `dist/bees-model.js`, `tests/bees.test.mjs`. Hooks (all tagged `[bees]`): items.js (3 materials, honeyfish, 3 decor rows, radii, barrel row and rate comment), content.js (import + FEATURES), daynight.js (two candle lines), islands-layout.js (bush third outcome), islands.js (label), craft-book.js (categories + ITEM_TEXT), item-svg.js. No game.js edit.
+- Icons: drawn as inline bodies in `item-svg.js` ITEM_ICONS (the progression-lane home for new kinds) instead of new `icons.svg` symbols; the items keep the default `icon:'icon-<id>'` with `placeholder:true`, which is how every other new kind gets its dedicated drawing.
+- `tests/progression.test.mjs` reachability: one added line (honey and wax come from a hive next to a flower box), else honey/wax/candle/honeyfish count as unreachable.
+- The candle daynight test lives in `tests/bees.test.mjs` (own stub ctx) rather than in `daynight.test.mjs`, to keep the shared file untouched.
+- Harvest emits `{kind:'loot', text, loot:{honey:c, wax:c}}` so the pickup feed shows icon rows; failures emit `full`/`notice` text as specced.
+- Models: static parts of the hive and flower box are merged into one vertex-coloured mesh each (bees-model.js has its own tiny merge, since it imports nothing). Combs (3 meshes) and the `bees` group (3 small groups) stay separate. Candle parts are direct children; `lanternGlow` geometry is translated (daynight reads the geometry bounding-sphere centre for the light anchor).
+- Per-frame paint allocates nothing: hive list `{g, k, x, z}` is rebuilt only when the raft children change.
+- Extra QA debug on `raftDebug.content.bees`: `place(type, x, z)` (host, free raft tile), `fastForward(sec)`, `target(aim)`.
+- Mixed-version co-op is unsupported (see section 9); mention in the PR.
