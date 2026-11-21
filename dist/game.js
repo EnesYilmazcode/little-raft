@@ -2197,7 +2197,6 @@ export function mount(transfer = null) {
   function disposeScene() {
     if (!scene) return;
     try { building?.dispose(); } catch {} building = null; // building-pieces lane hook
-    try { sky?.dispose(); } catch {} sky = null; // sky noise texture is a uniform the material sweep misses
     if (diveWarmAt && typeof cancelIdleCallback === 'function') { try { cancelIdleCallback(diveWarmAt); } catch {} } diveWarmAt = 0; // a later() fallback is cleared with the other timers
     try { diving?.dispose(); } catch {} diving = null; // diving lane hook
     try { sky?.dispose(); } catch {} sky = null; // frees the sky noise texture on hot swap
