@@ -27,9 +27,13 @@ app.whenReady().then(()=>{
  const wc=win.webContents;let panelOpen=false,swallowEsc=false;
  const refreshPanel=()=>{if(!win||win.isDestroyed())return;wc.executeJavaScript('!!(window.raftShell&&window.raftShell.panelOpen())').then(v=>{panelOpen=!!v;},()=>{});};
  const ESCAPE_JS='(window.raftShell?window.raftShell.escape(true):window.raftEscape?(window.raftEscape(),true):(()=>{const d=[...document.querySelectorAll("dialog[open]")].pop();if(d){d.close();return true;}return false;})())';
- wc.on('console-message',(e,level,message)=>{const m=typeof e?.message==='string'?e.message:message;if(typeof m==='string'&&m.startsWith('[raft-shell] panel='))panelOpen=m.endsWith('=true');});
+ wc.on('console-message',(e,level,message)=>{const m=typeof e?.message==='string'?e.message:message;
+  if(typeof m!=='string')return;
+  if(m.startsWith('[raft-shell] panel='))panelOpen=m.endsWith('=true');
+  else if(m==='[raft-shell] relock')wc.executeJavaScript('window.raftShell&&window.raftShell.relock&&window.raftShell.relock()',true).catch(()=>{}); // page asks for a retry with a gesture
+ });
  wc.on('before-input-event',(event,input)=>{
-  if(input.key!=='Escape'){if(input.type==='keyUp')refreshPanel();return;}
+  if(input.key!=='Escape'){if(input.type==='keyUp'&&!escClaimed)refreshPanel();return;} // claimed: panelOpen is never read
   if(input.type==='keyDown'){
    if(!escClaimed&&!panelOpen&&!swallowEsc)return; // unclaimed, no panel: normal Escape (leave pointer lock, page opens the pause menu)
    event.preventDefault();
@@ -40,11 +44,20 @@ app.whenReady().then(()=>{
    // Relock on release, with a gesture: relocking while Escape is still held would count as leaving the lock.
    event.preventDefault();swallowEsc=false;
    wc.executeJavaScript('window.raftShell&&window.raftShell.released()',true).then(refreshPanel,refreshPanel);
-  }else if(escClaimed&&input.type==='keyUp')event.preventDefault(); // claimed: the page never sees a native Escape
+  }else if(input.type==='keyUp'){
+   // Keyup without its keydown: the browser used that keydown to leave pointer lock (it runs before
+   // before-input-event), so the page never saw the press. Open the pause menu instead of leaving a free cursor.
+   if(escClaimed)event.preventDefault(); // claimed: the page never sees a native Escape
+   wc.executeJavaScript('window.raftShell&&window.raftShell.escapedLock&&window.raftShell.escapedLock()',true).catch(()=>{});
+  }
  });
- // Focus never auto-locks; the next click in the page relocks with its own gesture.
+ // Focus return (alt-tab back): relock with a gesture, but only if play was locked when focus left and no
+ // menu is open (raftShell.focusRelock decides). The short delay lets the page see its own focus event first.
  win.on('blur',()=>{swallowEsc=false;}); // the page drops its held-Escape state on blur too
- win.on('focus',refreshPanel);
+ win.on('focus',()=>{
+  if(!escClaimed)refreshPanel();
+  setTimeout(()=>{if(win&&!win.isDestroyed()&&win.isFocused())wc.executeJavaScript('window.raftShell&&window.raftShell.focusRelock&&window.raftShell.focusRelock()',true).catch(()=>{});},100);
+ });
  wc.on('did-start-navigation',(_e,_url,_inPlace,isMain)=>{if(isMain!==false)panelOpen=false;});
  win.on('closed',()=>{clearTimeout(retry);win=null;});
  win.loadURL(origin).catch(()=>{});
