@@ -1,172 +1,38 @@
 {
- "a_deck": {
-  "mode": "a",
-  "tiles": 25,
-  "ao": true,
-  "chunk": false,
-  "lod": false,
-  "buildMs": 320.6,
-  "geometryKB": 10893,
-  "materials": 7,
-  "textures": 5,
-  "drawCalls": 172,
-  "triangles": 116050,
-  "msPerFrame": 3.74
+ "compare_0": {
+  "view": "compare",
+  "renderer": "SwiftShader (relative timings only)"
  },
- "b_deck": {
-  "mode": "b",
-  "tiles": 25,
-  "ao": true,
-  "chunk": false,
-  "lod": false,
-  "buildMs": 8321.9,
-  "bake": {
-   "cells": 1585152,
-   "vertices": 14136,
-   "unique": 4556
-  },
-  "geometryKB": 14978,
-  "materials": 1,
-  "textures": 1,
-  "drawCalls": 26,
-  "triangles": 116198,
-  "msPerFrame": 1.55
+ "compare_1": {
+  "view": "compare",
+  "renderer": "SwiftShader (relative timings only)"
  },
- "c_deck": {
-  "mode": "c",
-  "tiles": 25,
-  "ao": true,
-  "chunk": false,
-  "lod": false,
-  "buildMs": 3498.4,
-  "bake": {
-   "cells": 1532160,
-   "vertices": 588,
-   "unique": 268
-  },
-  "geometryKB": 53,
-  "materials": 1,
-  "textures": 1,
-  "drawCalls": 5,
-  "triangles": 10602,
-  "msPerFrame": 0.46
- },
- "a_close": {
-  "mode": "a",
-  "tiles": 25,
-  "ao": true,
-  "chunk": false,
-  "lod": false,
-  "buildMs": 2466.4,
-  "geometryKB": 10893,
-  "materials": 7,
-  "textures": 5,
-  "drawCalls": 97,
-  "triangles": 64458,
-  "msPerFrame": 13.76
- },
- "b_close": {
-  "mode": "b",
-  "tiles": 25,
-  "ao": true,
-  "chunk": false,
-  "lod": false,
-  "buildMs": 6281.7,
-  "bake": {
-   "cells": 1585152,
-   "vertices": 14136,
-   "unique": 4556
-  },
-  "geometryKB": 14978,
-  "materials": 1,
-  "textures": 1,
-  "drawCalls": 16,
-  "triangles": 69162,
-  "msPerFrame": 0.68
- },
- "b_close_noao": {
-  "mode": "b",
-  "tiles": 25,
-  "ao": false,
-  "chunk": false,
-  "lod": false,
-  "buildMs": 618,
-  "geometryKB": 14978,
-  "materials": 1,
-  "textures": 1,
-  "drawCalls": 16,
-  "triangles": 69162,
-  "msPerFrame": 0.72
- },
- "c_close": {
-  "mode": "c",
-  "tiles": 25,
-  "ao": true,
-  "chunk": false,
-  "lod": false,
-  "buildMs": 904,
-  "bake": {
-   "cells": 1532160,
-   "vertices": 588,
-   "unique": 268
-  },
-  "geometryKB": 53,
-  "materials": 1,
-  "textures": 1,
-  "drawCalls": 5,
-  "triangles": 10602,
-  "msPerFrame": 0.41
- },
- "b_chunk": {
-  "mode": "b",
-  "tiles": 25,
-  "ao": true,
-  "chunk": true,
-  "lod": false,
-  "buildMs": 10861.4,
-  "bake": {
-   "cells": 1585152,
-   "vertices": 14136,
-   "unique": 4556
-  },
-  "geometryKB": 14978,
-  "materials": 1,
-  "textures": 1,
-  "drawCalls": 2,
-  "triangles": 116198,
-  "msPerFrame": 0.4
- },
- "b_lod_far": {
-  "mode": "b",
-  "tiles": 25,
-  "ao": true,
-  "chunk": false,
-  "lod": true,
-  "buildMs": 23050.5,
-  "bake": {
-   "cells": 1585152,
-   "vertices": 14136,
-   "unique": 4556
-  },
-  "geometryKB": 15244,
-  "materials": 1,
-  "textures": 1,
-  "drawCalls": 26,
-  "triangles": 2066,
-  "msPerFrame": 0.97
- },
- "a_far": {
-  "mode": "a",
-  "tiles": 25,
-  "ao": true,
-  "chunk": false,
-  "lod": false,
-  "buildMs": 423.6,
-  "geometryKB": 10893,
-  "materials": 7,
-  "textures": 5,
-  "drawCalls": 173,
-  "triangles": 116198,
-  "msPerFrame": 4.1
+ "scene": {
+  "view": "scene",
+  "renderer": "SwiftShader (relative timings only)",
+  "scene": {
+   "current": {
+    "buildMs": 330.2,
+    "drawCalls": 137,
+    "triangles": 125362,
+    "meshes": 137,
+    "materials": 78,
+    "frameMs": 3.26,
+    "programs": 8,
+    "textures": 7,
+    "geometries": 137
+   },
+   "new": {
+    "buildMs": 204.4,
+    "drawCalls": 28,
+    "triangles": 26400,
+    "meshes": 27,
+    "materials": 5,
+    "frameMs": 1.26,
+    "programs": 9,
+    "textures": 8,
+    "geometries": 164
+   }
+  }
  }
 }
