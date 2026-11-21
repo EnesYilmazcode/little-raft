@@ -1,5 +1,14 @@
 # Integration status
 
+Updated: 2026-11-21 09:10 UTC, round 5 (integrator A, alongside integrator B). PR #4 merged into main at 912d941 (raft-master dbf2ca9).
+Gate: 983/983 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
+Perf vs main (pinned quality, median of 3, two interleaved runs): 185/191 vs 195/192 ms, 49-52 vs 51-55 draw calls.
+Open PR: next round (raft-master -> main).
+
+Skipped (superseded or not game code): lane-placement, raft-reference. Juicer/gull (loop-features-0831) is back in after its worker finished it.
+Known flake: the art atlas "build stays fast" test fails only under heavy machine load; it passes alone.
+
+Previous round:
 Updated: 2026-11-21 08:55 UTC, round 4 (integrator B). PR #3 merged into main at 8d21618 (raft-master 29a11fd).
 Gate: 910/910 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, Esc ending lock with the
 build wheel open never pauses, no centred text. Perf vs main 3031d67 with ?pinQuality (median of 3, two interleaved runs):
