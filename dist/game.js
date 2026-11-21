@@ -357,6 +357,7 @@ export function mount(transfer = null) {
   const isLocked = () => !!canvas && document.pointerLockElement === canvas;
   const dialogOpen = () => !!document.querySelector('dialog[open]');
   const uiBlocked = () => dialogOpen() || !!survivalUI?.isOpen;
+  const inputBlocked = () => uiBlocked() || fainted >= 0; // [vitals] passed out: no play input, but the pointer lock / resume hint follow uiBlocked only
   const castOut = () => (hook && !hook.fishing ? hook : null);
   const guestWaiting = () => role === 'guest' && !networkReady;
   const chargeValue = () => (charging ? clamp((performance.now() - charging.start) / CHARGE_MS, MIN_CHARGE, 1) : 0);
@@ -471,7 +472,7 @@ export function mount(transfer = null) {
     building = createBuilding(T, scene); // building-pieces lane hook
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
-      action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
+      action:a => action(a), notice, canInput:() => running && !inputBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
       getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null, sailKnown}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
@@ -521,7 +522,7 @@ export function mount(transfer = null) {
     return {scene, raft, ocean, camera, signal, get rodModel() { return hands?.itemModel('fishingrod') ?? null; }, role:() => role, netReady:() => networkReady, send, action, notice, beep,
       selectedKind, aim:() => currentAim(), rodTip:() => handPos, player:() => ({x:physics.x, y:physics.y, z:physics.z, yaw}),
       hasTile, decorAt:(x, z) => world.decor.some(d => d.x === x && d.z === z), bagCount:k => localBag().count(k),
-      running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging};
+      running:() => running, uiBlocked:inputBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging};
   }
   function fallbackAvatar(color) {
     if (color && typeof color === 'object') color = lookColors(color).shirt; // [look]
@@ -705,9 +706,13 @@ export function mount(transfer = null) {
       else if (bag.selectedIndex !== eating.slot || bag.slots[eating.slot]?.kind !== eating.item) eating = null; // switched slot or item gone
       else if ((eating.t += dt) >= EAT_SECONDS) { const item = eating.item; eating = null; action({kind:'eat', item}); }
     }
-    if (role === 'solo' && dialog && dialogOpen()) return; // the solo pause menu stops the clock
+    if (vitals.hp <= 0) { passOut(); return; } // HP 0 always faints (hurtPlayer, or a pause that froze the clock at 0)
+    if (role === 'solo' && settingsController?.isOpen) return; // only the solo pause menu stops the clock (the bag, journal, crafting do not)
     vitalsOpts.mult = exertion; tickVitals(vitals, dt, vitalsOpts);
-    if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); } // drop the line: it must not stay out from the old spot
+    if (vitals.hp <= 0) passOut();
+  }
+  function passOut() { // drop the line and the rod cast: neither may stay out from the old spot
+    fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } fc?.cancelSession?.(); clearInput();
   }
   // Crosshair prompts (dist/prompts.js provider): eat/drink, else the cup/purifier/planter prompt (game.js markup).
   const tipCache = new Map(), eatTips = new Map(), EATING_TIP = {key:'', label:'…', muted:true};
@@ -1230,7 +1235,7 @@ export function mount(transfer = null) {
   }
   // false = the craft was refused here (locked); the action still goes out so the player hears why.
   function craft(recipe) { if (typeof recipe !== 'string') return false; const g = craftGate(recipe); action({kind:'craft', recipe}); return !g; }
-  function repair() { if (!running) return; const bag = localBag();
+  function repair() { if (!running || fainted >= 0) return; const bag = localBag();
     const sel = bag.slots[bag.selectedIndex]; if (sel?.kind === 'spade') { action({kind:'treasure.repair'}); return; } // [treasure-hook] R on a held spade
     action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
   // Pad build radial pick: hold the hammer (from the hotbar) and select that piece on the building wheel.
@@ -1240,9 +1245,9 @@ export function mount(transfer = null) {
     if (i < 0) { notice('Put a hammer on your hotbar to build'); return; }
     selectSlot(i); building.menu.setSelected(id); notice(PIECES[id].name + ' selected', 1200);
   }
-  function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); }
+  function openInventory() { if (!running || !survivalUI || fainted >= 0) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); }
   function interact() {
-    if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
+    if (!running || inputBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
     if (!pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
     const target = pickupFrom(currentAim());
     if (target) {
@@ -1292,13 +1297,13 @@ export function mount(transfer = null) {
     if (kind === 'cup' || kind === 'saltcup' || kind === 'freshcup') { const w = wateringTarget(aim); if (w?.click) { swing = 1; action(w.click); } else notice(w?.why ?? WATER_WHY[kind]); return; }
   }
   function beginCharge(at) {
-    if (!running || hook || fishWait || selectedKind() !== 'hook') return;
+    if (!running || hook || fishWait || fainted >= 0 || selectedKind() !== 'hook') return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     charging = {start:performance.now(), x:at?.x ?? null, y:at?.y ?? null};
   }
   function releaseCharge(aim) {
     const c = charging; charging = null;
-    if (!c || !running || hook || selectedKind() !== 'hook') return;
+    if (!c || !running || hook || fainted >= 0 || selectedKind() !== 'hook') return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     throwHook(aim, clamp((performance.now() - c.start) / CHARGE_MS, MIN_CHARGE, 1));
   }
@@ -1688,11 +1693,12 @@ export function mount(transfer = null) {
     look(dx, dy, LOOK_SENSITIVITY * options.sensitivity);
   });
   on(canvas, 'pointerdown', e => {
-    if (e.button === 2 && running && building && heldKind() === 'hammer' && !uiBlocked()) { building.menu.open(); return; } // building-pieces lane hook
-    if (e.button === 2 && running && !uiBlocked() && content?.alt(isLocked() ? pickCenter() : currentAim(), heldKind())) return; // content hook (paint: brush colour)
+    if (e.button === 2 && running && building && heldKind() === 'hammer' && !inputBlocked()) { building.menu.open(); return; } // building-pieces lane hook
+    if (e.button === 2 && running && !inputBlocked() && content?.alt(isLocked() ? pickCenter() : currentAim(), heldKind())) return; // content hook (paint: brush colour)
     if (!running || !scene || e.button !== 0 || uiBlocked()) return;
     if (building?.menu.isOpen) { building.menu.close(isLocked()); return; } // building-pieces lane hook (unlocked: a click off the wheel cancels)
     if (controls?.radialOpen) return; // controls lane: a click while the build radial is open picks a piece, not the tool
+    if (fainted >= 0) { if (!isLocked()) down = {x:e.clientX, y:e.clientY, moved:false, tool:selectedKind(), used:true}; return; } // [vitals] passed out: a click acts on nothing (unlocked it may still relock)
     if (isLocked()) {
       if (fc?.pointerDown()) return; // [fishing-cooking]
       if (reelCast('click')) return;
@@ -1747,7 +1753,7 @@ export function mount(transfer = null) {
   on(window, 'keydown', () => { sfx.resume(); }, {capture:true});
   on(document, 'click', e => { if (e.target?.closest?.('button, [role=button], .slot')) play('ui', .8); });
   on(window, 'keydown', e => {
-    const kd = keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:uiBlocked()});
+    const kd = keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:inputBlocked()});
     if (!kd.act) { if (kd.record && !controls) keys[e.code] = true; return; } // held keys survive a panel; movePlayer gets input=false meanwhile
     if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
@@ -1792,7 +1798,7 @@ export function mount(transfer = null) {
   }
   // controls lane: one input layer for keyboard/mouse/gamepad; falls back to the legacy handlers above if it fails to start.
   try {
-    controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
+    controls = createControls({canvas, isBlocked:() => !running || inputBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
       interact, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration

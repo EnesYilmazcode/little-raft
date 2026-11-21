@@ -280,6 +280,7 @@ export function createFishingCooking(T, host) {
     if (session) { if (session.stage === 'charging') session.cancel(); else session.holding = false; }
     return was;
   }
+  function cancelSession() { session?.cancel(); session = null; downHeld = false; } // game.js: the player passed out
   let held = null, heldT = 0;
   function dropHeld() { if (!held) return; held.parent?.remove(held); held.userData.dispose?.(); held = null; }
   function onCatch(c) {
@@ -463,7 +464,7 @@ export function createFishingCooking(T, host) {
   if (typeof window !== 'undefined') window.raftFC = debug;
 
   return {
-    pointerDown, pointerUp, releaseInput, interact, update, applyAction, onNet, dispose,
+    pointerDown, pointerUp, releaseInput, cancelSession, interact, update, applyAction, onNet, dispose,
     get prompt() { return prompt; },
     hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
     dropTile(x, z) { const g = grillAt(x, z); if (!g || isGuest(host.role())) return false; removeGrill(g); markChanged(); return true; }, // shark lane: a destroyed foundation takes its grill with it
