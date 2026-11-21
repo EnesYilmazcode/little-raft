@@ -7,7 +7,8 @@
 //   reconnect() (new Peer + connect to the same room, keep world/bag on screen), giveUp() (old behaviour: back to own raft)
 //
 // Wire protocol (only once the other side said `hello`; older clients keep the legacy messages untouched):
-//   {type:'coop', k:'hello', v, id, name}      capability + identity (id lets the host accept a rejoin)
+//   {type:'coop', k:'hello', v, id, name, look} capability + identity (id lets the host accept a rejoin); look = dist/look.js
+//   {type:'coop', k:'look', look}              the sender changed their Look mid-session (debounced by look-ui.js)
 //   {type:'coop', k:'ping', p:[x,y,z]}         'look here' marker (middle click)
 //   {type:'coop', k:'emote', e:'wave'|'point'}
 //   {type:'coop', k:'kf', kk}                  decoder lost its baseline: please send a keyframe of type kk
@@ -20,6 +21,7 @@ import { DeltaEncoder, DeltaDecoder, quantize } from './coop-delta.js';
 import { createRemoteAvatar } from './coop-avatar.js';
 import { createPings, createRemoteRope, createRemoteGhost } from './coop-fx.js';
 import { createFeed } from './coop-feed.js';
+import { loadLook, cleanLook, lookKey, PARTNER_DEFAULT } from './look.js?build=v3-survival-ae77fa84ac2b';
 
 export const COOP_VERSION = 1;
 const HELD = [null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
@@ -31,6 +33,7 @@ const FEED_RE = /joined|left|disconnected|reconnect|aboard/i;
 const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
 const coopId = (globalThis.__littleRaftCoopId ??= Math.random().toString(36).slice(2, 10)); // per tab, survives hot swaps
 const readName = () => { try { return (localStorage.getItem('little-raft-name') || '').trim().slice(0, 16) || 'Brother'; } catch { return 'Brother'; } };
+const readLook = () => loadLook().look;
 
 export function createCoop(ctx, saved = null) {
   const {T} = ctx;
@@ -39,7 +42,8 @@ export function createCoop(ctx, saved = null) {
   const pings = createPings(T, ctx.scene);
   const rope = createRemoteRope(T, ctx.scene);
   const ghost = createRemoteGhost(T, ctx.scene);
-  const avatar = createRemoteAvatar(T, {color:'#70a7e4', name:'Brother'});
+  let peerLook = cleanLook(saved?.peerLook, PARTNER_DEFAULT), peerLookKey = lookKey(peerLook); // survives hot swaps: no default-look flash
+  const avatar = createRemoteAvatar(T, {color:'#70a7e4', name:'Brother', look:peerLook});
   avatar.group.visible = false; ctx.scene.add(avatar.group);
   const buffer = new SnapshotBuffer();
   const enc = new DeltaEncoder(), dec = new DeltaDecoder();
@@ -54,6 +58,12 @@ export function createCoop(ctx, saved = null) {
 
   const sendRaw = m => { const c = ctx.conn(); if (!c?.open) return; try { c.send(m); stats.sent++; stats.bytesOut += JSON.stringify(m).length; } catch {} };
   const event = (k, extra) => sendRaw({type:'coop', k, ...extra});
+  function applyPeerLook(x) { // untrusted: indices + known hat ids only; old peers without a look get the old blue partner
+    if (x && typeof x === 'object') { try { if (JSON.stringify(x).length > 200) return; } catch { return; } } // oversized: ignore
+    const l = cleanLook(x, PARTNER_DEFAULT);
+    if (lookKey(l) === peerLookKey) return;
+    peerLook = l; peerLookKey = lookKey(l); avatar.setLook(l);
+  }
 
   // A new DataConnection means a fresh session: drop baselines and announce ourselves.
   function track() {
@@ -101,8 +111,10 @@ export function createCoop(ctx, saved = null) {
     if (m.k === 'hello') {
       peer = {v:m.v, id:String(m.id ?? '')};
       peerName = String(m.name ?? 'Brother').slice(0, 16) || 'Brother'; avatar.setName(peerName);
-      if (!m.re) event('hello', {v:COOP_VERSION, id:coopId, name:readName(), re:1}); // answer every non-reply (a hot-swapped hub starts over)
-    } else if (m.k === 'kf') enc.forceKeyframe(m.kk);
+      applyPeerLook(m.look);
+      if (!m.re) event('hello', {v:COOP_VERSION, id:coopId, name:readName(), look:readLook(), re:1}); // answer every non-reply (a hot-swapped hub starts over)
+    } else if (m.k === 'look') { if (m.look && typeof m.look === 'object') applyPeerLook(m.look); }
+    else if (m.k === 'kf') enc.forceKeyframe(m.kk);
     else if (m.k === 'ping' && Array.isArray(m.p) && m.p.every(Number.isFinite)) {
       pings.add({x:m.p[0], y:m.p[1], z:m.p[2], mine:false, label:peerName});
       feed.push(peerName + ' says: look here!', 'ping');
@@ -211,7 +223,7 @@ export function createCoop(ctx, saved = null) {
     if (errors > 20) return;
     try {
       const t = now(); track();
-      if (conn?.open && !peer && t - helloAt > 1000) { helloAt = t; event('hello', {v:COOP_VERSION, id:coopId, name:readName()}); }
+      if (conn?.open && !peer && t - helloAt > 1000) { helloAt = t; event('hello', {v:COOP_VERSION, id:coopId, name:readName(), look:readLook()}); }
       if (peer && conn?.open) sendPose(t);
       const role = ctx.role();
       if (role === 'guest' && ctx.ready()) aboard = true; else if (role === 'solo') aboard = false;
@@ -232,15 +244,16 @@ export function createCoop(ctx, saved = null) {
     get stats() { const s = (now() - stats.since) / 1000; return {...stats, outBps:stats.bytesOut / s, inBps:stats.bytesIn / s, interp:buffer.stats}; },
     get remote() { const p = avatar.group.position, h = rope.hook; return {x:p.x, y:p.y, z:p.z, visible:avatar.group.visible, name:peerName,
       hook:h?.visible ? {x:h.position.x, y:h.position.y, z:h.position.z, stage:lastHook, ropeVisible:!!rope.line?.visible} : null}; },
-    get peer() { return peer ? {...peer} : null; }, get rejoin() { return rejoin ? {...rejoin} : null; },
+    get peer() { return peer ? {...peer} : null; }, get peerLook() { return {...peerLook}; }, get rejoin() { return rejoin ? {...rejoin} : null; },
   };
   globalThis.coopDebug = debug;
 
   return {
     encode, decode, update, feed:feedToast, lost, retry, rejoined,
+    sendLook() { if (peer && ctx.conn()?.open) event('look', {look:readLook()}); },
     meta:() => ({coopId}),
     isRejoin:c => !!peer && c?.metadata?.coopId === peer.id,
-    capture:() => ({rejoin, peerName, aboard}),
+    capture:() => ({rejoin, peerName, aboard, peerLook}),
     dispose() {
       ac.abort();
       for (const x of [feed, pings, rope, ghost, avatar]) { try { x.dispose(); } catch {} }

@@ -8,6 +8,7 @@
 //     left hand when the right holds a tool such as the hammer). Blends in, no lower/raise.
 //     'throw': forces the wind-up (full charge) pose.
 //   hands.setModelFactory(fn | null);              // swap the model source later; rebuilds cached models
+//   hands.setLook({skin, shirt});                  // hex strings (dist/look.js lookColors): recolours skin + sleeves, no rebuild
 //   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch });
 //   hands.ropeAnchor().getWorldPosition(v);        // rope start: rod tip while the rod is held, else left hand
 //   hands.itemModel('fishingrod')                  // the held model (rod userData: float, leader, tipNode)
@@ -45,6 +46,9 @@ export function createHands(T, { modelFactory = null } = {}) {
   const sleeveMat = mat(0x52705e, 0.95);
   const cuffMat = mat(0x3e5648, 0.95);
   const ropeMat = mat(0xb89a64, 0.95);
+  const BODY_SKIN = new T.Color('#f2c29b');           // avatar.js default skin (dist/look.js PALETTE.skin[0])
+  const toneOf = (m) => { const c = m.color.clone(); return new T.Color(c.r / BODY_SKIN.r, c.g / BODY_SKIN.g, c.b / BODY_SKIN.b); };
+  const skinTones = [skin, skinPalm, nail, crease].map((m) => [m, toneOf(m)]);
   const ropeDarkMat = mat(0x8a6e44, 1.0);
 
   // Viewmodel meshes draw in the transparent queue after the camera's depth-clear marker (see game.js),
@@ -421,5 +425,11 @@ export function createHands(T, { modelFactory = null } = {}) {
       return handTip;
     },
     preload(kinds) { for (const k of kinds) mountFor(k); },
+    setLook({ skin: skinHex, shirt } = {}) {
+      // The viewmodel skin keeps its own darker, warmer shading: each skin material is the chosen tone scaled per
+      // channel by (old hard-coded colour / default body skin), so the default tone gives exactly the old colours.
+      if (typeof skinHex === 'string') for (const [m, c] of skinTones) m.color.set(skinHex).multiply(c);
+      if (typeof shirt === 'string') { sleeveMat.color.set(shirt); cuffMat.color.set(shirt).multiplyScalar(0.75); }
+    },
   };
 }

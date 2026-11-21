@@ -1,7 +1,9 @@
 // Friendly low-poly sailor avatar for Little Raft.
-// createAvatar(T, color) -> THREE.Group
-//   T     : the THREE namespace (import * as T from './vendor/three.module.js')
-//   color : shirt / hat-band colour (any value accepted by THREE.Color)
+// createAvatar(T, colorOrLook) -> THREE.Group
+//   T           : the THREE namespace (import * as T from './vendor/three.module.js')
+//   colorOrLook : a shirt / hat-band colour (string or anything THREE.Color accepts; rest default, straw hat), or a
+//                 Look object {shirt, trousers, skin, hair, hat} of palette indices (dist/look.js, cleaned here).
+//                 group.userData.look is the cleaned look (null on the colour path).
 // Feet rest at y = 0, head centred at y ~1.6, eyes at y ~1.65, facing +Z.
 // group.userData.setHeld(kind)  shows a small model of the held item in the right hand
 //   (hook, hammer, fishingrod, wood, leaf, scrap, plastic, fish, decor kinds; anything else -> empty hand)
@@ -9,7 +11,51 @@
 // All geometries and materials are created per avatar and owned by it (held models lazily, once per kind);
 // call group.userData.dispose() to free them.
 
-export function createAvatar(T, color) {
+import { cleanLook, lookColors } from './look.js?build=v3-survival-ae77fa84ac2b';
+
+// Hat builders: each adds children to the rigid `hat` group on the head (origin 0.115 above the head centre,
+// tipped back 0.12 rad). Own low-poly art, plain or flatShading materials only so bakeAvatar keeps ~8 draw calls.
+const FLOWER_PETALS = ['#f59ab8', '#ffe27a', '#fdfaf2'];
+const lit = (T, c, k) => { const o = new T.Color(c).multiplyScalar(k); o.r = Math.min(1, o.r); o.g = Math.min(1, o.g); o.b = Math.min(1, o.b); return o; };
+const HAT_BUILD = {
+  straw(T, hat, add, geo, M) { // today's sunhat, verbatim
+    add(hat, geo(new T.CylinderGeometry(0.34, 0.35, 0.025, 14)), M.straw, 0, 0, 0, 'brim');
+    add(hat, geo(new T.CylinderGeometry(0.15, 0.18, 0.15, 12)), M.straw, 0, 0.085, 0, 'crown');
+    add(hat, geo(new T.CylinderGeometry(0.183, 0.186, 0.045, 12)), M.band, 0, 0.04, 0, 'band');
+  },
+  none() {},
+  beanie(T, hat, add, geo, M, mat, C) {
+    const knit = mat(lit(T, C.shirt, 0.8), { roughness: 0.98 });
+    const dome = add(hat, geo(new T.SphereGeometry(0.2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2)), knit, 0, -0.035, 0, 'crown');
+    dome.scale.y = 0.85;
+    const cuff = add(hat, geo(new T.TorusGeometry(0.198, 0.03, 6, 16)), knit, 0, -0.03, 0, 'band');
+    cuff.rotation.x = Math.PI / 2;
+    add(hat, geo(new T.SphereGeometry(0.045, 8, 6)), M.stripe, 0, 0.145, 0, 'pompom');
+  },
+  bucket(T, hat, add, geo, M, mat, C) {
+    const cloth = mat(lit(T, C.trousers, 1.1), { roughness: 0.92 });
+    add(hat, geo(new T.CylinderGeometry(0.17, 0.19, 0.12, 14)), cloth, 0, 0.02, 0, 'crown');
+    add(hat, geo(new T.CylinderGeometry(0.2, 0.27, 0.05, 16)), cloth, 0, -0.045, 0, 'brim');
+  },
+  flower(T, hat, add, geo, M, mat) {
+    const vine = mat('#5f9f4f', { roughness: 0.85 });
+    const ring = add(hat, geo(new T.TorusGeometry(0.178, 0.018, 6, 16)), vine, 0, -0.02, 0, 'band');
+    ring.rotation.x = Math.PI / 2;
+    const petals = FLOWER_PETALS.map(c => mat(c, { roughness: 0.8 }));
+    const bloom = geo(new T.SphereGeometry(0.034, 8, 6));
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+      const f = add(hat, bloom, petals[i % 3], Math.sin(a) * 0.178, -0.012, Math.cos(a) * 0.178, 'flower');
+      f.scale.set(1, 0.7, 1);
+    }
+  },
+};
+
+export function createAvatar(T, colorOrLook) {
+  const color = colorOrLook;
+  const isLook = !!colorOrLook && typeof colorOrLook === 'object' && !colorOrLook.isColor && !Array.isArray(colorOrLook);
+  const look = isLook ? cleanLook(colorOrLook) : null;
+  const C = look ? lookColors(look) : { shirt: color === undefined || color === null ? '#efae55' : color, trousers: '#2f4a6b', skin: '#f2c29b', hair: '#6b4226' };
   const root = new T.Group();
   root.name = 'avatar';
 
@@ -22,21 +68,21 @@ export function createAvatar(T, color) {
     return m;
   };
 
-  const shirtColor = new T.Color(color === undefined || color === null ? '#efae55' : color);
+  const shirtColor = new T.Color(C.shirt);
   const bandColor = shirtColor.clone().multiplyScalar(0.72);
 
   // ---- shared per-avatar materials ----
   const M = {
-    skin: mat('#f2c29b', { roughness: 0.85 }),
+    skin: mat(C.skin, { roughness: 0.85 }),
     shirt: mat(shirtColor),
     stripe: mat('#fbf7ee'),
-    shorts: mat('#2f4a6b'),
+    shorts: mat(C.trousers),
     shoe: mat('#5a3d2b'),
     eye: mat('#262a33', { roughness: 0.35 }),
     shine: mat('#ffffff', { roughness: 0.2, emissive: '#ffffff', emissiveIntensity: 0.4 }),
     cheek: mat('#f39b93', { roughness: 0.9 }),
     smile: mat('#a8433a', { roughness: 0.6 }),
-    hair: mat('#6b4226', { roughness: 0.9 }),
+    hair: mat(C.hair, { roughness: 0.9 }),
     straw: mat('#ecc96f', { roughness: 0.95, flatShading: true }),
     band: mat(bandColor),
     pack: mat('#d9833f', { roughness: 0.85 }),
@@ -137,15 +183,13 @@ export function createAvatar(T, color) {
   const smile = add(head, geo(new T.TorusGeometry(0.052, 0.011, 6, 12, Math.PI)), M.smile, 0, -0.035, 0.172, 'smile');
   smile.rotation.set(-0.35, 0, Math.PI);
 
-  // ---- straw sunhat ----
+  // ---- hat (straw sunhat by default; builders in HAT_BUILD) ----
   const hat = new T.Group();
   hat.name = 'hat';
   hat.position.set(0, 0.115, -0.01);
   hat.rotation.x = -0.12;
   head.add(hat);
-  add(hat, geo(new T.CylinderGeometry(0.34, 0.35, 0.025, 14)), M.straw, 0, 0, 0, 'brim');
-  add(hat, geo(new T.CylinderGeometry(0.15, 0.18, 0.15, 12)), M.straw, 0, 0.085, 0, 'crown');
-  add(hat, geo(new T.CylinderGeometry(0.183, 0.186, 0.045, 12)), M.band, 0, 0.04, 0, 'band');
+  HAT_BUILD[look ? look.hat : 'straw'](T, hat, add, geo, M, mat, C);
 
   // ---- compact backpack ----
   const backZ = -(0.21 * BODY_Z);
@@ -236,6 +280,7 @@ export function createAvatar(T, color) {
   root.userData.setHeld = setHeld;
   root.userData.animate = animate;
   root.userData.eyeHeight = 1.65;
+  root.userData.look = look;
   root.userData.dispose = () => {
     for (const g of geos) g.dispose();
     for (const m of mats) m.dispose();
