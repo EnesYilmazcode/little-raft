@@ -12,7 +12,7 @@ const {
 
 const TABLE = ['floor1', 'tiles25', 'fish1', 'fish10', 'supplies100', 'craft_sail', 'craft_palm', 'craft_lantern', 'craft_net', 'craft_bench', 'craft_crate', 'firework1', 'homestead', 'sit1', 'repair1', 'note1', 'notes_all'];
 const tiles = n => Array.from({ length: n }, (_, i) => [i % 5, Math.floor(i / 5)]);
-const w = (o = {}) => ({ tiles: tiles(9), decor: [], fish: 0, collected: 0, items: [], notes: [], achievements: [], ...o });
+const w = (o = {}) => ({ tiles: tiles(4), decor: [], fish: 0, collected: 0, items: [], notes: [], achievements: [], ...o });
 const all12 = Array.from({ length: 12 }, (_, i) => i);
 
 test('constants: 12 notes and 17 achievements in table order', () => {
@@ -57,8 +57,8 @@ test('shouldSpawnBottle: one bottle at a time, none after all notes', () => {
 });
 
 test('evaluate: state rules', () => {
-  assert.deepEqual(evaluate(w({ tiles: tiles(9) }), [], { kind: 'build' }), []);
-  assert.deepEqual(evaluate(w({ tiles: tiles(10) }), [], { kind: 'build' }), ['floor1']);
+  assert.deepEqual(evaluate(w({ tiles: tiles(4) }), [], { kind: 'build' }), []);
+  assert.deepEqual(evaluate(w({ tiles: tiles(5) }), [], { kind: 'build' }), ['floor1']);
   assert.deepEqual(evaluate(w({ tiles: tiles(25) }), [], { kind: 'build' }), ['floor1', 'tiles25']);
   assert.deepEqual(evaluate(w({ fish: 10 }), [], { kind: 'fish' }), ['fish1', 'fish10']);
   assert.deepEqual(evaluate(w({ collected: 100 }), [], { kind: 'collect' }), ['supplies100']);

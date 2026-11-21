@@ -66,7 +66,7 @@ const CSS = `
 .bm-tag[hidden]{display:none}
 /* the hammer's "Aim at the raft edge" prompt sits under the hub: hide it while the wheel is up */
 body.bm-wheel-up #lrPrompt,body.bm-wheel-up #contextPrompt{visibility:hidden}
-.bm-chip{position:fixed;left:max(16px,calc(50% - 253px));bottom:var(--bm-chip-bottom,112px);z-index:3;text-align:left;display:flex;align-items:center;gap:10px;
+.bm-chip{position:fixed;left:max(200px,calc(50% - 253px));bottom:var(--bm-chip-bottom,112px);z-index:3;text-align:left;display:flex;align-items:center;gap:10px;
   padding:7px 14px 7px 7px;border-radius:12px;pointer-events:none;max-width:calc(100vw - 32px);
   background:repeating-linear-gradient(90deg,#0000000f 0 2px,transparent 2px 21px),linear-gradient(#5d4129f0,#3d2a19f0);
   border:1.5px solid #c9a66b;box-shadow:0 0 0 1.5px #3e2a17,0 4px 14px #0006;color:#fff2cc;font:500 13px/1.25 ${FONT};transition:opacity .12s}
