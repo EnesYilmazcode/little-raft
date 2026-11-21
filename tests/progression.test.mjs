@@ -171,7 +171,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
     assert.equal(INFO[k].tool, Inv.ITEM_INFO[k].tool, `${k} tool flag matches Bag`);
   }
   assert.equal(ITEMS.wood.name, 'Plank');
-  assert.deepEqual([...TOOL_IDS].sort(), ['fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'spear']);
+  assert.deepEqual([...TOOL_IDS].sort(), ['fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'paddle', 'spear']);
   for (const s of ['smelter', 'researchtable', 'grill']) assert.ok(STATION_IDS.includes(s) && PLACEABLE_IDS.includes(s));
   for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate']) assert.ok(PLACEABLE_IDS.includes(k));
 });
@@ -387,7 +387,7 @@ test('migrate: aliases, unknown kinds, durability, selected', () => {
   assert.deepEqual(m.slots[8], { kind: 'metalhook', count: 1, durability: 100 });
   for (let i = 9; i < SLOT_COUNT; i++) assert.equal(m.slots[i], null);
   assert.equal(m.selected, 6);
-  for (const sel of [8, -1, 2.5, '3', NaN, null]) assert.equal(migrateSnapshot({ slots: [], selected: sel }).selected, 0);
+  for (const sel of [10, -1, 2.5, '3', NaN, null]) assert.equal(migrateSnapshot({ slots: [], selected: sel }).selected, 0);
   for (const junk of [null, undefined, 0, 'x', [], true]) assert.equal(migrateSnapshot(junk), null);
 });
 

@@ -156,6 +156,15 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="#fff2cc" stroke-width="1.5"><rect x="20" y="13.5" width="8" height="3" rx="1.5"/><rect x="20" y="16.8" width="8" height="3" rx="1.5"/></g>
     <path d="M24 24 V31 M24 37 V44" fill="none" stroke-width="1" stroke-opacity=".45"/></g>`,
 
+  // Paddle: driftwood shaft with a T-grip, plank blade with a plastic wear patch.
+  paddle: `<g transform="rotate(40 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M18 1 H30" fill="none" stroke-width="5" stroke-linecap="round"/><path d="M18 1 H30" fill="none" stroke="#bb8650" stroke-width="2.4" stroke-linecap="round"/>
+    <rect x="22" y="1" width="4" height="28" rx="2" fill="#bb8650"/>
+    <rect x="21" y="8" width="6" height="6" rx="2" fill="#d9c38c" stroke-width="1.5"/>
+    <path d="M22 27 C17 29 16 33 16 40 C16 46 19 49 24 49 C29 49 32 46 32 40 C32 33 31 29 26 27 Z" fill="#c99560"/>
+    <rect x="19.5" y="35" width="9" height="8" rx="1.5" fill="#fff2cc" stroke-width="1.5"/>
+    <path d="M19 31 C18 34 18 38 18.5 41" fill="none" stroke="#fff2cc" stroke-width="1.3" stroke-linecap="round"/></g>`,
+
   axe: `<g transform="rotate(25 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <rect x="21" y="8" width="6" height="38" rx="3" fill="#c99560"/>
     <path d="M22 9 C15 7 9 8 5 10 C4 16 4.5 23 7 29 C11 25 16 22 22 21 Z" fill="#9fb1bf"/>
