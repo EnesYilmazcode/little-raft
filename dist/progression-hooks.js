@@ -56,6 +56,7 @@ export function attachProgression(ctx) {
   const remote = { prog: null, stations: {}, views: new Map() }; // guest-side mirror of the host
   const models = new Map(); // key -> THREE.Group (glowing stations), pruned when detached
   const glow = new Map();
+  const ingots = new WeakMap(); // station group -> its 'ingot' child (or null); a rebuilt station is a new group
   let noteClock = NOTE_EVERY, saveClock = 0, syncClock = 0, time = 0, dirty = false, nearKey = null;
   let savedLuckSig = JSON.stringify(barrelLuck.misses);
   let panel = null, research = null, tooltips = null, hud = null, gateCache = null;
@@ -284,7 +285,9 @@ export function attachProgression(ctx) {
       const st = stationView(key), target = st?.cooking ? 1 : st && st.fuelUnits > 0 ? 0.25 : 0;
       const a = (glow.get(key) ?? 0) + (target - (glow.get(key) ?? 0)) * Math.min(1, dt * 2);
       glow.set(key, a); setSmelterGlow(g, a, time);
-      const ingot = g.getObjectByName('ingot'); if (ingot) ingot.visible = !!st?.output;
+      let ingot = ingots.get(g);
+      if (ingot === undefined || (ingot && !ingot.parent)) { ingot = g.getObjectByName('ingot') ?? null; ingots.set(g, ingot); }
+      if (ingot) ingot.visible = !!st?.output;
     }
     if (panel?.isOpen) { if (!stationView(panel.stationId)) panel.close(); else panel.update(); }
     renderResearch(false);
