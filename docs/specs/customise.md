@@ -145,3 +145,30 @@ Also extend `tests/net-coop.test.mjs` only if its harness already exercises hell
 4. First-person sleeves: in game with hook held, default vs. plum shirt / tone 6 skin.
 5. Co-op (if `tests/coop-e2e.mjs` harness runs): guest changes look, host screenshot of partner.
 Check `npm test` green and the console free of errors in every shot.
+
+## Build notes (deviations from the spec above)
+- **Hands skin** (`hands.js setLook`): instead of `skin x0.82` / `x0.78` / lerp / `x0.55`, each FP skin material
+  (`skin`, `skinPalm`, `nail`, `crease`) is the chosen tone times a per-channel ratio (old hard-coded colour /
+  `#f2c29b`). Same "darker FP shading", but the default tone reproduces the old hand colours exactly, so the only
+  visible change for players who never open the dialog is the intended sleeve fix (green -> shirt orange, cuff
+  shirt x0.75).
+- **Title screen**: the onboarding title menu (`dist/onboarding.js`, `#welcome.ob-on`) hides every child of the
+  welcome card, so `#welcomeLook` alone is invisible. Added a "Change look" `.ob-item` (after "Play together") that
+  clicks `#welcomeLook`, the same pattern as the crew item. `#welcomeLook` + its game.js handler stay as specified.
+- **`createLookUI`** takes an extra `onSend` callback; the 400 ms debounce + flush-on-close lives in look-ui.js and
+  game.js passes `onSend: () => coop?.sendLook()`. `isOpen` is a getter (like logbook-ui).
+- **Dialog width** `min(640px, calc(100vw - 32px))` (not 560) so the 10 shirt swatches fit one row on desktop; on
+  phones (<=520px) each swatch row is a two-line grid (`ceil(n/2)` columns) instead of ragged wrapping.
+- **`coop-avatar.js`** now imports `avatar.js?build=...` (was un-versioned, which loaded avatar.js twice). The held
+  item `holder` group is re-parented onto the new right-arm pivot on `setLook` (cached models kept) and `cur` is
+  cleared so the next `update()` shows the right model. `setLook` returns whether it rebuilt.
+- **Oversized look objects** (>200 chars of JSON) are ignored (no change), both in hello and `k:'look'`; a hello
+  without `look` resets the partner to `PARTNER_DEFAULT`.
+- **`createAvatar`** treats any plain object (not a `THREE.Color`, not an array) as a look; `userData.look` is
+  `null` on the colour path.
+- **Tests**: `tests/look.test.mjs` also has one node test of the 3D hooks (default avatar colours equal the old
+  colour path, every hat builds with plain materials, remote `setLook` rebuilds once and re-mounts the held item,
+  hands sleeve takes the shirt colour). `tests/net-coop.test.mjs` was not extended (its harness does not run hello).
+- **Probe**: verified with `look_probe.py` (desktop + 390x844 dialog, FP sleeves default vs plum/tone 6) and a
+  loopback co-op probe (guest changes look; host sees the partner default -> plum/no hat -> bucket -> beanie ->
+  flower; partner look arrives only after the 400 ms debounce). No console errors.
