@@ -102,9 +102,19 @@ Reviews done in this lane:
 
 ## Screenshots (`docs/cloud/shots/coop/`)
 
-Module previews: `avatar-poses.png`, `fx-preview.png`, `feed-preview.png`. Two-client shots: `e2e-host.png`, `e2e-guest.png`, plus the visual-QA set listed below.
+Module previews: `avatar-poses.png`, `fx-preview.png`, `feed-preview.png`. Two-client shots, real rendering, both clients read and checked:
+- `guest-sees-host.png`: the host avatar with the "Brother" tag, hook thrown, rope from his hand to the floating hook.
+- `host-sees-guest-wave.png`: the guest waving, with "Brother waves!" in the feed.
+- `ping-guest.png` / `ping-both.png`: an orange ping on the sender's screen, blue on the receiver's, plus the feed line.
+- `ghost.png` / `ghost-guest.png`: the guest's hammer ghost (strong blue) seen by the host, and the guest's own view.
+- `feed-join.png`: "Your brother joined the raft!" bottom-left, nothing in the centre.
+- `e2e-host.png`, `e2e-guest.png`: snapshots from the e2e run.
+- Visual-QA fixes: the remote ghost colour was too pale on a light sea, and the slack rope sag now matches hook-physics (≈0.11×distance, max 1.2 m).
 
 ## Known limits / next steps
+
+- The remote rope does not know about deck tiles, so a long slack rope can clip through the deck. It needs `deckY` plus a tile test passed into `createRemoteRope.update`.
+- Pings have no owner label in the world; the feed names who pinged.
 
 - Pose rides the reliable ordered channel, so loss causes head-of-line delay. The interp buffer absorbs it, but an unordered second DataChannel for `cp` (research note §5) would be better on real lossy links.
 - After the host leaves, `#networkStatus` still says "Connected!…" (pre-existing text in the `leaving` path).

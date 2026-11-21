@@ -5,7 +5,7 @@
 // Nothing touches the DOM; all geometry/materials are created once and reused (no per-frame allocation).
 
 const MINE = '#efae55', THEIRS = '#70a7e4';
-const ROPE = '#e9d39a', GHOST_OK = '#b6ffd0', GHOST_BAD = '#ee8e75';
+const ROPE = '#e9d39a', GHOST_REMOTE = '#3d8ff0', GHOST_BAD = '#ee8e75';
 const DECOR = new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const fin = Number.isFinite;   // fixed-arity checks below: no rest-arg arrays in per-frame paths
@@ -149,7 +149,9 @@ export function createRemoteRope(T, scene) {
     const st = h.stage, water = st === 'floating' || st === 'fishing';
     const dx = h.x - hand.x, dy = h.y - hand.y, dz = h.z - hand.z, d = Math.hypot(dx, dy, dz);
     const k = Math.min(1, dt * 6);
-    sag += ((water ? Math.min(2.4, 0.4 + d * 0.16) : st === 'reeling' ? d * 0.015 : 0) - sag) * k;
+    // slack sag matches hook-physics ropePoints (span * 0.12 * slack, slack ~0.9 while floating); deeper sag
+    // dragged the rope through the deck between the brother and the raft edge
+    sag += ((water ? Math.min(1.2, d * 0.11) : st === 'reeling' ? d * 0.015 : 0) - sag) * k;
     lift += ((st === 'flying' ? Math.min(1.4, d * 0.12) : 0) - lift) * k;
 
     // sender reports flat physics water (y≈.05); map near-water heights onto the visible waves like game.js surfaceY
@@ -182,7 +184,8 @@ export function createRemoteRope(T, scene) {
 
 // ---------------------------------------------------------------- remote build ghost
 export function createRemoteGhost(T, scene) {
-  const okCol = new T.Color(GHOST_OK).lerp(new T.Color(THEIRS), 0.8), badCol = new T.Color(GHOST_BAD);
+  // saturated blue: the pale mint/blue mix vanished against the light sea from the other player's view
+  const okCol = new T.Color(GHOST_REMOTE), badCol = new T.Color(GHOST_BAD);
   const box = new T.BoxGeometry(1.9, 0.13, 1.9);
   const edges = new T.EdgesGeometry(box);
   const g = new T.Group(); g.name = 'coopGhost'; g.visible = false;
@@ -212,8 +215,8 @@ export function createRemoteGhost(T, scene) {
     g.scale.set(foot, 1, foot);
     const pulse = 0.5 + 0.5 * Math.sin(time * 4.2);
     body.material.color.copy(okCol).lerp(badCol, red);
-    outline.material.color.copy(body.material.color).lerp(white, (0.35 + 0.25 * pulse) * (1 - 0.6 * red));
-    body.material.opacity = (0.5 + 0.1 * red) * alpha;
+    outline.material.color.copy(body.material.color).lerp(white, (0.15 + 0.3 * pulse) * (1 - 0.6 * red));
+    body.material.opacity = (0.55 + 0.05 * red) * alpha;
     outline.material.opacity = (0.55 + 0.45 * pulse) * alpha;
   }
 
