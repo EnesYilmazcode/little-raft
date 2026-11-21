@@ -307,7 +307,8 @@ export function createSeafloor(T, { islands = [] } = {}) {
   const shade = new T.Color(PAL.rockShade), moss = new T.Color(PAL.moss);
   const rockGeo = lump(T, new T.IcosahedronGeometry(1, 0), 0.45, (c, f, x, y) =>
     (y > 0.35 && hash(f, 5, 8) < 0.7 ? c.copy(moss) : c.set(PAL.rock).lerp(shade, hash(f, 4, 8))));
-  const rocks = inst(rockGeo, std({ flatShading: true }), CAP.rocks, 'SeafloorRocks');
+  // rocks and nodes are faceted through the per-face normals lump()/merge() bake, not flatShading (one program less)
+  const rocks = inst(rockGeo, std({}), CAP.rocks, 'SeafloorRocks');
   const weed = inst(seaweedGeometry(T), std({ side: T.DoubleSide, roughness: 0.8 }, true), CAP.weed, 'SeafloorWeed');
   const white = new T.Color(1, 1, 1), kelpTint = new T.Color(PAL.kelp), wb = new T.Color(PAL.weed);
   kelpTint.setRGB(kelpTint.r / wb.r, kelpTint.g / wb.g, kelpTint.b / wb.b);   // instanceColor x base = kelp
@@ -318,7 +319,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
     nodeMeshes[type] = [];
     group.add(hl[type] = Object.assign(new T.Group(), { name: `SeafloorHighlight_${type}`, visible: false }));
     for (const part of nodeParts(T, type)) {
-      const mk = () => std({ flatShading: true, emissive: new T.Color(part.glow).multiplyScalar(part.gi ?? 0.1), ...part.mat });
+      const mk = () => std({ emissive: new T.Color(part.glow).multiplyScalar(part.gi ?? 0.1), ...part.mat });
       nodeMeshes[type].push(inst(part.geo, mk(), CAP.node, `SeafloorNode_${type}`));
       hl[type].add(new T.Mesh(part.geo, mk()));
     }
