@@ -12,7 +12,7 @@ export default function generate(S, N) {
   for (let k = 0; k < FL; k++) F[k] = N.fbm(k / 8, 0.5, 128, 1, 2, SEED);
   // scratches: short thin diagonal-ish strokes [u, v, length px, slope]
   const R = N.rng(SEED), SC = [];
-  for (let k = 0; k < 7; k++) SC.push([0.18 + R() * 0.64, R(), 6 + R() * 14, (R() - 0.5) * 0.5]);
+  for (let k = 0; k < 4; k++) SC.push([0.18 + R() * 0.64, R(), 6 + R() * 14, (R() - 0.5) * 0.5]);
   const KU = 0.58, KV = 0.62, KR = 3.6; // the knot
   for (let y = 0; y < S; y++) {
     const v = y / S;
@@ -37,7 +37,7 @@ export default function generate(S, N) {
       for (let k = 0; k < SC.length; k++) {
         const s = SC[k]; let sy = v - s[1]; sy -= Math.round(sy); let sx = u - s[0] - sy * s[3]; sx -= Math.round(sx);
         const along = Math.abs(sy * S), across = Math.abs(sx * S);
-        if (along < s[2] && across < 1.4) { const t = (1 - across / 1.4) * (1 - along / s[2]); val += t * 0.14; H -= t * 0.2; rr -= t * 0.04; }
+        if (along < s[2] && across < 1.4) { const t = (1 - across / 1.4) * (1 - along / s[2]); val += t * 0.08; H -= t * 0.1; rr -= t * 0.04; }
       }
       const m = (BASE[0] + BASE[1] + BASE[2]) / 3;
       for (let c = 0; c < 3; c++) albedo[i * 3 + c] = N.clamp01((m + (BASE[c] - m) * sat) * val);
