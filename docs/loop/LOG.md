@@ -149,6 +149,7 @@ Next ideas:
 - Gate: 533/533, no page errors, hook-only spawn, Esc from inventory OK, perf +0.8% vs main (fair probe), draw calls 148 vs 539.
 - Merged PR #1 into main.
 
+
 ## Perf round 2, 2026-11-21 (branch `claude/loop-perf-202611210540`, base `origin/claude/raft-master` 7555d67 + round-1 merge)
 
 BEFORE = 9eae7d7: raft-master with the rest of round 1 merged in. That merge also fixed the islands and clouds so
@@ -419,6 +420,80 @@ Fleet: 8 subsystem bug hunters, 2 independent adversarial verifiers per bug repo
 - The inventory and pause panels are still centred modals (UX-2/UX-8). Consider docked or side-sheet layouts.
 - Title screen copy and the pause menu styling (UX-7/UX-8).
 
+## Round 2: claude/loop-ux-202611210603 (base: origin/claude/raft-integration 8cff3ec + round 1 merged)
+
+The round-1 branch had never landed in integration, so it was merged first (399253e). A parallel session had pushed a different merge to claude/loop-ux-202611210547, so this round uses its own branch name.
+
+Fleet: 8 subsystem hunters (lock, craft, build, hook, survival, net, input, hud), 1 new-player UX reviewer reading screenshots, and 1 crafting UX builder. Every findings file went to 2 adversarial verifiers (18 in all), and 8 fixers each added regression tests.
+
+### Fixed (confirmed by both verifiers)
+- **Cursor and lock (LOCK-1..4):**
+  - In real Chrome, Esc from the inventory, pause or crew granted the lock and then lost it. Playwright's key events hid this because they carry no native key code.
+  - The Escape keyup now calls preventDefault, and the relock is deferred.
+  - A failed relock no longer leaves a hidden cursor with no prompt.
+  - Holding Esc opens pause.
+  - Drag-look mode keeps its cursor.
+  - New e2e test `tests/e2e/esc-relock.py` uses raw CDP Esc with native code 27. It fails before the fix and passes after.
+- **Crafting:**
+  - Craftable recipes sort first.
+  - Ingredient sources are shown ("found floating", "craft it ›" jumps to the recipe).
+  - A pinned recipe tracker on the HUD edge.
+  - Owned/needed chips on every recipe row and in the tooltips; the slot tooltip says "stack".
+  - Readable hammer and rod icons, and 3D icons for cup, seed and water.
+  - The ×N count and "hold: up to N" respect free bag space.
+  - The first open picks a ready recipe.
+  - Holding to craft ends on "Crafted N" instead of grey "Missing materials".
+  - Feed rows use the same 3D icons.
+- **No centred popups (HUD-1..6, UX-2, UX-7):**
+  - The live-update toast goes to the feed; before play it sits bottom-left.
+  - The feed docks into lanes inside the open bag and the pause rail, so it never covers buttons.
+  - Feed width is capped left of the hotbar.
+  - The bag's top edge is pinned, so tabs no longer jump.
+  - Guide keycaps and the title brand are readable.
+- **Controls (INPUT-1..4):**
+  - Held W/Shift survive opening and closing a panel.
+  - A spike filter replaces the ±200 look clamp, so fast flicks are kept.
+  - Physics substeps, giving the same speed and jump at any fps.
+  - The wheel works over the hotbar in drag-look.
+- **Building (BUILD-1..5, UX-1):**
+  - Pieces can't be placed on a player.
+  - The planter ghost shows the empty pot.
+  - Sail and lantern footprints and colliders match the models.
+  - Shift+wheel fine rotation works, and R rotate appears in the prompt and the guide.
+  - X with the hammer removes a piece for about half its cost back.
+  - The edge prompt shows cost and refusal reasons.
+- **Hook and farming (HOOK-1/2/5, SURV-2/3/4):**
+  - With a full bag the catch stays on the hook in the water, instead of teleporting back out to sea.
+  - The hook can be thrown while swimming.
+  - A catch survives a deck landing.
+  - Empty planters dry out.
+  - Harvest loot shows in the feed with icons.
+  - Clear notes when a farm action fails.
+- **Save and co-op (NET-1..5):**
+  - A tab idle on the title no longer gets save-blocked; save status shows inline on the title.
+  - A failed hot-swap keeps the desktop Esc hooks.
+  - The first hook to claim an item keeps it.
+  - A guest leaving no longer races the host's autosave.
+  - New game resets the hints.
+
+### Not fixed or refuted
+- HOOK-4 (the rod lands a fish on its own after a bite): refuted, because it is intended.
+- SURV-1 (solo pause doesn't freeze farming or drift): design question. Verifier B says freezing would have to cover the whole simulation.
+- HOOK-3: a duplicate of NET-3.
+
+### Checks
+- `npm test`: 216 pass, 0 fail.
+- `python shoot.py dist <out>`: no errors. After Esc from the inventory the game is locked, with no pause and no relock class.
+- `tests/e2e/esc-relock.py`: PASS.
+
+### Open for next round
+- Removing a floor tile someone stands on drops them into the sea; it should be blocked.
+- Pause-menu buttons don't respond to normal Playwright clicks (only JS clicks), and "Save and quit" shows a hover highlight while Resume has focus. Confirm whether real mouse clicks work.
+- The hold-to-craft progress is still a bar, not a ring.
+- Electron was not run here. The desktop Esc path was checked only by reading the code.
+- The machine was heavily loaded, so shoot.py frame times are not comparable between runs.
+
+
 ## 2026-11-21 · integrator A, round 2/3
 Two integrator sessions are running on claude/raft-master; each merges the other's pushes before pushing.
 - Merged loop-visuals-202611210451 (driftwood palette, scenery-islands.js, sky.follow() tracks day/night) and resolved it
@@ -513,3 +588,19 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
   Skipped loop-perf-0548/0540, loop-visuals-0451, loop-ux-0547, loop-features-0534 (see STATUS).
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
+- PR #2 merged into main (3031d67). Review fixes: inventory width at 900px, recipe tracker overlap, Pin button contrast. Reviewer low-priority notes left open: per-frame allocations in rain.js rainTarget and the physics substep input, sky.dispose() missing on hot swap, passive wheel listener.
+## 2026-11-21 · integrator C, round 2
+- Merged into raft-master: content-islands, fishing-cooking, building-pieces, content (+wildlife, storage, daynight), sailing,
+  onboarding (tracker and left-aligned title menu now loaded from index.html), loop-features-0451 (logbook, signal caches,
+  purifier), coop, diving, loop-ux-0451, loop-perf-0451, then raft-progression and raft-art (subagent). All kept both intents:
+  sailing drift + diving hide-above survive the merged scenery (each island/cloud group is baked on its own), the coop rejoin
+  path survives the heartbeat rewrite, fishing-cooking grills block placement, day/night offsets the sun from the shadow-fitted target.
+- Progression and the content "Research Table" both gated recipes: progression owns its catalogue, the content table
+  (renamed Tinker's Desk) teaches the rest. raft-art stays opt-in behind ?art=1 (doubles frame time under SwiftShader).
+- QA (bugs, detail, perf reviewers read the screenshots): Notes panel no longer covers the compass or dialogs; journal close relocks;
+  fish toasts, piece chip and sail prompt no longer centred; Esc on the piece wheel no longer pauses; wood bump map dropped (no visible change, ~-20% CPU).
+- Gate fixes: Tab closes the bag again (playbot), item icons render through the game's WebGL context (budget: 1 context),
+  recipe lock badges are built before the first bag open (DOM growth 109 -> 4), desktop shell opens pause on the Esc keyUp
+  when Chromium ate the keyDown that ended pointer lock (electron check), icon encode is synchronous under the deterministic clock (visual check).
+- Full fleet gate PASS at c7a8293 (unit, playbot, visual, perf, electron). Electron is now installed in node_modules.
+- PR #3 (round 4) is the open PR from raft-master; integrator B merged #2 at 1636dfe meanwhile.

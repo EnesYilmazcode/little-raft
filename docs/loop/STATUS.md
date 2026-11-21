@@ -1,7 +1,11 @@
 # Integration status
 
 Updated: 2026-11-21 08:10 UTC, round 3 (integrator B, alongside a parallel integrator on raft-master).
-PR #2 (claude/raft-master -> main) at 2608c32: gate passed, under review.
+PR #2 merged into main at 1636dfe (merge 3031d67). Gate: 816/816, no page errors, hook-only spawn, Esc OK, perf 229 vs 311 ms and 44 vs 148 draw calls.
+Review fixes in the round: inventory fits 900px, recipe tracker moved to the bottom-right (it overlapped the compass/Notes), readable Pin button.
+
+Gate update 2026-11-21 (integrator C): full fleet-gate PASS at c7a8293 — unit, playbot, visual, perf and electron all green
+(Tab closes the bag, one WebGL context, no DOM growth, deterministic icons, desktop Esc opens pause). Open PR: #3 (round 4).
 
 | Check | State |
 |---|---|
@@ -15,7 +19,8 @@ PR #2 (claude/raft-master -> main) at 2608c32: gate passed, under review.
 Merged this round: raft-tests, raft-tech, loop-features-202611210648, fleet-tech icons/perf/procedural-models/water/audio/foliage,
 raft-content (+storage), raft-integration, loop-ux-202611210603 (+0451), loop-features-202611210548. lane-world in progress.
 
-Skipped (need a rebase onto raft-master by their workers):
+Later merged by the parallel integrator: loop-perf-0548/0540 (its bakeScenery was dropped), loop-features-0534 (kiln, animals).
+Still skipped (need a rebase onto raft-master by their workers):
 - loop-perf-202611210548: parallel copy of round-1 perf; bakes islands/clouds into fixed meshes (breaks sailing drift, diving).
 - loop-perf-202611210540: 20 conflicting files; resolution leaves dead references (daynight SL, diving loadFx, plastic creaseGeo).
 - loop-visuals-202611210451: based on pre-integration main; its islands.js/sky.js clash with raft-master's.

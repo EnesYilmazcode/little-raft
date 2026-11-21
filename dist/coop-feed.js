@@ -26,7 +26,13 @@ export function createFeed({doc = document} = {}) {
   const later = (fn, ms) => { const t = win.setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); return t; };
   let disposed = false;
 
-  function remove(line) { if (line.isConnected) line.remove(); }
+  // The pickup feed (style.css #pickupFeed) stacks above this one: publish our height as --coop-feed-h.
+  const root = doc.documentElement;
+  function sync() {
+    const h = !disposed && box.childElementCount ? Math.ceil(box.offsetHeight || 0) + 6 : 0;
+    try { if (h) root.style.setProperty('--coop-feed-h', h + 'px'); else root.style.removeProperty('--coop-feed-h'); } catch {}
+  }
+  function remove(line) { if (line.isConnected) line.remove(); sync(); }
   function fadeOut(line) {
     if (!line.isConnected || line.classList.contains('cf-out')) return;
     line.classList.add('cf-out'); later(() => remove(line), FADE);
@@ -41,6 +47,7 @@ export function createFeed({doc = document} = {}) {
     line.append(dot, span); box.appendChild(line);
     const live = [...box.children].filter(l => !l.classList.contains('cf-out'));
     for (let i = 0; i < live.length - MAX; i++) remove(live[i]);
+    sync();
     win.requestAnimationFrame?.(() => line.classList.add('cf-in')) ?? line.classList.add('cf-in');
     later(() => fadeOut(line), LIFE);
   }
@@ -48,7 +55,7 @@ export function createFeed({doc = document} = {}) {
   function dispose() {
     disposed = true;
     for (const t of timers) win.clearTimeout(t); timers.clear();
-    box.remove(); style.remove();
+    box.remove(); style.remove(); sync();
   }
   return {push, dispose};
 }

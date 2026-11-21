@@ -52,7 +52,7 @@ function bakeNoise() {
   return noiseData;
 }
 const RAFT_REACH = 1.1;   // furthest raft effect (lace rings); shadow and occlusion stay inside it
-const FLOAT_REACH = 0.55; // furthest item lace
+const FLOAT_REACH = 0.7;  // furthest item lace
 
 const f5 = (v) => v.toFixed(5);
 const glslWaves = WAVES.map(([dx, dz, a, l, q]) => {
@@ -288,7 +288,7 @@ void main() {
     // staying half-covered, so distant lace thins out rather than turning into soft blobs.
     float wc = 0.012 + crestMask * 0.09, wl = 0.004 + laceMask * 0.022;
     float crest = clamp((wc - iso) / isoAA + 0.5, 0.0, 1.0) * min(wc * 3.0 / isoAA + 0.5, 1.0) * smoothstep(0.0, 0.08, crestMask);
-    float lace = clamp((wl - iso) / isoAA + 0.5, 0.0, 1.0) * min(wl * 3.0 / isoAA + 0.3, 1.0) * smoothstep(0.02, 0.12, laceMask);
+    float lace = clamp((wl - iso) / isoAA + 0.5, 0.0, 1.0) * min(wl * 3.0 / isoAA + 0.5, 1.0) * smoothstep(0.02, 0.12, laceMask);
     float raftCore = 1.0 - smoothstep(0.0, 0.06 + 0.12 * n1, rd);   // thin ragged collar where logs meet water
     foam = max(max(crest * 0.85, lace * 0.75), raftCore * 0.85);
     foam *= (1.0 - smoothstep(30.0, 90.0, dist)) * smoothstep(-0.7, -0.3, rd);   // none deep under the deck (plank gaps)

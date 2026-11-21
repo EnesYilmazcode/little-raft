@@ -15,6 +15,7 @@ const CSS = `
   background:repeating-linear-gradient(90deg,#0000000d 0 2px,transparent 2px 19px),linear-gradient(#9a7643,#6a4a2a);
   border:2px solid #c9a66b;box-shadow:0 0 0 2px #3e2a17,0 4px 14px #0006;font:700 11px/1 ${FONT};color:#fff2cc}
 #lrVitals[hidden]{display:none}
+@media(max-width:1100px){#lrVitals{bottom:96px}}
 #lrVitals .lv-row{display:grid;grid-template-columns:16px 1fr 24px;align-items:center;gap:6px}
 #lrVitals svg{display:block;width:16px;height:16px;filter:drop-shadow(0 1px 1px #0008)}
 #lrVitals .lv-track{position:relative;height:9px;border-radius:2px;overflow:hidden;background:linear-gradient(180deg,#2b1c10,#3d2a19);
