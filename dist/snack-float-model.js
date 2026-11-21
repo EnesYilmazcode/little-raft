@@ -44,9 +44,9 @@ export function createSnackFloat(T) {
   add(new T.SphereGeometry(.018, 6, 4), 0xe36a4f, cx, .165, 0); // red tip so it reads from the deck
   // seaweed parcel, squashed, with crossed twine bands
   const px = -.08, py = -.02;
-  add(new T.SphereGeometry(.1, 10, 7), 0x4f9a5c, px, py, 0, 0, 0, 0, 1, .7, 1);
-  add(new T.TorusGeometry(.1, .008, 4, 14), 0xd9c38c, px, py, 0, 0, 0, 0, 1.01, .71, 1.01);
-  add(new T.TorusGeometry(.1, .008, 4, 14), 0xd9c38c, px, py, 0, 0, Math.PI / 2, 0, 1.01, .71, 1.01);
+  add(new T.SphereGeometry(.1, 9, 6), 0x4f9a5c, px, py, 0, 0, 0, 0, 1, .7, 1);
+  add(new T.TorusGeometry(.1, .008, 3, 12), 0xd9c38c, px, py, 0, 0, 0, 0, 1.01, .71, 1.01);
+  add(new T.TorusGeometry(.1, .008, 3, 12), 0xd9c38c, px, py, 0, 0, Math.PI / 2, 0, 1.01, .71, 1.01);
   // silver fish tail fan: two flat cones poking out of the parcel
   add(new T.ConeGeometry(.045, .09, 4), 0x9fb1bf, px - .1, py + .06, .02, 0, 0, .9, 1, 1, .35);
   add(new T.ConeGeometry(.045, .09, 4), 0x9fb1bf, px - .1, py + .06, -.02, 0, 0, 1.6, 1, 1, .35);

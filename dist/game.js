@@ -66,7 +66,7 @@ import { iconURL, onIconReady, setIconRenderer } from './item-icons.js?build=v3-
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState, BAG_OPEN_KEYS, BAG_CLOSE_KEYS, REEL_PROMPT, LOOK_DONE_RAD, WALK_DONE_S } from './hud.js?build=v3-survival-ae77fa84ac2b'; // loop-ux: saved sound toggle, drag-look sensitivity, first-run hints
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook, pageLock, exitLock, lockLossAction, shouldFocusRelock, escapeCooldownRetry } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
-import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
+import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT, BAIT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js); BAIT [snackfloat]
 import { createWaterEffects } from './waterfx.js?build=v3-survival-ae77fa84ac2b'; // shark lane: bite splashes
 import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2b'; // decorative distant islands (islands.js is the content lane's dockable islands)
 import { cleanTileArmor } from './armor.js?build=v3-survival-ae77fa84ac2b'; // [armor] foundation armor (world.tileArmor)
@@ -361,7 +361,7 @@ export function mount(transfer = null) {
   let coop = null; // coop: hub from coop.js, created after init(); every use is optional (coop?.)
   let prog = null; // [progression-hook]
   // shark lane (dist/shark.js): host/solo simulate, the guest shows the host's pose. shark.trySpear(origin, dir, reach, dmg) -> boolean
-  let shark = null, sharkFx = null, wildlifeMod = null, shakeAmp = 0; const sharkHitAt = {host:0, guest:0};
+  let shark = null, sharkFx = null, wildlifeMod = null, shakeAmp = 0; const sharkHitAt = {host:0, guest:0}, sharkBaitAt = {host:0, guest:0}; // [snackfloat] sharkBaitAt
   let paddle = null; // [paddle] dist/paddle.js glue
   let spearRep = null; // [spear-repair] spear viewmodels/thrust + hammer foundation repair (dist/spear-repair-hooks.js)
   // The "No sail — craft one" chip waits until a sail can be made: its recipe is unlocked or rope has been in the bag.
@@ -540,8 +540,29 @@ export function mount(transfer = null) {
         onHurt:(i, n) => { if (i === 0) hurtLocal(n); else emit({kind:'shark', hurt:n}, 'guest'); },
         onWarn:() => emit({kind:'shark', text:'The shark is biting the raft!'}, 'all'),
         sendHit:dmg => action({kind:'shark:hit', dmg}),
+        onNibble:(x, z) => { const k = nearK(x, z); if (k > 0) play('splash', .25 * k); }, // [snackfloat] local view events, host and guest alike
+        onAte:() => { play('pop', .4); notice('The shark finished its snack', 2200); },
       }, world.shark);
     } catch (e) { console.error('shark failed', e); shark = null; }
+  }
+  const nearK = (x, z) => clamp(1 - Math.hypot(physics.x - x, physics.z - z) / 20, 0, 1); // [snackfloat]
+  const SNACK_OLD_HOST = 'Your friend’s raft doesn’t have Snack Floats yet';
+  // [snackfloat] hold a Snack Float and click the water: local checks only, the host validates again and takes the item
+  function tossSnack(p) {
+    if (role === 'guest' && !shark?.hostBait) { notice(SNACK_OLD_HOST, 2400); return; }
+    if (!shark) { notice('No shark around to feed'); return; }
+    if (diving?.state.diving) { notice('Surface to toss it'); return; }
+    if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to toss it'); return; }
+    if (Math.hypot(p.x - physics.x, p.z - physics.z) > BAIT.REACH) { notice('Try a spot a little closer'); return; }
+    if (shark.bait) { notice('The shark is still snacking'); return; }
+    swing = 1; play('throw', .5); action({kind:'shark:bait', x:Math.round(p.x * 100) / 100, z:Math.round(p.z * 100) / 100});
+  }
+  function snackPrompt() {
+    if (role === 'guest' && !shark?.hostBait) return esc(SNACK_OLD_HOST);
+    if (shark?.bait) return 'The shark is still snacking';
+    const p = frameAim?.point;
+    if (shark && p && !hasTile(Math.round(p.x / 2), Math.round(p.z / 2)) && Math.hypot(p.x - physics.x, p.z - physics.z) <= BAIT.REACH) return '<kbd>Click</kbd>Toss the Snack Float';
+    return 'Point at the water to toss it';
   }
   function hurtLocal(n) {
     shakeAmp = Math.max(shakeAmp, .2); beep(140); notice('The shark bit you!', 1400);
@@ -550,6 +571,7 @@ export function mount(transfer = null) {
   function sharkEffect(e) { // host and guest: cues for a bite, a broken tile or a bite on the guest
     if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90), 2600);
     if (Number.isFinite(e.hurt) && e.hurt > 0 && role === 'guest') hurtLocal(Math.min(e.hurt, 100));
+    if (e.fx === 'snack' && Number.isFinite(e.bx) && Number.isFinite(e.bz) && shark) { shark.fx('snack', e.bx, e.bz); play('splash', .6); } // [snackfloat]
     if (!isInt(e.x) || !isInt(e.z) || !shark) return;
     const v = shark.view, d = Math.hypot(physics.x - e.x * 2, physics.z - e.z * 2), near = clamp(1 - d / 14, .25, 1);
     shark.markBite(e.x, e.z); shark.fx('bite', v.x + Math.sin(v.heading) * 1.3, v.z + Math.cos(v.heading) * 1.3);
@@ -783,6 +805,7 @@ export function mount(transfer = null) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (canHarvestShark()) html = '<kbd>E</kbd>Harvest the shark'; // shark lane
+      else if (selectedKind() === 'snackfloat') html = snackPrompt(); // [snackfloat]
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
       else if (eatTip && !bt && !(contextHtml = content?.prompt(frameAim) ?? null)?.startsWith('<kbd>E</kbd>')) { contextHtml = null; html = '<kbd>Click</kbd>' + esc(eatTip.label); } // [vitals] kbd markup: a prompt, not a feed notice [juicer] an E content prompt wins [buildpack] so does E on a hatch / gate (interact() toggles it first)
       else if (waterAim?.prompt) html = content?.palmPrompt?.(frameAim, waterAim.prompt) ?? waterAim.prompt; // [scarecrow]
@@ -1379,6 +1402,17 @@ export function mount(transfer = null) {
       if (!shark || !p || !Number.isFinite(a.dmg) || now - sharkHitAt[actor] < 250 || shark.distanceTo(p.x, p.z) > 6) return;
       sharkHitAt[actor] = now; shark.applyHit(a.dmg); return;
     }
+    if (a.kind === 'shark:bait') { // [snackfloat] toss a Snack Float: all-or-nothing, a refused toss never takes the item
+      const p = actor === 'guest' ? other : physics, now = performance.now();
+      if (!shark || !p || !Number.isFinite(a.x) || !Number.isFinite(a.z) || now - sharkBaitAt[actor] < 400 || bag.count('snackfloat') < 1) return;
+      sharkBaitAt[actor] = now; const say = t => emit({kind:'shark', text:t}, actor);
+      if (Math.hypot(a.x - p.x, a.z - p.z) > BAIT.REACH + (actor === 'guest' ? BAIT.SLACK : .01)) { say('Try a spot a little closer'); return; }
+      const s = new Bag(bag.snapshot()); if (!s.remove('snackfloat', 1)) return;
+      const r = shark.toss(a.x, a.z); if (r === 'busy') { say('The shark is still snacking'); return; } if (r !== 'ok') { say('Point at the water to toss it'); return; }
+      commit(bag, s); const b = shark.bait;
+      emit({kind:'shark', fx:'snack', bx:b.x, bz:b.z, text:shark.sim.state === 'dead' ? 'Snack Float bobbing · the shark will find it later' : 'The shark swam off for a snack'}, 'all');
+      return;
+    }
     if (content?.action(a, actor, bag)) return; // content hook: module actions (chest, research, gather…)
     if (WATER_ACTIONS.includes(a.kind)) { applyWatering(a, actor, bag); return; }
     if (RAIN_ACTIONS.includes(a.kind)) { applyRain(a, actor, bag); return; } // rain-sprinkler
@@ -1448,6 +1482,7 @@ export function mount(transfer = null) {
     if (instruments?.use(kind)) { swing = .7; return; } // [instruments]
     if (kind === 'paddle' && paddle?.use()) return; // [paddle] stroke at the raft edge
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' ? spearRep?.useHammer() : kind === 'armor' && spearRep?.useArmor()) return; // [spear-repair] thrust / repair a damaged tile; [armor] fit armor
+    if (kind === 'snackfloat') { tossSnack(p); return; } // [snackfloat] before content.use
     if (content?.use(aim, kind)) { swing = 1; return; } // content hook, before eating: [crops] plant / water a crop plot slot; paint brush
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
@@ -2313,6 +2348,9 @@ export function mount(transfer = null) {
     get tileArmor() { return {...(world.tileArmor || {})}; }, // [armor]
     get pose() { const v = shark?.view; return v ? {x:v.x, z:v.z, heading:v.heading, visible:shark.visible, y:shark.visible ? ocean.getHeight(v.x, v.z) + v.depth : null} : null; },
     get canHarvest() { return canHarvestShark(); },
+    get bait() { const b = shark?.bait; return b ? {x:b.x, z:b.z, t:b.t} : null; }, // [snackfloat]
+    setBait(x, z, t = 120) { return shark && role !== 'guest' ? shark.setBait(+x, +z, +t) : null; }, // 'ok' | 'busy' | 'water' (host/solo)
+    clearBait() { if (!shark || role === 'guest') return false; shark.clearBait(); return true; },
     forceAttack() { return role !== 'guest' && !!shark?.forceAttack(); },
     kill() { if (role !== 'guest') shark?.kill(); return shark?.sim.state ?? null; },
     hit(n = 5) { return role !== 'guest' && !!shark?.applyHit(+n); },
