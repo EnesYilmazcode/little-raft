@@ -530,10 +530,13 @@ export function mount(transfer = null) {
   }
   function effect(e) {
     if (!e || typeof e !== 'object') return;
-    if (e.kind === 'gathered') { diving?.markGathered(e.id); return; } // diving lane hook: node taken by anyone
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
     if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
     beep(e.kind === 'build' ? 640 : e.kind === 'craft' ? 560 : e.kind === 'full' ? 220 : 440);
+  }
+  function nodeTaken(id, to) { // diving lane hook: own message type so older clients simply ignore it
+    if (to !== 'guest') diving?.markGathered(id);
+    if (to !== 'host') send({type:'gathered', id});
   }
   function wearHook(bag, slot, actor) {
     const i = hookIndex(bag, slot); if (i < 0) return;
@@ -586,11 +589,12 @@ export function mount(transfer = null) {
       return;
     }
     if (a.kind === 'gather') { // diving lane hook: seafloor node, validated by id + diver distance
-      const n = nodeById(a.id, islands), p = actor === 'guest' ? other : physics; if (!n || !p || p.y == null || gatheredIds.has(n.id) || diving?.seafloor?.isGathered?.(n.id)) return;
+      const n = nodeById(a.id, islands), p = actor === 'guest' ? other : physics; if (!n || !p || p.y == null) return;
+      if (gatheredIds.has(n.id) || diving?.seafloor?.isGathered?.(n.id)) { nodeTaken(n.id, actor); return; } // tell a stale client it is gone
       if (Math.hypot(n.x - p.x, n.y - p.y, n.z - p.z) > DIVE.REACH + 1.5) return;
       const scratch = new Bag(bag.snapshot()), loot = NODE_LOOT[n.type];
       for (const [k, c] of Object.entries(loot)) if (scratch.add(k, c) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
-      commit(bag, scratch); gatheredIds.add(n.id); later(() => gatheredIds.delete(n.id), DIVE.REGROW * 1000); emit({kind:'gathered', id:n.id}, 'all');
+      commit(bag, scratch); gatheredIds.add(n.id); later(() => gatheredIds.delete(n.id), DIVE.REGROW * 1000); nodeTaken(n.id, 'all');
       emit({kind:'loot', text:'+ ' + Object.entries(loot).map(([k, c]) => `${c} ${itemName(k)}`).join(' · ')}, actor); return;
     }
     if (a.kind === 'fish') {
@@ -1024,6 +1028,7 @@ export function mount(transfer = null) {
         if (data.type === 'move') other = validPose(data.me) ?? other;
         return;
       }
+      if (data.type === 'gathered' && typeof data.id === 'string') { diving?.markGathered(data.id.slice(0, 16)); return; } // diving lane hook
       if (data.type === 'state') {
         lastHostMessage = performance.now();
         const w = cleanWorld(data.world, true); if (!w) return;
