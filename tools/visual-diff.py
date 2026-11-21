@@ -16,10 +16,11 @@ tree, this tool, determinism.js, harness.py, the Chromium version and the seed, 
 with the same main. Only successful renders are cached; --no-cache re-renders. Delete the directory to reset.
 
 Every scene runs in a fresh browser context with tools/determinism.js injected and the page opened at
-?seed=<n>&freeze=1: Math.random is seeded; performance.now, Date, setTimeout/setInterval and
-requestAnimationFrame run on a virtual clock advanced only by window.__det.step(); pointer lock and Web Audio
-are removed (the game falls back to drag-to-look); WebGL draws are skipped on every stepped frame except the
-last one before a screenshot; any request that is not to the local server is blocked (today only the Google
+?seed=<n>&freeze=1: Math.random is seeded; performance.now, Date, setTimeout/setInterval, requestAnimationFrame
+and requestIdleCallback run on a virtual clock advanced only by window.__det.step(); pointer lock and Web Audio
+are removed (the game falls back to drag-to-look); WebGL draws to the visible canvas and to render targets
+re-rendered every frame are skipped on every stepped frame except the last one before a screenshot (see
+determinism.js; --drawall draws every frame); any request that is not to the local server is blocked (today only the Google
 Fonts stylesheet, so text uses fallback fonts). live.js still polls version.json, but on the virtual clock, and
 an unchanged build never swaps. Scene renders are spread over --jobs browsers (one per thread, fresh context
 per render) from one queue, longest scenes first. A render that fails without any page error (a timeout on a
@@ -231,12 +232,12 @@ def cache_root():
     return Path(os.environ.get('RAFT_VISUAL_CACHE') or Path.home() / '.cache' / 'raft-visual')
 
 
-def cache_key(base, seed, browser_version):
+def cache_key(base, seed, browser_version, query=''):
     """Key for cached base renders: the base dist tree, the renderer (this tool, the shim, the harness, Chromium)
     and the seed. Editing any of them re-renders base; the same main build is rendered once per machine."""
     h = hashlib.sha256()
     for part in (tree_hash(base), (HERE / 'determinism.js').read_bytes(), Path(__file__).read_bytes(),
-                 (ROOT / 'tests' / 'e2e' / 'harness.py').read_bytes(), browser_version, str(seed), f'{W}x{H}'):
+                 (ROOT / 'tests' / 'e2e' / 'harness.py').read_bytes(), browser_version, str(seed), f'{W}x{H}', query):
         h.update(part if isinstance(part, bytes) else part.encode()); h.update(b'\0')
     return h.hexdigest()[:32]
 
@@ -390,6 +391,8 @@ def main():
                     help='browsers rendering scenes side by side (default min(4, cpus); 1 = sequential)')
     ap.add_argument('--no-cache', action='store_true', help='base/head: always re-render base instead of using the cache '
                     '($RAFT_VISUAL_CACHE, default ~/.cache/raft-visual, keyed by a hash of the base dist and renderer)')
+    ap.add_argument('--drawall', action='store_true', help='draw every stepped frame (?drawall=1): slower, for builds whose '
+                    'render targets accumulate across frames, which the default frame skipping cannot reproduce')
     ap.add_argument('--only', default='', help='comma list of scene names')
     ap.add_argument('--list', action='store_true', help='print scene names and exit')
     args = ap.parse_args()
@@ -397,6 +400,7 @@ def main():
         for n, s in SCENES.items(): print(f'{n:13} {describe(s, args.seed)}')
         return 0
 
+    query = '&drawall=1' if args.drawall else ''
     out = Path(args.out).resolve()
     result = {'tool': TOOL, 'pass': False, 'failures': [], 'metrics': {}, 'artifacts': []}
 
@@ -447,7 +451,7 @@ def main():
                     while (unit := work.get()) is not None:
                         sub, dist, label, name = unit
                         if dist not in servers: servers[dist] = StaticServer(dist).__enter__()
-                        url = f'{servers[dist].url}?seed={args.seed}&freeze=1'
+                        url = f'{servers[dist].url}?seed={args.seed}&freeze=1{query}'
                         for attempt in (1, 2):
                             if not browser.is_connected(): browser = launch_chromium(p, extra_args=CHROME_ARGS)
                             try:
@@ -484,7 +488,7 @@ def main():
         for _ in threads: work.put(None)
         ready.set(); return infra(f'browser run failed: {errors[0]}')
     if mode == 'compare' and not args.no_cache:
-        cdir = cache_root() / cache_key(base, args.seed, versions[0])
+        cdir = cache_root() / cache_key(base, args.seed, versions[0], query)
         hits = {}
         for n in names:
             info = cache_get(cdir, n, out / 'A' / f'{n}.png')
@@ -528,7 +532,7 @@ def main():
     contact_html(out / 'index.html', la, lb, names, results, ma, mb, limit, title)
 
     def repro(n, dist):
-        cmd = f'python3.13 tools/visual-diff.py --dist {dist} --only {n} --seed {args.seed}'
+        cmd = f'python3.13 tools/visual-diff.py --dist {dist} --only {n} --seed {args.seed}' + (' --drawall' if args.drawall else '')
         return f'{cmd}  (scene: {describe(SCENES[n], args.seed)})'
 
     fails = result['failures']

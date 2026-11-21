@@ -73,6 +73,14 @@
     window.setTimeout = (fn, ms, ...args) => addTimer(fn, ms, args, false);
     window.setInterval = (fn, ms, ...args) => addTimer(fn, ms, args, true);
     window.clearTimeout = window.clearInterval = id => { timers.delete(id); };
+    // requestIdleCallback (item icons render one per idle slice) would otherwise run on real idle time, so how
+    // many icons were ready at the screenshot depended on machine load. Idle callbacks run once per virtual frame,
+    // after that frame's rAF callbacks; ones queued during a frame wait for the next one.
+    let idle = new Map(), nextIdle = 1;
+    if (window.requestIdleCallback) {
+      window.requestIdleCallback = cb => { const id = nextIdle++; idle.set(id, cb); return id; };
+      window.cancelIdleCallback = id => { idle.delete(id); };
+    }
     const runTimers = () => {
       let errors = 0;
       for (let guard = 0; guard < 10000; guard++) {
@@ -86,17 +94,46 @@
     };
     det.timers = () => timers.size;
     // Software GL (swiftshader) spends ~all its time rasterising. Frames stepped only to advance the simulation
-    // are not drawn: draw/clear calls are dropped for every frame of a step(n) except the last. The game has no
-    // render targets or feedback buffers, so the last frame is complete on its own. ?drawall=1 draws every frame.
+    // are not drawn: draw/clear calls are dropped for every frame of a step(n) except the last, but only where that
+    // cannot change the final frame:
+    //  - a canvas that is in the document and does not preserve its drawing buffer: its default framebuffer is
+    //    redrawn from scratch on the last frame. Offscreen or preserveDrawingBuffer canvases (item icons rendered
+    //    on an idle callback and read back with toDataURL) always draw.
+    //  - a framebuffer / render target only while it is "steady", i.e. it was also bound in the previous frame
+    //    (three.js shadow maps re-render every frame). A target rendered once and reused, every N frames, or on
+    //    demand (shadowMap.autoUpdate = false + needsUpdate) is drawn every time it is bound.
+    // Not covered: a target re-rendered every frame that accumulates into itself (trails, temporal AA). Such a
+    // branch needs ?drawall=1 (visual-diff.py --drawall), which draws every frame.
     det.skipDraw = false;
+    det.skipped = 0;
     if (q.get('drawall') !== '1') {
-      const DRAWS = ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements', 'clear'];
+      const FB = 0x8D40, DRAW_FB = 0x8CA9;
+      const skippable = gl => {
+        if (gl.__detFb) return gl.__detFb.__detSteady === true;
+        const c = gl.canvas;
+        if (!c || typeof HTMLCanvasElement === 'undefined' || !(c instanceof HTMLCanvasElement) || !c.isConnected) return false;
+        if (gl.__detPreserve === undefined) gl.__detPreserve = !!gl.getContextAttributes()?.preserveDrawingBuffer;
+        return !gl.__detPreserve;
+      };
+      const DRAWS = ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements',
+        'clear', 'clearBufferfv', 'clearBufferiv', 'clearBufferuiv', 'clearBufferfi', 'blitFramebuffer'];
       for (const C of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
         if (!C) continue;
+        const bind = C.prototype.bindFramebuffer;
+        if (typeof bind === 'function') C.prototype.bindFramebuffer = function (target, fb) {
+          if (target === FB || target === DRAW_FB) {
+            this.__detFb = fb || null;
+            if (fb && fb.__detLast !== det.frame) { fb.__detSteady = fb.__detLast === det.frame - 1; fb.__detLast = det.frame; }
+          }
+          return bind.call(this, target, fb);
+        };
         for (const m of DRAWS) {
           const orig = C.prototype[m];
           if (typeof orig !== 'function') continue;
-          C.prototype[m] = function (...a) { if (!det.skipDraw) return orig.apply(this, a); };
+          C.prototype[m] = function (...a) {
+            if (det.skipDraw && skippable(this)) { det.skipped++; return; }
+            return orig.apply(this, a);
+          };
         }
       }
     }
@@ -108,9 +145,16 @@
         errors += runTimers();
         const run = queue; queue = new Map();
         for (const cb of run.values()) { try { cb(T0 + det.now); } catch (e) { errors++; console.error(e); } }
+        const idleRun = idle; idle = new Map();
+        // The virtual clock stands still inside a callback, so timeRemaining() counts its own calls down instead
+        // (8, 7, ... 0): a `while (d.timeRemaining() > 0)` work loop still ends, after the same number of items.
+        for (const cb of idleRun.values()) {
+          let left = 8;
+          try { cb({didTimeout: false, timeRemaining: () => Math.max(0, left--)}); } catch (e) { errors++; console.error(e); }
+        }
       }
       det.skipDraw = false;
-      return {frame: det.frame, now: det.now, pending: queue.size, timers: timers.size, errors};
+      return {frame: det.frame, now: det.now, pending: queue.size, timers: timers.size, idle: idle.size, errors};
     };
     // Pointer lock resolves asynchronously (or not at all) in headless Chromium, which flips the game between
     // locked mouse-look and drag-look at an unpredictable moment. Remove it so the game takes its documented
