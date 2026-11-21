@@ -188,3 +188,40 @@ The two drift in and out of phase. **[VERIFIED: `ph = t*2π*0.85` (`hands.js:230
 - **U4.** The vmFov 60 base-position numbers in #2 assume a 16:9 view. Ultrawide views push the fist further from the item, so anchor in NDC and derive the position from the aspect at runtime.
 - **U5.** With the item fully above the fist (#2), the hook's current grip point (`handleLocal`, `hands.js:144`) leaves about 20% of the hook below the fist. The hook model may need a grip nearer its bottom end. A first try that only offset and scaled the hook (`project_try.mjs`) still cropped its bottom and left the top at 47%.
 - **U6.** I opened only the left-hand swim frame from the two-hand set. The bow, zipline, notebook and piano frames in SELECTED.md were not reviewed.
+
+## Verification log
+
+The skeptic pass found 38 VERIFIED, 7 CORRECTED and 7 UNSURE tags.
+
+**Projection.** I re-ran `scratchpad/viewmodel/tools/project.mjs` at FOV 60, 75 and 95 and in swing mode, and every box reproduced to 0.1%. I then checked its camera setup against `dist/game.js` `buildViewmodels()` (lines 323-344):
+- The `holdable()` wrapper and its parameters match line for line: `ry PI/2, rz .2, scale .6` and `rx -.15, rz .6, scale .55`.
+- The game adds each `h.group` to the camera, so screen position depends only on the camera-local transform and the projection matrix. The script's identity camera at the origin is therefore equivalent.
+- The near plane (.05) matches `game.js:284`. The aspect is fixed at 16:9.
+- `update({dt:0})` matches the settled idle state because `st.toolW` starts at 1.
+
+The depth-clear marker and material tweaks do not change geometry. An independent script (`scratchpad/viewmodel/skeptic/proj2.mjs`) produced the same boxes within 0.2%. It settles 120 real frames, uses a YXZ camera at an arbitrary world pose, applies `matrixWorldInverse`, and decays `swing` at 3/s for the swing pose. One caveat: the script's "right fist" line projects `basePos`, not the posed wrist.
+
+**Reference images.** I re-measured the hook in `store_11`, the hammer in `M4AhtY9BB1I_0142` and the rod in `qdWZgcjkYNI_0410` at native resolution with pixel-ruler zooms (`skeptic/z.py`). The hook and rod boxes hold within ±1%. The hammer head holds too, but its handle is near-vertical at x about 95.5, not a diagonal from (88, 67). The hammer fist centre sits about 9% right of the hook fist, not 3%. I re-sampled the three skin hexes as 7x7 medians, and all three match exactly.
+
+**Bob frequency.** The claim of 1.7 Hz for the hands against 1.43 Hz for the camera is confirmed from `hands.js:230/232` and `game.js:689`, with `WALK_SPEED` 2.6 in `player-physics.js:8`.
+
+**Not re-checked.** I did not re-check the branch content (`origin/wip/fleet/viewmodel` and `origin/wip/tech/viewmodel`), because the brief bars git.
+
+**Originality.** No change item copies Raft art. All of them are framing and pose numbers on Little Raft's own meshes.
+
+**Re-ranking.** None is needed. #4 keeps its rank, and only its handle description changed.
+
+**Images re-checked.** Native zooms:
+- `store_11`
+- `M4AhtY9BB1I_0142`
+- `qdWZgcjkYNI_0410`
+- `community_084`
+- `2018-06-11-raft-update-1-02-02` (FOV readout)
+
+10% grid sheets:
+- `store_02`, `store_06`, `store_16`, `store_22`
+- `community_032`, `community_086`, `community_087`, `community_097`, `community_115`, `community_119`
+- `iVT88Yq-PU0_0004`, `_0020`, `_0028`, `_0040`, `_0044`
+- `YSMrrtHtpIc_0315`, `2rqSgyWX6N0_0330`
+- `9vVu3idmeV4_0736`, `qVVltzNBaGw_0250`, `68lj91mBrDI_0009`, `Dle8DwL05lw_0450`
+- `M4AhtY9BB1I_0118`, `_0148`, `_0154`

@@ -155,3 +155,41 @@ Total: 23 images viewed, of which 12 were cropped and gridded or pixel-sampled.
 - **Shark size (C18).** This comes from two top-down wiki shots of uncertain depth. The collection-net shot suggests up to about 6 tiles, which is inconsistent, so I trust the triangle shot. The shark-related changes (#10) depend on the game's no-harm promise; this is a design decision for the owner.
 - **Little Raft hook framing.** The screen box in section 3 was computed from `hands.js` constants and not rendered. Take a screenshot before and after #5.
 - **store_01 framing.** store_01 shows the rope paying out from a hip coil rather than the hand. It is a staged multiplayer promo, so it may not reflect the single-player first-person view.
+
+## Verification log
+
+Skeptic pass, 2026-11-21. Network blocked: anything that relies on the wiki or on memory is UNSURE.
+
+**Counts (43 tags):** VERIFIED 15, CORRECTED 20, UNSURE 8.
+- Claims C1-C19: 6 VERIFIED, 7 CORRECTED, 6 UNSURE.
+- Section 3 code bullets: 4 VERIFIED, 7 CORRECTED (mostly wrong `hook-physics.js` line numbers; the values were right).
+- Change list: 5 VERIFIED, 6 CORRECTED, 2 UNSURE.
+
+**Most important corrections:**
+1. **#4 throw tuning misses its own target.** BASE 5 / CHARGE 8 throws about 20 m at full charge and 45°, not 12-15 m. Use about 4 / 6.5 instead.
+2. **C18 shark length.** The tile pitch was misread as 44 px; a foundation is about 24 px, so the shark is about 5 foundations long, not 3. Both top-down shots agree.
+3. **C8 / C10 debris counts.** devblog-46-03 shows 6 items, not 8, and store_01 shows about 20, not 17. The median of 8 per screen is unchanged.
+4. **C9 placement and distance.** The 2018-10-11 item band was placed in the sky; it is actually y 46-64%. The "about 11 m" nearest-debris figure is arithmetically right but spans 6-16 m over plausible FOV and eye heights.
+5. **Line references.** Every `hook-physics.js` line ref was wrong; the file has 322 lines. The correct lines are given inline. The `debris.js` fit lines are off by 2. In #11, changing the barrel cap has no effect because `fit()` only shrinks.
+
+**Ranking:** no re-ranking is needed. #4 keeps its rank with corrected values, and #10 keeps its rank with a size note.
+
+**Originality:** all change items keep Little Raft's own art. #1 picks its own rope colour, #5 keeps the scrap-hook model, #10 asks for an original creature, and #13 uses Little Raft's UI style. No item needed rewriting.
+
+**Method:**
+- Re-read the dist/ code with `grep -n` and `sed`. `nl` skips blank lines, so it was not used for line numbers.
+- Checked imports across all dist/*.js files and index.html.
+- Ran a projection check of the hands.js base positions at a vertical FOV of 75° and 16:9.
+- Computed closed-form ballistics with g 9.8, UP_BOOST 1 and the hand 1.5 m above the water.
+- Ran a 20,000-step simulation of the makeItem / updateItems drift and respawn rules for the steady-state item counts.
+- Images: gridded 2-3x crops and colour sampling (masked and window medians) with the scratchpad venv (Pillow/numpy). Horizon found by vertical gradient; tile pitch from autocorrelation plus visual seam reading.
+- Scratch files: `/tmp/claude-0/-home-user-little-raft/357b287e-6b25-59b7-a94d-bb803559ea72/scratchpad/hook-early-skeptic/`.
+
+**Images re-checked:**
+- Debris counts: store_01, domesticated-07, 2018-10-11 (large-island-06), devblog-46-03, community_106, community_134, hotfix-3-01, Dle8DwL05lw_0450, community_097.
+- Held hook: qVVltzNBaGw_0135, 68lj91mBrDI_0009, raft-pre-release-v1-01.
+- Pickup toast: M4AhtY9BB1I_0100.
+- Shark: triangle-foundations, collection-net-spacing, YSMrrtHtpIc_0030, store_22, store_06, community_087.
+- Sizes and rope: 2018-07-26 update-5-04, hook-plastic-inhand.
+
+**Not re-checked:** community_087 hotbar contents, store_08, renovation-18, qVVltzNBaGw_0030, store_22 beyond the fin.

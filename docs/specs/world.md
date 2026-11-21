@@ -268,7 +268,10 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 - The ocean is a 280 m plane with 100 segments (`:155-156`), and it does not follow the camera:
   `followCamera` is unset in `dist/game.js:290`, so the snap code at `ocean.js:197-201` never
   runs. If a swimmer goes about 15 m or more from the origin, the far edge comes inside the
-  125 m fade, and a faint seam is possible.
+  125 m fade, and a faint seam is possible. **[VERIFIED: waves at ocean.js:11-17, ripples
+  :101-105, plane :155-156; `followCamera` appears only at ocean.js:197 and is not passed at
+  game.js:290 (nor on fleet/world). The seam distance is arithmetic (140 - 125 = 15 m), not
+  observed.]**
 
 **Foam**
 - The foam is a thin "lace" iso-line, `smoothstep(0, .035, |n-.5|)` (`dist/ocean.js:138`). It is
@@ -315,6 +318,12 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 - It adds "clear" water when looking down, `pow(ndv,1.4)` within 4 to 45 m, which turns the near
   open sea turquoise. That contradicts C17, where open water looking down is dark.
 - It still keeps the full fade to the horizon colour, so there is still no horizon line.
+  **[VERIFIED via `git show`/`git diff HEAD...origin/wip/fleet/world`: SKY.horizon '#d6ecf2', fog
+  40/140, fade 40/130, cloud loop removed, `gl_Position.z = gl_Position.w`, disc
+  smoothstep(.9993,.9997) (acos = 2.1 to 1.4 deg, about 1.8 deg half-intensity radius, about 2.3 % W),
+  GRID 128 / TEXEL 0.5 / COLLAR 1.4, MAX_FOAM 32, `max(crest, edge)`, `pow(ndv,1.4)` with
+  smoothstep(4,45), and the uSky fade at ocean.js:165. Its sun disc is about 2.3 % W against Raft's
+  5 to 8 % W, and its moon is absent.]**
 
 **Branch `origin/wip/feature/islands`** (design document only, `docs/features/islands.md`):
 - One island at a time on a 150 to 270 s cycle. It spawns 70 m upstream, docks 10 to 16 m from the
@@ -324,9 +333,13 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 - A seafloor disc (2.2x the island radius, 2.5 m down) is meant to show "only through the existing
   water transparency", but that transparency does not exist (see above).
 - Spawning at 70 m with fog from 25 to 125 (or 40 to 140) means the island pops in at 45 % (or
-  20 %) fog instead of emerging from the haze (C15).
+  20 %) fog instead of emerging from the haze (C15). **[CORRECTED: with fog 40 to 140 it is
+  (70-40)/100 = 30 %, not 20 %. The 45 % figure is right. Phases (150 to 270 s, 70 m, 10 to 16 m,
+  180 s), the 5 to 8 m dome with a 0.35 m top, and the x2.2 / 2.5 m seafloor disc are verified in
+  docs/features/islands.md on origin/wip/feature/islands.]**
 - A 0.35 m dome is a height-to-width ratio of about 0.02 to 0.035 for the sand alone, against
-  about 0.3 in C14. Most of its height would come from the palms.
+  about 0.3 in C14. Most of its height would come from the palms. **[VERIFIED: 0.35/16 = 0.022,
+  0.35/10 = 0.035.]**
 
 ## 4. Ranked change list
 
@@ -334,34 +347,42 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
    dist/sky.js: import `createSky`, add `sky.group`, call `sky.update` each frame, delete the
    24-sphere cloud loop. Follow the integration in `wip/fleet/world`, including pinning to the far
    plane. Keep a horizon-to-zenith gradient where the zenith is 15 to 35 % darker than the horizon
-   (C3). Keep clouds thin, flat and high, with no parallax (C4).) Impact H, effort S.
+   (C3). Keep clouds thin, flat and high, with no parallax (C4).) Impact H, effort S. **[VERIFIED]**
 2. **#2 Restore a visible horizon line.** (dist/ocean.js:148-149, dist/game.js:290: fade the far
    ocean to a separate `uHorizonSea` colour that is about 15 to 20 % darker than the sky horizon,
-   instead of to `uSky`. Let the sea get lighter toward the horizon, reaching about 2 to 2.5x the
+   instead of to `uSky`. Let the sea get lighter toward the horizon, reaching about 3x the
    near-sea luminance (C1, C2). Start the fade later (40 to 130 m, as in fleet/world). Use our own
-   colours; the aspect analyst owns the palette.) Impact H, effort S.
+   colours; the aspect analyst owns the palette.) Impact H, effort S. **[CORRECTED: "2 to 2.5x" ->
+   "about 3x" per C2; the 15 to 20 % step (re-measured 20 to 26 %) stands; rank unchanged.]**
 3. **#3 Rework foam into two kinds: strong contact foam and soft open-sea patches.**
    (dist/ocean.js:134-143: take the fleet/world raft collar mask and item foam rings, about a 1.4 m
    falloff, and make the contact band near-opaque (alpha 0.85 or more) right at the hull. Replace
    the thin lace iso-line with soft low-frequency patches (about 1 to 3 m blobs) that cover about
-   10 % of the open sea at an opacity of 0.25 to 0.4 (C12, C13). Add a short wake streak on the
-   downstream side of the raft.) Impact H, effort M.
+   2 to 4 % of the open sea at an opacity of 0.25 to 0.4, rising to about 10 to 15 % as soft mist
+   within a few metres of the raft (C12, C13). Add a short wake streak on the downstream side of
+   the raft.) Impact H, effort M. **[CORRECTED: was "about 10 % of the open sea"; per C12 the open
+   sea is about 1 to 4 % and the 11 % figure is mist next to the raft. Rank unchanged, since contact
+   foam (C13, verified) is the main win.]**
 4. **#4 Replace the ring of 12 mini-islands with occasional landmark islands.** (dist/game.js:300
    and the design in `wip/feature/islands`: one island at a time. Give it a layered silhouette with
    a height-to-width ratio of about 0.25 to 0.35, plus one tall feature such as a rock spur or a
    palm cluster of 6 m or more, so it reads on the horizon (C14). Make it at least 3 to 5x the
    starter raft's 6 m width (C16). Spawn it beyond the fade distance (at least 130 m) and let it
    emerge from the haze instead of popping in at 70 m (C15). Amend the 0.35 m dome height in the
-   design.) Impact H, effort L.
+   design.) Impact H, effort L. **[VERIFIED: ratio 0.30/0.35 re-measured (rock alone 0.23, so 0.25 to
+   0.35 is fair). The pop-in is 30 % fog under fleet fog 40 to 140, not 20 %; that does not change
+   the item.]**
 5. **#5 Make shallows and reefs readable without real transparency.** (dist/ocean.js: add a
    shallow mask, the same technique as the raft foam mask, that a nearby island writes into. Over
    the mask, lighten the water body toward a clear turquoise and blend in a procedural sand or
    reef pattern, with a clear boundary band against deep water (C17). Do not adopt fleet/world's
    global "clear when looking down": keep open water dark when the player looks straight down
-   (community_134).) Impact M, effort M.
+   (community_134).) Impact M, effort M. **[VERIFIED]**
 6. **#6 Make the ocean follow the camera.** (dist/game.js:290: pass `followCamera:true`. The
    snapping code at dist/ocean.js:197-201 already exists. This removes the possible far-edge seam
-   when a player swims away from the raft.) Impact M, effort S.
+   when a player swims away from the raft.) Impact M, effort S. **[VERIFIED: note `update` must also
+   receive the camera (HEAD calls `ocean.update(elapsed)` at init; check the per-frame call passes
+   it).]**
 7. **#7 Size the sun disc to Raft's readability, in our own style.** (dist/sky.js: a soft-edged
    core about 5 to 6 deg across, about 4 to 6 % W at the default FOV, with a wide warm halo out to
    about 25 % W (C6). The current fleet disc is 3.6 deg. Scale the bloom down when the sun is
