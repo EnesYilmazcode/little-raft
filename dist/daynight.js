@@ -111,8 +111,8 @@ const key = (phase, ...colors) => ({ phase, c: new Float32Array(colors.flatMap(h
 export const PALETTE_KEYS = Object.freeze([
   //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
   key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#f6d3c2'), // sunrise peach
-  key(0.13, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'), // day sage
-  key(0.54, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'),
+  key(0.13, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'), // bright tropical day (visuals loop)
+  key(0.54, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'),
   key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#f2b8aa'), // dusk coral
   key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#3a4c66', '#8e88b2'), // blue hour
   key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#2f4762', '#5e6f98'), // cosy blue night
@@ -466,7 +466,7 @@ export function createDayNight(ctx) {
     // sky, fog
     if (scene) {
       if (scene.background?.isColor) scene.background.copy(cHorizon);
-      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 25 - 9 * wet; scene.fog.far = 125 - 45 * wet; }
+      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 60 - 44 * wet; scene.fog.far = 260 - 180 * wet; }
     }
     // sun / moon direction
     const th = sunAngle(phaseAt(phase * DAY_SECONDS));
@@ -475,7 +475,7 @@ export function createDayNight(ctx) {
     vMoon.set(-AXIS.x * ct - SIDE.x * 0.6, -st * 0.5, -AXIS.z * ct - SIDE.z * 0.6).normalize(); // the moon rides low, opposite the sun
     if (up) vDir.set(AXIS.x * ct - SIDE.x * 0.32, st, AXIS.z * ct - SIDE.z * 0.32).normalize();
     else vDir.copy(vMoon);
-    const dayI = 2.5 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
+    const dayI = 3.0 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = 0.6 * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
     const swap = smooth(0, SWAP_FADE, Math.abs(L.sunHeight)); // 0 exactly where sun and moon trade places
     if (sun) {
@@ -484,14 +484,14 @@ export function createDayNight(ctx) {
     }
     if (hemi) {
       hemi.color.copy(cHemiSky); hemi.groundColor.copy(cHemiGround);
-      hemi.intensity = 0.75 + 1.05 * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet);
+      hemi.intensity = 0.75 + 0.25 * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet);
     }
-    if (renderer) renderer.toneMappingExposure = 1 - 0.15 * nf;
+    if (renderer) renderer.toneMappingExposure = 1.1 - 0.25 * nf;
     // ocean
     const u = ctx.ocean?.uniforms;
     if (u) {
       u.uSky?.value.copy(cHorizon); u.uZenith?.value.copy(cZenith); u.uDeep?.value.copy(cDeep); u.uShallow?.value.copy(cShallow);
-      if (u.uFadeFar && scene?.fog) u.uFadeFar.value = scene.fog.far;
+      if (u.uFadeFar && scene?.fog) u.uFadeFar.value = Math.min(scene.fog.far, 190); // camera.far is 200
       u.uSunDir?.value.copy(vDir);
       if (u.uSunColor) {
         const spec = (up ? smooth(-0.02, 0.15, L.sunHeight) : 0.18 * smooth(-0.02, 0.2, -L.sunHeight)) * (1 - 0.7 * wet) * swap;
