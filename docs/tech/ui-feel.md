@@ -31,7 +31,15 @@ name tag and `sv-bumpA/B` paint bumps. Rather than draw a second version of any 
   including its node tests. A fourth stack would have put loot text in two corners at once.
 - **drops its hotbar cursor and paint bumps** automatically when the hotbar has `.sv-cursor`
   (`hotbarCursor:'auto'`).
-- **keeps what main lacks**: the loot fly into the slot, the reticle (hover, charge arc, hit markers), the
+- **defers to main's reticle** (round 3). Main 8d21618 ships a minimal 4 px dot that grows to 8 px over
+  interactables (`#crosshair.usable`) and a conic `#chargeMeter` ring around it. Those already answer "can I
+  use this?" and "how hard?", so the game runs ui-feel with `reticle:'markers'`: main's dot, growth and charge
+  ring stay exactly as they are (no restyle, no per-frame hook), and ui-feel adds only the hit ticks
+  (`gold` pickup/catch, `hit` own build, `deny` bag full) plus a 240 ms `scale` pop of main's dot. The full
+  ring/dot/arc reticle remains the standalone default.
+- **leaves main's health/food/water bars** (`vitals-ui.js`) alone: they already have a transform fill, low
+  pulse and damage flash; the lag trail would need nodes inside another module's track (ADOPT section 4).
+- **keeps what main lacks**: the loot fly into the slot, the reticle hit markers, the
   inventory open/close motion, press states and the recipe flash. The fly is now tied to main's bump: the
   target slot keeps its old count (an empty slot stays blank) until the icon lands, then main's own bump plays.
 
@@ -48,7 +56,7 @@ inventory overlap), and the sandbox exercises it with `?toasts=1`.
 | Count bumps (standalone only) | Any hotbar or inventory count change outside a fly gets a small pop (up) or dip (down). Off when survival-ui bumps its own slots. | The same observers. |
 | Toast stack (standalone only, `toasts:true`) | Desktop: five pooled rows at bottom right, newest at the bottom. Phone (760 px wide or less): three rows dropping from the top centre, newest on top. Older rows slide away and dim to 60%. The stack is a `popover="manual"` in the **top layer**, re-shown after every `<dialog>` opens and every `fullscreenchange`, so it reads above modal backdrops and above a fullscreen `<html>`. While a modal is open it moves to where the dialog leaves room (beside it if 250 px are free on the right, else the larger of the top/bottom gaps, 1-2 rows). A repeat merges into the visible row (`Wood +2` becomes `Wood +6` with a number pop and an opacity glow) and resets its 3.2 s life. Each kind has its own accent stripe: loot is amber, craft gold, build teal, full/warn red. | `uiFeel.toast(text, {kind, icon, amount, key})` |
 | Stat bars | The fill and trail are full-width layers scaled with `scaleX`. On **damage** the fill drops in 110 ms, a pale-amber trail holds for 420 ms and then drains over 520 ms, the track flashes, and the icon shakes when the hit is above 12%. On **heal** a green ghost snaps ahead and the fill catches up. At 25% or less the bar pulses (opacity). Re-targeting mid-animation starts from the *visual* value, computed from `getComputedTiming().progress` without reading styles. | `uiFeel.statBar(container, {tone})`, then `.set(v)` |
-| Crosshair | Built inside the existing `#crosshair`: ring, dot, an SVG charge arc and four hit ticks. **Hover** grows the ring to 1.32x and turns it gold. **Charge** fills an amber arc (via `stroke-dashoffset`), and at full charge it turns gold, glows and pops. **Hit** variants: `hit` (cream), `gold` (catch or pickup) and `deny` (red ticks with a ring shake). | `crosshair.hover(bool)`, `crosshair.charge(v or null)` and `crosshair.hit(kind)` from `frame()`, `updateHook()` and `effect()` |
+| Crosshair | Built inside the existing `#crosshair`: ring, dot, an SVG charge arc and four hit ticks. **Hover** grows the ring to 1.32x and turns it gold. **Charge** fills an amber arc (via `stroke-dashoffset`), and at full charge it turns gold, glows and pops. **Hit** variants: `hit` (cream), `gold` (catch or pickup) and `deny` (red ticks with a ring shake). In the game (`reticle:'markers'`) only the hit ticks are built, over main's own dot, with a `scale` pop (or `translate` shake) of that dot. | Standalone: `crosshair.hover(bool)`, `crosshair.charge(v or null)`, `crosshair.hit(kind)`. Game: only `crosshair.hit(kind)` from `updateHook()` and `effect()` |
 | Inventory open/close | Pure CSS. The panel fades in from 0.96 scale and +14 px, the craft column slides in from the left and the bag from the right, and the backdrop fades. On close it fades out over 120 ms. `@starting-style` plus `overlay`/`display` `allow-discrete` keep the dialog in the top layer while it animates out, *after* `open` is already gone, so `dialog[open]` checks in game.js do not change. | None. |
 | Craft | The recipe row gets a gold flash (opacity on its `::after`) and its icon pops. | `uiFeel.crafted(recipeIdOrKind)`: strings only, looked up with `CSS.escape` by `data-recipe`, then `data-tip-kind` |
 | Press states | Slots sink 2 px, scale to 0.88, darken to 70% and show a gold inner ring with an inset shadow (not while being dragged: `.sv-dragging`, `.sv-src`, `.sv-over` are excluded). They spring back with the back-ease on release. Recipes and the craft button sink 1 px, and recipe icons tilt on hover. `.primary` drops onto its 3 px base. `.secondary`, header buttons, Repair, Copy and Close press too. | None (CSS). |
@@ -86,7 +94,7 @@ inventory overlap), and the sandbox exercises it with `?toasts=1`.
    fire once per paint batch, in a microtask after survival-ui's writes, and do only class and WAAPI work.
    A broken feel layer cannot break the inventory. Every public method is guarded inside the module (logs,
    returns false). In game.js, creation is in `try`, `feelEffect` is in `try` and returns false on error, and
-   the per-frame reticle call is gated with `feelFailed` exactly like `survivalUI.update` / `uiFailed`.
+   the per-frame reticle call is gated with `feelFailed` exactly like `survivalUI.update` / `uiFailed` (round 2; since round 3 the game has no per-frame ui-feel call).
 
 ## Measurements
 
@@ -274,7 +282,15 @@ each `-`/context text exactly once, so the doc cannot drift from the check. It t
 | `rg-05-inventory-1024.png` | The same open bag at 1024x600: no ui-feel node over it (no popover in the game) |
 | `rg-06-fullscreen-fly-420ms.png` | After Pause > Graphics > Enter fullscreen: another barrel's icons in flight |
 
-Last run (JSON): ADOPT 13 blocks applied; `attached` = reticle built, own cursor off, main cursor present, no
+Round 3 (main 8d21618, 12 blocks: copy, `live.js` PRELOAD, 10 game.js): `checks` all true -
+`flyIconsNonEmpty` (`flyArt`: two cached 3D `<img>` icons and one `iconSVG` fallback, none empty),
+`heldWhileFlying`, `crafted` (`crafted('rope')` true, 2 animations; `--topup` exercises the
+`raftDebug.give('leaf', 2)` path when the pickup leaves nothing craftable), `buildMarkerOwnOnly`,
+`reticleIsMains` (`#crosshair` class `uf-xm` only, 4 px, `.usable` 8 px, one `.uf-x-hit` child, no
+`#chargeMeter` rule), `guards`, `noPageErrors`. `flightAt600ms`: 33/41/46 px icons (the shrink now ends in the
+last stretch). The script exits 1 if any check fails or if `dist/game.js` is not the base named in ADOPT.
+
+Round 2 run (JSON, 3c62305): ADOPT 13 blocks applied; `attached` = reticle built, own cursor off, main cursor present, no
 toast popover; `heldWhileFlying` = 3 fresh slots hidden until landing; `feedAtFreeze` = `+3 Palm Leaf`,
 `+2 Scrap`, `+2 Plank` (the pickup feed runs as before); `craft` = `crafted('rope')` returned true with 2
 animations on the row; `buildMarker` = partner `by:guest` 0 hit animations, no owner 0, mine `by:host` 1;
@@ -311,7 +327,8 @@ this frame rate), and restores both before crafting.
 - **The main-thread style tick per animated frame.** In this headless/SwiftShader build, each animated frame
   still costs about 0.2 ms of style recalc. It is not profiled on a real GPU, where transform/opacity WAAPI
   runs on the compositor.
-- **Stat bars have nothing to drive them.** The game has no health, hunger or thirst yet (ADOPT section 4).
+- **Stat bars are not wired.** Main's `vitals-ui.js` owns health/food/water; ui-feel's lag trail would have
+  to live in that module to be clean (ADOPT section 4).
 - **The inventory transitions need Chrome 117+ or Safari 17.4+.** Firefox has no `overlay` property, so
   there it closes instantly (open still animates where `@starting-style` exists). That is graceful, not
   broken.
