@@ -38,7 +38,8 @@ const doc = new EventTarget();
 Object.assign(doc, { pointerLockElement: null, visibilityState: 'visible', head: fakeEl(), body: fakeEl(),
   getElementById: () => null, createElement: () => fakeEl(), createElementNS: () => fakeEl() });
 globalThis.document = doc;
-try { globalThis.navigator.getGamepads = () => []; } catch { Object.defineProperty(globalThis, 'navigator', { value: { getGamepads: () => [] }, configurable: true }); }
+const gpads = [null, null, null, null];
+try { globalThis.navigator.getGamepads = () => gpads; } catch { Object.defineProperty(globalThis, 'navigator', { value: { getGamepads: () => gpads }, configurable: true }); }
 
 const T = await import(new URL('vendor/three.module.js', base));
 const { createBuilding } = await import(new URL('building.js', base));
@@ -189,4 +190,41 @@ test('K2: Shift+R and Alt+R reach game.js as {shift, alt}; both lanes map Shift 
   assert.match(gameSrc, /rotatePlacement\(rotStep\(!!m\.shift, !!m\.alt\)\)/, 'controls lane');
   assert.match(gameSrc, /function rotatePlacement\(step\) \{ placeRot = snapRot\(placeRot \+ step\);/);
   assert.match(gameSrc, /<kbd>Shift<\/kbd> \+ <kbd>R<\/kbd>[^']*15°, <kbd>Alt<\/kbd> \+ <kbd>R<\/kbd> turns it back/, 'help documents both');
+});
+
+// ============================================================ P2: pad rotate + remove
+
+const { DEFAULT_BINDINGS, ACTIONS } = await import(new URL('input-map.js', base));
+const btn = (value = 0) => ({ pressed: value > 0.5, touched: value > 0, value });
+const makePad = () => ({ index: 0, id: 'pad0', mapping: 'standard', connected: true, timestamp: 0, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => btn(0)) });
+
+test('P2: the pad remove button drives the same hold / release remove as X; R3 reaches the rotate callback', () => {
+  const p = makePad(); gpads[0] = p;
+  const s = setupControls({ removeDown: (...a) => s.calls.push(['removeDown', ...a]), removeUp: (...a) => s.calls.push(['removeUp', ...a]) });
+  const [code] = DEFAULT_BINDINGS.remove.pad, i = +code.slice(3);
+  p.buttons[i] = btn(1); s.tick(); s.tick();
+  assert.deepEqual(s.calls.filter(c => c[0].startsWith('remove')).map(c => c[0]), ['removeDown'], 'press = start aiming');
+  p.buttons[i] = btn(0); s.tick();
+  assert.deepEqual(s.calls.filter(c => c[0].startsWith('remove')).map(c => c[0]), ['removeDown', 'removeUp'], 'release = remove');
+  p.buttons[11] = btn(1); s.tick(); p.buttons[11] = btn(0); s.tick(); // R3
+  assert.deepEqual(s.calls.filter(c => c[0] === 'repair'), [['repair', { shift: false, alt: false }]]);
+  s.c.dispose(); gpads[0] = null;
+});
+
+test('P2: remove has its own unused pad button; game.js rotates a held build piece before sail / repair', () => {
+  assert.ok(ACTIONS.some(a => a.id === 'remove'));
+  const code = DEFAULT_BINDINGS.remove.pad[0];
+  const others = Object.entries(DEFAULT_BINDINGS).filter(([id, bd]) => id !== 'remove' && bd.pad.includes(code));
+  assert.deepEqual(others, [], `${code} is not bound to anything else`);
+  const cb = gameSrc.slice(gameSrc.indexOf('repair:(m = {}) =>'), gameSrc.indexOf('release:() => sailing?.release()'));
+  assert.match(cb, /^repair:\(m = \{\}\) => \{ if \(running && heldKind\(\) === 'hammer' && building\?\.key\('KeyR', true, true, false\)\) return;/);
+  assert.match(gameSrc, /removeDown:\(\) => \{ if \(running && !uiBlocked\(\) && heldKind\(\) === 'hammer'\) building\?\.key\('KeyX', true, true, false\); \}, removeUp:removeRelease/);
+  assert.match(gameSrc, /if \(e\.code === 'KeyX'\) removeRelease\(\);/, 'keyboard X releases through the same function');
+  // building: a pad-started remove (key KeyX down) shows the mode, and R3 on a cell piece turns it
+  const b = createBuilding(T, new T.Scene());
+  b.key('KeyX', true, true, false); assert.equal(b.removing, true);
+  assert.equal(b.removeAction(), null, 'nothing aimed: nothing to remove'); assert.equal(b.removing, false);
+  pick(b, 'stairs'); const r0 = b.rotation;
+  assert.equal(b.key('KeyR', true, true, false), true); assert.equal(b.rotation, (r0 + 1) % 4);
+  b.dispose();
 });

@@ -1237,6 +1237,8 @@ export function mount(transfer = null) {
     if (i < 0) { notice('Put a hammer on your hotbar to build'); return; }
     selectSlot(i); building.menu.setSelected(id); notice(PIECES[id].name + ' selected', 1200);
   }
+  // X (or the pad remove button) released with the hammer: remove what the chip named.
+  function removeRelease() { if (!building?.removing) return; const a = building.removeAction(); if (a && running) { swing = 1; action(a); } }
   function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); }
   function interact() {
     if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
@@ -1766,7 +1768,7 @@ export function mount(transfer = null) {
   });
   on(window, 'keyup', e => {
     keys[e.code] = false; if (e.code === 'KeyR') sailing?.release(); // [sailing]
-    if (e.code === 'KeyX' && building?.removing) { const a = building.removeAction(); if (a && running) { swing = 1; action(a); } } // building-pieces lane hook
+    if (e.code === 'KeyX') removeRelease(); // building-pieces lane hook
   });
   on(window, LIVE_STATUS_EVENT, e => { if (!running || !e.detail?.text) return; notice(e.detail.text); e.preventDefault(); }); // live.js update notices -> feed
   on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
@@ -1781,7 +1783,8 @@ export function mount(transfer = null) {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
-      interact, inventory:openInventory, repair:(m = {}) => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(rotStep(!!m.shift, !!m.alt)); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
+      interact, inventory:openInventory, repair:(m = {}) => { if (running && heldKind() === 'hammer' && building?.key('KeyR', true, true, false)) return; if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(rotStep(!!m.shift, !!m.alt)); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
+      removeDown:() => { if (running && !uiBlocked() && heldKind() === 'hammer') building?.key('KeyX', true, true, false); }, removeUp:removeRelease, // pad remove = hold / release X
       pause:() => settingsController?.open(), buildWheelOpen:() => !!building?.menu.isOpen, // hotbar + interact are swallowed while the build wheel is open
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
       menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard

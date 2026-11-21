@@ -21,7 +21,7 @@ const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEven
 // g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
 //     inventory(), repair({shift, alt}) (R: Shift = fine turn, Alt = turn back), pause(), menuBack(id) (pad closes the open menu), useDown(), useUp(), useCancel(), reelDown(), reelUp(),
 //     buildPieces? (list or () => list of {id,label}), buildPick?(id),
-//     buildWheelOpen?() (hammer build wheel open: hotbar and interact are swallowed, movement still works)}
+//     removeDown?() / removeUp?() (hammer remove, pad binding), buildWheelOpen?() (hammer build wheel open: hotbar and interact are swallowed, movement still works)}
 export function createControls(g) {
   const map = new ActionMap({storage:storage()});
   const feel = new MoveFeel({motionScale:1});
@@ -40,9 +40,11 @@ export function createControls(g) {
       else if (id === 'pause' && pad) call('pause'); // Escape on the keyboard is owned by settings.js / pointer lock
       else if (id === 'rotate') { if (!g.buildWheelOpen?.()) call('repair', {shift:input.shiftHeld(), alt:input.altHeld()}); emit('little-raft-action', {id}); } // game's R = repair today (never behind the build wheel)
       else if (id === 'buildMenu') openRadial();
+      else if (id === 'remove') call('removeDown'); // hammer: hold to aim what to remove, release removes it
       else if ((id === 'use' || id === 'aim') && pad) return; // pad triggers handled analog in frame()
     } else if (id === 'buildMenu') radial?.confirm();
     else if (id === 'rotate') call('release'); // let go of a steered sail on any device
+    else if (id === 'remove') call('removeUp');
   };
   const tabCapturing = () => { for (const t of tabs) if (t.capturing) return true; return false; }; // per frame: no array copy
   const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity, blockedActions:['inventory', 'pause'],

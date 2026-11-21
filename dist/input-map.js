@@ -29,6 +29,7 @@ export const ACTIONS = Object.freeze([
   { id: 'hotbarNext', label: 'Next slot', group: 'Hotbar', kind: 'button' },
   { id: 'hotbarPrev', label: 'Previous slot', group: 'Hotbar', kind: 'button' },
   { id: 'buildMenu', label: 'Build menu', group: 'Gamepad', kind: 'button' },
+  { id: 'remove', label: 'Remove (hammer)', group: 'Gamepad', kind: 'button' }, // keyboard X stays in game.js
 ].map(Object.freeze));
 
 const ACTION_IDS = new Set(ACTIONS.map((a) => a.id));
@@ -54,6 +55,7 @@ export const DEFAULT_BINDINGS = Object.freeze({
   hotbarNext: b(['WheelDown'], ['Pad5']),
   hotbarPrev: b(['WheelUp'], ['Pad4']),
   buildMenu: b([], ['Pad12']),
+  remove: b([], ['Pad13']), // D-pad down: hold to aim, release to remove (like X)
 });
 
 export const SETTINGS_DEFAULTS = Object.freeze({
