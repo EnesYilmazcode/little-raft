@@ -16,7 +16,7 @@ import { PlayerPhysics } from './player-physics.js?build=v3-survival-ae77fa84ac2
 import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
-import { createContent, cleanExt } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
+import { createContent, cleanExt, promptParts } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
 import { CONTENT_DECOR, CONTENT_BLOCK_RADIUS } from './content-items.js?build=v3-survival-ae77fa84ac2b'; // content hook
 import { createBuilding, cleanPieces } from './building.js?build=v3-survival-ae77fa84ac2b'; // building-pieces lane hook (docs/cloud/building-pieces.md)
 import { createControls } from './controls.js'; // controls lane: input map, gamepad, movement feel (docs/cloud/controls.md)
@@ -697,9 +697,10 @@ export function mount(transfer = null) {
     if (eatTip) return eatTip;
     const p = waterAim?.prompt; return p && (p.startsWith('<kbd>') || CUP_KINDS.includes(selectedKind())) ? tipFor(p) : null;
   }
-  let contextHtml = null;
+  let contextHtml = null, contentPromptOff = null; // content hook: contextHtml also feeds main's #lrPrompt via raftPrompts
   function updateContext(dialog) {
-    let html = '';
+    let html = ''; contextHtml = null; // content hook: cleared each frame so a stale content prompt never lingers
+    if (!contentPromptOff && window.raftPrompts) contentPromptOff = window.raftPrompts.provide({id:'content', priority:1, prompt:() => promptParts(contextHtml)}); // content hook: #contextPrompt is hidden by prompts.css
     if (running && !dialog) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
@@ -1998,7 +1999,7 @@ export function mount(transfer = null) {
     if (clothMat) mats.add(clothMat);
     for (const g of geos) { try { g.dispose(); } catch {} }
     for (const m of mats) { try { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); m.dispose(); } catch {} }
-    try { content?.dispose(); } catch {} content = null; // content hook
+    try { content?.dispose(); contentPromptOff?.(); } catch {} content = null; contentPromptOff = null; // content hook
     try { ocean?.dispose(); } catch {}
     materialCache.clear(); itemMeshes.clear(); scene.clear();
     scene = null; // renderer, canvas, AudioContext, peer and conn are left untouched
@@ -2027,7 +2028,7 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:clearInput}); // [progression-hook]
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput}); // [progression-hook]
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
     settingsController = createSettings({onChange:next => { applyOptions(next); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});

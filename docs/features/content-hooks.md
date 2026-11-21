@@ -37,3 +37,15 @@ uses its defaults. Older builds drop `ext`, because their `cleanWorld` ignores u
 
 **Co-op.** The host sends `ext` in every state message, about 8 per second, so `serialize()` must be cheap
 and `load(data, 'net')` must not rebuild meshes unless the data changed.
+
+**Prompts on screen.** Main hides `#contextPrompt` (prompts.css) and draws `#lrPrompt` from
+`window.raftPrompts` providers. `updateContext()` clears `contextHtml` each frame and registers one
+provider (`id:'content'`, priority 1) that converts the module HTML with `promptParts()` from
+`content.js`: `<kbd>E</kbd>Open crate` becomes `{key:'E', label:'Open crate'}`; text without a
+`<kbd>` shows as a muted hint. Modules keep returning HTML from `prompt(aim)`.
+
+**Stations and E.** `progression-hooks.js` gets `ctx.aim` (game.js `frameAim`). Its E check
+(`stationNear(aim, true)`) now also needs the aim ray within 0.8 m of the station centre
+(`aimMiss()`), so E at the sky or at an out-of-reach crate opens the inventory instead of the
+Research Table. The same check drives a `station` provider ("E Use the Research Table").
+Screenshots: `docs/cloud/shots/content/merged-prompt-island.png`, `merged-prompt-crate.png`.
