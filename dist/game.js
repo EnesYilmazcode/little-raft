@@ -429,6 +429,7 @@ export function mount(transfer = null) {
     steering: () => !!sailing?.steering, // [zipline]
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
     hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
+    rain: () => content?.rain() ?? 0, // [crops] live 0..1 rain (daynight) for garden beds
   };
   function init() {
     const assetBuild = new URL(import.meta.url).searchParams.get('build') || 'dev'; document.querySelectorAll('use[href*="icons.svg"]').forEach(el => el.setAttribute('href', 'icons.svg?build=' + assetBuild + '#' + el.getAttribute('href').split('#')[1]));

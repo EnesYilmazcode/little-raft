@@ -45,8 +45,9 @@ import { createTreasure } from './treasure.js?build=v3-survival-ae77fa84ac2b';
 import { createMapTable } from './maptable.js?build=v3-survival-ae77fa84ac2b';
 import { createNightlight } from './nightlight.js?build=v3-survival-ae77fa84ac2b'; // [nightlight]
 import { createZipline } from './zipline.js?build=v3-survival-ae77fa84ac2b'; // [zipline]
+import { createCrops } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [crops]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createNightlight, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createZipline]; // [bees] + createBees // [zipline] + createZipline // [nightlight] + createNightlight (before createDayNight: fresh carry lights each frame)
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createNightlight, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createZipline, createCrops]; // [bees] + createBees // [zipline] + createZipline // [nightlight] + createNightlight (before createDayNight: fresh carry lights each frame) // [crops] + createCrops
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
