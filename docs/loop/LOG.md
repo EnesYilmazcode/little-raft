@@ -589,3 +589,29 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
 - PR #2 merged into main (3031d67). Review fixes: inventory width at 900px, recipe tracker overlap, Pin button contrast. Reviewer low-priority notes left open: per-frame allocations in rain.js rainTarget and the physics substep input, sky.dispose() missing on hot swap, passive wheel listener.
+
+## claude/loop-visuals-202611210648 (visuals, round 2)
+Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water, materials, hands-and-items, UI, models), art judge, perf checker (10 agents).
+- Accepted (judge: all 6 clearly better):
+  - sky.js dome wired in and driven by a new 9th daynight palette column (blue zenith, pale cyan horizon, white wispy clouds); mesh clouds hidden.
+  - ocean shader: saturated blue, crisp horizon with a pale far band, sharp glints, foam only near the raft.
+  - deck: weathered grey-tan per-board tones, dark gap underlay, worn wood texture; deck meshes 7 -> 5.
+  - held hook rebuilt as a stick with a white bottle grip and orange plastic claws; fingers wrap the grip.
+  - warm wood-and-parchment HUD, inventory, pause menu and quest card.
+  - scenery islands: sand shelf, rocks, lumpy canopy, leaning palms (same draw calls).
+- Judge fixes: solid slot numbers, outlined slot icons, warmer sand and boards.
+- Perf: first A/B FAILED (deck +78%, horizon +36%). Cause: the plank texture's bump map and 4x aniso after the new board UVs, plus the sky's second fbm. Fixed (no bump, 2x aniso, one-octave detail).
+- Re-measured ABAB with the seeded probe:
+  - horizon 236 -> 232 ms
+  - deck 433 -> 410 ms
+  - draw calls 154 -> 140
+  - PASS
+- npm test 532/532.
+- Next:
+  - hotbar/inventory hook icon still shows the old steel gaff; icons need painted look with dark outlines
+  - square foundation tiles instead of long planks
+  - contact foam ring around the raft, more cyan near water
+  - bigger islands with cliffs
+  - coop-fx.js remote hook still steel
+  - thumb blob on the hook grip
+  - faint banding in the pause panel
