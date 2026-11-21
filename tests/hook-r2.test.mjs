@@ -200,3 +200,11 @@ test('HOOK-R3-3: diving reads the raw crouch hold, not the latched crouch toggle
   assert.match(move, /down:!!input && \(controls \? controls\.input\.down\('crouch'\) : held\('KeyC'\)\)/);
   assert.doesNotMatch(move, /ci\.crouch/, 'toggle mode would keep down latched and re-dive at every surfacing');
 });
+
+test('HOOK-R3-5: underwater E picks up floating debris unless a seafloor node is targeted', () => {
+  const fn = gameSrc.slice(gameSrc.indexOf('function interact() {'), gameSrc.indexOf('if (content?.interact(currentAim())) return;'));
+  assert.doesNotMatch(fn, /\|\| diving\?\.state\.diving\) return;/, 'diving no longer swallows every E press');
+  assert.match(fn, /dive\?\.diving && dive\.gatherTarget\) return;/, 'a seafloor node still owns E');
+  assert.ok(fn.indexOf("action({kind:'collect'") > fn.indexOf('const target = pickupFrom(currentAim());'));
+  assert.match(gameSrc, /pickTarget = diving\?\.state\.gatherTarget \? null : pickupFrom\(frameAim\);/, 'the prompt agrees with E');
+});

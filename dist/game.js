@@ -1116,9 +1116,11 @@ export function mount(transfer = null) {
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
   function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); } // pauseInput: held W/Shift survive the panel
   function interact() {
-    if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
-    if (!pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
+    if (!running || uiBlocked()) return;
+    const dive = diving?.state; if (dive?.diving && dive.gatherTarget) return; // diving lane hook: E gathers a seafloor node in view
+    if (!dive?.diving && !pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
     const target = pickupFrom(currentAim());
+    if (dive?.diving && !target) return; // underwater E only grabs floating debris overhead (matches the prompt)
     if (target) {
       if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
       pending.set(target.token, performance.now() + PENDING_MS); swing = .6;
@@ -1453,7 +1455,7 @@ export function mount(transfer = null) {
     updateAvatars(dt); updateCamera(dt); diving?.update(dt, elapsed); // diving lane hook: every frame, so the title camera (above water) clears the underwater look
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim(aimScratch) : null;
-    pickTarget = pickupFrom(frameAim);
+    pickTarget = diving?.state.gatherTarget ? null : pickupFrom(frameAim); // a seafloor node in view owns E (and its prompt)
     waterAim = pickTarget ? null : wateringTarget(frameAim);
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     const simDt = running ? dt : 0; // the title screen freezes the world: no day clock, no grill fuel or cooking
