@@ -14,7 +14,7 @@
 //   interact(aim)             E key. Return true if consumed (before the inventory opens).
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
-//   decorModel(type)          -> THREE.Object3D for a CONTENT_DECOR type, or null
+//   decorModel(type, d)       -> THREE.Object3D for a CONTENT_DECOR type, or null (d = the world.decor entry, read-only)
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
@@ -25,9 +25,12 @@
 import { createIslands } from './islands.js?build=v3-survival-ae77fa84ac2b';
 import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
 import { createStorage } from './storage-research.js?build=v3-survival-ae77fa84ac2b';
+import { createDecorPack } from './decor-pack.js?build=v3-survival-ae77fa84ac2b';
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
+import { createKiln } from './kiln.js?build=v3-survival-ae77fa84ac2b';
+import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
 
-const FEATURES = [createIslands, createWildlife, createStorage, createDayNight];
+const FEATURES = [createIslands, createWildlife, createStorage, createDecorPack, createDayNight, createKiln, createAnimals];
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -56,7 +59,7 @@ export function createContent(ctx, features = FEATURES) {
     interact: aim => !!first('interact', aim),
     prompt: aim => first('prompt', aim),
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
-    decorModel: type => first('decorModel', type),
+    decorModel: (type, d) => first('decorModel', type, d),
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }

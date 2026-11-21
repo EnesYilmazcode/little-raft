@@ -8,7 +8,7 @@ import { buildResearchTable } from './storage-research-model.js';
 export const CHEST_SLOTS = 12;
 export const MAX_CHESTS = 400;
 export const REACH = 3.2;             // metres from the actor to the tile centre
-export const STARTER = Object.freeze(['rope', 'hook', 'hammer', 'crate', 'research']);
+export const STARTER = Object.freeze(['rope', 'hook', 'hammer', 'crate', 'research', 'nestbox']);
 export const LOCK_REASON = 'Study it first at a Tinker\u2019s Desk';
 export const MAX_SLICE_CHARS = 150000; // a put that would grow the JSON slice past this is refused (content.js caps all of ext at 200k)
 export const OLD_HOST = 'Your friend’s raft doesn’t have chests yet';
