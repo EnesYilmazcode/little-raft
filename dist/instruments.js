@@ -12,6 +12,21 @@ const STEPS = SCALE_HZ.length;
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 export const isInstrument = (k) => typeof k === 'string' && INSTRUMENT_IDS.includes(k);
+export const INSTRUMENT_PRIORITY = 0.9; // under the station providers (1) so a held instrument never hides their E prompt
+
+// True when the player is aimed at something E acts on: a watering target, or a keyed (non-click) #contextPrompt row.
+// keys = the <kbd> texts of game.js's #contextPrompt ('Click' rows are LMB and do not count).
+export function hasETarget(st, keys) {
+  if (st?.watering?.target?.e) return true;
+  return Array.isArray(keys) && keys.some(k => typeof k === 'string' && k.trim() && !/click/i.test(k));
+}
+function contextKeys() {
+  try {
+    const c = globalThis.document?.getElementById?.('contextPrompt');
+    if (!c || c.hidden || !c.querySelectorAll) return null;
+    return [...c.querySelectorAll('kbd')].map(k => k.textContent);
+  } catch { return null; }
+}
 
 // Camera pitch (radians, + is looking up) -> scale step 0..7.
 export function noteFor(pitch) {
@@ -183,14 +198,16 @@ export function createInstruments(T, host) {
   function prompt(ctx) {
     const st = ctx?.state;
     if (!isInstrument(st?.heldKind)) return null;
-    // priority 1 beats the built-in prompt, so step aside for its higher-value lines (pick up, climb, waiting)
+    // priority 0.9 loses to station providers (engine, content, sleep: 1) but beats the built-ins, so step aside
+    // for their higher-value lines (pick up, climb, waiting) and for any E target (planter, purifier, crate...)
     if (st.pickup || st.swimming || (st.role === 'guest' && !st.networkReady)) return null;
+    if (hasETarget(st, contextKeys())) return null;
     const out = [{ key: 'LMB', label: 'Play' }];
     if (played < TEACH_NOTES) out.push({ key: '↕', label: 'Look up/down: change note', muted: true });
     return out;
   }
   let unprompt = null;
-  try { unprompt = globalThis.window?.raftPrompts?.provide?.({ id: 'instruments', priority: 1, prompt }) ?? null; } catch { unprompt = null; }
+  try { unprompt = globalThis.window?.raftPrompts?.provide?.({ id: 'instruments', priority: INSTRUMENT_PRIORITY, prompt }) ?? null; } catch { unprompt = null; }
 
   function dispose() {
     if (disposed) return;
