@@ -27,6 +27,7 @@ import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?bui
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { keyDecision } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -487,6 +488,8 @@ export function mount(transfer = null) {
   function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
   function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
   function clearInput() { keys = {}; charging = null; reeling = false; down = null; }
+  // A panel opening keeps held keys (keyup still arrives); only window blur really loses keyups.
+  function pauseInput() { charging = null; reeling = false; down = null; }
 
   // ---------- Aiming ----------
   function pickNdc(nx, ny) {
@@ -667,7 +670,7 @@ export function mount(transfer = null) {
   }
   function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
-  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); hintDone('bag'); }
+  function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); hintDone('bag'); }
   function interact() {
     if (!running || uiBlocked()) return;
     const target = pickupFrom(currentAim());
@@ -1042,8 +1045,9 @@ export function mount(transfer = null) {
   on($('#resumeHint'), 'click', () => requestLock());
 
   on(window, 'keydown', e => {
-    if (e.target?.matches?.('input, textarea, select') || uiBlocked()) return;
-    keys[e.code] = true;
+    const kd = keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:uiBlocked()});
+    if (kd.record) keys[e.code] = true; // held keys survive a panel; movePlayer gets input=false meanwhile
+    if (!kd.act) return;
     const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
     if (m && running) selectSlot(+m[1] - 1);
     if (e.code === 'KeyE' && !e.repeat) interact();
@@ -1357,7 +1361,7 @@ export function mount(transfer = null) {
   try {
     if (!canvas) throw new Error('#world canvas missing');
     init();
-    settingsController = createSettings({onChange:next => { applyOptions(next); oceanAudio?.setVolume(audioVolume()); soundLabel(); }, onPause:clearInput, onResume:() => requestLock(), onQuit:guard(quitToTitle)});
+    settingsController = createSettings({onChange:next => { applyOptions(next); oceanAudio?.setVolume(audioVolume()); soundLabel(); }, onPause:pauseInput, onResume:() => requestLock(), onQuit:guard(quitToTitle)});
     oceanAudio = createOceanAudio({context:audio, volume:audioVolume(), ambience:(options.ambience ?? 1) > 0});
     if (audio && audio.state === 'running') oceanAudio.resume(); // hot reload: context already unlocked
     const wakeAudio = () => { if (sound && !disposed) oceanAudio?.resume(); }; // browsers need a user gesture first
@@ -1368,7 +1372,7 @@ export function mount(transfer = null) {
       onMove:guard((from, to, amount) => moveSlot(from, to, amount)),
       onCraft:guard(id => craft(id)),
       onResume:guard(() => requestLock()),
-      onPause:guard(clearInput),
+      onPause:guard(pauseInput),
     });
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
