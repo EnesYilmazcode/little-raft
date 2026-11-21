@@ -142,3 +142,21 @@ the raft, confirm models float and look cute, not grim. 3. Hook a tin can: toast
 or fuel row. 5. Insert 3 tins: crank turns, 36 s later 6 scrap; take; crank stops. 6. Reload: tub contents
 persist. 7. Co-op (host+guest tabs): guest sees junk, hooks it, uses the tub, sees crank turn. 8. Smelter
 and grill panels unchanged (copy, flame, fuel). 9. Phone width: panel without fuel column has no gaps.
+
+## Build notes
+Built as specced, with these deviations:
+- **Icons keep `placeholder: true`.** The spec said to drop `placeholder` by passing `icon:` in the item rows.
+  That would be wrong here: `placeholder: true` is what makes survival-ui use the inline `ITEM_ICONS` drawing,
+  and `placeholder: false` requires a symbol in `icons.svg` (progression.test checks this). So the rows use
+  the default `icon-<id>` like sand and smelter do, and the new drawings in `item-svg.js` show up.
+- `ITEM_NAMES` in game.js also gets `oldboot/tincan/seajar`, so the pickup prompt reads "Pick up tin can"
+  and not "supply".
+- Panel copy `nothing` ("Nothing here to sort.") needs a station type when the station is gone, so the panel
+  remembers the last opened station type (`lastType`).
+- Take toast: the host emits `{kind:'loot', text:'The sea looks a little cleaner.'}` on every recycler take
+  (it shows as a notice, since it has no `loot` map).
+- `tests/models.test.mjs` BUDGET gets entries for the three junk models (that test needs a budget for every builder).
+- The tub crank turns about its local z, with the axle on the tub's +z side. The output pile sits on the
+  tile's front-left corner and is hidden until there is output.
+- The models.test stub mentioned in the spec does not exist (it uses real three), so recycler.test uses real three too.
+- The progression reachability test uses `...(I.JUNK_IDS ?? [])`, so `RAFT_DIST` runs against older dist builds still load.
