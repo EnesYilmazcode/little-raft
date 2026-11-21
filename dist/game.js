@@ -502,16 +502,24 @@ export function mount(transfer = null) {
     return localRay.copy(ray.ray).applyMatrix4(invRaft).intersectPlane(deckPlane, deckLocal);
   }
   // Hammer: {kind:'floor', x, z} grid cells. Placeable: {kind, x, z, rot} raft-local metres. ok = can place right now.
+  // Runs every frame, so it fills one reused result (read it right away; debug state copies it).
+  const placed = {kind:'', x:0, z:0, rot:0, ok:false}, probe = {type:'', x:0, z:0, rot:0};
+  const setPlaced = (kind, x, z, rot, ok) => { placed.kind = kind; placed.x = x; placed.z = z; placed.rot = rot; placed.ok = ok; return placed; };
   function placementFor(kind, p) {
     if (!p) return null;
     if (kind === 'hammer') {
       const t = floorTarget(hasTile, p.x, p.z);
       if (!t || Math.hypot(t.x * 2 - physics.x, t.z * 2 - physics.z) > FLOOR_REACH) return null;
-      return {kind:'floor', x:t.x, z:t.z, rot:0, ok:canAfford(localBag(), FLOOR_COST)};
+      return setPlaced('floor', t.x, t.z, 0, canAfford(localBag(), FLOOR_COST));
     }
-    if (!DECOR_TYPES.includes(kind) || !hasTile(tileAt(p.x), tileAt(p.z)) || Math.hypot(p.x - physics.x, p.z - physics.z) > DECOR_REACH) return null;
-    const d = {type:kind, x:Math.round(p.x * 1000) / 1000, z:Math.round(p.z * 1000) / 1000, rot:placeRot};
-    return {kind, x:d.x, z:d.z, rot:d.rot, ok:decorCheck(hasTile, world.decor, d) === 'ok'};
+    if (!DECOR_TYPES.includes(kind) || !nearDeck(p.x, p.z) || Math.hypot(p.x - physics.x, p.z - physics.z) > DECOR_REACH) return null;
+    probe.type = kind; probe.x = Math.round(p.x * 1000) / 1000; probe.z = Math.round(p.z * 1000) / 1000; probe.rot = placeRot;
+    return setPlaced(kind, probe.x, probe.z, placeRot, decorCheck(hasTile, world.decor, probe) === 'ok');
+  }
+  // Within a metre of the deck: just off the edge still shows a red ghost instead of nothing.
+  function nearDeck(x, z) {
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (hasTile(tileAt(x + a), tileAt(z + b))) return true;
+    return false;
   }
   function placementCandidates(kind) {
     const out = [];
@@ -821,7 +829,8 @@ export function mount(transfer = null) {
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook ? placementFor(kind, frameAim.local) : null;
     if (hover) ghosts.show(hover.kind, hover.kind === 'floor' ? hover.x * 2 : hover.x, hover.kind === 'floor' ? .015 : .22, hover.kind === 'floor' ? hover.z * 2 : hover.z, hover.rot, hover.ok, elapsed);
     else ghosts.hide();
-    if (pointing !== !!hover) { pointing = !!hover; for (const h of [hookHands, hammerHands, rodHands]) h?.setPose?.(pointing ? 'point' : 'idle'); }
+    const point = running && DECOR_TYPES.includes(kind); // pointing-finger pose while a placeable is held
+    if (pointing !== point) { pointing = point; for (const h of [hookHands, hammerHands, rodHands]) h?.setPose?.(point ? 'point' : 'idle'); }
   }
   function hostState() {
     const c = guestBag.counts();
