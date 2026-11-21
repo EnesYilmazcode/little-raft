@@ -1,9 +1,10 @@
 // Fishing & cooking glue: rod fishing v2, driftwood grills, fisher's journal, save/load, co-op, debug handle.
 // createFishingCooking(T, host) -> api. The host adapter (see fcHost() in game.js) is the only engine access:
 //   scene, raft, ocean, camera, signal, rodModel, role(), netReady(), send(o), action(a), notice(s, ms?), beep(f),
-//   selectedKind(), aim(), rodTip(), player(), hasTile(x,z), decorAt(x,z), bagCount(k), running(), uiBlocked(), busy()
+//   selectedKind(), aim(), rodTip(), player(), hasTile(x,z), decorAt(x,z), bagCount(k), running(), uiBlocked(), busy(),
+//   storage? (Storage-like for FC_SAVE_KEY; game.js passes the save store's adapter, default localStorage)
 // api: pointerDown() pointerUp() interact() update(dt,time) applyAction(a,actor,bag) onNet(msg,from)
-//      prompt rodReeling capture() dispose()
+//      prompt rodReeling capture() reload() reset({keepJournal}) dispose()
 // Keys: G places a grill (4 wood + 2 scrap) on the aimed raft tile, J toggles the journal.
 // Save: localStorage 'little-raft-fc-v1' {v:1, journal, grills}. Grills are the player's own (host world); while a
 // guest, own grills are stashed and the host's broadcast grills are shown instead.
@@ -19,7 +20,7 @@ export const MAX_GRILLS = 6, GRILL_REACH = 2.2, GRILL_COST = Object.freeze({ woo
 const FUEL_CAP = COOK_TUNING.maxFuel * COOK_TUNING.fuelPerWood;
 const HAS_DOC = typeof document !== 'undefined';
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const store = () => { try { return globalThis.localStorage || null; } catch { return null; } };
+const localStore = () => { try { return globalThis.localStorage || null; } catch { return null; } };
 const isGuest = (r) => r === 'guest';
 const ESCAPE_TEXT = { early: 'Too early — wait for the dunk', missed: 'It got away…', snapped: 'The line slipped — ease off when it goes red' };
 const CSS = `#fcChip{position:fixed;left:12px;bottom:12px;z-index:3;pointer-events:none;font:600 12px/1 system-ui,sans-serif;
@@ -40,6 +41,7 @@ export function createFishingCooking(T, host) {
   const { scene, raft, camera } = host;
   const signal = host.signal;
   let disposed = false, elapsed = 0, dirty = false;
+  const store = () => host.storage ?? localStore();
 
   // ---------- load ----------
   let saved = null;
@@ -182,6 +184,23 @@ export function createFishingCooking(T, host) {
     if (Array.isArray(msg.grills) && from === 'host' && isGuest(host.role())) applySnapshots(msg.grills);
     if (msg.took && from === 'host') receive(msg.took);
     if (msg.catchFx) { const sp = speciesById(msg.catchFx.species); if (sp) { host.notice(`Your friend caught a ${sp.name}!`); host.beep(520); } }
+  }
+
+  // The stored part was replaced (Continue from another tab's save): adopt its journal and own grills.
+  function reload() {
+    let v = null;
+    try { const raw = store()?.getItem(FC_SAVE_KEY); if (raw) v = JSON.parse(raw); } catch { v = null; }
+    Object.assign(journal, new Journal(v && v.journal));
+    clearGrills(); stash = null; lastRole = host.role();
+    loadGrills(v && v.grills);
+    if (isGuest(lastRole)) { stash = snapshots(); clearGrills(); }
+    markChanged();
+  }
+  // New game: no grills (lit or not) carry over to the fresh raft; the fisher's journal does unless asked.
+  function reset({ keepJournal = true } = {}) {
+    clearGrills(); stash = null; lastRole = host.role();
+    if (!keepJournal) Object.assign(journal, new Journal(null));
+    markChanged(); save();
   }
 
   // ---------- save ----------
@@ -458,6 +477,7 @@ export function createFishingCooking(T, host) {
     hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
     get rodReeling() { return !!session && session.stage === 'reeling' && session.holding; },
     capture() { save(); return { v: 1, journal: journal.snapshot(), grills: isGuest(lastRole) ? (stash || []) : snapshots() }; },
+    reload, reset,
     // test/QA helpers
     journal, grills, save,
   };

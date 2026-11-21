@@ -3,6 +3,7 @@
 // Step: {id, title, hint (string or S -> string), done(S, base, ctx) -> bool, count?(S, base, ctx) -> [n, of], start?(S) -> base, needs?:[ids],
 //        optional?:bool (never blocks its chapter), show?(S) -> bool (visibility gate), every?:bool (shown in any chapter)}.
 // count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug.state (polled 250 ms).
+import { getSaveStore } from './save-store.js';
 export const SAVE_KEY = 'little-raft-v1', KEY = 'little-raft-onboarding-v1', AUTOSTART = 'little-raft-autostart';
 const POLL_MS = 250, MAX_ROWS = 3, DIM_MS = 20000, HOLD_MS = 2000, ASIDE_MIN = 190, GUTTER = 8;
 
@@ -179,10 +180,13 @@ const store = {
 function boot() {
   const $ = s => document.querySelector(s), chName = id => CHAPTERS.find(c => c.id === id)?.title ?? id;
   const titleOf = id => STEPS.find(s => s.id === id)?.title ?? id;
-  let saved = {}; try { saved = JSON.parse(store.get(KEY)) || {}; } catch {}
+  // The notes are a part of the world save (save-store.js): one raft, one set of ticks.
+  const saves = getSaveStore(), part = saves.storage;
+  const readPart = () => { try { return JSON.parse(part.getItem(KEY)) || {}; } catch { return {}; } };
+  let saved = readPart();
   let P = createProgress(saved.done), collapsed = !!saved.collapsed, logOpen = false, wiping = false;
   let booted = false, silentRan = false, shownCh, holdUntil = 0, lastProgress = Date.now(), lastS = null;
-  const persist = () => { if (!wiping) store.set(KEY, JSON.stringify({v:1, done:Object.keys(P.done), collapsed})); };
+  const persist = () => { if (!wiping) { try { part.setItem(KEY, JSON.stringify({v:1, done:Object.keys(P.done), collapsed})); } catch {} } };
   const reduced = () => matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
   // ----- tracker -----
@@ -304,6 +308,11 @@ function boot() {
     panel.classList.toggle('ob-aside', aside); panel.classList.toggle('ob-covered', covered);
   }
   setInterval(tick, POLL_MS);
+  const clearRows = () => { rows.forEach(li => li.remove()); rows.clear(); shownCh = undefined; holdUntil = 0; booted = false; silentRan = false; };
+  saves.register('onboarding', {
+    load() { const v = readPart(); P = createProgress(v.done); collapsed = !!v.collapsed; clearRows(); }, // another raft's save was adopted
+    reset() { P = createProgress(); collapsed = false; clearRows(); persist(); }, // New game
+  });
 
   // ----- title screen -----
   const welcome = $('#welcome'), card = welcome?.querySelector('.welcome-card');
@@ -327,10 +336,9 @@ function boot() {
     const newBtn = menu.querySelector('[data-act="new"]'), newLabel = newBtn.textContent;
     let armed = 0;
     const disarm = () => { clearTimeout(armed); armed = 0; newBtn.textContent = newLabel; newBtn.classList.remove('ob-confirm'); };
-    function wipe() {
+    function wipe() { // the same reset New game uses, then a clean page with no save at all
       wiping = true;
-      const clear = () => { store.del(SAVE_KEY); store.del(KEY); };
-      clear(); addEventListener('beforeunload', clear); addEventListener('pagehide', clear); // game.js saves on beforeunload; run after it
+      saves.reset({final:true}); // every part resets; the save is deleted and nothing in this page can write it again
       store.set(AUTOSTART, '1', true); location.reload();
     }
     menu.addEventListener('click', e => {
@@ -356,7 +364,7 @@ function boot() {
     try { (items()[0])?.focus({preventScroll:true}); } catch {}
   }
   return {
-    reset() { P = createProgress(); booted = false; silentRan = false; rows.forEach(li => li.remove()); rows.clear(); shownCh = undefined; holdUntil = 0; persist(); },
+    reset() { P = createProgress(); clearRows(); persist(); },
     complete(id) { if (!STEPS.some(s => s.id === id) || P.done[id]) return false; P.done[id] = true; tickRow(id); feed(`✓ ${titleOf(id)}`); persist(); lastProgress = Date.now(); return true; },
     state: () => ({done:Object.keys(P.done), visible:lastS ? visibleSteps(STEPS, P, lastS).map(s => s.id) : [], chapter:currentChapter(STEPS, P.done), collapsed, steps:STEPS.length}),
   };

@@ -80,7 +80,8 @@ test('game.js: guest join does not save over a newer save, and leaving does not 
   assert.match(g, /if \(storedRev\(\) <= saveRev\) save\(\);/);
   assert.match(g, /const plan = guestLeavePlan\(storedRev\(\), saveRev\);[\s\S]{0,300}\(plan\.useBackup \? normaliseBackup\(ownWorldBackup\) : null\) \?\? savedOwnRaft\(\)/);
   assert.match(g, /on\(window, 'storage'/);
-  assert.match(g, /rev:plan\.rev, savedAt:Date\.now\(\)/);
+  assert.match(g, /saveStore\.write\(\{\.\.\.world, items:\[\]\}, saveRev\)/); // the one guarded write (save-store.js)
+  assert.match(src('save-store.js'), /rev: plan\.rev, savedAt: Date\.now\(\)/);
 });
 
 // ------------------------------------------------------------- LIVE-1

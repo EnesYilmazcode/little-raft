@@ -98,10 +98,11 @@ function mountToast() {
   return t;
 }
 
-const readSeen = () => { try { const v = parseInt(localStorage.getItem(SEEN_KEY), 10); return Number.isFinite(v) ? v : 0; } catch { return 0; } };
-const writeSeen = n => { try { localStorage.setItem(SEEN_KEY, String(n)); } catch {} };
-
-export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
+// storage: Storage-like for SEEN_KEY (game.js passes the save store's adapter: "seen" is per raft); default localStorage.
+export function createLogbookUI({ getProgress, onPause, onResume, storage } = {}) {
+  const area = () => storage ?? globalThis.localStorage;
+  const readSeen = () => { try { const v = parseInt(area().getItem(SEEN_KEY), 10); return Number.isFinite(v) ? v : 0; } catch { return 0; } };
+  const writeSeen = n => { try { area().setItem(SEEN_KEY, String(n)); } catch {} };
   const prev = window[INST_KEY];
   const ac = new AbortController();
   const opt = { signal: ac.signal };
