@@ -6,7 +6,8 @@
 //                      pool:number (share one of `pool` cached, pre-transformed geometry variants picked by seed;
 //                      the geometry is marked userData.shared and must not be disposed per item) }
 // export createItemBatch(T, opts?) -> THREE.Group: draws pooled items instanced (see below).
-// Root is untransformed (engine positions/rotates it). Content is centered on the origin.
+// Root is untransformed (engine positions/rotates it). Content is centered on the origin, except pooled (floating)
+// variants, which are sunk to ride low with a darker wet band at the waterline (see SUBMERGED).
 // Without opts.pool all geometry is created per call and owned by the returned group's meshes.
 // Materials created here are cached per T and shared by every item (material.userData.shared = true);
 // they must not be disposed when one item is removed. root.userData.localMaterials stays empty.
@@ -442,16 +443,43 @@ function build(T, type, getMaterial, opts) {
   return root;
 }
 
-// Every mesh's transform folded into its geometry, which is then shared (userData.shared).
-function bake(T, src) {
+// Floating supplies ride low in the water (pooled variants only: held items and icons build unpooled and stay
+// centred). The engine floats an item root ITEM_FLOAT (.05) above the wave surface, so the waterline sits at local
+// y = WATERLINE; each type is sunk so about SUBMERGED of its height lies below it, and the hull darkens to a wet
+// band from just above the waterline down.
+const WATERLINE = -0.05, WET_TOP = 0.035, WET = 0.65;
+const SUBMERGED = { wood: 0.5, leaf: 0.58, scrap: 0.45, barrel: 0.52 };
+function sinkFor(T, type, src) {
+  src.updateMatrixWorld(true);
+  const box = new T.Box3().setFromObject(src), h = box.max.y - box.min.y;
+  return WATERLINE - (box.min.y + (SUBMERGED[type] ?? 0.5) * h);
+}
+// Every mesh's transform folded into its geometry, which is then shared (userData.shared); geometry moved down by
+// `sink` and its vertex colours darkened below the waterline (one pass).
+function bake(T, src, sink = 0) {
   src.updateMatrixWorld(true);
   const parts = [];
   src.traverse((o) => {
     if (!o.isMesh) return;
-    o.geometry.applyMatrix4(o.matrixWorld);
-    o.geometry.computeBoundingSphere();
-    o.geometry.userData.shared = true;
-    parts.push({ geometry: o.geometry, material: o.material, castShadow: o.castShadow });
+    const g = o.geometry;
+    g.applyMatrix4(o.matrixWorld);
+    if (sink) {
+      const p = g.attributes.position, c = g.attributes.color;
+      for (let i = 0; i < p.count; i++) {
+        const y = p.getY(i) + sink;
+        p.setY(i, y);
+        if (c) {
+          const t = clamp01((y - WATERLINE) / WET_TOP), k = WET + (1 - WET) * t * t * (3 - 2 * t);
+          if (k < 1) c.setXYZ(i, c.getX(i) * k, c.getY(i) * k, c.getZ(i) * k);
+        }
+      }
+      p.needsUpdate = true;
+      if (c) c.needsUpdate = true;
+    }
+    g.computeBoundingSphere();
+    g.computeBoundingBox();
+    g.userData.shared = true;
+    parts.push({ geometry: g, material: o.material, castShadow: o.castShadow });
   });
   return parts;
 }
@@ -465,9 +493,10 @@ function variant(T, type, getMaterial, opts, v) {
   let entry = cache.get(key);
   if (!entry) {
     const src = build(T, type, getMaterial, { tilt: opts.tilt, seed: 0x5eed + v * 7919 });
-    entry = { parts: bake(T, src), size: src.userData.size };
+    const sink = sinkFor(T, type, src);
+    entry = { parts: bake(T, src, sink), size: src.userData.size };
     if (LOD_TYPES.includes(type)) {
-      const far = bake(T, build(T, type, getMaterial, { tilt: opts.tilt, seed: 0x5eed + v * 7919, lod: true }));
+      const far = bake(T, build(T, type, getMaterial, { tilt: opts.tilt, seed: 0x5eed + v * 7919, lod: true }), sink); // same offset: no pop
       if (far.length === entry.parts.length) entry.parts.forEach((p, i) => {
         if (far[i].material === p.material) Object.defineProperty(p.geometry.userData, 'lod', { value: far[i].geometry }); // non-enumerable: geometry toJSON skips it
       });
