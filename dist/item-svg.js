@@ -173,6 +173,15 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M10 31 C10.5 29.5 11.5 28.8 13 28.5"/><path d="M32 31 C32.5 29.5 33.5 28.8 35 28.5"/></g>
     <path d="M7 16 V21 M29 16 V21" stroke="#9fd6d0" stroke-width="1.5" stroke-linecap="round"/>`,
 
+  spyglass: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" transform="rotate(-38 24 24)">
+    <rect x="3" y="20.5" width="5" height="7" rx="1.5" fill="#8a6a32"/>
+    <rect x="7" y="19.5" width="11" height="9" rx="2" fill="#c9a15a"/>
+    <path d="M17 17.5 H36 V30.5 H17 Z" fill="#6b4529"/>
+    <rect x="15" y="16.5" width="4" height="15" rx="1.5" fill="#c9a15a"/><rect x="25" y="16.5" width="3.5" height="15" rx="1.5" fill="#c9a15a"/>
+    <path d="M35 16.5 L44 14 V34 L35 31.5 Z" fill="#c9a15a"/>
+    <path d="M20 21 H33" fill="none" stroke="#9a6b44" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M44 16.5 V31.5" fill="none" stroke="#cfe8ea" stroke-width="2.4" stroke-linecap="round"/></g>`, // [spyglass]
+
   // [instruments] Tide Drum, Reed Pipes, Bell Bars
   drum: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M7 17 L10 39 C14 43 34 43 38 39 L41 17 Z" fill="#bb8650"/>
