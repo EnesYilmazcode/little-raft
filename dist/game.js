@@ -21,7 +21,7 @@ import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
-import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
@@ -1065,6 +1065,7 @@ export function mount(transfer = null) {
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => { keys[e.code] = false; });
+  on(window, LIVE_STATUS_EVENT, e => { if (!running || !e.detail?.text) return; notice(e.detail.text); e.preventDefault(); }); // live.js update notices -> feed
   on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
   on(window, 'keyup', e => { if (e.key === 'Escape') escReleased(); }, {capture:true});
   on(window, 'pointerdown', () => { escHeld = relockOnEscUp = false; }, {capture:true}); // a click relocks on its own
