@@ -973,7 +973,7 @@ export function mount(transfer = null) {
         for (const net of world.decor.filter(d => d.type === 'net')) { const it = world.items.find(it => !heldTokens.has(it.token) && !isPending(it) && Math.hypot(it.x - net.x, it.z - net.z) < 4); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
       }
     }
-    if (running) { saveClock += dt; if (saveClock > 3) { saveClock = 0; save(); } }
+    if (running) { if (!saveClock) saveClock = now; if (now - saveClock > 3000) { saveClock = now; save(); } } // wall clock: dt is capped, so low fps would stretch the interval
     if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose()}); } }
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog);
