@@ -9,7 +9,7 @@ const CHEST = 12;
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
-const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="#ffcf9a" stroke="#2a1b0e" stroke-width="1.2"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7" fill="none" stroke="#2a1b0e" stroke-width="1.6"/><circle cx="8" cy="10.6" r="1.1" fill="#2a1b0e"/></svg>';
+const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="#ffcf9a" stroke="#2a1b0e" stroke-width="1.2"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7" fill="none" stroke="#ffcf9a" stroke-width="1.7"/><circle cx="8" cy="10.6" r="1.1" fill="#2a1b0e"/></svg>';
 const CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="#9fe07a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 const CSS = `
@@ -66,7 +66,7 @@ const CSS = `
 #lrStorage .lr-sr-chips{display:flex;flex-wrap:wrap;gap:5px}
 #lrStorage .lr-sr-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px 3px 4px;border-radius:12px;background:#24170caa;box-shadow:inset 0 0 0 1px #d4b07a33;font:600 12px/1 ${FONT};color:#eadcbe}
 #lrStorage .lr-sr-chip .sv-icon{width:18px;height:18px}
-#lrStorage .lr-sr-chip svg:not(.sv-icon){width:13px;height:13px}
+#lrStorage .lr-sr-chip svg:not(.sv-icon){width:14px;height:14px;margin-left:3px}
 #lrStorage .lr-sr-chip.lr-sr-need{color:#cdbd9a;box-shadow:inset 0 0 0 1px #ffbd6655}
 #lrStorage .lr-sr-chip.lr-sr-need .sv-icon{filter:grayscale(.7);opacity:.7}
 #lrStorage .lr-sr-chip.lr-sr-have{color:#ffcf9a}
@@ -83,8 +83,8 @@ const CSS = `
 #lrStorage .lr-sr-banner.show{display:flex;animation:lrSrGlow 1.6s ease-out}
 #lrStorage .lr-sr-banner .sv-icon{width:26px;height:26px}
 @keyframes lrSrGlow{0%{transform:scale(.96);box-shadow:0 0 0 2px #3e2a17,0 0 0 #ffbd6600}30%{transform:scale(1.02);box-shadow:0 0 0 2px #3e2a17,0 0 28px #ffe3a6}100%{transform:none;box-shadow:0 0 0 2px #3e2a17,0 0 18px #ffbd66aa}}
-.lr-sr-lock{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#3e2a17;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
-.lr-sr-lock svg{width:13px;height:13px}
+.lr-sr-lock{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#3e2a17;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
+.lr-sr-lock svg{display:block;width:15px;height:15px}
 /* craft list in #inventory */
 #inventory .sv-rlist{display:flex;flex-direction:column}
 #inventory .sv-recipe[data-locked]{order:1;pointer-events:none;cursor:default;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
@@ -178,7 +178,7 @@ export function createStorageUI(api) {
     for (let i = 0; i < CHEST; i++) { const s = chest ? chest[i] : null; if (s) used++; paintSlot(chestEls[i], s, slotSig(s), `Crate slot ${i + 1}`); }
     for (let i = 0; i < SLOT_COUNT; i++) { const s = bag?.slots[i] ?? null; paintSlot(bagEls[i], s, slotSig(s), i < HOTBAR_SIZE ? `Hotbar slot ${i + 1}` : `Backpack slot ${i - HOTBAR_SIZE + 1}`); }
     head.used.textContent = `${used} / ${CHEST}`;
-    head.sub.textContent = used ? `${used} of ${CHEST} slots used` : 'Empty and ready for your things';
+    head.sub.textContent = used >= CHEST ? 'Full! Stack things up or place another crate' : used ? 'Your things stay safe here' : 'Empty and ready for your things';
     let any = false; if (bag) for (let i = HOTBAR_SIZE; i < SLOT_COUNT; i++) if (bag.slots[i]) { any = true; break; }
     head.putAll.disabled = !any || used >= CHEST && !canMerge(bag, chest);
   }
@@ -220,7 +220,7 @@ export function createStorageUI(api) {
   function showBanner(text, kind) {
     head.banner.innerHTML = (kind ? iconSVG(RECIPES[kind]?.output.kind ?? kind) : '') + `<span>${esc(text)}</span>`;
     head.banner.classList.remove('show'); void head.banner.offsetWidth; head.banner.classList.add('show');
-    clearTimeout(bannerTimer); bannerTimer = setTimeout(() => head.banner.classList.remove('show'), 4200);
+    clearTimeout(bannerTimer); bannerTimer = setTimeout(() => head.banner.classList.remove("show"), 6500);
   }
   function paint() {
     lastRev = api.rev; bagChanged(api.bag());
