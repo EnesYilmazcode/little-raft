@@ -326,7 +326,7 @@ void main() {
     float lace = clamp((wl - iso) / isoAA + 0.5, 0.0, 1.0) * min(wl * 3.0 / isoAA + floorAA, 1.0) * smoothstep(0.02, 0.12, laceMask);
     float raftCore = 1.0 - smoothstep(0.0, 0.06 + 0.12 * n1, rd);   // thin ragged collar where logs meet water
     foam = max(max(crest * 0.85, lace * 0.75), raftCore * 0.85);
-    foam *= (1.0 - smoothstep(30.0, 90.0, dist)) * smoothstep(-0.3, -0.05, rd);   // none under the deck (seen through plank gaps)
+    foam *= (1.0 - smoothstep(30.0, 90.0, dist)) * smoothstep(-0.12, 0.0, rd);   // none under the deck (seen through plank gaps)
   }
   col *= mix(0.55, 1.0, smoothstep(-1.2, 0.1, rd));                               // occluded water under the raft
   col = mix(col, uFoam * (0.8 + 0.2 * shadow), foam);
