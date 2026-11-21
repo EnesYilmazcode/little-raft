@@ -45,6 +45,11 @@ export function isNotice(text, hasKbd) {
 }
 // While a throw charges, the charge bar sits in the prompt's first row (prompts.css), so the prompt steps aside.
 export const promptQuiet = s => !!s?.charging || !!s?.inventoryOpen;
+// #lrFeed lives inside the pickup feed's column (#pickupFeed), so the browser stacks the two and they dock together.
+export function dockFeed(feed, host) {
+  if (!feed || !host || feed === host || feed.parentNode === host) return false;
+  host.prepend(feed); return true;
+}
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };
 export const costText = cost => Object.entries(cost).map(([k, n]) => `${n} ${k}`).join(' · ');
@@ -112,6 +117,7 @@ function createPrompts(win, doc) {
       feedEl = doc.getElementById('lrFeed') || doc.createElement('div');
       feedEl.id = 'lrFeed'; feedEl.setAttribute('role', 'status'); feedEl.setAttribute('aria-live', 'polite'); if (!feedEl.isConnected) doc.body.appendChild(feedEl);
     }
+    dockFeed(feedEl, doc.getElementById('pickupFeed')); // stack above the pickup rows; follows the feed into panel lanes
     const c = doc.getElementById('contextPrompt');
     if (c && c !== ctxEl) { // game.js (re)created it: re-attach
       safe(() => observer?.disconnect()); ctxEl = c; let lastText = '';

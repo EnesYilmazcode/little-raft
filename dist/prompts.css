@@ -14,6 +14,9 @@
 #lrPrompt .lr-glyph{display:inline-flex;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.7))}
 #lrPrompt .lr-mouse{display:block;fill:currentColor}
 #lrFeed{left:28px;bottom:272px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:min(360px,calc(100vw - 56px))}
+/* Normally a child of #pickupFeed (prompts.js dockFeed): it flows above the pickup rows, never over them, and hides while the feed is docked in the bag or pause lane. */
+#pickupFeed>#lrFeed{position:static;left:auto;bottom:auto;margin:0 0 2px 6px;font-size:14px}
+#lrFeed:empty,#pickupFeed.docked>#lrFeed{display:none}
 #lrFeed .lr-line{animation:lrIn .16s ease-out;transition:opacity .4s ease,transform .4s ease;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 #lrFeed .lr-line.lr-out{opacity:0;transform:translateX(-6px)}
 @keyframes lrIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}

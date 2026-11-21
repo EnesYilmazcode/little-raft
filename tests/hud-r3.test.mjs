@@ -50,3 +50,19 @@ test('HUD-3: the tracker and fishing toasts share one top-left column instead of
   assert.match(src('fishing-cooking.js'), /topLeftColumn\(document\)\.appendChild\(toastBox\)/);
   assert.match(src('survival-ui.js'), /topLeftColumn\(document\)\.append\(t\)/);
 });
+
+// ---------------------------------------------------------------- HUD-4 two bottom-left feeds
+
+test('HUD-4: #lrFeed moves into the pickup feed column once, so the two stack instead of overlapping', () => {
+  const host = {kids:[], prepend(c) { c.parentNode?.kids.splice(c.parentNode.kids.indexOf(c), 1); this.kids.unshift(c); c.parentNode = this; }};
+  const body = {kids:[]}, feed = {parentNode:body}; body.kids.push(feed);
+  assert.equal(P.dockFeed(feed, null), false, 'no pickup feed yet: stays put');
+  assert.equal(P.dockFeed(feed, host), true);
+  assert.equal(feed.parentNode, host); assert.equal(host.kids[0], feed, 'above the pickup rows');
+  assert.equal(body.kids.length, 0);
+  assert.equal(P.dockFeed(feed, host), false, 'idempotent per tick');
+  assert.match(src('prompts.js'), /dockFeed\(feedEl, doc\.getElementById\('pickupFeed'\)\)/);
+  const css = src('prompts.css');
+  assert.match(css, /#pickupFeed>#lrFeed\{position:static/, 'flows in the column');
+  assert.match(css, /#pickupFeed\.docked>#lrFeed\{display:none\}/, 'hidden while the feed is docked in the open bag');
+});
