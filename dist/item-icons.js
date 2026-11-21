@@ -1,11 +1,13 @@
 // Little Raft item icons: each item kind is rendered ONCE as a lit 3/4 view on a transparent
-// background by a small dedicated WebGL renderer, copied to a 2D canvas and encoded off the main
-// thread (toBlob) into a cached object URL. The renderer is created lazily, works through the queue
-// only in idle time (several icons per idle slice while the title screen is up), and is released once
-// the queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
+// background and encoded off the main thread (toBlob) into a cached object URL. There is no second
+// WebGL context: the game calls renderIcons(renderer) right before its own render each frame, queued
+// icons are drawn into a scissored corner of the main canvas (the game frame then covers it before
+// the canvas is presented), read back with one drawImage per frame and un-matted from a pass over
+// black and one over white. A few icons per frame within a small time budget; until a renderer is
+// attached the queue simply waits. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
 // getModel; never disposed here) and fall back to the game's own procedural models.
 // Public API: getItemIcon(kind) (sync, data URL or null while rendering / without WebGL),
-// loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider.
+// loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider, renderIcons.
 import * as T from './vendor/three.module.js';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
@@ -18,7 +20,8 @@ import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77f
 const SIZE = 128;
 // Item ids whose name differs from the models.js kind.
 const MODEL_ALIAS = { fishingrod: 'rod' };
-const RELEASE_MS = 2500;
+const BUDGET_MS = 3;     // CPU time per frame for icon renders (at least one icon)
+const EXPOSURE = 1.15;
 
 const cache = new Map();   // kind -> object/data URL ('' = failed, use the SVG)
 const queued = new Set();
@@ -26,7 +29,8 @@ const encoding = new Map(); // kind -> token while its PNG encodes
 const listeners = new Set();
 const waiters = new Map(); // kind -> [resolve] for loadItemIcon
 let provider = null;
-let gl = null, scene = null, camera = null, failed = false, releaseTimer = 0, pumping = false;
+let scene = null, camera = null, strip = null;
+const failed = typeof document === 'undefined';   // no DOM (node tests): flat icons only
 
 // Per-kind display pose (radians) so long tools read diagonally like a hotbar icon.
 const POSE = {
@@ -84,33 +88,13 @@ export function buildFallbackModel(kind) {
 }
 
 // ---------- renderer ----------
-function ensureGL() {
-  if (gl || failed) return !!gl;
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = SIZE;
-    gl = new T.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: 'low-power' });
-    gl.setPixelRatio(1);
-    gl.setSize(SIZE, SIZE, false);
-    gl.setClearColor(0x000000, 0);
-    gl.toneMapping = T.ACESFilmicToneMapping;
-    gl.toneMappingExposure = 1.15;
-  } catch (e) { failed = true; gl = null; console.warn('item icons: no WebGL, using flat icons', e); return false; }
-  if (!scene) {
-    scene = new T.Scene();
-    scene.add(new T.HemisphereLight(0xfff3dc, 0x3b2a1a, 1.5));
-    const key = new T.DirectionalLight(0xfff0d8, 2.6); key.position.set(3, 5, 4); scene.add(key);
-    const rim = new T.DirectionalLight(0x9fd8ff, 1.3); rim.position.set(-4, 2, -3); scene.add(rim);
-    camera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
-  }
-  return true;
-}
-
-function release() {
-  releaseTimer = 0;
-  if (!gl) return;
-  try { gl.dispose(); gl.forceContextLoss(); } catch {}
-  gl = null;
+function ensureScene() {
+  if (scene) return;
+  scene = new T.Scene();
+  scene.add(new T.HemisphereLight(0xfff3dc, 0x3b2a1a, 1.5));
+  const key = new T.DirectionalLight(0xfff0d8, 2.6); key.position.set(3, 5, 4); scene.add(key);
+  const rim = new T.DirectionalLight(0x9fd8ff, 1.3); rim.position.set(-4, 2, -3); scene.add(rim);
+  camera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
 }
 
 const _box = new T.Box3(), _sphere = new T.Sphere(), _v = new T.Vector3(), _dir = new T.Vector3(1, 0.85, 1.35).normalize();
@@ -135,8 +119,8 @@ export function resolveIconModel(kind) {
   return { model: model || null, own: false };   // getModel clones share cached geometry: never free
 }
 
-function renderKind(kind) {
-  if (!ensureGL()) return null;
+/** Poses kind's model in the icon scene and frames the camera on it; null when there is nothing to draw. */
+function stage(kind) {
   const { model, own } = resolveIconModel(kind);
   if (!model) return null;
   const pivot = new T.Group();
@@ -163,15 +147,94 @@ function renderKind(kind) {
   camera.near = r; camera.far = r * 7;
   camera.updateProjectionMatrix();
   scene.add(pivot);
-  let out = null;
+  return { pivot, model, own };
+}
+
+const msaaOf = new WeakMap();
+const _vp = new T.Vector4(), _sc = new T.Vector4(), _cc = new T.Color();
+
+/** Draws queued icons into the bottom-left corner of renderer's default framebuffer and reads them
+ *  back. Call it right before the game renders its full frame, in the same task: that frame covers
+ *  the corner again before the canvas is presented. */
+export function renderIcons(renderer, budgetMs = BUDGET_MS) {
+  if (!queued.size || !renderer || failed) return;
+  const canvas = renderer.domElement, W = canvas?.width | 0, H = canvas?.height | 0;
+  let msaa = msaaOf.get(renderer);
+  if (msaa === undefined) { try { msaa = !!renderer.getContext().getContextAttributes()?.antialias; } catch { msaa = false; } msaaOf.set(renderer, msaa); }
+  // Without MSAA render at 2x and downscale, so icons stay smooth on dense screens too.
+  let S = msaa ? SIZE : SIZE * 2;
+  if (W < 2 * S || H < S) S = SIZE;
+  if (W < 2 * S || H < S) return;                                 // canvas too small (yet): next frame
+  ensureScene();
+  const pr = renderer.getPixelRatio() || 1;
+  const prevTarget = renderer.getRenderTarget(), prevScissorTest = renderer.getScissorTest(), prevAlpha = renderer.getClearAlpha();
+  const prevTone = renderer.toneMapping, prevExposure = renderer.toneMappingExposure, prevSpace = renderer.outputColorSpace;
+  renderer.getViewport(_vp); renderer.getScissor(_sc); renderer.getClearColor(_cc);
+  const jobs = [], t0 = performance.now();
+  let x = 0;
   try {
-    gl.render(scene, camera);
-    out = document.createElement('canvas'); out.width = out.height = SIZE;
-    out.getContext('2d').drawImage(gl.domElement, 0, 0);       // GPU copy; the PNG encode happens later, async
-  } catch (e) { out = null; console.warn('item icon render failed', kind, e); }
-  scene.remove(pivot);
-  if (own) freeModel(model);
-  return out;
+    renderer.setRenderTarget(null);
+    renderer.setScissorTest(true);
+    renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = EXPOSURE; renderer.outputColorSpace = T.SRGBColorSpace;
+    while (queued.size && x + 2 * S <= W) {
+      const kind = queued.values().next().value;
+      queued.delete(kind);
+      let st = null;
+      try { st = stage(kind); } catch (e) { console.warn('item icon model failed', kind, e); }
+      if (!st) { finish(kind, ''); continue; }                    // nothing to draw: costs no slot
+      try {
+        // The same view over black, then over white: their difference is the coverage (alpha).
+        for (let i = 0; i < 2; i++) {
+          const px = (x + i * S) / pr, sz = S / pr;
+          renderer.setViewport(px, 0, sz, sz); renderer.setScissor(px, 0, sz, sz);
+          renderer.setClearColor(i ? 0xffffff : 0x000000, 1);
+          renderer.render(scene, camera);
+        }
+        jobs.push({ kind, x }); x += 2 * S;
+      } catch (e) { console.warn('item icon render failed', kind, e); finish(kind, ''); }
+      scene.remove(st.pivot);
+      if (st.own) freeModel(st.model);
+      if (performance.now() - t0 > budgetMs) break;
+    }
+  } finally {
+    renderer.setClearColor(_cc, prevAlpha);
+    renderer.toneMapping = prevTone; renderer.toneMappingExposure = prevExposure; renderer.outputColorSpace = prevSpace;
+    renderer.setViewport(_vp); renderer.setScissor(_sc); renderer.setScissorTest(prevScissorTest);
+    renderer.setRenderTarget(prevTarget);
+  }
+  if (!jobs.length) return;
+  let data = null;
+  try {
+    // One read-back per frame for all icons drawn (the drawing buffer is intact within this task).
+    if (!strip) strip = document.createElement('canvas');
+    if (strip.width < x || strip.height < S) { strip.width = Math.max(strip.width, x); strip.height = Math.max(strip.height, S); }
+    const sx = strip.getContext('2d', { willReadFrequently: true });
+    sx.clearRect(0, 0, x, S);
+    sx.drawImage(canvas, 0, H - S, x, S, 0, 0, x, S);
+    data = sx.getImageData(0, 0, x, S).data;
+  } catch (e) { console.warn('item icon read-back failed', e); }
+  for (const j of jobs) encode(j.kind, data ? unmatte(data, x, j.x, S) : null);
+}
+
+// Black pass at x0, white pass at x0 + S: alpha = 1 - (white - black), colour = black / alpha.
+function unmatte(src, stride, x0, S) {
+  const img = new ImageData(S, S), out = img.data;
+  for (let y = 0; y < S; y++) {
+    let b = (y * stride + x0) * 4, w = b + S * 4, o = y * S * 4;
+    for (let i = 0; i < S; i++, b += 4, w += 4, o += 4) {
+      const a = 255 - ((src[w] - src[b]) + (src[w + 1] - src[b + 1]) + (src[w + 2] - src[b + 2])) / 3;
+      if (a < 0.5) continue;                                        // transparent (already zero)
+      const k = 255 / Math.min(255, a);
+      out[o] = src[b] * k; out[o + 1] = src[b + 1] * k; out[o + 2] = src[b + 2] * k; out[o + 3] = a;
+    }
+  }
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  c.getContext('2d').putImageData(img, 0, 0);
+  if (S === SIZE) return c;
+  const d = document.createElement('canvas'); d.width = d.height = SIZE;
+  const g = d.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(c, 0, 0, SIZE, SIZE);
+  return d;
 }
 
 function finish(kind, url) {
@@ -192,26 +255,7 @@ function encode(kind, canvas) {
 }
 
 // ---------- queue ----------
-// Idle time only (the timeout is a late fallback for a page that never idles): no icon work lands in a busy frame.
-const idle = typeof requestIdleCallback === 'function' ? cb => requestIdleCallback(cb, { timeout: 1500 }) : cb => setTimeout(() => cb(null), 16);
-const SLICE_MS = 8;
-
-function pump(deadline) {
-  pumping = false;
-  if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
-  const t0 = performance.now();
-  // At least one icon per callback; more while the slice has room (cheap once the shaders exist).
-  do {
-    const it = queued.values().next();
-    if (it.done) break;
-    const kind = it.value;
-    queued.delete(kind);
-    encode(kind, renderKind(kind));
-  } while (queued.size && (deadline ? !deadline.didTimeout && deadline.timeRemaining() > SLICE_MS : performance.now() - t0 < 4));
-  if (queued.size) schedule();
-  else if (gl) releaseTimer = setTimeout(release, RELEASE_MS);
-}
-function schedule() { if (!pumping) { pumping = true; idle(pump); } }
+// Drained by renderIcons(renderer), which the game calls once per rendered frame.
 
 /** Cached icon URL for kind, or null while it renders (it is queued; listeners fire when ready). */
 export function iconURL(kind) {
@@ -219,18 +263,23 @@ export function iconURL(kind) {
   const hit = cache.get(kind);
   if (hit !== undefined) return hit || null;
   if (failed) return null;
-  if (!queued.has(kind) && !encoding.has(kind)) { queued.add(kind); schedule(); }
+  if (!queued.has(kind) && !encoding.has(kind)) queued.add(kind);
   return null;
 }
 export const getItemIcon = iconURL;
-/** Promise of the icon URL (null if it cannot be rendered, e.g. no WebGL). */
+/** Promise of the icon URL (null if it cannot be rendered, e.g. no DOM). */
 export function loadItemIcon(kind) {
   const url = iconURL(kind);
   if (url || !kind || cache.has(kind) || failed) return Promise.resolve(url);
   return new Promise(r => { let w = waiters.get(kind); if (!w) waiters.set(kind, w = []); w.push(r); });
 }
-/** Queue several kinds ahead of time (rendered in idle slices). */
-export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }
+/** Queue several kinds ahead of time; first = true moves them to the front of the queue. */
+export function warmIcons(kinds, first = false) {
+  if (!first) { for (const k of kinds) iconURL(k); return; }
+  const rest = [...queued]; queued.clear();
+  for (const k of kinds) iconURL(k);
+  for (const k of rest) queued.add(k);
+}
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 /** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */

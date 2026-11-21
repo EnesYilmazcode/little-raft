@@ -54,7 +54,7 @@ import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
-import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { getItemIcon, onIconReady, renderIcons } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2b'; // decorative distant islands (islands.js is the content lane's dockable islands)
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
@@ -1307,6 +1307,7 @@ export function mount(transfer = null) {
     const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
     if (veiled && now - lastDraw < 100) return;
     lastDraw = now;
+    renderIcons(renderer); // queued item icons, drawn into a corner this frame then covers
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
