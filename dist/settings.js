@@ -62,20 +62,21 @@ function save(values) {
 const same = (a, b) => KEYS.every((k) => a[k] === b[k]);
 
 const CSS = `
-/* Pause menu: a dark glass rail on the left with its panel (Settings or How to play) attached to its right edge, full height.
-   Same look as the bag (survival-ui.js): grey glass, hairline white borders, one sans family, cream selection, warm accent. */
+/* Pause menu: a warm walnut rail on the left with its panel (Settings or How to play) attached to its right edge, full height.
+   Dark driftwood to match the tan hotbar: bronze hairlines, one sans family, amber selection. */
 #options{position:fixed;inset:0;width:100vw;height:100vh;max-width:none;max-height:none;margin:0;padding:0;border:0;border-radius:0;
   overflow:hidden;background:transparent;box-shadow:none;color:var(--cream,#f4efe2);font:500 15px/1.4 var(--ui-font,system-ui,sans-serif)}
 #options[open]{display:flex}
-#options::backdrop{background:rgba(6,10,12,.55);-webkit-backdrop-filter:none;backdrop-filter:none} /* no blur: it re-blurs the live canvas every frame */
+#options::backdrop{background:rgba(24,15,8,.5);-webkit-backdrop-filter:none;backdrop-filter:none} /* no blur: it re-blurs the live canvas every frame */
 #options .rs-form{display:flex;align-items:stretch;gap:0;width:100%;height:100%;margin:0;padding:0}
 #options .rs-menu{display:flex;flex-direction:column;justify-content:center;align-items:stretch;flex:none;width:clamp(260px,26vw,340px);padding:0 0 0 clamp(24px,3.5vw,48px);
-  background:linear-gradient(180deg,#141b1ef2,#0b1012f7);box-shadow:inset -1px 0 0 #ffffff17,18px 0 50px rgba(0,0,0,.3)}
-#options .rs-foot{margin-top:30px;padding-right:24px;font:700 11px/1 var(--ui-font);letter-spacing:1.6px;text-transform:uppercase;color:var(--muted,#f4efe280)}
-#options .rs-foot kbd,#options .rs-keys kbd{padding:3px 7px;border-radius:4px;color:var(--cream-hi,#fff6e0);background:#0008;box-shadow:inset 0 0 0 1px #ffffff2e;font:700 11px/1.3 var(--ui-font)}
+  background:linear-gradient(90deg,rgb(70,48,30) 0%,rgb(60,41,25) 65%,rgb(50,34,21) 100%);
+  box-shadow:inset -3px 0 0 rgba(30,20,11,.9),inset -4px 0 0 rgba(201,164,107,.55),18px 0 50px rgba(0,0,0,.35)}
+#options .rs-foot{margin-top:30px;padding-right:24px;font:600 11px/1 var(--ui-font);letter-spacing:1.6px;text-transform:uppercase;color:var(--muted,#b3a286)}
+#options .rs-foot kbd,#options .rs-keys kbd{padding:3px 7px;border-radius:3px;color:var(--cream,#f1e7d0);background:rgba(58,40,24,.75);box-shadow:inset 0 0 0 1px rgba(201,164,107,.5),0 1px 0 rgba(0,0,0,.4);font:700 11px/1.3 var(--ui-font)}
 #options .rs-foot kbd{margin-right:8px}
-#options .rs-eyebrow{font:800 11px/1 var(--ui-font);letter-spacing:2.4px;text-transform:uppercase;color:var(--accent,#ffc66e);margin-bottom:10px}
-#options .rs-menu h2{margin:0 0 26px;padding-right:24px;font:800 clamp(30px,3.4vw,44px)/1.05 var(--display-font,var(--ui-font));letter-spacing:-.5px;color:var(--cream-hi,#fff6e0);text-shadow:0 2px 14px rgba(0,0,0,.5)}
+#options .rs-eyebrow{font:600 11px/1 var(--ui-font);letter-spacing:3.2px;text-transform:uppercase;color:var(--bronze-lt,#c9a46b);margin-bottom:10px}
+#options .rs-menu h2{margin:0 0 26px;padding-right:24px;font:800 clamp(30px,3.4vw,44px)/1.05 var(--display-font,var(--ui-font));letter-spacing:-.5px;color:var(--cream,#f1e7d0);text-shadow:0 2px 14px rgba(0,0,0,.5)}
 #options .rs-menu button{position:relative;display:block;width:100%;text-align:left;cursor:pointer;background:none;border:0;border-radius:0;box-shadow:none;
   padding:10px 0 10px 20px;color:var(--cream-dim,#f4efe2b3);font:700 clamp(18px,1.8vw,22px)/1.15 var(--ui-font);transition:color .12s,background .12s}
 #options .rs-menu button::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--cream-hi,#fff6e0);opacity:0;transition:opacity .12s}
@@ -88,53 +89,53 @@ const CSS = `
 #options .rs-menu button[aria-expanded=true]{color:var(--cream-hi,#fff6e0)}
 #options .rs-menu button[hidden]{display:none}
 #options .rs-title [data-act=resume],#options .rs-title [data-act=quit]{display:none}
-#options .rs-menu .rs-quit{margin-top:20px;border-top:1px solid #ffffff17;padding-top:18px;font-size:clamp(15px,1.4vw,17px);color:var(--muted,#f4efe280)}
+#options .rs-menu .rs-quit{margin-top:20px;border-top:1px solid rgba(201,164,107,.3);padding-top:18px;font-size:clamp(15px,1.4vw,17px);color:var(--muted,#b3a286)}
 #options .rs-menu .rs-quit::before{top:20px}
 /* The panel is attached to the rail: same height, no floating frame, its own visible scrollbar when it must scroll. */
 #options .rs-panel{flex:0 1 600px;min-width:0;height:100%;box-sizing:border-box;overflow:auto;overscroll-behavior:contain;
-  padding:clamp(24px,calc(50vh - 200px),170px) clamp(20px,3vw,36px) 28px;background:linear-gradient(180deg,#1a2226e6,#0e1417ee);
-  box-shadow:inset -1px 0 0 #ffffff17,18px 0 50px rgba(0,0,0,.3);scrollbar-width:thin;scrollbar-color:#ffffff52 transparent;scrollbar-gutter:stable}
-#options .rs-tabs{display:flex;gap:4px;margin:0 0 18px}
-#options .rs-tabs button{flex:1;cursor:pointer;margin:0;padding:9px 10px;border:0;border-radius:6px;background:#ffffff0b;box-shadow:inset 0 0 0 1px #ffffff12;color:var(--cream-dim,#f4efe2b3);
-  font:700 13px/1 var(--ui-font);letter-spacing:.2px;text-transform:none}
-#options .rs-tabs button:hover{color:var(--cream-hi,#fff6e0);background:#ffffff17;transform:none}
-#options .rs-tabs button[aria-selected=true]{color:var(--cream-hi,#fff6e0);background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 1px #fff6e0a8}
+  padding:clamp(24px,calc(50vh - 200px),170px) clamp(20px,3vw,36px) 28px;background:linear-gradient(90deg,rgba(43,29,18,.95),rgba(36,24,14,.93));
+  box-shadow:inset -1px 0 0 rgba(201,164,107,.3),18px 0 50px rgba(0,0,0,.3);scrollbar-width:thin;scrollbar-color:rgba(201,164,107,.55) transparent;scrollbar-gutter:stable}
+#options .rs-tabs{display:flex;gap:4px;margin:0 0 18px;border-bottom:1px solid rgba(201,164,107,.3)}
+#options .rs-tabs button{cursor:pointer;background:none;border:0;border-radius:0;box-shadow:none;padding:10px 14px;margin-bottom:-1px;color:var(--cream-dim,#c9bfa8);
+  font:700 12px/1 var(--ui-font);letter-spacing:2px;text-transform:uppercase;border-bottom:2px solid transparent}
+#options .rs-tabs button[aria-selected=true]{color:var(--amber-lt,#ffc96b);border-bottom-color:var(--amber,#e9a640)}
+#options .rs-tabs button:hover{color:var(--cream,#f1e7d0);background:none;transform:none}
 #options .rs-page{display:grid;gap:14px}
 #options .rs-row{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
-#options .rs-row label,#options .rs-row .rs-label{color:var(--cream,#f4efe2);font-weight:600}
-#options .rs-row output{color:var(--accent,#ffc66e);font-variant-numeric:tabular-nums;min-width:4ch;text-align:right;font-weight:700}
-#options .rs-row input[type=range]{grid-column:1/-1;width:100%;margin:0;padding:0;border:0;background:none;box-shadow:none;accent-color:var(--accent,#ffc66e)}
-#options .rs-row input[type=checkbox]{appearance:none;width:42px;height:22px;margin:0;border:0;border-radius:11px;background:#0008;cursor:pointer;position:relative;
-  box-shadow:inset 0 0 0 1px #ffffff38;transition:background .15s;flex:none;padding:0}
-#options .rs-row input[type=checkbox]::after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:var(--cream-dim,#f4efe2b3);transition:transform .15s}
-#options .rs-row input[type=checkbox]:checked{background:var(--accent,#ffc66e)}
-#options .rs-row input[type=checkbox]:checked::after{transform:translateX(20px);background:#1d1608}
+#options .rs-row label,#options .rs-row .rs-label{color:var(--cream,#f1e7d0);font-weight:600}
+#options .rs-row output{color:var(--amber-lt,#ffc96b);font-variant-numeric:tabular-nums;min-width:4ch;text-align:right;font-weight:700}
+#options .rs-row input[type=range]{grid-column:1/-1;width:100%;margin:0;padding:0;border:0;background:none;box-shadow:none;accent-color:var(--amber,#e9a640)}
+#options .rs-row input[type=checkbox]{appearance:none;width:42px;height:22px;margin:0;border:0;border-radius:11px;background:rgba(30,20,11,.7);cursor:pointer;position:relative;
+  box-shadow:inset 0 0 0 1px rgba(201,164,107,.55);transition:background .15s;flex:none;padding:0}
+#options .rs-row input[type=checkbox]::after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:var(--cream-dim,#c9bfa8);transition:transform .15s}
+#options .rs-row input[type=checkbox]:checked{background:var(--amber,#e9a640)}
+#options .rs-row input[type=checkbox]:checked::after{transform:translateX(20px);background:#22170a}
 /* Quality preset: a segmented control instead of the native (blue) dropdown */
-#options .rs-seg{grid-column:1/-1;display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:4px;padding:3px;border-radius:8px;background:#0006;box-shadow:inset 0 0 0 1px #ffffff17}
+#options .rs-seg{grid-column:1/-1;display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:4px;padding:3px;border-radius:5px;background:rgba(30,20,11,.6);box-shadow:inset 0 0 0 1px rgba(201,164,107,.4)}
 #options .rs-seg label{position:relative;display:block;cursor:pointer;font-weight:700}
 #options .rs-seg input{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;opacity:0;cursor:pointer}
-#options .rs-seg span{display:block;padding:8px 6px;border-radius:6px;text-align:center;color:var(--cream-dim,#f4efe2b3);font:700 13px/1 var(--ui-font)}
-#options .rs-seg label:hover span{color:var(--cream-hi,#fff6e0);background:#ffffff12}
-#options .rs-seg input:checked+span{color:var(--cream-hi,#fff6e0);background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 1px #fff6e0a8}
-#options .rs-seg input:focus-visible+span{outline:2px solid var(--cream-hi,#fff6e0);outline-offset:1px}
-#options .rs-keys{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:8px 12px;align-items:center;margin:0 0 6px;padding:0 0 14px;border-bottom:1px solid #ffffff17;font-size:13px}
+#options .rs-seg span{display:block;padding:8px 6px;border-radius:3px;text-align:center;color:var(--cream-dim,#c9bfa8);font:700 12px/1 var(--ui-font);letter-spacing:1.2px;text-transform:uppercase}
+#options .rs-seg label:hover span{color:var(--cream,#f1e7d0);background:rgba(90,63,36,.6)}
+#options .rs-seg input:checked+span{color:#22170a;background:linear-gradient(180deg,var(--amber-lt,#ffc96b),var(--amber,#e9a640));box-shadow:inset 0 -1px 0 rgba(0,0,0,.25)}
+#options .rs-seg input:focus-visible+span{outline:2px solid var(--amber,#e9a640);outline-offset:1px}
+#options .rs-keys{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:8px 12px;align-items:center;margin:0 0 6px;padding:0 0 14px;border-bottom:1px solid rgba(201,164,107,.2);font-size:13px}
 #options .rs-keys kbd{justify-self:start;white-space:nowrap}
-#options .rs-keys span{color:var(--cream-dim,#f4efe2b3)}
-#options .rs-wide{cursor:pointer;justify-self:start;padding:9px 14px;border-radius:6px;border:0;background:#ffffff0b;color:var(--cream,#f4efe2);
-  font:700 13px/1 var(--ui-font);letter-spacing:0;text-transform:none;box-shadow:inset 0 0 0 1px #ffffff2e}
-#options .rs-wide:hover{background:#ffffff17;transform:none}
+#options .rs-keys span{color:var(--cream-dim,#c9bfa8)}
+#options .rs-wide{cursor:pointer;justify-self:start;padding:9px 14px;border-radius:4px;border:0;background:rgba(58,40,24,.7);color:var(--cream,#f1e7d0);
+  font:600 12px/1 var(--ui-font);letter-spacing:1.2px;text-transform:uppercase;box-shadow:inset 0 0 0 1px rgba(201,164,107,.6)}
+#options .rs-wide:hover{background:rgba(90,63,36,.9);transform:none}
 /* How to play, in the same attached panel; it starts higher so the whole guide fits at 620px tall */
 #options .rs-panel.rs-help{padding-top:clamp(20px,calc(50vh - 290px),170px)}
 #options .rs-help .eyebrow{margin-bottom:10px}
-#options .rs-help h2{margin:0 0 6px;font:800 26px/1.15 var(--display-font,var(--ui-font));color:var(--cream-hi,#fff6e0)}
+#options .rs-help h2{margin:0 0 6px;font:800 26px/1.15 var(--display-font,var(--ui-font));color:var(--cream,#f1e7d0)}
 #options .rs-help .guide{list-style:none;padding:0;margin:14px 0 12px;display:grid;gap:8px}
-#options .rs-help .guide li{display:grid;grid-template-columns:64px 1fr;align-items:baseline;gap:12px;font-size:14px;line-height:1.45;color:var(--cream-dim,#f4efe2b3)}
-#options .rs-help .guide b{color:var(--cream-hi,#fff6e0)}
-#options .rs-help .guide>li>kbd{justify-self:stretch;text-align:center;padding:4px;border-radius:5px;border:0;color:var(--cream-hi,#fff6e0);background:#0008;box-shadow:inset 0 0 0 1px #ffffff2e;font:700 12px/1.2 var(--ui-font)}
-#options .rs-help .guide span kbd{display:inline;padding:0 4px;border:0;border-radius:3px;line-height:1;vertical-align:baseline;background:#0008;box-shadow:inset 0 0 0 1px #ffffff2e;font:700 12px/1 var(--ui-font)}
-#options .rs-help .guide-note{margin:0 0 8px;font-size:13px;line-height:1.55;color:var(--cream-dim,#f4efe2b3)}
-#options .rs-help small{display:block;font-size:12px;line-height:1.5;color:var(--muted,#f4efe280)}
-#options :focus-visible{outline:2px solid var(--cream-hi,#fff6e0);outline-offset:2px}
+#options .rs-help .guide li{display:grid;grid-template-columns:64px 1fr;align-items:baseline;gap:12px;font-size:14px;line-height:1.45;color:var(--cream-dim,#c9bfa8)}
+#options .rs-help .guide b{color:var(--cream,#f1e7d0)}
+#options .rs-help .guide>li>kbd{justify-self:stretch;text-align:center;padding:4px;border-radius:4px;border:0;color:var(--cream,#f1e7d0);background:rgba(58,40,24,.75);box-shadow:inset 0 0 0 1px rgba(201,164,107,.5),0 1px 0 rgba(0,0,0,.4);font:700 12px/1.2 var(--ui-font)}
+#options .rs-help .guide span kbd{display:inline;padding:0 4px;border:0;border-radius:3px;line-height:1;vertical-align:baseline;background:rgba(58,40,24,.75);box-shadow:inset 0 0 0 1px rgba(201,164,107,.5);font:700 12px/1 var(--ui-font)}
+#options .rs-help .guide-note{margin:0 0 8px;font-size:13px;line-height:1.55;color:var(--cream-dim,#c9bfa8)}
+#options .rs-help small{display:block;font-size:12px;line-height:1.5;color:var(--muted,#b3a286)}
+#options :focus-visible{outline:2px solid var(--amber,#e9a640);outline-offset:2px}
 @media (max-width:760px){#options .rs-form{flex-direction:column;align-items:stretch;justify-content:flex-start;overflow:auto;padding:0}
   #options .rs-menu{width:auto;padding:20px 0 16px 20px}#options .rs-foot{display:none}
   #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{flex:none;height:auto;overflow:visible;padding:20px 16px}#options .rs-keys{grid-template-columns:auto 1fr}}

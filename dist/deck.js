@@ -12,6 +12,11 @@ const PLANK_COLORS = ['#bb8a53', '#c69860', '#ad7c4a'];
 const BEAM_COLOR = '#5e4029', BEAM_END_COLOR = '#9c7649', ROPE_COLOR = '#a8946c', NAIL_COLOR = '#4b4844';
 const BEV = 0.011, BEV_T = 0.01, THICK = 0.052;
 const BEAM_R = 0.064, BEAM_Y = 0.072, BEAM_HALF = 0.985;
+// Dark sheet under the boards (one unlit draw call) so plank gaps read as shadow, not water.
+// Full 2x2 so neighbouring tiles' underlays meet with no seam; up-facing only, so it is invisible from below.
+const UNDERLAY_Y = 0.135;
+let _underMat = null; // unlit: the underlay only shows through board gaps; lighting it cost a full-screen lit pass
+const underlayMat = T => _underMat || (_underMat = new T.MeshBasicMaterial({color:'#24180e'}));
 
 function makeRng(index) {
   let h = 2166136261 >>> 0; const s = String(index ?? 0);
@@ -122,7 +127,7 @@ function lashing(T, rng, x, zb, surf, out) {
   const R = BEAM_R + 0.008, tube = 0.0075;
   const bottomC = BEAM_Y - BEAM_R - 0.006, topC = surf + 0.007;
   const Ry = (topC - bottomC) / 2, yc = (topC + bottomC) / 2, ky = Ry / R;
-  const wraps = 3;
+  const wraps = rng() < 0.5 ? 2 : 3;
   for (let w = 0; w < wraps; w++) {
     const t = new T.TorusGeometry(R, tube, 3, 8);
     t.rotateY(Math.PI / 2); t.scale(1, ky, 1);
@@ -173,13 +178,15 @@ function floorParts(T, index) {
 
   // Logs underneath, parallel to X.
   for (const z of beamZ) { const b = beamParts(T, rng, z); beams.push(b.beam); caps.push(...b.caps); }
+  const under = new T.PlaneGeometry(2, 2); under.rotateX(-Math.PI / 2); under.translate(0, UNDERLAY_Y, 0); const underlay=[under];
 
-  // Rope lashings: four corners plus one inner plank on each log.
+  // Rope lashings: a sparse random few per log (one to two), so the wraps do not repeat as a pattern tile after tile.
   const lashed = new Set();
   const pieceAt = (i, z) => pieces.find(p => p.i === i && z > p.za + 0.08 && z < p.zb - 0.08);
   for (const [bi, z] of beamZ.entries()) {
-    const inner = 1 + Math.floor(rng() * (n - 2));
-    for (const i of [0, n - 1, inner]) {
+    const inner = 1 + Math.floor(rng() * (n - 2)), first = Math.floor(rng() * 3);
+    for (const [k, i] of [0, n - 1, inner].entries()) {
+      if (k !== first && rng() < 0.7) continue;
       const p = pieceAt(i, z); if (!p) continue;
       const x = (p.x0 + p.x1) / 2 + (rng() - 0.5) * 0.03;
       lashing(T, rng, x, z, plankSurface(p, x, z), ropes); lashed.add(i + ':' + bi);
@@ -208,6 +215,7 @@ function floorParts(T, index) {
   add(planks, PLANK_COLORS[0], 'floor-planks');
   add(beams, BEAM_COLOR, 'floor-logs');
   add(caps, BEAM_END_COLOR, 'floor-log-ends');
+  add(underlay, BEAM_COLOR, 'floor-underlay', false);
   if (ropes.length) add(ropes, ROPE_COLOR, 'floor-lashings', false); // thin rope: shadow is invisible, skip the shadow pass
   if (nails.length) add(nails, NAIL_COLOR, 'floor-nails', false);
   return parts;
@@ -224,7 +232,8 @@ function tint(T, g, color) {
 }
 // The base plank material with vertexColors on (a clone sharing its textures; cached per source material, never disposed here).
 const plankMats = new WeakMap();
-function partMaterial(mat, p) {
+function partMaterial(T, mat, p) {
+  if (p.name === 'floor-underlay') return underlayMat(T); // unlit, cached, shared by every raft rebuild
   const m = mat(p.color);
   if (p.name !== 'floor-planks') return m;
   if (!plankMats.has(m)) { // shared: raft rebuilds keep it (and its textures)
@@ -239,7 +248,7 @@ export function createFloor(T, index = 0, getMaterial) {
   const mat = getMaterial || defaultMat(T);
   const g = new T.Group(); g.name = 'raft-floor';
   for (const p of floorParts(T, index)) {
-    const mesh = new T.Mesh(p.geometry, partMaterial(mat, p)); mesh.name = p.name;
+    const mesh = new T.Mesh(p.geometry, partMaterial(T, mat, p)); mesh.name = p.name;
     mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
     if (p.name === 'floor-planks') mesh.userData.color = p.color; // paint: base colour for tinting
   }
@@ -270,7 +279,7 @@ export function createRaftMesh(T, tiles, getMaterial, tint = null, tintMat = nul
   }
   const g = new T.Group(); g.name = 'raft-floors';
   for (const b of buckets.values()) {
-    const mesh = new T.Mesh(merge(T, b.list), partMaterial(b.tinted && tintMat ? tintMat : mat, b)); mesh.name = b.name; // painted planks keep their per-plank vertex shades
+    const mesh = new T.Mesh(merge(T, b.list), partMaterial(T, b.tinted && tintMat ? tintMat : mat, b)); mesh.name = b.name; // painted planks keep their per-plank vertex shades
     mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floors';
