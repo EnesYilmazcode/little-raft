@@ -434,10 +434,11 @@ const BUILDERS = {
   palm(T, o = {}) { return palmGeo(T, o, 2); },
   palmFar(T, o = {}) { return palmGeo(T, o, 1); },
   palmCard(T, o = {}) { return palmGeo(T, o, 'card'); },
-  // Coconuts alone (islands.js hides them per instance once a palm is spent). o.top = crown point [x, y, z].
+  // Coconuts alone (islands.js hides them per instance once a palm is spent). o.top = crown point [x, y, z];
+  // o.size and o.dark/o.light tint (ripe brown nuts read better as a gather cue than the green default).
   coconuts(T, o = {}) {
     const B = makeBuilder(T), t = o.top || [0.5, 4.3, 0.04];
-    coconutCluster(T, B, new T.Vector3(t[0], t[1], t[2]), rng(o.seed ?? 7));
+    coconutCluster(T, B, new T.Vector3(t[0], t[1], t[2]), rng(o.seed ?? 7), o.size ?? 1, o.dark ?? 0x9aa23e, o.light ?? 0xc9c25a);
     return B.build({ foliage: { height: t[1], crown: [t[0], t[1], t[2]], reach: 1 } });
   },
 
@@ -601,10 +602,10 @@ function palmGeo(T, o, detail) {
 }
 
 // Three green-yellow coconuts hanging under the crown knob at `top` (smooth normals, read round from below).
-function coconutCluster(T, B, top, r) {
+function coconutCluster(T, B, top, r, size = 1, dark = 0x9aa23e, light = 0xc9c25a) {
   for (let k = 0; k < 3; k++) {
     const a = 0.5 + k * 2.1 + r() * 0.3;
-    lowBlob(T, B, top.clone().add(new T.Vector3(Math.cos(a) * 0.15, -0.12, Math.sin(a) * 0.15)), 0.115, 1, new T.Color(0x9aa23e), new T.Color(0xc9c25a), r, 0, true);
+    lowBlob(T, B, top.clone().add(new T.Vector3(Math.cos(a) * 0.15 * size, -0.12 * size, Math.sin(a) * 0.15 * size)), 0.115 * size, 1, new T.Color(dark), new T.Color(light), r, size > 1 ? 1 : 0, true);
   }
 }
 
