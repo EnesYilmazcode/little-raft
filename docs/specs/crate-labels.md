@@ -185,3 +185,34 @@ export function stashableKinds(bagSlots, chests, targets, labels) // -> Set of b
   `sort(x,z)` do the same. `plaques()` returns `[{key, labelKey, ready}]` for the screenshot checks.
 - Screenshots: after `labelDemo()`, take one of the 3 plaques, then one of the notice "Stashed 20 items into 3 crates"
   after `stash()`, then one of C opened (header "Fishing gear").
+
+## Build notes
+- **Files**: new `dist/crate-labels.js` (pure rules), `dist/crate-labels-plaque.js` (THREE + canvas plaques),
+  `tests/crate-labels.test.mjs` (11 tests, sections 1–10). Tagged `[crate-labels]` hooks in `storage-research.js`
+  (slice v2 + labels, `sliceChars(st, changes, labels)` with the old-form shim, `stash/sort/label` verbs, `stashAction`,
+  REFUSALS, notice, `dropKey`, net `hostV2` gating, api, prompt, `afterRebuild`, lazy plaques, F listener, debug QA
+  helpers), `storage-research-ui.js` (Label chip + picker, Sort, Stash nearby, hint, input key isolation),
+  `input-map.js` (`stash` action, `KeyF`, no pad), `controls.js` (emit), `game.js` (legacy F keydown, one line),
+  `live.js` (PRELOAD gains `crate-labels.js`, now in the static import graph), `tests/input.test.mjs` (one assertion).
+- **Deviations / choices**:
+  - `cleanText` folds every `\s` run to one space *before* dropping `\p{C}`, so "a\nb" reads "a b" rather than "ab".
+    All spec cases hold.
+  - `cleanLabel` with an unknown `k` but a good `t` returns `{t}` (a known `k` still wins over `t`).
+  - `sortChest` copies every slot first (spec step 1), so the stored chest is never mutated before commit.
+  - Stash copies the actor's bag, so a moved tool is an equal copy in the crate, not the identical JS object;
+    durability/id travel 1:1 and the hotbar slots stay the identical objects (`===`).
+  - `stashableKinds` also checks that a target has room (empty slot or a partial stack of that kind), so the
+    Stash nearby button is disabled when every matching crate is full. The action itself still answers `nothingNear`.
+  - The prompt label goes through `ctx.esc`, with a local escape as a fallback for stub contexts.
+  - Plaque materials get a faint emissive (map as `emissiveMap`, 0.22) so the label stays readable in the crate's
+    shadowed front. `plaques(true)` also returns each canvas as a data URL for QA.
+  - Opening the picker selects the existing name, so typing replaces it. The Seen row scrolls after two rows.
+  - `debug.canLabels()` exposes the gating flag to tests (the UI `api` is internal).
+- **QA (headless Chrome, swiftshader)**: `labelDemo()` placed A (wood icon), B (plastic) and C ("Fishing gear") crates.
+  Plaques showed on A and C. F gave "Stashed 20 items into 3 crates", item totals were equal before and after (wood 15,
+  plastic 10, rope 5, hooks @40 and @55), and rope ×5 plus hotbar wood ×3 stayed in the bag. Typing "Fish e f" in the
+  picker did not close or stash. Esc closed only the picker, and Enter, a tile and Clear each relabelled. No console errors.
+  Item icons render slowly under swiftshader (about 1 s each), so an icon plaque shows initials until `onIconReady` fires.
+- **Known gaps**: the guest path (`storage.stash` via `ctx.action`, `posOf('guest')`) is covered only by unit tests
+  plus the existing generic routing, with no two-browser smoke. Stash shows no per-kind "−N" feed rows, only the notice.
+  There is no gamepad binding (as specced).
