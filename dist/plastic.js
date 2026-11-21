@@ -8,7 +8,7 @@
 // The engine floats the jug on its side with local -z up, so the content sits SINK toward +z: it rides
 // low, a little more than half submerged, instead of perched on the waves. Callers that frame it
 // re-center by bounds.
-const SINK = 0.07;
+const SINK = 0.10;
 // body, yellowed (sun-aged shade), label, labelFade, cap, capFade
 const VARIANTS = [
   ['#bcd9e6', '#accbd2', '#8fbcd6', '#bcd9e8', '#4f86b8', '#86aacb'], // clear-ish pale blue
