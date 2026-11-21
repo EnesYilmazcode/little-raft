@@ -15,6 +15,7 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
+import { iconURL, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { floorTarget, decorCheck, normaliseDecor, createGhosts, tileAt, wrapRot, ROT_STEP, FINE_STEP, DECOR_REACH, FLOOR_REACH } from './placement.js?build=v3-survival-ae77fa84ac2b';
 import * as Farm from './farming.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b'; // farming
@@ -403,6 +404,9 @@ export function mount(transfer = null) {
   const setText = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
   function setStatus(s) { setText('#networkStatus', s); }
   const notice = s => pickupFeed.note(s);
+  // Feed rows use the same rendered 3D icons as the bag (sprite until a render is ready, then swapped).
+  pickupFeed.setIconProvider(k => iconURL(k));
+  const offFeedIcons = onIconReady(k => pickupFeed.refresh(k));
   const audioVolume = () => (sound ? clamp(options?.volume ?? .5, 0, 1) : 0);
   function sfx(ev, strength = 1) { if (!audioVolume()) return; try { oceanAudio?.play(ev, strength * clamp(options?.effects ?? 1, 0, 1)); } catch {} }
   function updateContext(dialog) {
@@ -1360,6 +1364,7 @@ export function mount(transfer = null) {
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
     try { oceanAudio?.destroy(); } catch {}
+    try { offFeedIcons(); } catch {}
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
