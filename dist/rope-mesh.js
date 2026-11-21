@@ -1,16 +1,17 @@
-// Hook rope as a camera-facing ribbon: thick, brown, braided, readable at 10 m (replaces the 1-px T.Line).
+// Hook rope as a camera-facing ribbon: a thin hemp line, faintly braided, readable at 10 m (replaces the 1-px T.Line).
 // createRopeMesh(T, maxPoints) -> { mesh, update(points, n), dispose() }. mesh.userData.update/dispose mirror them.
 // Vertices sit on the rope centreline; the vertex shader pushes each pair sideways (perpendicular to the rope and
-// the view ray), so the CPU only copies points. Half-width is ~1.25 cm near and never under ~0.75 px far away.
+// the view ray), so the CPU only copies points. Half-width is ~7 mm, tapered to 60% within ~1.5 m of the camera so
+// it does not balloon at the hand, and never under ~0.75 px (1.5 px wide) far away.
 // One draw call, Lambert (follows sun / day-night), no shadows. All rope points are world space.
 
-const COLOR = '#8f6d45', HALF_WIDTH = .0125, MIN_HALF_PX = .75, BRAID_PITCH = .07; // metres per braid repeat
+const COLOR = '#9a8460', HALF_WIDTH = .007, NEAR_TAPER = .6, TAPER_DIST = 1.5, MIN_HALF_PX = .75, BRAID_PITCH = .07; // metres per braid repeat
 
 function braidTexture(T) { // 16x16 diagonal two-tone strands; mipmaps fade it to plain brown in the distance
   const S = 16, data = new Uint8Array(S * S * 4);
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
     const d = ((x + y) % 8) / 8, edge = Math.abs(x - 7.5) / 8; // diagonal strand phase, distance from ribbon centre
-    const k = (d < .5 ? 1.08 - d * .5 : .72 + (d - .5) * .4) * (1 - edge * edge * .35); // light strand, dark groove
+    const k = (d < .5 ? 1.04 - d * .3 : .86 + (d - .5) * .2) * (1 - edge * edge * .25); // light strand, soft groove
     const i = (y * S + x) * 4; data[i] = data[i + 1] = data[i + 2] = Math.min(255, Math.round(236 * k)); data[i + 3] = 255;
   }
   const tex = new T.DataTexture(data, S, S, T.RGBAFormat);
@@ -45,12 +46,13 @@ export function createRopeMesh(T, maxPoints = 17) {
         vec3 ropeN = cross( ropeT, ropeV );
         if ( dot( ropeN, ropeN ) < 1e-8 ) ropeN = cross( ropeV, vec3( 0.0, 1.0, 0.0 ) );
         float ropePx = 2.0 * max( -mvPosition.z, 0.01 ) / ( projectionMatrix[ 1 ][ 1 ] * ropeViewH );
-        mvPosition.xyz += normalize( ropeN ) * ropeSide * max( ${HALF_WIDTH.toFixed(4)}, ${MIN_HALF_PX.toFixed(2)} * ropePx );
+        float ropeHalf = ${HALF_WIDTH.toFixed(4)} * mix( ${NEAR_TAPER.toFixed(2)}, 1.0, smoothstep( 0.0, ${TAPER_DIST.toFixed(2)}, length( mvPosition.xyz ) ) );
+        mvPosition.xyz += normalize( ropeN ) * ropeSide * max( ropeHalf, ${MIN_HALF_PX.toFixed(2)} * ropePx );
         gl_Position = projectionMatrix * mvPosition;`);
     // DoubleSide would flip the up normal on back faces (the ribbon's winding depends on view side): keep it up.
     shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n\tnormal = normalize( vNormal );');
   };
-  mat.customProgramCacheKey = () => 'rope-ribbon-v1';
+  mat.customProgramCacheKey = () => 'rope-ribbon-v2';
 
   const mesh = new T.Mesh(geo, mat);
   mesh.name = 'hookRope'; mesh.castShadow = false; mesh.receiveShadow = false; mesh.frustumCulled = false;

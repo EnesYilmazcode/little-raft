@@ -379,7 +379,9 @@ export class HookCast {
     if (pts.length !== n + 1) pts.length = n + 1;
     const p = this.position;
     const span = len3(p.x - h.x, p.y - h.y, p.z - h.z);
-    const slack = this.stage === 'flying' ? (this.tethered ? 0 : 0.15) : 1 - this.tension;
+    // A hemp line always droops a little; only reeling under load may pull it (nearly) straight.
+    const slack = this.stage === 'flying' ? 0.3
+      : this.stage === 'reeling' || this.stage === 'done' ? 1 - this.tension : Math.max(0.3, 1 - this.tension);
     const sag = span * 0.12 * slack;
     // While the hook floats the slack line rests on the surface; a dip under the opaque sea would cut it from view.
     const floorY = this.stage === 'flying' ? WATER_Y - MAX_SAG_BELOW : WATER_Y + 0.03;
