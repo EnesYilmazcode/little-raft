@@ -73,8 +73,11 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
   rig.add(motionG); motionG.add(equipG); camera.add(rig);
   const slots = new Map();
 
-  function add(kind, hands) {
+  // opts.use = 'strike' (hammer): the use kick lands at the hands.js strike impact (~.12 s after the click) and
+  // jolts down instead of recoiling up and back like a throw.
+  function add(kind, hands, opts = {}) {
     prepare(hands.group);
+    hands.vmUse = opts.use === 'strike' ? 'strike' : 'throw';
     if (hands.group.parent) hands.group.parent.remove(hands.group);
     hands.group.visible = false; equipG.add(hands.group);
     slots.set(kind, hands);
@@ -82,7 +85,7 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
   }
 
   const sway = new Spring3(T, 90, 12), bob = new Spring3(T, 160, 18), kick = new Spring3(T, 220, 16), land = new Spring3(T, 140, 13);
-  const st = { shown: null, e: 0, prevYaw: null, prevPitch: 0, walkW: 0, chargeW: 0, prevSwing: 0, wasGrounded: true, t: 0, airW: 0, airVy: 0 };
+  const st = { shown: null, e: 0, prevYaw: null, prevPitch: 0, walkW: 0, chargeW: 0, prevSwing: 0, hitAt: 0, wasGrounded: true, t: 0, airW: 0, airVy: 0 };
 
   function update(p = {}) {
     const dt = clamp(p.dt ?? 1 / 60, 0, 0.1); st.t += dt;
@@ -127,11 +130,16 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
 
     // ---- use kick: rising edge of the game's swing timer
     const swing = p.swing ?? 0;
-    if (swing > st.prevSwing + 0.3) kick.impulse(0, 0.5 * amp, 1.4 * amp);
+    if (swing > st.prevSwing + 0.3) {
+      if (slots.get(st.shown)?.vmUse === 'strike') st.hitAt = st.t + Math.max(1e-3, (swing - 0.64) / 3); // game: swing -= dt*3, impact at p=.36
+      else kick.impulse(0, 0.5 * amp, 1.4 * amp);
+    }
+    if (st.hitAt && st.t >= st.hitAt) { st.hitAt = 0; kick.impulse(0, -0.9 * amp, 0.5 * amp); }
     st.prevSwing = swing;
     const r = kick.update(dt);
 
-    // ---- charge: brace (hands pull in, slight tension shake on top of hands.js windup)
+    // ---- charge: brace (hands pull in, slight tension shake on top of hands.js windup). hands.js pulls the hook back
+    //      and right by ~.1 at full charge, which pushed it off the right edge: shift the whole rig left to reframe.
     st.chargeW += ((p.charge ?? 0) - st.chargeW) * k(10);
     const c = st.chargeW, shake = smooth((c - 0.7) / 0.3) * 0.0016 * (Math.sin(st.t * 41) + Math.sin(st.t * 27.7));
 
@@ -139,8 +147,8 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
     const br = Math.sin(st.t * Math.PI * 2 * 0.25) * (1 - 0.7 * st.walkW) * amp;
 
     motionG.position.set(
-      s.x + b.x + shake,
-      s.y + b.y + l.y + 0.012 * st.airW * amp + 0.0030 * br + r.y * 0.02 - 0.012 * c + shake,
+      s.x + b.x + shake - 0.08 * c,
+      s.y + b.y + l.y + 0.012 * st.airW * amp + 0.0030 * br + r.y * 0.02 + 0.025 * c + shake,
       r.z * 0.04 + 0.010 * c);
     motionG.rotation.set(
       s.y * 1.6 + r.y * 0.06 + 0.004 * br + l.y * 0.8,

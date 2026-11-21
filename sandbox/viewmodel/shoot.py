@@ -27,7 +27,10 @@ shots = [
     ('06-equip-raising', 'scene=swap', 1.30),
     ('07-equip-hammer', 'scene=swap', 2.0),
     ('08-equip-rod', 'scene=swap', 3.0),
+    ('09a-hammer-cock', 'scene=use', 1.07),
     ('09-use-hammer-kick', 'scene=use', 1.08),
+    ('09c-hammer-impact', 'scene=use', 1.13),
+    ('09d-hammer-recover', 'scene=use', 1.22),
     ('09b-use-hammer-kick-legacy', 'scene=use&mode=legacy', 1.08),
     ('10-look-sway', 'scene=look', 1.2),
     ('11-wall-vm', 'scene=wall', 1.0),
@@ -38,6 +41,9 @@ shots = [
     ('16-fov95-vm', 'scene=idle&fov=95', 1.0),
     ('17-fov95-legacy', 'scene=idle&fov=95&mode=legacy', 1.0),
     ('18-rope-anchor-vm', 'scene=rope', 1.0),
+    ('19-throw-release', 'scene=throw', 1.57),
+    ('19b-throw-follow', 'scene=throw', 1.63),
+    ('19c-throw-legacy', 'scene=throw&mode=legacy', 1.57),
 ]
 only = [x for x in os.environ.get('ONLY', '').split(',') if x]
 if only: shots = [s for s in shots if any(o in s[0] for o in only)]

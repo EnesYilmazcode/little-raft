@@ -2,11 +2,10 @@
 // ./viewmodel.js (proposed dist/viewmodel.js) or through the game's current depth-clear marker for comparison.
 // URL params:
 //   mode=vm|legacy|naive   vm = proposed layer (default), legacy = dist/game.js today, naive = plain camera child
-//   scene=idle|walk|charge|swap|use|look|wall|shade|rod|hammer   scripted state (see SCENES)
+//   scene=idle|walk|charge|throw|swap|use|look|wall|shade|rod|hammer|rope   scripted state (see SCENES)
 //   fov=75 (world FOV, the game's options.fov), vmfov=62, motion=.35 (options.cameraMotion), t=<seconds> freeze time
 //   auto=0 do not run requestAnimationFrame (shoot.py drives the clock through window.vmLab)
 import * as T from '../../dist/vendor/three.module.js';
-import { createHands } from '../../dist/hands.js';
 import { createHook } from '../../dist/hook.js';
 import { createHammer } from '../../dist/hammer.js';
 import { createFishingTool } from '../../dist/fishing-tool.js';
@@ -19,6 +18,8 @@ const MODE = P.get('mode') || 'vm', SCENE = P.get('scene') || 'idle';
 const WORLD_FOV = +(P.get('fov') || 75), VM_FOV = +(P.get('vmfov') || 70), MOTION = +(P.get('motion') ?? 0.35);
 const AUTO = P.get('auto') !== '0', FREEZE = P.has('t') ? +P.get('t') : null;
 const CHARGE_MS = 900;
+// vm mode uses the proposed hands.js (hammer strike, longer sleeve); legacy/naive use the game's dist/hands.js as shipped
+const { createHands } = await import(MODE === 'vm' ? './hands.js' : '../../dist/hands.js');
 
 // ---------- renderer + world, same settings as dist/game.js init() ----------
 const renderer = new T.WebGLRenderer({ antialias: true });
@@ -67,13 +68,13 @@ function holdable(model, grip, { rx = 0, ry = 0, rz = 0, scale = 1 } = {}) {
 const hammer = createHammer(T), rodModel = createFishingTool(T);
 const H = {
   hook: createHands(T, createHook(T)),
-  hammer: createHands(T, holdable(hammer, hammer.userData.grip, { ry: Math.PI / 2, rz: 0.2, scale: 0.6 })),
+  hammer: createHands(T, holdable(hammer, hammer.userData.grip, { ry: Math.PI / 2, rz: 0.2, scale: 0.6 }), { use: 'strike' }),
   fishingrod: createHands(T, holdable(rodModel, rodModel.userData.grip, { rx: -0.15, rz: 0.6, scale: 0.55 })),
 };
 let vm = null;
 if (MODE === 'vm') {
   vm = createViewmodel(T, { camera, fov: VM_FOV });
-  for (const [k, h] of Object.entries(H)) vm.add(k, h);
+  for (const [k, h] of Object.entries(H)) vm.add(k, h, k === 'hammer' ? { use: 'strike' } : {});
 } else {
   if (MODE === 'legacy') { // verbatim from dist/game.js buildViewmodels()
     const depthClear = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, transparent: true }));
@@ -96,6 +97,7 @@ const SCENES = {
   walk: (t) => ({ kind: 'hook', walking: true, yaw: Math.sin(t * 0.8) * 0.12 }),
   charge: (t) => ({ kind: 'hook', charge: t > 0.5 ? Math.min(1, (t - 0.5) * 1000 / CHARGE_MS) : 0 }),
   use: (t) => ({ kind: 'hammer', swing: t > 1 ? Math.max(0, 1 - (t - 1) * 3) : 0 }),
+  throw: (t) => ({ kind: 'hook', charge: t > 0.5 && t < 1.5 ? Math.min(1, (t - 0.5) * 1000 / CHARGE_MS) : 0, swing: t > 1.5 ? Math.max(0, 1 - (t - 1.5) * 3) : 0 }),
   swap: (t) => ({ kind: t < 1 ? 'hook' : t < 2.2 ? 'hammer' : 'fishingrod' }),
   look: (t) => ({ kind: 'hook', yaw: t < 1 ? 0 : Math.min(1, (t - 1) / 0.35) * 0.9 }),
   wall: () => ({ kind: 'hook' }),
