@@ -265,7 +265,7 @@ export function mount(transfer = null) {
   function sphere(r, c, x, y, z, parent) { const m = new T.Mesh(new T.IcosahedronGeometry(r, 1), mat(c)); m.position.set(x, y, z); parent?.add(m); return m; }
   // Static meshes under root collapse into one mesh per material (and shadow flags): hundreds of draw calls become a few.
   // Built once at scene/raft build time, never per frame. Geometries are disposed; cached materials are reused.
-  const bakeMatrix = new T.Matrix4();
+  const bakeMatrix = new T.Matrix4(), BAKE_ATTRS = ['position', 'normal', 'uv', 'color'];
   function bakeStatic(root, {castShadow} = {}) {
     root.updateMatrixWorld(true);
     const inv = new T.Matrix4().copy(root.matrixWorld).invert(), buckets = new Map();
@@ -278,8 +278,9 @@ export function mount(transfer = null) {
     const out = [];
     for (const list of buckets.values()) {
       if (list.length < 2) continue;
-      const names = Object.keys(list[0].geometry.attributes).filter(n => n === 'position' || n === 'normal' || n === 'uv');
-      if (!list.every(m => names.every(n => m.geometry.attributes[n]))) continue;
+      const attrs = g => BAKE_ATTRS.filter(n => g.attributes[n]).map(n => n + g.attributes[n].itemSize).join(), sig = attrs(list[0].geometry);
+      if (!list.every(m => attrs(m.geometry) === sig)) continue; // all parts must carry the same attributes (vertex colours too)
+      const names = BAKE_ATTRS.filter(n => list[0].geometry.attributes[n]);
       const parts = list.map(m => { const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()); g.applyMatrix4(bakeMatrix.multiplyMatrices(inv, m.matrixWorld)); return g; });
       const total = parts.reduce((n, g) => n + g.attributes.position.count, 0), merged = new T.BufferGeometry();
       for (const n of names) {
@@ -468,7 +469,8 @@ export function mount(transfer = null) {
     if (!chargeMeter) return;
     const show = !!charging && running;
     if (chargeMeter.hidden === show) chargeMeter.hidden = !show;
-    if (show && chargeFill) chargeFill.style.width = (chargeValue() * 100).toFixed(1) + '%';
+    const w = show ? (chargeValue() * 100).toFixed(1) + '%' : '';
+    if (show && chargeFill && w !== chargeWidth) chargeFill.style.width = chargeWidth = w; // only write the DOM on change
   }
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
@@ -535,7 +537,7 @@ export function mount(transfer = null) {
         if (along > 0 && along < 5 && along < best && ray.ray.distanceSqToPoint(m.position) < .2) { best = along; item = it; }
       }
     }
-    return {point:ray.ray.intersectPlane(plane, new T.Vector3()), item, dir:ray.ray.direction.clone()};
+    return {point:ray.ray.intersectPlane(plane, aimPoint), item, dir:ray.ray.direction.clone()}; // point is reused: read it, don't keep it
   }
   function pickScreen(x, y) { const r = canvas.getBoundingClientRect(); return pickNdc((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1); }
   const pickCenter = () => pickNdc(0, 0);
@@ -746,7 +748,8 @@ export function mount(transfer = null) {
 
   // ---------- Frame ----------
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3();
-  const hookPos = new T.Vector3(), titleFocus = new T.Vector3(-5, 0, 2), heldScratch = new Set(), freeItems = [], fishPts = [];
+  let chargeWidth = '', ghostTint = '';
+  const aimPoint = new T.Vector3(), hookPos = new T.Vector3(), titleFocus = new T.Vector3(-5, 0, 2), heldScratch = new Set(), freeItems = [], fishPts = [];
   for (let i = 0; i <= ROPE_SEGMENTS; i++) fishPts.push(new T.Vector3());
   function heldTokenSet() { heldScratch.clear(); for (const c of caughtList(castOut())) heldScratch.add(c.token); return heldScratch; } // reused every frame
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
@@ -868,7 +871,8 @@ export function mount(transfer = null) {
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook ? placementFor(kind, frameAim.point) : null;
     ghost.visible = !!hover; if (!hover) return;
     ghost.position.set(hover.x * 2, raft.position.y + .29, hover.z * 2);
-    ghost.material.color.set(kind === 'hammer' && !canAfford(localBag(), FLOOR_COST) ? '#ee8e75' : '#b6ffd0');
+    const tint = kind === 'hammer' && !canAfford(localBag(), FLOOR_COST) ? '#ee8e75' : '#b6ffd0';
+    if (tint !== ghostTint) ghost.material.color.set(ghostTint = tint);
   }
   function hostState() {
     const c = guestBag.counts();
@@ -899,7 +903,6 @@ export function mount(transfer = null) {
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog);
     renderer.render(scene, camera);
-    window.__r = renderer; window.__s = scene; window.__sun = sun;
     cpuMsAvg += (performance.now() - now - cpuMsAvg) * .05;
     adaptResolution(now);
   }
