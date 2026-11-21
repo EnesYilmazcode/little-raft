@@ -36,7 +36,7 @@ test('layoutFor is deterministic and well formed', () => {
     for (const n of lay.nodes) {
       assert.ok(Math.hypot(n.x, n.z) <= 0.8 * lay.R, 'node inside 0.8 R');
       // on dry sand a player can stand on (above the wave margin)
-      assert.ok(n.y > 0.25 + 0.26 - 0.05, `node on dry sand y=${n.y.toFixed(2)}`);
+      assert.ok(n.y > 0.25 + 0.26 - 0.1, `node on dry sand y=${n.y.toFixed(2)}`);
     }
     for (let i = 0; i < lay.nodes.length; i++) for (let j = i + 1; j < lay.nodes.length; j++) {
       const a = lay.nodes[i], b = lay.nodes[j];
@@ -47,11 +47,12 @@ test('layoutFor is deterministic and well formed', () => {
 
 test('groundHeight: dome top, shoreline, rim', () => {
   assert.equal(groundHeight(0, 7), ISLAND.TOP);
-  assert.ok(Math.abs(groundHeight(SHORE_U * 7 * L.shape(0), 7, 0)) < 1e-9, 'shoreline at SHORE_U');
+  assert.ok(Math.abs(groundHeight(SHORE_U * 7 * L.shape(0), 7, 0)) < 0.01, 'shoreline at SHORE_U (dunes fade out)');
   assert.ok(Number.isNaN(groundHeight(7 * 2, 7)));
   assert.ok(Number.isNaN(groundHeight(NaN, 7)));
   let prev = Infinity;
-  for (let r = 0; r <= 7; r += 0.25) { const g = groundHeight(r, 7, 1); assert.ok(g <= prev); prev = g; }
+  for (let r = 3.5; r <= 7; r += 0.25) { const g = groundHeight(r, 7, 1); assert.ok(g <= prev); prev = g; }
+  for (let th = 0; th < 6.3; th += 0.3) for (let r = 0; r <= 4; r += 0.25) assert.ok(Math.abs(groundHeight(r, 7, th) - (ISLAND.TOP - ISLAND.FALL * (r / 7 / L.shape(th)) ** 4)) < 0.17, 'dunes stay low');
 });
 
 // ---------------------------------------------------------------- timeline
@@ -505,4 +506,42 @@ test('serialize returns a copy; clean clamps a huge clock', () => {
   assert.equal(w.mod.serialize().isl.used[0], 0);
   assert.equal(w.mod.debug.phase().seed, 1234);
   assert.equal(clean({ v: 1, clock: 1e300 }).clock, 1e9);
+});
+
+test('palm pick: trunk and coconuts count, sky above the crown does not', () => {
+  const w = stubWorld();
+  w.mod.debug.spawnNear(1234); w.mod.update(0);
+  const k = w.mod.debug.nodes().findIndex(n => n.kind === 'palm');
+  const n = w.mod.debug.aimAt(k, 2.2); w.mod.update(0);
+  const cam = w.ctx.camera, look = (x, y, z) => { cam.position.set(w.physics.x, w.physics.y, w.physics.z); cam.lookAt(x, y, z); cam.updateMatrixWorld(); };
+  look(n.x, n.cy, n.z);
+  assert.equal(w.mod.debug.pick(), k, 'aiming at the trunk');
+  look(n.x, n.y + 20, n.z);
+  assert.equal(w.mod.debug.pick(), -1, 'sky above the palm');
+  // beside the trunk, between the fronds: sky, not palm
+  const vx = n.x - w.physics.x, vz = n.z - w.physics.z, vl = Math.hypot(vx, vz);
+  look(n.x - vz / vl * 0.9, n.y + 2.2, n.z + vx / vl * 0.9);
+  assert.equal(w.mod.debug.pick(), -1, 'beside the trunk');
+  look(w.physics.x * 2 - n.x, w.physics.y, w.physics.z * 2 - n.z);
+  assert.equal(w.mod.debug.pick(), -1, 'facing away');
+});
+
+test('pick prefers sand, bush or rock over an overlapping palm', () => {
+  // Find a seed with a sand/bush/rock node close to a palm, stand so both are in line, aim between.
+  for (let seed = 1; seed < 400; seed++) {
+    const lay = layoutFor(seed);
+    const p = lay.nodes.findIndex(n => n.kind === 'palm');
+    const o = lay.nodes.findIndex(n => n.kind !== 'palm' && Math.hypot(n.x - lay.nodes[p].x, n.z - lay.nodes[p].z) < 2);
+    if (o < 0) continue;
+    const w = stubWorld(); w.mod.debug.spawnNear(seed); w.mod.update(0);
+    const nodes = w.mod.debug.nodes(), np = nodes[p], no = nodes[o];
+    // stand just behind the palm and look past it at the other node
+    const dx = np.x - no.x, dz = np.z - no.z, d = Math.hypot(dx, dz) || 1;
+    if (!w.mod.debug.teleportAshore(np.x - w.mod.debug.state().cx + dx / d * 1.1, np.z - w.mod.debug.state().cz + dz / d * 1.1)) continue;
+    w.mod.update(0);
+    const cam = w.ctx.camera; cam.position.set(w.physics.x, w.physics.y, w.physics.z); cam.lookAt(no.x, no.cy, no.z); cam.updateMatrixWorld();
+    assert.equal(w.mod.debug.pick(), o, `seed ${seed}: ${no.kind} beats the palm behind it`);
+    return;
+  }
+  assert.fail('no seed with a node next to a palm');
 });

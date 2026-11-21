@@ -5,7 +5,7 @@ import {
   ISLAND, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
   applyGather, standOnSand, DEFAULTS,
 } from './islands-layout.js';
-import { createIslandModels } from './islands-models.js';
+import { createIslandModels, PALM_H, PALM_BEND } from './islands-models.js';
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
@@ -15,8 +15,11 @@ const EYE = PLAYER_CONSTANTS.EYE_OFFSET;
 const KINDS = ['palm', 'bush', 'rock', 'sand'];
 const KIND_INDEX = { palm: 0, bush: 1, rock: 2, sand: 3 };
 const MAX_PER_KIND = [3, 4, 4, 3];
-// Pick spheres per kind: centre height above the node base and radius (times node scale).
-const PICK_Y = [1.4, .45, .3, .08], PICK_R = [.95, .75, .55, .55];
+// Pick spheres per kind: centre height above the node base and radius (times node scale). Palms
+// instead use a trunk capsule (PALM_PICK_R) plus a small sphere round the coconuts at the crown;
+// PICK_Y[0] is only the aim point QA scripts look at (mid trunk).
+const PICK_Y = [1.6, .45, .3, .08], PICK_R = [.3, .75, .55, .55];
+const PALM_PICK_R = .35;
 // Solid trunks and rocks the player walks around (radius times node scale; 0 = walk through).
 const SOLID_R = [.28, 0, .42, 0];
 const LOCAL_COOLDOWN = 0.35;
@@ -61,7 +64,17 @@ export function createIslands(ctx) {
     for (let j = 0; j < MAX_PER_KIND[i]; j++) m.setColorAt(j, new T.Color(1, 1, 1)); // init instanceColor once (no recompiles later)
     return m;
   });
-  group.add(dome, ...meshes);
+  // Palms have two extra instanced meshes: the spent (straw, drooped) palm and the coconut cluster.
+  const extra = ['palmSpent', 'nuts'].map(k => {
+    const m = new T.InstancedMesh(models.geos[k], models.mats[k], MAX_PER_KIND[0]);
+    m.name = 'island-' + k; m.count = 0; m.castShadow = true; m.receiveShadow = true;
+    m.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    for (let j = 0; j < MAX_PER_KIND[0]; j++) m.setColorAt(j, new T.Color(1, 1, 1));
+    return m;
+  });
+  const [palmSpent, nuts] = extra;
+  const veg = [...meshes, ...extra]; // scaled down while the island rises or sinks
+  group.add(dome, ...veg);
   if (ctx.scene) { ctx.scene.add(group); ctx.scene.add(lagoon); }
   lagoon.visible = false;
 
@@ -73,6 +86,7 @@ export function createIslands(ctx) {
   // ---------- scratch (no per-frame allocation) ----------
   const vO = new T.Vector3(), vD = new T.Vector3(), vP = new T.Vector3(), vS = new T.Vector3(), vN = new T.Vector3();
   const qA = new T.Quaternion(), qB = new T.Quaternion(), mtx = new T.Matrix4(), col = new T.Color();
+  const ZERO = new T.Matrix4().makeScale(0, 0, 0);
   const UP = new T.Vector3(0, 1, 0);
   const baseY = () => (ctx.ocean && ctx.ocean.mesh ? ctx.ocean.mesh.position.y : -0.24);
   const waveAt = (x, z) => (ctx.ocean && typeof ctx.ocean.getHeight === 'function' ? ctx.ocean.getHeight(x, z) : baseY());
@@ -85,7 +99,7 @@ export function createIslands(ctx) {
     const n = layout.nodes[k], ki = nodeKind[k], m = meshes[ki], used = st.isl.used[k], frac = used / n.max;
     let sx = n.s, sy = n.s, sz = n.s, sink = 0;
     if (ki === 1) { const f = 1 - .16 * used; sx *= f; sy *= f; sz *= f; }
-    else if (ki === 2) { const f = 1 - .17 * used; sx *= f * 1.05; sy *= f * .7; sz *= f * .92; sink = .05; }
+    else if (ki === 2) { const f = Math.max(.5, 1 - .17 * used); sx *= f * 1.05; sy *= f * .7; sz *= f * .92; sink = .05; }
     else if (ki === 3) { sy *= Math.max(.12, 1 - .8 * frac); }
     sx *= pulse; sy *= pulse; sz *= pulse;
     // Tilt bushes, rocks and sand to the dome slope; palms grow straight up.
@@ -97,12 +111,21 @@ export function createIslands(ctx) {
       vN.set(-gx, 1, -gz).normalize(); qB.setFromUnitVectors(UP, vN); qA.premultiply(qB);
     }
     vP.set(n.x, n.y - sink - (ki === 0 ? .1 : .04), n.z); vS.set(sx, sy, sz);
-    m.setMatrixAt(nodeInst[k], mtx.compose(vP, qA, vS)); m.instanceMatrix.needsUpdate = true;
+    mtx.compose(vP, qA, vS);
+    if (ki === 0) { // live palm + coconuts, or the spent palm
+      const j = nodeInst[k], spent = frac >= 1;
+      m.setMatrixAt(j, spent ? ZERO : mtx); nuts.setMatrixAt(j, spent ? ZERO : mtx); palmSpent.setMatrixAt(j, spent ? mtx : ZERO);
+      nuts.instanceMatrix.needsUpdate = true; palmSpent.instanceMatrix.needsUpdate = true;
+    } else m.setMatrixAt(nodeInst[k], mtx);
+    m.instanceMatrix.needsUpdate = true;
     paintNode(k);
   }
   function paintNode(k) {
-    const n = layout.nodes[k], ki = nodeKind[k], m = meshes[ki], frac = st.isl.used[k] / n.max;
-    if (frac >= 1) col.setRGB(.92, .66, .34); // spent: dry, yellowed and dim
+    const n = layout.nodes[k], ki = nodeKind[k], frac = st.isl.used[k] / n.max;
+    const m = ki === 0 && frac >= 1 ? palmSpent : meshes[ki];
+    if (frac >= 1) { // spent: the palm has its own straw model; rocks go darker grey; the rest dry and dim
+      if (ki === 0) col.setRGB(1, 1, 1); else if (ki === 2) col.setRGB(.66, .67, .69); else col.setRGB(.92, .66, .34);
+    } else if (ki === 2) col.setRGB(1 - .14 * frac, 1 - .14 * frac, 1 - .12 * frac);
     else col.setRGB(1 - .12 * frac, 1 - .12 * frac, 1 - .2 * frac);
     if (k === hoverNode && frac < 1) col.multiplyScalar(1.12);
     m.setColorAt(nodeInst[k], col); m.instanceColor.needsUpdate = true;
@@ -111,7 +134,7 @@ export function createIslands(ctx) {
   function relayout() {
     layout = st.isl ? layoutFor(st.isl.seed) : null;
     hoverNode = -1; bounceNode = -1;
-    for (const m of meshes) m.count = 0;
+    for (const m of veg) m.count = 0;
     nodeCount = 0;
     if (!layout) return;
     const counts = [0, 0, 0, 0];
@@ -121,8 +144,12 @@ export function createIslands(ctx) {
       nodeKind[k] = ki; nodeInst[k] = counts[ki]++;
     }
     for (let i = 0; i < 4; i++) meshes[i].count = Math.min(counts[i], MAX_PER_KIND[i]);
+    palmSpent.count = nuts.count = meshes[0].count;
     for (let k = 0; k < nodeCount; k++) writeNode(k);
-    for (const m of meshes) { m.boundingSphere = null; m.computeBoundingSphere(); }
+    for (const m of veg) { m.boundingSphere = null; m.computeBoundingSphere(); }
+    // Per-seed sand tint, a few percent either way.
+    const tint = (layout.seed % 997) / 997;
+    models.mats.dome.color.setRGB(1, .97 + .05 * tint, .94 + .08 * (1 - tint));
     dome.scale.set(layout.R, 1, layout.R); dome.rotation.y = -layout.rot;
     lagoon.scale.set(layout.R, 1, layout.R);
     models.lagoonUniforms.uR.value = layout.R; models.lagoonUniforms.uRot.value = layout.rot;
@@ -139,6 +166,9 @@ export function createIslands(ctx) {
     const b = baseY();
     gy = b + (waveAt(cx, cz) - b) * .25 - path.sink;
     group.position.set(cx, gy, cz);
+    // While rising or sinking, plants shrink with the sink so palm crowns never poke out of open sea.
+    const grow = 1 - path.sink / ISLAND.SINK;
+    for (let i = 0; i < veg.length; i++) veg[i].scale.setScalar(grow < 1e-3 ? 1e-3 : grow);
     lagoon.position.set(cx, b + .05, cz);
     models.lagoonUniforms.uCentre.value.set(cx, cz);
     models.lagoonUniforms.uOpacity.value = 1 - path.sink / ISLAND.SINK;
@@ -221,7 +251,7 @@ export function createIslands(ctx) {
       for (let k = 0; k < nodeCount; k++) {
         const ki = nodeKind[k], n = layout.nodes[k];
         let r = SOLID_R[ki] * n.s; if (!r) continue;
-        if (ki === 2) r *= 1 - .17 * st.isl.used[k];
+        if (ki === 2) r *= Math.max(.5, 1 - .17 * st.isl.used[k]);
         r += PLAYER_CONSTANTS.BODY_RADIUS;
         const dx = p.x - (cx + n.x), dz = p.z - (cz + n.z), d2 = dx * dx + dz * dz;
         if (d2 >= r * r || p.y - EYE > gy + n.y + 1.2) continue;
@@ -286,27 +316,61 @@ export function createIslands(ctx) {
     return true;
   }
 
-  // Analytic ray vs node spheres: nearest gatherable node within reach, or -1. No allocation.
+  // Ray vs segment A-B: squared distance at the closest approach, its ray distance in rayT. No allocation.
+  let rayT = 0;
+  function raySeg(ax, ay, az, bx, by, bz) {
+    const ex = bx - ax, ey = by - ay, ez = bz - az, wx = vO.x - ax, wy = vO.y - ay, wz = vO.z - az;
+    const b = vD.x * ex + vD.y * ey + vD.z * ez, c = ex * ex + ey * ey + ez * ez, d = vD.x * wx + vD.y * wy + vD.z * wz, e = ex * wx + ey * wy + ez * wz;
+    const den = c - b * b;
+    let u = den > 1e-6 ? (e - b * d) / den : 0;
+    u = u < 0 ? 0 : u > 1 ? 1 : u;
+    let t = -d + u * b; if (t < 0) t = 0;
+    // re-project the segment point for the clamped t
+    u = c > 1e-9 ? ((wx + vD.x * t) * ex + (wy + vD.y * t) * ey + (wz + vD.z * t) * ez) / c : 0;
+    u = u < 0 ? 0 : u > 1 ? 1 : u;
+    const qx = wx + vD.x * t - ex * u, qy = wy + vD.y * t - ey * u, qz = wz + vD.z * t - ez * u;
+    rayT = t;
+    return qx * qx + qy * qy + qz * qz;
+  }
+  // Nearest gatherable node under the crosshair within reach, or -1. Candidates are ranked by how far
+  // off the ray they are (angle), and sand, bushes and rocks win over a palm when both are hit. Palms
+  // are a trunk capsule plus a small sphere round the coconuts, so the sky between fronds is not a palm.
   function pickNode(aim) {
     if (!shown || !ctx.camera || !layout) return -1;
     ctx.camera.getWorldPosition(vO);
     if (aim && aim.dir && Number.isFinite(aim.dir.x)) vD.copy(aim.dir).normalize(); else ctx.camera.getWorldDirection(vD);
-    let best = -1, bestT = ISLAND.REACH;
-    const reach2 = (ISLAND.REACH - .1) ** 2;
+    let best = -1, bestOff = Infinity, palm = -1, palmOff = Infinity;
+    const reach = ISLAND.REACH, reach2 = (reach - .1) ** 2;
     for (let k = 0; k < nodeCount; k++) {
       const n = layout.nodes[k];
       if (st.isl.used[k] >= n.max) continue;
       const ki = nodeKind[k];
-      const px = cx + n.x, pz = cz + n.z;
+      const px = cx + n.x, pz = cz + n.z, py = gy + n.y;
       if ((vO.x - px) ** 2 + (vO.z - pz) ** 2 > reach2) continue;
-      const ox = vO.x - px, oy = vO.y - (gy + n.y + PICK_Y[ki] * n.s), oz = vO.z - pz, rr = PICK_R[ki] * n.s;
+      if (ki === 0) {
+        const s = n.s, ca = Math.cos(n.a), sa = -Math.sin(n.a), by = py - .1;
+        const mx = px + ca * PALM_BEND * .25 * s, my = by + PALM_H * .5 * s, mz = pz + sa * PALM_BEND * .25 * s;
+        const tx = px + ca * PALM_BEND * s, ty = by + PALM_H * s, tz = pz + sa * PALM_BEND * s;
+        let off = Infinity;
+        let d2 = raySeg(px, by, pz, mx, my, mz);
+        if (d2 <= PALM_PICK_R * PALM_PICK_R && rayT <= reach) off = Math.sqrt(d2) / Math.max(rayT, .3);
+        d2 = raySeg(mx, my, mz, tx, ty - .1 * s, tz);
+        if (d2 <= PALM_PICK_R * PALM_PICK_R && rayT <= reach) off = Math.min(off, Math.sqrt(d2) / Math.max(rayT, .3));
+        d2 = raySeg(tx, ty - .17 * s, tz, tx, ty - .17 * s, tz); // coconut sphere
+        if (d2 <= (.3 * s) ** 2 && rayT <= reach) off = Math.min(off, Math.sqrt(d2) / Math.max(rayT, .3));
+        if (off < palmOff) { palmOff = off; palm = k; }
+        continue;
+      }
+      const ox = vO.x - px, oy = vO.y - (py + PICK_Y[ki] * n.s), oz = vO.z - pz, rr = PICK_R[ki] * n.s;
       const b = ox * vD.x + oy * vD.y + oz * vD.z, c = ox * ox + oy * oy + oz * oz - rr * rr, disc = b * b - c;
       if (disc < 0) continue;
       let t = -b - Math.sqrt(disc);
       if (t < 0) { if (c > 0) continue; t = 0; } // behind us (unless we are inside the sphere)
-      if (t < bestT) { bestT = t; best = k; }
+      if (t > reach) continue;
+      const perp2 = c + rr * rr - b * b, off = Math.sqrt(perp2 > 0 ? perp2 : 0) / Math.max(-b, .3);
+      if (off < bestOff) { bestOff = off; best = k; }
     }
-    return best;
+    return best >= 0 ? best : palm;
   }
   function setHover(k) {
     if (k === hoverNode) return;
@@ -337,7 +401,7 @@ export function createIslands(ctx) {
   function dispose() {
     if (group.parent) group.parent.remove(group);
     if (lagoon.parent) lagoon.parent.remove(lagoon);
-    for (const m of meshes) m.dispose?.();
+    for (const m of veg) m.dispose?.();
     models.dispose();
   }
 

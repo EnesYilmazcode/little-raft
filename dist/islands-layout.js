@@ -56,8 +56,14 @@ export function groundHeight(r, R, theta = 0) {
   if (!fin(r) || !fin(R) || R <= 0) return NaN;
   const u = r / (R * shape(theta));
   if (u > ISLAND.RIM) return NaN;
-  const u2 = u * u;
-  return ISLAND.TOP - ISLAND.FALL * u2 * u2;
+  return heightU(u, theta);
+}
+// The same at normalised radius u (shared with the dome mesh so the physics matches what you see).
+// Low dunes (up to ~0.15 m) ripple the top and fade out before the shoreline.
+export function heightU(u, theta = 0) {
+  const u2 = u * u, f = 1 - u2;
+  const dune = f > 0 ? 0.16 * Math.min(1, 3 * u) * f * f * f * (0.6 * Math.sin(2 * theta + 1.3 + 3 * u) + 0.4 * Math.sin(3 * theta - 5 * u + 0.4)) : 0;
+  return ISLAND.TOP - ISLAND.FALL * u2 * u2 + dune;
 }
 // u where the sand meets mean water.
 export const SHORE_U = Math.pow(ISLAND.TOP / ISLAND.FALL, 0.25);
