@@ -287,15 +287,15 @@ function buildLeaf(T, getMaterial, root, inner, r) {
 // ---------------------------------------------------------------- scrap metal
 function buildScrap(T, getMaterial, root, inner, r) {
   const W = 0.95, D = 0.65, hx = W / 2, hz = D / 2;
-  const foldX = 0.1 + (r() - 0.5) * 0.06, foldK = 0.42 + r() * 0.15;
+  const foldX = 0.1 + (r() - 0.5) * 0.06, foldK = 0.17 + r() * 0.06; // shallow bend: the sheet lies flat on the water
   const dentX = (r() - 0.5) * 0.3, dentZ = (r() - 0.5) * 0.25;
   const height = (x, z) => {
     let y = 0.012 * Math.sin(x * 44);
     if (x > foldX) y += (x - foldX) * foldK;
     const tz = clamp01((z - 0.17) / (hz - 0.17));
-    y += 0.12 * tz * tz;
+    y += 0.045 * tz * tz;
     const tc = clamp01((-x - 0.22) / (hx - 0.22)) * clamp01((-z - 0.08) / (hz - 0.08));
-    y += 0.16 * tc;
+    y += 0.06 * tc;
     y -= 0.03 * Math.exp(-((x - dentX) ** 2 + (z - dentZ) ** 2) / 0.012);
     return y;
   };
@@ -303,7 +303,8 @@ function buildScrap(T, getMaterial, root, inner, r) {
   g.rotateX(-Math.PI / 2);
   const p = g.attributes.position, n = p.count;
   const col = new Float32Array(n * 3);
-  const steel = [0.63, 0.72, 0.8], rust = [0.5, 0.24, 0.1], orange = [0.74, 0.4, 0.17];
+  // rusty sheet: mid rust body (#8a5a3c), dark pitted rust (#5e3520) at edges, orange (#b0652e) streaks, a few dull steel flecks
+  const steel = [0.25, 0.1, 0.045], rust = [0.11, 0.035, 0.015], orange = [0.43, 0.13, 0.03], bare = [0.2, 0.195, 0.18]; // linear
   for (let i = 0; i < n; i++) {
     let x = p.getX(i), z = p.getZ(i);
     const y = height(x, z);
@@ -311,7 +312,7 @@ function buildScrap(T, getMaterial, root, inner, r) {
     // torn jagged edge on the -x side and the far +x corner
     if (x < -hx + 0.01) x += 0.02 + r() * 0.05;
     if (z < -hz + 0.01 && x > 0.2) z += r() * 0.04;
-    z -= 0.05 * tz * tz * tz; // curl back over
+    z -= 0.02 * tz * tz * tz; // slight curl
     p.setXYZ(i, x, y, z);
     const edge = Math.min(hx - Math.abs(x), hz - Math.abs(z));
     const noise = 0.5 + 0.5 * Math.sin(x * 23 + z * 17 + r() * 0.8) * Math.cos(x * 9 - z * 31);
@@ -319,19 +320,21 @@ function buildScrap(T, getMaterial, root, inner, r) {
     const mid = k < 0.5 ? k * 2 : 1, mid2 = k < 0.5 ? 0 : (k - 0.5) * 2;
     for (let c = 0; c < 3; c++) {
       const a = steel[c] + (orange[c] - steel[c]) * mid;
-      col[i * 3 + c] = (a + (rust[c] - a) * mid2) * (0.92 + r() * 0.1);
+      col[i * 3 + c] = (a + (rust[c] - a) * mid2) * (0.9 + r() * 0.16);
     }
+    const fleck = Math.sin(x * 61 + 1.3) * Math.sin(z * 53 - 0.7);
+    if (fleck > 0.86 && edge > 0.08) for (let c = 0; c < 3; c++) col[i * 3 + c] = bare[c] * (0.9 + r() * 0.1);
   }
   p.needsUpdate = true;
   g.setAttribute('color', new T.BufferAttribute(col, 3));
   g.computeVertexNormals();
-  slot(T, g, 'metal');
+  slot(T, g, 'bracket'); // rough, half-metal: rust, not shiny steel
 
   // bolts/rivets along the crease and the near edge
   const spots = [[foldX - 0.03, -0.2], [foldX - 0.03, -0.04], [foldX - 0.03, 0.12], [-0.33, -0.05], [-0.33, 0.1], [0.32, 0.02]];
   const bolts = spots.map(([x, z]) => {
     const b = new T.CylinderGeometry(0.017, 0.019, 0.014, 6);
-    return slot(T, place(T, b, x, height(x, z) + 0.008, z, 0, r() * 1.0, x > foldX ? foldK * 0.8 : 0), 'bolt', '#8e9aa2');
+    return slot(T, place(T, b, x, height(x, z) + 0.008, z, 0, r() * 1.0, x > foldX ? foldK * 0.8 : 0), 'bolt', '#6b5546');
   });
 
   // small bent rusty bracket bolted to the sheet
