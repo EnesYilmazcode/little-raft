@@ -51,6 +51,7 @@ with sync_playwright() as p:
     run(p, b, 'ui-inventory-2x', '?mode=ui', 2, vw=1280, vh=720, full=False, elements=[('#inventory .sv-wrap', 'panel')])
     run(p, b, 'ui-hotbar-2x', '?mode=ui&open=0', 2, vw=1280, vh=720, full=False, elements=[('.tools', 'bar')])
     run(p, b, 'ui-inventory-svg-1x', '?mode=ui&svg=1', 1, vw=1280, vh=720, full=False)
+    run(p, b, 'ui-inventory-late-2x', '?mode=ui&late=1', 2, vw=1280, vh=720, full=False, elements=[('#inventory .sv-wrap', 'panel')])
     b.close()
 srv.shutdown()
 
@@ -61,7 +62,8 @@ for k in ('sheet-1x', 'sheet-2x'):
     summary[k] = {
         'bakeTotalMs': s.get('totalMs'), 'setupMs': s.get('setupMs'), 'drawMs': s.get('drawMs'), 'readbackMs': s.get('readbackMs'),
         'encodeMs': s.get('encodeMs'), 'perTileMs': [t['ms'] for t in s.get('tiles', [])],
-        'bakeRender': s.get('bakeRender'), 'atlasPx': s.get('atlasPx'), 'transientVRAMBytes': s.get('transientVRAMBytes'),
+        'bakeRender': s.get('bakeRender'), 'programsCompiled': s.get('programsCompiled'), 'programKeys': s.get('programKeys'),
+        'bakeOpts': r.get('bakeOpts'), 'atlasPx': s.get('atlasPx'), 'transientVRAMBytes': s.get('transientVRAMBytes'),
         'dataUrlBytes': s.get('dataUrlBytes'), 'atlasDataUrlBytes': s.get('atlasDataUrlBytes'),
         'cacheHitMs': r.get('cacheHitMs'), 'cacheHit': r.get('cacheHit'),
         'frames': r.get('frames'), 'rendererInfoBefore': r.get('infoBeforeBake'), 'rendererInfoAfter': r.get('infoAfterBake'),
@@ -69,6 +71,7 @@ for k in ('sheet-1x', 'sheet-2x'):
     }
 for k, r in report['runs'].items():
     if r.get('errors'): summary.setdefault('errors', {})[k] = r['errors']
+summary['lateSwap'] = (report['runs'].get('ui-inventory-late-2x') or {}).get('lateSwap')
 summary['pageErrors'] = report['pageErrors']
 summary['shots'] = report['shots']
 print(json.dumps(summary, indent=1))

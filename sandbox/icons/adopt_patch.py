@@ -22,7 +22,11 @@ SURVIVAL_UI = [
     ("// Symbols that actually exist in icons.svg.\n",
      "// Baked 3D item icons (kind -> image URL) from item-icons.js. Until set, the SVG sprite is used.\n"
      "let BAKED = null, ICON_REV = 0;\n"
-     "export function setItemIcons(urls) { BAKED = urls && typeof urls === 'object' ? urls : null; ICON_REV++; }\n\n"
+     "export function setItemIcons(urls) {\n"
+     "  BAKED = urls && typeof urls === 'object' ? urls : null; ICON_REV++;\n"
+     "  // repaint the live UI now: hotbar, open bag and recipe list swap without a reopen\n"
+     "  try { window[INST_KEY]?.update?.(); } catch (e) { console.error(e); }\n"
+     "}\n\n"
      "// Symbols that actually exist in icons.svg.\n"),
     # 2. iconSVG: baked <img> first, existing SVG path unchanged as the fallback
     ("function iconSVG(kind) {\n  const n = norm(kind);\n",
@@ -42,9 +46,20 @@ SURVIVAL_UI = [
     ("  if (el._svKind !== s.kind) { r.art.innerHTML = iconSVG(s.kind); el._svKind = s.kind; }\n",
      "  const ik = s.kind + '@' + ICON_REV;\n"
      "  if (el._svKind !== ik) { r.art.innerHTML = iconSVG(s.kind); el._svKind = ik; }\n"),
-    # 5. recipe list rebuilds (next open) when icons change
+    # 5. recipe list key includes the icon revision
     ("    const key = recipes.map(r => r.id).join(',');\n",
      "    const key = recipes.map(r => r.id).join(',') + '#' + ICON_REV;\n"),
+    # 6. render(): when the icon revision changed while the bag is open, rebuild the recipe list
+    #    and force a full repaint (bag slots, recipes, cost chips) instead of waiting for a reopen
+    ("  let recipes = [], recipeEls = [];\n",
+     "  let recipes = [], recipeEls = [];\n"
+     "  let iconRevSeen = ICON_REV;\n"),
+    ("    curSlots = slots; curSelected = selected;\n",
+     "    curSlots = slots; curSelected = selected;\n"
+     "    if (iconRevSeen !== ICON_REV && !dragging) {\n"
+     "      iconRevSeen = ICON_REV;\n"
+     "      if (isOpen) { buildRecipes(); recipeEls.forEach(v => { v.sig = null; }); force = true; }\n"
+     "    }\n"),
 ]
 
 def game_patches(b):

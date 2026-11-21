@@ -123,11 +123,20 @@ function fakeBag() {
 }
 async function buildUI(res) {
   const ui = await import('./_patched/survival-ui.js');
-  if (res && !q.has('svg')) ui.setItemIcons(res.blobUrls);
+  const late = q.has('late');   // bag already open with SVG icons when the bake lands
+  if (res && !q.has('svg') && !late) ui.setItemIcons(res.blobUrls);
   const bag = fakeBag();
   const api = ui.createSurvivalUI({ getBag: () => bag });
   api.update();
   if (q.get('open') !== '0') api.open();
+  if (late) {
+    await wait(300);
+    const svgBefore = document.querySelectorAll('#inventory svg').length;
+    ui.setItemIcons(res.blobUrls);   // no reopen, no extra update() call: setItemIcons repaints
+    await wait(50);
+    report.lateSwap = { svgBefore, svgAfter: document.querySelectorAll('#inventory svg').length,
+      bakedImgs: document.querySelectorAll('#inventory img.sv-baked').length, stillOpen: api.isOpen };
+  }
   await wait(400);
 }
 
