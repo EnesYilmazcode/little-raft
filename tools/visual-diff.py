@@ -147,9 +147,14 @@ def capture(browser, dist, out, names, seed, label):
                 page.goto(url, wait_until='load', timeout=60000)
                 if not wait_js(page, '!!window.__det && !!window.__det.step', 10):
                     raise RuntimeError('determinism shim did not install (window.__det missing)')
-                if not wait_js(page, '!!window.raftDebug', 45):
-                    info['booted'] = bool(info['errors'])  # page errors during boot: the game is broken, not the harness
-                    raise RuntimeError('window.raftDebug never appeared (game did not boot)')
+                wait_js(page, "!!window.raftDebug || !!document.getElementById('raftLiveError')", 45)
+                if not page.evaluate('!!window.raftDebug'):
+                    # The page loaded and the shim ran, so a missing raftDebug with live.js's fatal panel, a page error or
+                    # a console error means the game build is broken (exit 1); a silent stall stays an infra error.
+                    fatal = page.evaluate("document.getElementById('raftLiveError')?.innerText || ''")
+                    info['booted'] = bool(fatal or info['errors'] or info['console'])
+                    why = fatal or '; '.join(info['errors'] + info['console'])
+                    raise RuntimeError('window.raftDebug never appeared (game did not boot): ' + ' '.join(why.split())[:300])
                 info['booted'] = True
                 run_steps(page, SCENES[name])
                 page.screenshot(path=str(out / f'{name}.png'), caret='hide', timeout=60000)
