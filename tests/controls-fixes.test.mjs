@@ -161,3 +161,19 @@ test('CTL-3: pad RT runs rod fishing v2 (fc.pointerDown/pointerUp) before the le
   const mouse = gameSrc.slice(gameSrc.indexOf("on(canvas, 'pointerdown'"), gameSrc.indexOf("on(canvas, 'pointermove'"));
   assert.ok(mouse.indexOf('fc?.pointerDown()') < mouse.indexOf('useSelected('), 'mouse path is the reference');
 });
+
+// ---------------------------------------------------------------- CTL-6
+
+test('CTL-6: a Space tap shorter than a frame still jumps (and rises while diving)', () => {
+  const s = controlsSetup();
+  fire(win, 'keydown', { code: 'Space', target: null }); fire(win, 'keyup', { code: 'Space' });
+  assert.equal(s.c.movement(1 / 60, true, physics).jump, true, 'sub-frame tap');
+  assert.equal(s.c.movement(1 / 60, true, physics).jump, false, 'one frame only');
+  fire(win, 'keydown', { code: 'Space', target: null });
+  assert.equal(s.c.movement(1 / 60, true, physics).jump, true);
+  assert.equal(s.c.movement(1 / 60, true, physics).jump, true, 'held keeps jumping (swim rise)');
+  fire(win, 'keyup', { code: 'Space' });
+  assert.equal(s.c.movement(1 / 60, true, physics).jump, false);
+  s.done();
+  assert.match(gameSrc, /diving\?\.move\(dt, physics, \{[^\n]*up:ci \? ci\.jump :/, 'diving up reads the same jump signal');
+});
