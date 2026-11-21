@@ -48,8 +48,12 @@ export const HINTS = Object.freeze([
   {id:'walk', text:'Press W A S D to walk', when:() => true},
   {id:'throw', text:'Hold click to charge, release to throw at floating supplies', when:c => c.heldKind === 'hook' && !c.castOut},
   {id:'bag', text:`Press ${BAG_OPEN_KEYS} to open your bag and craft`, when:c => c.hasLoot},
-  {id:'slots', text:'Press 1–8 to choose what you hold', when:() => true},
+  {id:'slots', text:'Press 1–9 or 0 to choose what you hold', when:() => true},
 ]);
+// While the onboarding "First Ten Minutes" tracker (onboarding.js) teaches a step, the chain must not say it again:
+// steps the tracker owns wait for the tracker (game.js marks them done from its progress), so the chain never
+// runs ahead of the list or repeats it.
+export const TRACKED_HINTS = Object.freeze(['look', 'walk', 'throw', 'bag']);
 // A save from before the look/walk hints already threw a hook: it has nothing left to learn there.
 export function loadHints(storage) {
   let done;
@@ -60,8 +64,17 @@ export function loadHints(storage) {
 export function saveHints(storage, done) {
   try { storage?.setItem(HINT_KEY, JSON.stringify([...done])); return true; } catch { return false; }
 }
+// Copy the tracker's finished steps into the chain (a continued save never restarts it at "look").
+export function syncHintsFromTracker(done, trackerDone) {
+  let changed = false;
+  for (const id of Array.isArray(trackerDone) ? trackerDone : []) if (TRACKED_HINTS.includes(id) && !done.has(id)) { done.add(id); changed = true; }
+  if (changed && done.has('throw')) { done.add('look'); done.add('walk'); }
+  return changed;
+}
 // The first unfinished hint, if its condition holds now. Later hints wait for earlier ones.
+// ctx.tracker: the onboarding tracker is active, so hints it teaches stay quiet (and later hints keep waiting).
 export function nextHint(done, ctx) {
-  const h = HINTS.find(x => !done.has(x.id));
-  return h && h.when(ctx || {}) ? h : null;
+  const c = ctx || {}, h = HINTS.find(x => !done.has(x.id));
+  if (!h || (c.tracker && TRACKED_HINTS.includes(h.id))) return null;
+  return h.when(c) ? h : null;
 }

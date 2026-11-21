@@ -29,6 +29,9 @@ body.playing .ob-notes{display:block;animation:obFade .5s ease-out}
 .ob-title::after{content:"";position:absolute;left:0;top:55%;height:1.5px;width:0;background:var(--ob-cream);transition:width .24s ease-out .1s}
 .ob-done .ob-title::after{width:100%}
 .ob-done .ob-title,.ob-done .ob-hint{opacity:.7}
+/* step complete: the row itself flashes (no floating "✓ step" line anywhere else) */
+.ob-row.ob-done{animation:obTick .7s ease-out;border-radius:4px}
+@keyframes obTick{0%{background:rgba(233,166,64,0)}25%{background:rgba(233,166,64,.28)}100%{background:rgba(233,166,64,0)}}
 .ob-hint{display:block;margin-top:2px;font-size:11px;line-height:1.5;color:var(--ob-dim)}
 .ob-count{font:600 11px/1.6 var(--ui-font,system-ui,sans-serif);font-style:normal;color:var(--ob-dim);font-variant-numeric:tabular-nums}
 .ob-key{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;margin:0 1px;box-sizing:border-box;vertical-align:-3px;
@@ -84,8 +87,17 @@ body:has(#welcome.ob-on:not([hidden])) header{display:none!important}
 @keyframes obFade{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
 @keyframes obShimmer{from{background-position:100% 0}to{background-position:0 0}}
 
+/* Small windows (UX3-4): a narrow tracker that shows only the current step; N (or the head) still collapses it.
+   The pinned recipe card (#craftPin, survival-ui.js) docks under it, narrowed to match. */
+@media (max-width:1000px){
+  .ob-notes{width:200px;padding:6px 10px 8px}
+  .ob-row:not(.ob-done)~.ob-row:not(.ob-done){display:none}
+  .ob-row{padding-top:6px}
+  .ob-hint{line-height:1.35}
+  body #craftPin{width:200px;right:16px}
+}
 @media (max-width:760px){
-  .ob-notes{top:184px;right:16px;width:216px}
+  .ob-notes{top:184px;right:16px;width:200px}
   #welcome.ob-on{padding-bottom:40px;background:linear-gradient(90deg,rgba(6,13,20,.8) 0%,rgba(6,13,20,.4) 60%,rgba(6,13,20,.15) 100%)}
   #welcome.ob-on .welcome-card{margin:0 16px;max-width:calc(100vw - 32px)}
   .ob-logo{top:24px;left:28px}
@@ -94,6 +106,7 @@ body:has(#welcome.ob-on:not([hidden])) header{display:none!important}
 @media (max-height:520px){.ob-logo-name{font-size:40px}.ob-logo{top:18px}#welcome.ob-on{padding-bottom:20px}}
 @media (prefers-reduced-motion:reduce){
   .ob-notes,.ob-row,.ob-box,.ob-box svg,.ob-title::after,.ob-item,.ob-item::before,.ob-chev{transition:opacity .2s ease!important}
+  .ob-row.ob-done{animation:none}
   .ob-row.ob-in,.ob-row.ob-out{transform:none;max-height:80px}
   .ob-row.ob-out{max-height:0}
   body.playing .ob-notes,.ob-logo,.ob-menu,.ob-shimmer .ob-ch{animation:none!important}
