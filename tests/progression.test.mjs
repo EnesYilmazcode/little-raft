@@ -171,7 +171,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
     assert.equal(INFO[k].tool, Inv.ITEM_INFO[k].tool, `${k} tool flag matches Bag`);
   }
   assert.equal(ITEMS.wood.name, 'Plank');
-  assert.deepEqual([...TOOL_IDS].sort(), ['fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'spear']);
+  assert.deepEqual([...TOOL_IDS].sort(), ['axe', 'fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'spear']);
   for (const s of ['smelter', 'researchtable', 'grill']) assert.ok(STATION_IDS.includes(s) && PLACEABLE_IDS.includes(s));
   for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate']) assert.ok(PLACEABLE_IDS.includes(k));
 });
@@ -188,6 +188,7 @@ test('items: no unlock/recipe cycles and every item is reachable from the start'
   for (let changed = true; changed;) {
     changed = false;
     if (have.has('fishingrod') && !have.has('fish')) { have.add('fish'); changed = true; }
+    if (have.has('axe') && !have.has('coconut')) { have.add('coconut'); changed = true; } // [axe] chopped island palms
     if (have.has('beehive') && have.has('flowerbox') && !have.has('honey')) { have.add('honey'); have.add('wax'); changed = true; } // [bees] hive harvest
     for (const id of ITEM_IDS) {
       const r = ITEMS[id].recipe;
