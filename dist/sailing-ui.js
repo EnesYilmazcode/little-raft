@@ -1,4 +1,4 @@
-// Sailing HUD: a compass badge (wind, sail heading, north) plus a prompt line.
+// Sailing HUD: a compass badge (wind, sail heading, north, the nearest island) plus a prompt line.
 // Touches the DOM only when quantized values change.
 const NS = 'http://www.w3.org/2000/svg';
 const DEG = 180 / Math.PI;
@@ -20,6 +20,8 @@ const SVG = '<circle cx="0" cy="0" r="38" fill="none" stroke="rgba(246,236,214,.
   + '<g data-k="w"><path d="M-3 22Q2 10-2 0T2-18" fill="none" stroke="#9fd8e6" stroke-width="3" stroke-linecap="round"/>'
   + '<path d="M2-27L-5-15L8-16Z" fill="#9fd8e6"/></g>'
   + '<g data-k="s"><path d="M0-36L-6-26H6Z" fill="#ffb355" stroke="#473b26" stroke-width=".8" stroke-linejoin="round"/></g>'
+  + '<g data-k="i" visibility="hidden"><path d="M-5-29.5Q0-36.5 5-29.5Z" fill="#e8d29a" stroke="#473b26" stroke-width=".8"/>'
+  + '<path d="M0-30V-36.5M0-36.5L-3.2-35M0-36.5L3.2-35" stroke="#7fc46a" stroke-width="1.4" stroke-linecap="round"/></g>' // island: sand hump + palm
   + '<path d="M0-6L4 5L0 3L-4 5Z" fill="#f6ecd6"/>';
 
 export function createSailingUI({ signal } = {}) {
@@ -36,7 +38,7 @@ export function createSailingUI({ signal } = {}) {
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', '-42 -42 84 84'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
   svg.innerHTML = SVG;
-  const north = svg.querySelector('[data-k="n"]'), wind = svg.querySelector('[data-k="w"]'), sail = svg.querySelector('[data-k="s"]');
+  const north = svg.querySelector('[data-k="n"]'), wind = svg.querySelector('[data-k="w"]'), sail = svg.querySelector('[data-k="s"]'), isle = svg.querySelector('[data-k="i"]');
   const label = document.createElement('div'); label.className = 'sail-label'; label.setAttribute('aria-hidden', 'true');
   const live = document.createElement('div'); live.className = 'sail-sr'; live.setAttribute('aria-live', 'polite');
   badge.append(svg, label, live);
@@ -46,7 +48,7 @@ export function createSailingUI({ signal } = {}) {
 
   // Last-written quantized values (NaN forces the first write).
   let qN = NaN, qW = NaN, qWs = NaN, qS = NaN, sDim = null, shown = null, labelText = null, liveState = null, promptHtml = null;
-  let qSpeed = NaN, mode = '';
+  let qSpeed = NaN, mode = '', qI = NaN, iShown = false;
   const norm = d => ((d % 360) + 360) % 360;
   // World angle a (direction (sin a, cos a)) -> clockwise screen degrees, 0 = camera forward.
   const toScreen = (a, yaw) => norm(Math.round((Math.PI + yaw - a) * DEG));
@@ -67,6 +69,10 @@ export function createSailingUI({ signal } = {}) {
     if (w !== qW || ws !== qWs) { qW = w; qWs = ws; wind.setAttribute('transform', 'rotate(' + w + ') scale(' + ws + ')'); }
     const s = toScreen(+info.heading || 0, yaw);
     if (s !== qS) { qS = s; sail.setAttribute('transform', 'rotate(' + s + ')'); }
+    // Island marker on the ring: the bearing to the live island (islands.js -> sailing.markIsland).
+    const iOn = !!info.islandOn;
+    if (iOn !== iShown) { iShown = iOn; isle.setAttribute('visibility', iOn ? 'visible' : 'hidden'); }
+    if (iOn) { const b = toScreen(+info.islandDir || 0, yaw); if (b !== qI) { qI = b; isle.setAttribute('transform', 'rotate(' + b + ')'); } }
     const hasSail = (info.nSails | 0) > 0;
     const motor = !info.anchored && +info.motor > .01; // engine: a running motor pushes along the heading
     const dim = !motor && (!hasSail || !info.raised || !!info.anchored);
