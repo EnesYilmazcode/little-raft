@@ -54,3 +54,14 @@ Review fixes: last-bottle respawn, sanitized logbook progress on hot-swap fallba
 Checks: `npm test` 61/61 (was 22; npm test now runs tests/*.test.mjs); shoot.py `errors: []`.
 Known limits: live two-peer co-op not run (PeerJS broker blocked from the sandbox; co-op reviewed by code). Older builds reject bags holding the new item kinds (mixed-version co-op unsupported; downgrading drops new decor).
 Next ideas: nicer receiver model, ripe-palm cue, logbook tab height jump; more building pieces/decorations once the building-pieces lane lands.
+
+## 2026-11-21 · loop-features-202611210534 (features, round 2)
+Base: origin/claude/raft-master (7555d67) with round 1 (loop-features-202611210451) merged in (conflicts in game.js/index.html/inventory-state.js resolved; all lanes + round 1 coexist).
+All three features are content-registry modules (dist/content.js FEATURES), state in world.ext[name].
+- **Seaside Kiln** (`kiln`) — research-gated station (stone 4, clay 4, scrap 1) smelting metal ore → Metal Bar, sand → Glass Pane, clay → Fired Brick with wood fuel; recipes Glass Lantern (lit at night), Line Sinker (halves hook wear; one game.js line in wearHook), Glass Cups ×3, Brick Planters ×2. Files: kiln.js, kiln-core.js, kiln-model.js.
+- **Puffhen raft animals** (`animals`) — starter Nest Box lured with a palm seed (or 3 leaves); hens wander deterministically on the host clock (no positions sent), lay Puff Eggs (+ feathers), can be fed, petted (hearts) and renamed; Feather Cushion decor and Egg Lantern recipe. Files: animals.js, animals-core.js, animals-models.js, animals-ui.js. game.js: contentCtx.hasGrill.
+- **Decor pack + signboards** (`decorpack`) — Woven Deck Mat, Wind Pennant, Hanging Fern Post, Shell Chime, Rope Hammock, Clay Pot Trio (first clay use) and a writable Signboard (3×18 chars, cleaned, CanvasTexture cache); quarter-turn rotation with E. Files: decor-pack.js, decor-pack-models.js, signs-core.js, signs-ui.js. game.js: decorModel(type, d).
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (13 agents).
+Review fixes: kiln guest revision skip for old hosts; sign text lone surrogates + huge input, sign dialog lifecycle on dispose; puffhen rename reach, guest clock slew, graph rebuild churn, dialog leak; storage-research tests made robust to new recipes; icons for sand/stone/clay/ore/pots/sign/chime; hammock pillow, cushion tufts.
+Checks: npm test 342/342; shoot.py errors []; coop-e2e (loopback) all pass except test 4 middle-click ping (fails on base too); sign write/turn verified host↔guest over loopback.
+Known limits: decor collision is a centre circle (fern/hammock posts walkable); doorway clipping of hens; glass lantern glass looks pale at night; mat/fern/hammock borrow icons.
