@@ -79,6 +79,10 @@ with sync_playwright() as p:
     bp.mouse.down(); bp.mouse.up(); bp.wait_for_timeout(300)
     look(60, -40); bp.keyboard.press('4'); bp.keyboard.press('r'); bp.wait_for_timeout(400); shot(bp, '13-place-bench-rotated')
     report['build'] = bp.evaluate('({decor: raftDebug.state.decor, build: raftDebug.state.build, locked: raftDebug.state.pointerLocked})')
+    # drop: Q drops one of the held stack (slot 5 = 20 wood), Shift+Q the rest; both float as pickups
+    bp.keyboard.press('5'); bp.wait_for_timeout(200); bp.keyboard.press('q'); bp.wait_for_timeout(300)
+    bp.keyboard.press('Shift+q'); bp.wait_for_timeout(500); shot(bp, '14-dropped')
+    report['drop'] = bp.evaluate("({drops: raftDebug.targets.filter(t => t.type === 'drop').map(t => Math.round(t.distance * 10) / 10), slot5: raftDebug.state.inventory.slots[4], feed: [...document.querySelectorAll('#pickupFeed .pf-row')].map(e => e.textContent)})")
     b.close()
 srv.shutdown()
 print(json.dumps(report, indent=1, default=str))
