@@ -1,6 +1,6 @@
 /* Little Raft onboarding (onboarding.js): top-right Notes tracker + left-aligned title menu. Nothing centred. */
 .ob-notes{--ob-cream:#f6ecd6;--ob-dim:#c9bfa8;--ob-bronze:#c9a46b;--ob-amber:#e9a640;--ob-plate:rgba(9,20,30,.8);
-  position:fixed;top:84px;right:28px;width:248px;z-index:20;display:none;box-sizing:border-box;padding:8px 14px 10px;border-radius:6px;
+  position:fixed;top:186px;right:28px;width:248px;z-index:20;display:none;box-sizing:border-box;padding:8px 14px 10px;border-radius:6px;
   background:var(--ob-plate);box-shadow:0 0 0 1px rgba(201,164,107,.55),0 0 0 2px rgba(5,10,15,.85),0 10px 28px rgba(0,0,0,.45);
   color:var(--ob-cream);font:13px/1.3 var(--ui-font,system-ui,sans-serif);text-align:left;pointer-events:none;
   transform:translateX(var(--ob-shift,0px));transition:opacity .4s ease,transform .25s ease,width .6s ease,padding .6s ease}
@@ -85,7 +85,7 @@ body:has(#welcome.ob-on:not([hidden])) header{display:none!important}
 @keyframes obShimmer{from{background-position:100% 0}to{background-position:0 0}}
 
 @media (max-width:760px){
-  .ob-notes{top:64px;right:16px;width:216px}
+  .ob-notes{top:64px;left:16px;right:auto;width:216px} /* left of the sailing compass (#sailBadge, top-right) */
   #welcome.ob-on{padding-bottom:40px;background:linear-gradient(90deg,rgba(6,13,20,.8) 0%,rgba(6,13,20,.4) 60%,rgba(6,13,20,.15) 100%)}
   #welcome.ob-on .welcome-card{margin:0 16px;max-width:calc(100vw - 32px)}
   .ob-logo{top:24px;left:28px}
