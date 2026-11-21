@@ -10,6 +10,48 @@ const MAX_BACKOFF_MS = 60000;
 const FAILED_RETRY_MS = 60000;
 const CSS_TIMEOUT_MS = 15000;
 const CSS_FILES = ['style.css', 'graphics.css'];
+// game.js' static import graph, spelled exactly as the modules import each other (a modulepreload only helps when
+// its URL equals the import's URL, ?build= stamp included; publish_local.py restamps these quoted specifiers in step).
+// Preloading them all at once flattens the import waterfall. tests/live-preload.test.mjs keeps this list equal to
+// the real graph; a stale entry only costs a wasted request, a missing one just loads late via the normal import.
+const PRELOAD = [
+  './audio.js?build=v3-survival-ae77fa84ac2b', './avatar.js?build=v3-survival-ae77fa84ac2b',
+  './bottle.js?build=v3-survival-ae77fa84ac2b', './build-menu.js?build=v3-survival-ae77fa84ac2b',
+  './build-radial.js', './build-rules.js?build=v3-survival-ae77fa84ac2b',
+  './building-models.js?build=v3-survival-ae77fa84ac2b', './building-pieces.js?build=v3-survival-ae77fa84ac2b',
+  './building.js?build=v3-survival-ae77fa84ac2b', './content-items.js?build=v3-survival-ae77fa84ac2b',
+  './content.js?build=v3-survival-ae77fa84ac2b', './controls-tab.js', './controls.js', './cooking.js',
+  './coop-avatar.js', './coop-delta.js', './coop-feed.js', './coop-fx.js', './coop-interp.js', './coop-loopback.js',
+  './coop-rules.js?build=v3-survival-ae77fa84ac2b', './coop.js?build=v3-survival-ae77fa84ac2b',
+  './craft-book.js?build=v3-survival-ae77fa84ac2b', './crafts.js?build=v3-survival-ae77fa84ac2b',
+  './daynight.js?build=v3-survival-ae77fa84ac2b', './debris.js?build=v3-survival-ae77fa84ac2b',
+  './deck.js?build=v3-survival-ae77fa84ac2b', './diving-ui.js', './diving.js?build=v3-survival-ae77fa84ac2b',
+  './fish-journal.js', './fish-models.js', './fish-species.js', './fishing-cooking.js',
+  './fishing-rules.js?build=v3-survival-ae77fa84ac2b', './fishing-tool.js?build=v3-survival-ae77fa84ac2b',
+  './fishing-v2.js', './hammer.js?build=v3-survival-ae77fa84ac2b', './hands.js?build=v3-survival-ae77fa84ac2b',
+  './held-items.js?build=v3-survival-ae77fa84ac2b', './hook-physics.js?build=v3-survival-ae77fa84ac2b',
+  './hook.js?build=v3-survival-ae77fa84ac2b', './input-map.js', './input.js',
+  './inventory-state.js?build=v3-survival-ae77fa84ac2b', './islands-layout.js', './islands-models.js',
+  './islands.js?build=v3-survival-ae77fa84ac2b', './item-icons.js?build=v3-survival-ae77fa84ac2b', './item-svg.js',
+  './item-tooltips.js', './items.js', './logbook-ui.js?build=v3-survival-ae77fa84ac2b',
+  './logbook.js?build=v3-survival-ae77fa84ac2b', './materials.js?build=v3-survival-ae77fa84ac2b',
+  './merge-geo.js?build=v3-survival-ae77fa84ac2b', './models.js?build=v3-survival-ae77fa84ac2b', './move-feel.js',
+  './ocean.js?build=v3-survival-ae77fa84ac2b', './pickup-feed.js?build=v3-survival-ae77fa84ac2b',
+  './placement.js?build=v3-survival-ae77fa84ac2b', './plastic.js?build=v3-survival-ae77fa84ac2b',
+  './player-physics.js?build=v3-survival-ae77fa84ac2b', './progression-hooks.js', './progression.js',
+  './purifier-model.js?build=v3-survival-ae77fa84ac2b', './quality.js?build=v3-survival-ae77fa84ac2b',
+  './sailing-core.js?build=v3-survival-ae77fa84ac2b', './sailing-ui.js',
+  './sailing-world.js?build=v3-survival-ae77fa84ac2b', './seafloor.js?build=v3-survival-ae77fa84ac2b',
+  './session-rules.js?build=v3-survival-ae77fa84ac2b', './settings.js?build=v3-survival-ae77fa84ac2b',
+  './signal-models.js?build=v3-survival-ae77fa84ac2b', './signal.js?build=v3-survival-ae77fa84ac2b',
+  './smelter-model.js', './smelter-ui.js', './smelter.js', './storage-research-model.js',
+  './storage-research.js?build=v3-survival-ae77fa84ac2b', './survival-ui.js?build=v3-survival-ae77fa84ac2b',
+  './texgen/bark.js', './texgen/cloth.js', './texgen/foam.js', './texgen/leaf.js', './texgen/noise.js',
+  './texgen/plank.js', './texgen/planks.js', './texgen/plastic.js', './texgen/rock.js', './texgen/rope.js',
+  './texgen/sand.js', './texgen/scrap.js', './textures.js', './underwater-fx.js', './vendor/three.module.js',
+  './watering.js?build=v3-survival-ae77fa84ac2b', './wildlife-models.js',
+  './wildlife.js?build=v3-survival-ae77fa84ac2b', './wood.js?build=v3-survival-ae77fa84ac2b',
+];
 
 const state = {
   engine: null,
@@ -126,6 +168,20 @@ async function importGame(build, retry) {
   return mod;
 }
 
+function preloadGraph() {
+  if (typeof document === 'undefined') return;
+  const head = document.head || document.documentElement;
+  const have = new Set([...document.querySelectorAll('link[rel="modulepreload"]')].map((l) => l.href));
+  for (const spec of PRELOAD) {
+    const href = new URL(spec, BASE).href;
+    if (have.has(href)) continue;
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = href;
+    head.appendChild(link);
+  }
+}
+
 // ---------- staged CSS ----------
 function cssName(link) {
   try {
@@ -185,6 +241,7 @@ async function boot() {
   const retry = state.retryCount ? state.retryCount : 0;
   // Start fetching game.js and its import graph while version.json is in flight.
   const early = importGame(null, retry);
+  preloadGraph(); // fetch the whole static graph in parallel instead of level by level
   early.catch(() => {}); // only awaited if the manifest agrees (or is unavailable)
   let manifest = null;
   try {
