@@ -20,12 +20,12 @@ import * as Farm from './farming.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT, placePrompt } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
-import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, playerInWay, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
-import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
+import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
-import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint } from './hud.js?build=v3-survival-ae77fa84ac2b';
+import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
@@ -47,6 +47,7 @@ const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
 const BLOCK_RADIUS = Object.freeze({palm:.42, bench:.45, crate:FOOTPRINT.crate, sail:FOOTPRINT.sail, lantern:FOOTPRINT.lantern}); // number: circle radius; array: the placement rect
 const SAVE = 'little-raft-v1';
+const SAVE_STATUS = "Solo and hosted rafts save automatically. Joining uses the host's world."; // #saveStatus default
 const FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 8, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
@@ -222,6 +223,7 @@ export function mount(transfer = null) {
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
   const pending = new Map(X?.pending instanceof Map ? X.pending : []); // item token -> expiry; hides supplies we reeled in while the host confirms
   const guestHeld = createGuestHeld(); // host only: tokens on the guest's hook, from its move messages
+  let hostHeld = new Set(); // guest only: tokens on the host's hook, from its state messages
   const wornCasts = {host:X?.wornCasts?.host ?? null, guest:X?.wornCasts?.guest ?? null}; // one wear per successful throw
   let seq = isInt(X?.seq) ? X.seq : 0, lastSeqSent = Number.isFinite(X?.lastSeqSent) ? X.lastSeqSent : 0, guestAck = isInt(X?.guestAck) ? X.guestAck : 0;
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
@@ -627,6 +629,7 @@ export function mount(transfer = null) {
     if (a.kind === 'collect') {
       const i = world.items.findIndex(it => it.id === a.id && it.token === a.token); if (i < 0) return; // token guard: each supply counts once
       const it = world.items[i], loot = LOOT[it.type]; if (!loot) return;
+      if (actor === 'guest' && !a.net && ownHeldTokens().has(it.token)) return; // on the host's hook: the host claimed it first
       const scratch = new Bag(bag.snapshot());
       for (const [k, n] of Object.entries(loot)) if (scratch.add(k, n) > 0) { // atomic: all loot fits or nothing changes
         if (!a.net) emit({kind:'full', text:'Your bag is full', tokens:[it.token]}, actor);
@@ -787,6 +790,7 @@ export function mount(transfer = null) {
   }
 
   function start() {
+    if (adoptOnStart({running, role, storedRev:storedRev(), saveRev})) adoptStoredSave();
     running = true; const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false;
     if (!saveAvailable) setText('#saveStatus', 'Browser storage is unavailable. This session will not be saved.');
     refreshPointerUI(true);
@@ -810,10 +814,12 @@ export function mount(transfer = null) {
   function newGame() {
     if (role !== 'solo') closeConnection();
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
+    resetHints(window.localStorage, hintsDone); // first-run hints are once per save, and this is a fresh one
     world = newWorld(); const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
     const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); yaw = 0; pitch = -.28;
     for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     if (scene) { syncItems(); rebuildRaft(); }
+    saveRev = newGameBaseRev(storedRev(), saveRev); unblockSave(); // the player chose to overwrite the stored save
     save(); start();
   }
   const hasSave = () => { try { return !!localStorage.getItem(SAVE); } catch { return false; } };
@@ -821,6 +827,8 @@ export function mount(transfer = null) {
     const cont = $('#solo'), fresh = $('#newGame'), saved = hasSave();
     if (cont) cont.hidden = !saved;
     if (fresh) { fresh.textContent = saved ? 'New game' : "Let's set sail"; fresh.className = saved ? 'secondary' : 'primary'; delete fresh.dataset.confirm; }
+    const note = $('#titleSaveStatus'), text = titleSaveNote({available:saveAvailable, blocked:saveBlocked, storedRev:storedRev(), saveRev});
+    if (note) { note.textContent = text; note.hidden = !text; }
   }
   function syncWorldInventories() { // only for the world this client owns (solo / host)
     world.hostInventory = hostBag.snapshot(); world.guestInventory = guestBag.snapshot();
@@ -831,6 +839,9 @@ export function mount(transfer = null) {
     setText('#saveStatus', 'This raft was saved in another tab. This tab stopped saving so it will not overwrite it. Reload to continue from that save.');
     notice('Saved in another tab. This tab stopped saving', 3200);
   }
+  function unblockSave() { if (!saveBlocked) return; saveBlocked = false; setText('#saveStatus', SAVE_STATUS); }
+  // Leaving the title for play while another tab has saved since: continue from that newer save, not our stale copy.
+  function adoptStoredSave() { loadRaft(savedOwnRaft()); saveRev = storedRev(); unblockSave(); }
   function save() {
     if (role === 'guest' || disposed || saveBlocked) return;
     syncWorldInventories();
@@ -917,7 +928,9 @@ export function mount(transfer = null) {
       friend.rotation.y = (other.yaw ?? 0) + Math.PI;
     }
   }
-  const allHeldTokens = () => new Set([...caughtList(castOut()).map(c => c.token), ...(role === 'guest' ? [] : guestHeld.tokens(performance.now()))]);
+  const ownHeldTokens = () => new Set(caughtList(castOut()).map(c => c.token));
+  const otherHeldTokens = () => (role === 'guest' ? hostHeld : new Set(guestHeld.tokens(performance.now())));
+  const allHeldTokens = () => new Set([...ownHeldTokens(), ...otherHeldTokens()]);
   function updateItems(dt) {
     const heldTokens = allHeldTokens();
     if (role !== 'guest') {
@@ -958,8 +971,8 @@ export function mount(transfer = null) {
       if (f >= 1) { if (selectedKind() === 'fishingrod') action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    const guestTokens = role === 'guest' ? null : new Set(guestHeld.tokens(performance.now())); // host skips the guest's catch
-    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it) && !guestTokens?.has(it.token)), reeling, time:elapsed});
+    // Each side skips the other's catch, but never lets go of what its own hook already holds.
+    const ev = hook.update(dt, {hand:handPos, items:hookableItems(world.items, {isPending, otherHeld:otherHeldTokens(), ownHeld:ownHeldTokens()}), reeling, time:elapsed});
     const hp = hook.position, pos = new T.Vector3(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
     hookMesh.visible = true; hookMesh.position.copy(pos); bobber.visible = false;
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
@@ -993,7 +1006,7 @@ export function mount(transfer = null) {
   }
   function hostState() {
     const c = guestBag.counts();
-    return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
+    return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(), held:[...ownHeldTokens()],
       world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items}};
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
@@ -1128,8 +1141,9 @@ export function mount(transfer = null) {
   });
   on(window, 'pagehide', () => { if (running) save(); });
   on(window, 'storage', e => { // another tab wrote our save key
-    if (e.key !== SAVE || role === 'guest') return;
-    if (saveRevision(e.newValue) > saveRev) blockSave();
+    if (e.key !== SAVE) return;
+    if (storageBlocks({running, role, newRaw:e.newValue, baseRev:saveRev})) blockSave();
+    else if (!running) refreshTitle(); // on the title: Continue will adopt the newer save
   });
   on(window, 'resize', () => { if (!camera) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
@@ -1169,9 +1183,12 @@ export function mount(transfer = null) {
     return {world:w, host:bags.host.snapshot(), guest:bags.guest.snapshot(), physics:null};
   }
   function restoreOwnRaft() {
-    const newer = storedRev() > saveRev; // another tab (e.g. the host in this browser) saved since we joined: never restore over it
-    const b = (newer ? null : normaliseBackup(ownWorldBackup)) ?? savedOwnRaft(); ownWorldBackup = null; remoteBag = null;
-    if (newer) { saveRev = storedRev(); saveBlocked = false; }
+    const plan = guestLeavePlan(storedRev(), saveRev); // another tab (e.g. the host in this browser) saved since we joined: never restore over it
+    const b = (plan.useBackup ? normaliseBackup(ownWorldBackup) : null) ?? savedOwnRaft(); ownWorldBackup = null; remoteBag = null;
+    loadRaft(b);
+    if (plan.block) blockSave(); // keep our old rev: that tab keeps saving; Continue from the title adopts its save
+  }
+  function loadRaft(b) { // b: {world, host, guest, physics|null}
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
     world = b.world; hostBag = snapBag(b.host) ?? new Bag(); guestBag = snapBag(b.guest) ?? new Bag();
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
@@ -1180,7 +1197,7 @@ export function mount(transfer = null) {
   }
   function closeConnection() {
     joinTimer = cancelTimer(joinTimer); joinDeadline = 0; networkReady = false; peerHidden = false;
-    const oldConn = conn, oldPeer = peer; conn = null; peer = null; other = null;
+    const oldConn = conn, oldPeer = peer; conn = null; peer = null; other = null; hostHeld = new Set();
     unlisten(bindings.splice(0));
     try { oldConn?.close(); } catch {} try { oldPeer?.destroy(); } catch {}
     if (role === 'guest') restoreOwnRaft();
@@ -1246,7 +1263,7 @@ export function mount(transfer = null) {
         const w = cleanWorld(data.world, true); if (!w) return;
         const first = !networkReady;
         const changed = first || JSON.stringify([world.tiles, world.decor.map(d => [d.type, d.x, d.z, d.rot])]) !== JSON.stringify([w.tiles, w.decor.map(d => [d.type, d.x, d.z, d.rot])]); // farming: growth ticks do not rebuild
-        world = w; other = validPose(data.other);
+        world = w; other = validPose(data.other); hostHeld = new Set(cleanHeldTokens(data.held));
         if (data.bag) { // canonical bag once the host has applied all of our sent actions
           const acked = first || !isInt(data.ack) || data.ack >= seq || performance.now() - lastSeqSent > ACK_TIMEOUT;
           if (acked) { const b = snapBag(data.bag); if (b) remoteBag = b; }
@@ -1367,6 +1384,7 @@ export function mount(transfer = null) {
     hold:guard(() => { escHeld = true; relockOnEscUp = false; }),
     released:guard(() => escReleased()),
   };
+  const previousShell = Object.getOwnPropertyDescriptor(window, 'raftShell'), previousEscape = Object.getOwnPropertyDescriptor(window, 'raftEscape');
   window.raftShell = shellApi;
   window.raftDebug = debugApi;
 
@@ -1439,6 +1457,8 @@ export function mount(transfer = null) {
   } catch (e) {
     console.error(e); dispose();
     try { if (previousDebug && !Object.getOwnPropertyDescriptor(window, 'raftDebug')) Object.defineProperty(window, 'raftDebug', previousDebug); } catch {}
+    restoreGlobal(window, 'raftShell', previousShell, shellApi); // the old engine keeps its desktop shell hooks
+    if (previousEscape && window.raftEscape !== previousEscape.value) restoreGlobal(window, 'raftEscape', previousEscape, window.raftEscape); // and its Escape
     for (const [el, prop, previous, next] of propertyHandlers) if (el[prop] === next) el[prop] = previous;
     const od = document.getElementById('options'); if (od && previousSettingsOwner !== undefined) od.dataset.owner = previousSettingsOwner; // hand Escape back to the old engine's settings
     setText('#loadError', 'The 3D ocean could not start. Try a current Chrome, Edge, or Safari browser with WebGL enabled.');

@@ -25,7 +25,13 @@ export function pickNetItem(items, net, {held = new Set(), isPending = () => fal
   return null;
 }
 
-// Cleans the optional `held` field of a guest move message. Missing or malformed means none.
+// Items a hook may sweep or keep: not pending, and not on the other player's hook unless our own hook
+// already holds it. The first claimer keeps an item; HookCast drops caught entries missing from this list.
+export function hookableItems(items, {isPending = () => false, otherHeld = new Set(), ownHeld = new Set()} = {}) {
+  return items.filter(it => !isPending(it) && (!otherHeld.has(it.token) || ownHeld.has(it.token)));
+}
+
+// Cleans the optional `held` field of a guest move message (or the host's state). Missing or malformed means none.
 export function cleanHeldTokens(v) {
   if (!Array.isArray(v)) return [];
   return v.filter(t => (typeof t === 'string' && t.length > 0 && t.length <= 64) || Number.isFinite(t)).slice(0, MAX_HELD);

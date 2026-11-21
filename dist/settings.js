@@ -5,6 +5,7 @@
 // so closing a menu can relock the mouse without a click.
 
 import { createEscGate } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { restoreGlobal } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 
 const STORAGE_KEY = 'little-raft-settings';
 const DIALOG_ID = 'options';
@@ -279,7 +280,8 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
 
   // --- Escape handling -----------------------------------------------------
   // Desktop app: main process claims Escape and calls this with a user gesture.
-  window.raftEscape = () => { if (owns()) escape(); };
+  const previousEscape = Object.getOwnPropertyDescriptor(window, 'raftEscape'), raftEscape = () => { if (owns()) escape(); };
+  window.raftEscape = raftEscape;
   try { window.raftDesktop?.claimEscape?.(true); } catch { /* not in the desktop app */ }
 
   // Browser: Escape arrives as a normal keydown when the pointer is free.
@@ -380,6 +382,8 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
       destroyed = true;
       ac.abort();
       // #options, its <style> and window.raftEscape are shared: a newer instance may already own them.
+      // If none has, hand raftEscape back to the instance we replaced (a failed hot-swap resumes that engine).
+      restoreGlobal(window, 'raftEscape', previousEscape, raftEscape);
     },
   };
 }
