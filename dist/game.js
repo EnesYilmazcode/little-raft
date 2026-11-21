@@ -23,6 +23,7 @@ import { createItemIcons } from './item-icons.js?build=v3-survival-ae77fa84ac2b'
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { createNoticeQueue, loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, NOTICE_MS } from './hud.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -459,6 +460,7 @@ export function mount(transfer = null) {
     if (chargeMeter.hidden === show) chargeMeter.hidden = !show;
     if (show && chargeFill) chargeFill.style.width = (chargeValue() * 100).toFixed(1) + '%';
   }
+  const inShell = /\bElectron\//.test(navigator.userAgent); let shellPanel = null;
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
     const locked = isLocked(), dialog = uiBlocked();
@@ -468,36 +470,36 @@ export function mount(transfer = null) {
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
     const crosshair = $('#crosshair'); if (crosshair) crosshair.hidden = !(running && locked);
     const resume = $('#resumeHint'); if (resume) resume.hidden = !(running && !locked && lockSupported && !dialog);
+    if (inShell && dialog !== shellPanel) { shellPanel = dialog; console.info('[raft-shell] panel=' + dialog); } // desktop/main.cjs watches this
   }
 
   // ---------- Pointer lock ----------
-  let lockPromisePending = false, lockHasPromise = false, lockEventFailures = 0;
+  let lockPromisePending = false, lockHasPromise = false, lockFailures = 0;
+  const windowFocused = () => { try { return document.hasFocus(); } catch { return true; } };
+  // Always ask (no navigator.userActivation pre-gate): after the page itself released the lock (inventory,
+  // crafting, crew) Chrome relocks without a gesture. Refusals are handled in lockFailed (lock-rules.js).
+  // While Escape is still held (it just closed a panel), Chrome may treat the held key as the user leaving
+  // the new lock, so the relock waits for the release (no gesture needed: the page released the lock itself).
+  let escHeld = false, relockOnEscUp = false;
+  function escReleased() { escHeld = false; if (relockOnEscUp) { relockOnEscUp = false; requestLock(); } }
   function requestLock() {
-    if (!running || !lockSupported || uiBlocked()) return;
-    // Without a fresh user gesture the browser will refuse; stay in click-to-look and let the next click retry.
-    if (navigator.userActivation && !navigator.userActivation.isActive) { refreshPointerUI(true); return; }
+    if (!shouldRequestLock({running, supported:lockSupported, blocked:uiBlocked()}) || isLocked()) return;
+    if (escHeld) { relockOnEscUp = true; return; }
     try {
       const p = canvas.requestPointerLock();
-      if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(() => { lockPromisePending = false; lockEventFailures = 0; }, guard(err => { lockPromisePending = false; lockFailed(err); })); }
+      if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(() => { lockPromisePending = false; lockFailures = 0; }, guard(err => { lockPromisePending = false; lockFailed(err); })); }
     } catch (err) { lockFailed(err); }
   }
-  // Lock refused. Transient refusals (Escape cooldown, NotAllowedError, missing gesture) keep click-to-look so the next
-  // canvas click retries. Only genuinely unsupported cases switch permanently to drag-look. The click that asked for lock never acts.
-  function lockUnsupported(err) {
-    if (!lockSupported) return true;
-    if (!err || typeof err !== 'object') return false;
-    const isDom = typeof DOMException !== 'undefined' && err instanceof DOMException;
-    if (isDom) return err.name === 'NotSupportedError' || err.name === 'WrongDocumentError' || err.name === 'SecurityError';
-    return err instanceof Error; // non-DOM rejection: the environment cannot provide pointer lock
-  }
+  // Lock refused. Escape cooldown (SecurityError), unfocused window (WrongDocumentError) and missing gesture are
+  // transient: the next click or focus retries. Only NotSupportedError, a missing API, or repeated refusals while
+  // focused switch to drag-look. The click that asked for lock never acts.
   function lockFailed(err) {
     if (isLocked()) return;
     const isEvent = typeof Event !== 'undefined' && err instanceof Event;
-    if (isEvent) {
-      if (lockPromisePending || lockHasPromise) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
-      // Legacy event-only API gives no reason: treat as transient, but repeated refusals mean it is unavailable.
-      if (++lockEventFailures < 3) { refreshPointerUI(true); return; }
-    } else if (!lockUnsupported(err)) { refreshPointerUI(true); return; }
+    if (isEvent && (lockPromisePending || lockHasPromise)) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
+    const verdict = lockFailureVerdict({supported:lockSupported, err:isEvent ? null : err, focused:windowFocused(), failures:lockFailures});
+    lockFailures = verdict.failures;
+    if (!verdict.fallback) { refreshPointerUI(true); return; }
     const wasFallback = lockFallback; lockFallback = true; refreshPointerUI(true);
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
@@ -938,7 +940,7 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    if (isLocked()) { lockFallback = false; lockEventFailures = 0; }
+    if (isLocked()) { lockFallback = false; lockFailures = 0; }
     else { if (charging && charging.x === null) charging = null; reeling = false; }
     down = null; refreshPointerUI(true);
   });
@@ -1001,7 +1003,12 @@ export function mount(transfer = null) {
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => { keys[e.code] = false; });
-  on(window, 'blur', clearInput);
+  on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
+  on(window, 'keyup', e => { if (e.key === 'Escape') escReleased(); }, {capture:true});
+  on(window, 'pointerdown', () => { escHeld = relockOnEscUp = false; }, {capture:true}); // a click relocks on its own
+  // Focus loss (alt-tab): drop held input and show the hint at the top edge; one click on return relocks.
+  on(window, 'blur', () => { clearInput(); escHeld = relockOnEscUp = false; document.body.classList.toggle('away', running); refreshPointerUI(true); });
+  on(window, 'focus', () => { document.body.classList.remove('away'); refreshPointerUI(true); });
   on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
   on(document, 'visibilitychange', () => {
     send({type:document.hidden ? 'hidden' : 'visible'}); lastNetSendAt = performance.now();
@@ -1023,6 +1030,10 @@ export function mount(transfer = null) {
   setHandler($('#welcomeCrew'), 'onclick', () => openDialog('crew'));
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
+  // Crew/Help closed during play go back to locked play; opened from the pause menu, settings.js reopens it instead.
+  for (const id of ['crew', 'help']) on($('#' + id), 'close', e => {
+    if (shouldRelockAfterClose({running, locked:isLocked(), blocked:uiBlocked(), returnToPause:!!e.target?.dataset?.fromPause})) requestLock();
+  });
   const soundLabel = () => setText('#soundButton', 'Sound: ' + (!sound ? 'off' : options.volume > 0 ? 'on' : 'on (volume is 0%)'));
   setHandler($('#soundButton'), 'onclick', () => { sound = !sound; saveSoundPref(window.localStorage, sound); soundLabel(); oceanAudio?.setVolume(audioVolume()); if (sound) oceanAudio?.resume(); });
   soundLabel();
@@ -1231,6 +1242,25 @@ export function mount(transfer = null) {
     },
   });
   const previousDebug = Object.getOwnPropertyDescriptor(window, 'raftDebug'); // restored if this mount fails
+  // Desktop shell hook (desktop/main.cjs). panelOpen() lets the shell swallow Escape while a game panel is open;
+  // escape() then closes the top panel and relocks, run via executeJavaScript(code, true) so it carries a gesture.
+  const shellApi = {
+    panelOpen:() => !disposed && !!(survivalUI?.isOpen || dialogOpen()),
+    // held=true: the shell swallowed the Escape keydown and calls released() on its keyup (relock happens then).
+    escape:guard((held = false) => {
+      if (disposed) return false;
+      if (held) { escHeld = true; relockOnEscUp = false; }
+      if (survivalUI?.isOpen) { survivalUI.close(); return true; }
+      if (settingsController?.isOpen) { settingsController.close(); return true; } // close(true) resumes and relocks
+      const d = [...document.querySelectorAll('dialog[open]')].pop();
+      if (!d) { if (running && settingsController) { settingsController.open(); return true; } return false; } // stale shell state: plain pause
+      d.close(); // crew/help: back to the pause menu or to locked play (close listeners)
+      if (!uiBlocked()) requestLock();
+      return true;
+    }),
+    released:guard(() => escReleased()),
+  };
+  window.raftShell = shellApi;
   window.raftDebug = debugApi;
 
   // ---------- Lifecycle ----------
@@ -1277,6 +1307,7 @@ export function mount(transfer = null) {
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
+    try { if (window.raftShell === shellApi) delete window.raftShell; } catch {}
     disposeScene();
   }
 

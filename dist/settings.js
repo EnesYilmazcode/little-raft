@@ -1,6 +1,8 @@
 // Little Raft pause / settings panel. Pure ES module: nothing happens on import.
 // createSettings({onChange,onResume,onPause}) -> { values, isOpen, open(), close(), destroy() }
 
+import { createEscGate } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+
 const STORAGE_KEY = 'little-raft-settings';
 const DIALOG_ID = 'options';
 const STYLE_ID = 'little-raft-settings-style';
@@ -126,8 +128,7 @@ export function createSettings({ onChange, onResume, onPause } = {}) {
   const guard = (fn) => (event) => { if (owns()) fn(event); };
   const sig = { signal: ac.signal };
   let destroyed = false;
-  let lockLostAt = -Infinity;   // when pointer lock was released while the game was active
-  let escHandledAt = -Infinity; // last time a keydown Escape was handled (to avoid double handling on keyup)
+  const esc = createEscGate(); // Escape keydown/keyup/lock-loss bookkeeping (lock-rules.js)
 
   // Hot creation: the live controls are the freshest truth; otherwise storage.
   let values = reused ? validate({ ...load(), ...readControls(dialog) }) : load();
@@ -194,32 +195,32 @@ export function createSettings({ onChange, onResume, onPause } = {}) {
   // --- Escape handling -----------------------------------------------------
   window.addEventListener('keydown', guard((event) => {
     if (event.key !== 'Escape') return;
-    if (event.repeat) { if (dialog.open) event.preventDefault(); return; }
-    if (dialog.open) { event.preventDefault(); escHandledAt = performance.now(); close(true); return; }
+    const now = performance.now();
+    // Held Escape: repeats keep this press "handled" so its late keyup never opens the pause menu.
+    if (event.repeat) { esc.keydown(now, { repeat: true }); if (dialog.open) event.preventDefault(); return; }
+    if (dialog.open) { event.preventDefault(); esc.keydown(now, { handled: true }); close(true); return; }
     // Another menu (inventory/crew/help) owns this Escape; suppress the keyup pause fallback.
-    if (otherDialogOpen()) { escHandledAt = performance.now(); return; }
-    if (tryOpenFromEscape(event)) escHandledAt = performance.now();
+    if (otherDialogOpen()) { esc.keydown(now, { handled: true }); return; }
+    esc.keydown(now, { handled: tryOpenFromEscape(event) });
   }), { capture: true, signal: ac.signal });
 
   // Browsers often swallow the keydown that ends pointer lock; the keyup still arrives.
   window.addEventListener('keyup', guard((event) => {
     if (event.key !== 'Escape') return;
-    const now = performance.now();
-    if (now - escHandledAt < 600) return;
-    if (now - lockLostAt > 1500) return; // only pause for the Escape that just released the lock
-    lockLostAt = -Infinity;
-    tryOpenFromEscape(event);
+    // Only pause for an unhandled Escape that just released the lock.
+    if (esc.keyupOpensPause(performance.now())) tryOpenFromEscape(event);
   }), { capture: true, signal: ac.signal });
 
   // Remember lock loss only; never pause from lock loss alone (build mode, menus release it on purpose).
   document.addEventListener('pointerlockchange', guard(() => {
-    if (!document.pointerLockElement && gameActive() && !dialog.open) lockLostAt = performance.now();
+    // A release caused by the page opening a menu (inventory, crew, help) is not an Escape.
+    if (!document.pointerLockElement && gameActive() && !dialog.open) esc.lockLost(performance.now(), { selfCaused: otherDialogOpen() });
   }), sig);
 
   // Native dialog Escape: route through our close so the engine resumes.
   dialog.addEventListener('cancel', guard((event) => {
     event.preventDefault();
-    if (performance.now() - escHandledAt < 100) return; // already handled by keydown
+    if (performance.now() - esc.handledAt < 100) return; // already handled by keydown
     close(true);
   }), sig);
 
@@ -247,6 +248,12 @@ export function createSettings({ onChange, onResume, onPause } = {}) {
       const target = document.getElementById(act);
       if (!(target instanceof HTMLDialogElement)) return;
       close(false); // stay paused; the other menu owns Escape now
+      target.dataset.fromPause = '1';
+      target.addEventListener('close', guard(() => {
+        // Closing Help/Crew opened from the pause menu goes back to the pause menu, never to a free cursor.
+        delete target.dataset.fromPause;
+        if (gameActive() && !otherDialogOpen()) open();
+      }), { once: true, signal: ac.signal });
       try { target.showModal(); } catch { target.setAttribute('open', ''); }
     }
   }), sig);
