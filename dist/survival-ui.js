@@ -13,15 +13,15 @@ const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
 const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
 const INST_KEY = '__littleRaftSurvivalUI';
 
-const BUILD = (() => { try { return new URL(import.meta.url).searchParams.get('build') || 'dev'; } catch { return 'dev'; } })();
-const SPRITE_URL = (() => {
-  try { const u = new URL('icons.svg', import.meta.url); u.search = '?build=' + encodeURIComponent(BUILD); return u.href; }
-  catch { return 'icons.svg'; }
-})();
+// Same sprite URL as the page's own <use> elements (plain on first load, re-pointed by game.js after a hot swap),
+// so icons.svg is fetched once. Read lazily: game.js init() runs after this module is evaluated.
+let spriteUrl = null;
+const SPRITE_URL = () => spriteUrl ??= (document.querySelector('use[href*="icons.svg"]')?.getAttribute('href') || 'icons.svg').split('#')[0];
 
 // Symbols that actually exist in icons.svg.
 const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier', 'rainbarrel', 'sprinkler', 'research', 'receiver',
-  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion', 'fins', 'airjug', 'goggles', 'scraper', 'cookpot', 'bowl', 'meal', 'shell', 'wreath', 'float']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals
+  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion', 'fins', 'airjug', 'goggles', 'scraper', 'cookpot', 'bowl', 'meal', 'shell', 'wreath', 'float', 'gametable', 'buoyflag', 'scoreboard', 'driftboard',
+  'hay', 'pail', 'milk', 'stormrod', 'stormshard', 'stormlamp', 'stormglass']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals; goats, storm
 // Item kind (normalised) -> sprite symbol.
 const SPRITE_FOR = {
   hook: 'hook', plastichook: 'hook', grapplinghook: 'hook',
@@ -36,6 +36,7 @@ const SPRITE_FOR = {
   antenna: 'antenna', receiver: 'receiver',
   puffegg: 'egg', feather: 'feather', nestbox: 'nest', cushion: 'cushion',
   shell: 'shell', shellwreath: 'wreath', glassfloat: 'float', // trader.js
+  goatpen: 'hay', bucket: 'pail', milk: 'milk',
 };
 // Hand-drawn fallbacks for kinds without a sprite (same palette as icons.svg).
 const CUSTOM = {
@@ -145,7 +146,7 @@ function iconSVG(kind) {
   let id = custom ? null : meta?.icon;
   if (typeof id === 'string') id = id.replace(/^icon-/, ''); else id = null;
   if (!custom && (!id || !SPRITES.has(id))) id = SPRITE_FOR[n];
-  if (!custom && id && SPRITES.has(id)) return `<svg class="sv-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><use href="${SPRITE_URL}#icon-${id}"></use></svg>`;
+  if (!custom && id && SPRITES.has(id)) return `<svg class="sv-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><use href="${SPRITE_URL()}#icon-${id}"></use></svg>`;
   const body = CUSTOM[n] || `<rect x="7" y="9" width="34" height="30" rx="3" fill="#bb8650" stroke="#153e49" stroke-width="2"/>
     <path d="M7 17 H41 M7 31 H41" stroke="#153e49" stroke-width="1.3" stroke-opacity=".55"/>
     <text x="24" y="29" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff2cc" stroke="#153e49" stroke-width=".7">${esc(itemName(kind).replace(/\s+/g, '').slice(0, 2))}</text>`;
@@ -225,7 +226,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 /* Raft-style layout: [categories | recipe list] on the left, [detail over backpack] on the right.
    The crafting column has a fixed height, so switching tabs or recipes never resizes the panel. */
 #inventory .sv-side{flex:none;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;min-height:0;min-width:0}
-#inventory .sv-bag{flex:none;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:8px;padding:9px 12px 11px}
+#inventory .sv-bag{flex:1 1 auto;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:8px;padding:9px 12px 11px}
 #inventory .sv-grid{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g);align-self:center}
 #inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g)}
 #inventory .sv-h{align-self:stretch;margin:2px 2px 1px;font:800 11px/1 ${FONT};letter-spacing:2.2px;text-transform:uppercase;color:#f6e8c6;text-shadow:0 1px 0 #3e2a1799}
@@ -290,7 +291,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-locked .sv-rsub{color:#a3321a}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
 /* detail: big icon, name, what it is for, have / need rows and the Craft button */
-#inventory .sv-detail{flex:1 1 0;min-height:0;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
+#inventory .sv-detail{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
 #inventory .sv-detail[hidden]{display:none}
 #inventory .sv-dhead{flex:none;display:grid;grid-template-columns:64px 1fr auto;gap:11px;align-items:center}
 #inventory .sv-dart{display:grid;place-items:center;width:64px;height:64px;border-radius:4px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
@@ -305,7 +306,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-dstate[hidden]{display:none}
 #inventory .sv-dlabel{flex:none;display:flex;justify-content:space-between;font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#6b5638}
 #inventory .sv-dlabel i{font-style:normal;letter-spacing:.6px;text-transform:none;font-weight:700;padding-right:8px}
-#inventory .sv-ings{flex:0 1 auto;min-height:0;overflow-y:auto;list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;scrollbar-color:#a08a5e transparent}
+#inventory .sv-ings{flex:none;max-height:100px;overflow-y:auto;list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;scrollbar-color:#a08a5e transparent}
 #inventory .sv-ing{flex:none;display:grid;grid-template-columns:26px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 5px;border-radius:3px;background:#d6c397;box-shadow:inset 3px 0 0 #b0391e}
 #inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #5f9c3a}
 #inventory .sv-ing .sv-icon{width:26px;height:26px}

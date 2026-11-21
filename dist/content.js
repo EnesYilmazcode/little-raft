@@ -8,6 +8,8 @@
 //   name                      string, used for save/net keys and raftDebug.content[name]
 //   update(dt)                per frame, after items/hook updates. No allocations.
 //   afterMove(physics, dt)    after player physics (islands: stand on sand)
+//   ride(dt, physics, input)  takes over player motion this frame; return true to skip physics.update (sit, zipline)
+//   seated()                  -> true while the local player sits
 //   serialize()               -> JSON-safe data. Host saves it in world.ext[name] and sends it in state.
 //   load(data, from)          from: 'save' | 'net' | 'restore'. data may be undefined (old save).
 //   action(a, actor, bag)     host only. Return true if a.kind was handled. Guests reach it via ctx.action().
@@ -21,17 +23,34 @@
 //   steerTargets()            -> array of raft-local {x,z} extra hold-R steering grab points (engine: wheels)
 //   use(aim, kind)            left click with a bag item `kind` that no engine tool handles. Return true if consumed.
 //   alt(aim, kind)            right click while holding `kind`. Return true if consumed (paint: brush colour).
+//   zoom()                    -> view zoom factor 1..8 this frame (spyglass); game.js divides the FOV, look speed and camera motion by it
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
 //   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
 //   link(env)                 optional: env.wind() / env.night() live daynight getters // [power]
+//   beforeUndecor(d, actor)   [undecor] host only. d = the world.decor entry {type,x,z,rot?} (read-only), actor 'host'|'guest'.
+//                             -> veto string (shown as a notice to the actor) when this module's state on d's tile
+//                             is busy, else null. Must not mutate anything. Called for every decor type: ignore
+//                             types you don't own.
+//   undecorLoot(d)            [undecor] host only. -> array of [kind, n] or [kind, n, meta] that this module stores on d's tile
+//                             (contents, NOT the item itself: the host adds {d.type:1}). [] or null when nothing.
+//                             Must not mutate. Called only after every beforeUndecor returned null.
+//   afterUndecor(d, actor)    [undecor] host only, after the bag is committed and d is spliced out of world.decor.
+//                             Delete this module's slice key for d's tile, bump its rev so guests resync, close any
+//                             open UI for that tile. Must not throw. No return value.
+//   effect(e)                 a host/peer effect message; return true if consumed (game.js then skips its notice/sound) [fireworks]
+//   ride(dt, p, inp) / riding() [zipline] glide line ride, [paddleboard] driftboard (game.js movePlayer); return true to skip PlayerPhysics
+// Second make() argument: peer(name) -> another live module (scarecrow), with peer.peek(name) -> its serialize().
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
+//   observe(ev, actor)        host only: game events after success ({kind:'craft'|'collect'|'fish'|'build'|
+//                             'bottle'|'cook'|'water'|'harvest'|'gather'|'repair', ...}). Never from net/effects.
 //   dispose()
 //
 // ctx (live getters, set up by game.js): T, scene, camera, raft, ocean, sun, hemi, clouds, world, role,
 // running, physics, elapsed, options, localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
 // esc(s), mat(color), rebuildRaft(), deckY(), uiOpen(), building (piece grid/tint, may be null early), brush (held
-// brush model), woodMat(hex) (cached procedural wood material), aim() (this frame's aim {point, dir} or null).
+// brush model), woodMat(hex) (cached procedural wood material), aim() (this frame's aim {point, dir} or null),
+// observe(ev, actor), dayIndex(), hasGrill() ([tasks]).
 
 import { createIslands } from './islands.js?build=v3-survival-ae77fa84ac2b';
 import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
@@ -40,6 +59,7 @@ import { createDecorPack } from './decor-pack.js?build=v3-survival-ae77fa84ac2b'
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 import { createEngine } from './engine.js?build=v3-survival-ae77fa84ac2b';
 import { createSleep } from './sleep.js?build=v3-survival-ae77fa84ac2b';
+import { createSitting } from './sitting.js?build=v3-survival-ae77fa84ac2b'; // [sit]
 import { createPaint } from './paint.js?build=v3-survival-ae77fa84ac2b'; // content hook (paint)
 import { createKiln } from './kiln.js?build=v3-survival-ae77fa84ac2b';
 import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
@@ -50,12 +70,26 @@ import { createGull } from './gull.js?build=v3-survival-ae77fa84ac2b'; // [gull]
 import { createJuicer } from './juicer.js?build=v3-survival-ae77fa84ac2b'; // [juicer]
 import { createDivingGear } from './diving-gear.js?build=v3-survival-ae77fa84ac2b';
 import { createTrader } from './trader.js?build=v3-survival-ae77fa84ac2b';
+import { createGameTable } from './gametable.js?build=v3-survival-ae77fa84ac2b'; // game table
+import { createPaddleboard } from './paddleboard.js?build=v3-survival-ae77fa84ac2b'; // [paddleboard]
+import { createBuoyCourse } from './buoycourse.js?build=v3-survival-ae77fa84ac2b'; // [buoycourse]
 import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
 import { createDisplay } from './display.js?build=v3-survival-ae77fa84ac2b'; // [display]
 import { createPower } from './power.js?build=v3-survival-ae77fa84ac2b'; // [power]
 import { createFishTrap } from './fish-trap.js?build=v3-survival-ae77fa84ac2b'; // [fishtrap]
+import { createPhotoFrame } from './photo-frame.js?build=v3-survival-ae77fa84ac2b'; // [camera] photo frame decor
+import { createTasks } from './tasks.js?build=v3-survival-ae77fa84ac2b'; // [tasks]
+import { createFlags } from './flags.js?build=v3-survival-ae77fa84ac2b'; // [flags]
+import { createScarecrow } from './scarecrow.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
+import { createFireworks } from './fireworks.js?build=v3-survival-ae77fa84ac2b'; // [fireworks]
+import { createZipline } from './zipline.js?build=v3-survival-ae77fa84ac2b'; // [zipline]
+import { createSpyglass } from './spyglass.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
+import { createStorm } from './storm.js?build=v3-survival-ae77fa84ac2b'; // [storm]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createJuicer, createGull, createFishTrap, createDisplay, createDivingGear, createTrader, createCookpot]; // [bees] + createBees; [power] after bees; [fishtrap] [display]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [spyglass]; [juicer] + createJuicer [gull] + createGull
+// [undecor] decor whose module stores items per tile but has no beforeUndecor/undecorLoot/afterUndecor yet:
+// picking it up would lose what it holds, so the host refuses (display, fish trap, cooking pot, gull perch tray).
+const NO_UNDECOR = new Set(['shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch']);
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -85,10 +119,12 @@ export function createContent(ctx, features = FEATURES) {
   const call1 = (m, out) => { try { m.diveMods(out); } catch (e) { console.error(`content ${m.name}.diveMods failed`, e); off(m); } };
   // Sibling peek: a module may read another's live serialize() (e.g. the map table reads islands). Read, never keep.
   const peek = name => { const m = mods.find(x => x.name === name && !x.dead); return m ? call(m, 'serialize') : undefined; };
+  const peer = Object.assign(name => mods.find(m => m.name === name && !m.dead) ?? null, { peek }); // [scarecrow] peer(name) finds a live module; peer.peek reads its serialize()
   for (const make of features) {
-    try { const m = make(ctx, { peek }); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
+    try { const m = make(ctx, peer); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
+  const seatedMod = () => { for (const m of mods) if (!m.dead && typeof m.seated === 'function' && call(m, 'seated')) return m; return null; }; // [sit]
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   const dn = () => mods.find(m => m.name === 'daynight' && !m.dead), num = (v, d) => (Number.isFinite(v) ? v : d); // [power]
@@ -101,20 +137,32 @@ export function createContent(ctx, features = FEATURES) {
     serialize() { const out = {}; for (const m of mods) { const d = call(m, 'serialize'); if (d !== undefined && m.name) out[m.name] = d; } return out; },
     load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
-    interact: aim => !!first('interact', aim),
-    prompt: aim => first('prompt', aim),
+    observe(ev, actor) { for (const m of mods) call(m, 'observe', ev, actor); }, // [tasks] host-side game events
+    interact: aim => { const m = seatedMod(); return !!(m && call(m, 'interact', aim)) || !!first('interact', aim); }, // [sit] a seated module gets E first (stand up)
+    seated: () => !!first('seated'), // [sit]
+    prompt: aim => { const m = seatedMod(); return (m && call(m, 'prompt', aim)) || first('prompt', aim); }, // [sit] a seated module's prompt wins (E gets you up)
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
+    zoom() { const z = first('zoom'); return Number.isFinite(z) && z >= 1 && z <= 8 ? z : 1; }, // [spyglass] view zoom, default 1
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
+    ride: (dt, p, inp) => !!first('ride', dt, p, inp), riding: () => !!first('riding'), // [zipline] [sit] content hook: first module to take over motion wins (glide line, seat, driftboard)
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     placeBlock: (kind, x, z) => first('placeBlock', kind, x, z), // [fishtrap] reason a decor can't go on (x, z), or null
+    beforeUndecor: (d, actor) => first('beforeUndecor', d, actor) || (NO_UNDECOR.has(d?.type) ? 'Empty it first: this one can’t be picked up yet' : null), // [undecor] + modules without undecor hooks keep their stored items
+    undecorLoot: d => { const out = []; for (const m of mods) { const r = call(m, 'undecorLoot', d); if (Array.isArray(r)) out.push(...r); } return out; }, // [undecor]
+    afterUndecor: (d, actor) => { for (const m of mods) call(m, 'afterUndecor', d, actor); }, // [undecor]
     decorModel: (type, d) => first('decorModel', type, d),
     sailPush: (s, out) => !!first('sailPush', s, out),
     steerTargets: () => first('steerTargets'),
     rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
+    pecked() { const m = peer('scarecrow'); return m?.pecked ?? null; }, // [scarecrow] palm keys paused by a pecking gull (host)
+    palmPrompt(aim, base) { const m = peer('scarecrow'); try { return m?.palmPrompt?.(aim, base) ?? null; } catch (e) { console.error('content scarecrow.palmPrompt failed', e); off(m); return null; } }, // [scarecrow]
+    effect(e) { for (const m of mods) if (call(m, 'effect', e)) return true; return false; }, // [fireworks]
     wind: () => env.wind(), night: () => env.night(), // [power] live daynight wind / nightFactor (fallbacks .15 / 0)
     diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveMods === 'function') call1(m, out); } return out; }, // shared dive modifier hook (no per-frame rest-arg arrays)
+    day() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const d = m?.day; return Number.isInteger(d) ? d : null; }, // [tasks] in-game day index
+    tasksView() { const m = mods.find(m => m.name === 'tasks' && !m.dead); if (!m) return null; try { return m.view?.() ?? null; } catch { return null; } }, // [tasks] logbook tab
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }

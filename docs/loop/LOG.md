@@ -938,3 +938,98 @@ Next ideas: decor pickup with refunds, achievement hooks for content modules, fl
   mid-compile); patched the vendored three with the upstream-style guard. Full fleet-gate PASS at dbf2ca9 (983 tests,
   hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
   PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
+
+
+## 2026-11-21 · loop-features-202611210749 (features)
+Base: origin/claude/raft-master (7294e26). Merging rounds 0548/0703 into the base hit 10 conflicting files, so that is left to the integrator. Not redone: everything listed in rounds 0548/0703 plus the other branches' diving gear, trader, cookpot, fish trap, power chain and display shelf.
+
+Features (research in docs/features, specs in docs/specs):
+- **Junk debris + Sorting Tub**: `oldboot`, `tincan` and `seajar` are about 1 in 11 floating spawns (re-rolled in makeItem, so the spawn table is unchanged). Hooks and nets collect them. The Sorting Tub is a fuel-free progression station (6 wood, 2 rope, 3 nail, unlocked after nails) that sorts tin into 2 scrap, boot into 2 plastic and jar into 2 sand. It reuses StationModel through a `stationExtraRecipes` fallback, so the smelter and grill are unchanged. The tub has a crank animation and an output pile. Files: dist/recycler-model.js plus hooks in items.js, smelter.js, smelter-ui.js, progression-hooks.js and models.js.
+- **Daily crew tasks**: 3 tasks a day from a pool of 16, picked from (seed, day) and skipping tasks whose prerequisites are missing. Counting is host-only, through a new `observe(ev, actor)` content hook placed after every successful action. Small rewards, an all-three bonus and a streak with a best. Each player claims their own reward, unclaimed rewards carry over as `owed`, and the day falls back to a play-time clock when day/night is off. The logbook has a "Tasks" tab and there is a Task Board decor. Files: dist/tasks.js, tasks-rules.js, tasks-model.js.
+- **Little Camera + photo album + Photo Frame**: click to snap. The capture hides hands and ghosts, crops to 256x144 and saves a JPEG to IndexedDB, falling back to localStorage and then memory. The album holds 24 photos and refuses new shots when full. P opens the album (also from the pause menu). The Photo Frame decor shows a chosen photo; the owner sends the JPEG once over co-op, the message is validated and capped at 24k chars, and image data never goes in saves. Files: dist/camera.js, photo-store.js, photo-album-ui.js, camera-models.js, photo-frame.js.
+- Also fixed on the base: holding a seed threw a ReferenceError every frame, because `farmPlot` is undefined at game.js:1158.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (13 agents).
+Review/QA fixes:
+- **Station take (serious):** the recycler change had made "take output" also empty the smelter/grill input, which could also duplicate items.
+- **Pickup feed:** icons for placeholder items were missing.
+- **Station node lookups:** were repeated every frame.
+- **Tasks:** solo games owed rewards to the empty guest seat; a guest briefly showed stale tasks; the Claim button re-armed early.
+- **Camera:** pose was hidden behind the hotbar; the flash was barely visible; a hung save could lock the camera; co-op photo asks were slow; moved frames left stale entries in the save.
+- **Phone layout:** the journal chip overlapped the hotbar, and the bag hotbar row was clipped.
+
+Checks: `npm test` 660/660; shoot.py `errors: []`. A two-tab loopback co-op run of the photo frame passed.
+Known limits:
+- An intermittent three.js `compileAsync` "isReady" error comes from warmShaders in game.js (existing).
+- One headless run produced a solid-teal photo (not reproduced), and once only 3 of 4 snaps were saved.
+- Capture while diving is unverified.
+- Junk items get 3D icons while the new stations have flat icons (mixed styles).
+Next ideas: merge rounds 0548/0703/0749 into master; look into the warmShaders race; snap/save reliability; a richer camera model.
+
+## 2026-11-21 · integrator B round 4 (alongside the parallel integrator, which shipped PRs #3 and #4)
+- Clean merges: loop-fidelity-202611210821, raft-tech, fleet-tech perf/water. Sky dome now disposed on hot swap.
+- One subagent per conflicting branch, each pushing straight to raft-master after tests, shoot.py and perf:
+  - merged loop-features-202611210722 (diving gear, Pim's trader barge, cooking pot) and 0648; loop-ux-202611210743 (menu restyle, help panel, sound settings);
+    loop-perf-202611210708 (partial: quality ladder, fog cache, cached models) and 0648; loop-visuals-202611210648 (new held hook only).
+  - skipped loop-fidelity-202611210747 (second copy of vitals/shark with a different save format; its game-mode and death card would need porting),
+    loop-perf-202611210720 (stale), loop-ux-202611210742 (redoes lock rows, still being pushed). raft-integration was already in.
+- Gate at 9b3ba49: 1023/1023, no page errors, hook-only spawn, Esc OK, perf 133 ms / 43 calls (main 912d941: 229 ms / 49 calls).
+- Recurring flake: tests/art.test.mjs atlas build-time (<1500 ms) fails under machine load (load avg > 15); passes alone.
+
+## 2026-11-21 · loop-features-202611210814 (features, round 4)
+Base: origin/claude/raft-master (77b1cb6) + round 3 branch (rounds 1–3) merged in; master did not yet hold round 2, it comes with this merge. Avoided features other loop runs already covered (shelf, fish trap, wind power, crew tasks, camera, recycler, fireworks, zipline, scarecrow, treasure, map table, customise…).
+- **Driftboard paddleboard** (`paddleboard`) — craft, launch from the deck edge, ride at ~3.6 m/s (4.5 sprint) with mouse steering, tethered under 45 m, tie/pick up/drift home, co-op riders visible. Adds the zipline-compatible `ride`/`riding` content hook (byte-identical to loop-features-202611210753-zfs) + extra rideIn fields in game.js.
+- **Driftwood Game Table** (`gametable`) — draughts (forced captures, multi-jumps, kings) and noughts & crosses vs the crewmate or the Gull AI (Easy/Clever minimax); 2D board dialog + instanced 3D pieces; host-authoritative moves with stale-move counter.
+- **Buoy ring course** (`buoycourse`) — Start Flag with course board, four preset shapes, countdown, ring crossing detection (swim and board bands), timer pill, bell per ring (contentCtx `note`), top-5 scoreboard per shape/mode with host-validated finishes.
+Fleet: merge agent, 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (14 agents).
+Fixes: icons.svg was invalid XML on master (unclosed sprinkler symbol) — closed; course timer now on the movement clock and generous host min-time; game table save validation, gull/dialog after table removal, instanced buffer leak; driftboard orphaned guest ride, held Space after UI, per-frame scan; course flag answers E while riding (FEATURES order); X pieces no longer inherit the close-button style; course beam no longer blinds riders; phone timer pill clear of compass; riding prompt wording.
+Checks: npm test 835/835; shoot2.py errors []; coop2 loopback base failures only (3, 4, 6; 2b flaky under load); loopback verified guest board, guest draughts moves, guest course finish.
+Observed: master now shows health/hunger/thirst vitals bars — a design change from the original "no damage, no hunger" brief made in another lane; not touched here.
+Known limits: held driftboard viewmodel is a plain box; noughts winning line not highlighted; chest/trader/sleep take E before the board while riding.
+
+## 2026-11-21 · loop-features-202611210753-zfs (features)
+
+Base: `origin/claude/raft-master` 7294e26. `raft-integration` was newer by commit time but 685 commits behind master; merging it gave 6 conflicts (held-items, ocean, settings, sky, survival-ui, survival tests), so that is left to the integrator. The branch name has a `-zfs` suffix because a parallel session pushed `loop-features-202611210749` first.
+
+Features (research, spec, build, review for each; then one visual QA pass and one polish pass):
+- **Scarecrow + gentle gulls** (`dist/scarecrow.js`, `scarecrow-model.js`; spec `docs/specs/scarecrow.md`). Gulls 0–2 sometimes land on a watered palm planter and pause its growth (it never goes backwards). The host decides pecks, with one pecking gull per raft and a 90 s cooldown per planter. E shoos the gull through `raftPrompts`, and harvest/water E still work. A Scarecrow protects palms within 4.5 m, and gulls sit on its hat. `world.ext.scarecrow` is only sent over the network; an old host turns the feature off.
+- **Sky Rockets** (`dist/fireworks.js`, `fireworks-model.js`; spec `docs/specs/fireworks.md`). A placeable rocket; E lights it through a host action, then fuse, rise, and a sphere, ring or willow burst. One pooled Points draw call, a hemi sky flash at night, whistle/pop/crackle sounds, and the `firework1` achievement. Old peers get `sound:'none'` and no notice. New `content.effect` and `content.night` hooks.
+- **Ziplines** (`dist/zipline.js`, `zipline-model.js`; spec `docs/specs/zipline.md`). Glide Post and Low Glide Post decor, and a Glide Handle. E on two posts strings a line (4–16 m, rope cost scales with length, blocked by building pieces). Riding uses gravity, drag and input, Space lets go, and you hop off at the end. `world.ext.zipline` holds the lines. Co-op: `HELD[17]=glidehandle`, and pose flag bit 8 means riding (the partner hangs with arms up).
+
+Review fixes:
+- The shoo prompt was invisible because `#contextPrompt` is hidden.
+- The sky flash drifted on dispose and flickered on back-to-back bursts.
+- You could mount a zipline mid-clamber.
+- Riders passed through walls built across a line.
+- Ropes ignored the raft's tilt.
+
+Visual QA (`docs/cloud/qa-round-zfs.md`, shots in `docs/cloud/shots/zfs/`) fixed 9 issues:
+- Real held models for the new placeables (and candle, beehive, flower box).
+- Bolder, bigger bursts and a willow that droops.
+- The gull no longer clips the palm.
+- A chunkier rocket.
+- A hanging ride pose, and the ride stops 1.3 m before the end post.
+- A 1.15x scarecrow.
+- A distinct low-post icon.
+
+Checks: `npm test` 680/680, and shoot.py plus the feature capture scripts ran with no page errors.
+
+Open for next round:
+- **Hidden prompts:** watering, purifier and other content prompts that go through `updateContext` never show, because `#contextPrompt` is `display:none`. They need `raftPrompts` providers.
+- **Mixed icons:** bags mix flat SVG and 3D-rendered icons.
+- **Gold willow:** the willow core still looks warm-white up close.
+- **Not exercised:** the two-browser co-op e2e for all three features was not run.
+- **Island sand:** `islands.afterMove` still runs during a ride.
+
+## 2026-11-21 · integrator D: loop-ux-202611210848, loop-ux-202611210852
+- Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
+- Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
+- Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
+
+## 2026-11-21 · integrator F (scheduled run, 09:34 UTC)
+- Merged loop-features-202611210926 (biofuel and power-hookup specs, research notes; docs only). npm test 1270/1270.
+- Skipped loop-visuals-202611210548: 1624 commits behind, conflicts in sky.js and hands.js, and baking the sky once would freeze
+  the daynight-driven sky on raft-master.
+- Still skipped: loop-perf-0720, loop-fidelity-0747 (large stale branches, need worker rebases). Everything else with new commits
+  is claimed by integrators B-E in STATUS.md, so this run left those and PR #5 (gated by B) alone.
+- Screenshot gate tool unavailable here (no Python playwright); not a blocker for a docs-only merge.

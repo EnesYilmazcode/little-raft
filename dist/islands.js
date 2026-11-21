@@ -315,6 +315,7 @@ export function createIslands(ctx) {
     const r = applyGather(gatherState, a, actor, pos, bag);
     if (r.ok) {
       writeNode(a.node);
+      ctx.observe?.({ kind: 'gather', loot: r.loot }, actor); // [tasks]
       const text = r.loot.map(([k, n]) => `+${n} ${itemName(k)}`).join(', ');
       ctx.emit({ kind: 'loot', text }, actor);
     } else if (r.reason === 'full') ctx.emit({ kind: 'full', text: 'Your bag is full' }, actor);

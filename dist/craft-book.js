@@ -17,8 +17,9 @@ const CATEGORY_OF = Object.freeze({
   net: 'survival', palm: 'survival', lantern: 'survival',
   sail: 'building', bench: 'building', crate: 'building',
   // progression catalogue (items.js)
-  metalhook: 'tools', binoculars: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools',
+  metalhook: 'tools', binoculars: 'tools', spyglass: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools', // [spyglass] spyglass
   drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
+  camera: 'tools', photoframe: 'survival', // [camera]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   juicer: 'survival', berrycup: 'survival', coconutcup: 'survival', mixcup: 'survival', // [juicer]
@@ -26,13 +27,21 @@ const CATEGORY_OF = Object.freeze({
   shelf: 'survival', trophystand: 'survival', // [display]
   turbine: 'survival', battery: 'survival', stringlights: 'survival', lamppost: 'survival', // [power]
   fishtrap: 'survival', // [fishtrap]
+
+  taskboard: 'survival', // [tasks]
+  skyrocket: 'survival', // [fireworks]
+  scarecrow: 'survival', // [scarecrow]
+  glidepost: 'building', glidestep: 'building', glidehandle: 'tools', // [zipline] (no 'decor' tab exists)
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
   rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
+  flagpole: 'building', // [flags]
   kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
   nestbox: 'survival', cushion: 'building', // raft animals
+  goatpen: 'survival', bucket: 'survival', // raft goats
+  stormrod: 'building', stormlamp: 'survival', stormglass: 'building', // storm
   // content (engine, sleep, paint)
-  motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
+  motor: 'building', wheel: 'building', bed: 'building', brush: 'tools', driftboard: 'tools', // [paddleboard]
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
   cup: 'survival', purifier: 'survival', // water: scoop the sea, purify it
   fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
@@ -40,6 +49,8 @@ const CATEGORY_OF = Object.freeze({
   shellwreath: 'building',
   cup: 'survival', purifier: 'survival', // water gear sits with the rain barrel and sprinkler
   research: 'building', antenna: 'building', receiver: 'building',
+  courseflag: 'building', scoreboard: 'building', // buoy ring course (buoycourse.js)
+  gametable: 'building', // game table (gametable.js)
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -96,10 +107,13 @@ export const ITEM_TEXT = Object.freeze({
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
   spear:      { desc: 'A driftwood pole with a lashed flint point.', use: 'Click to jab: 5 damage, wears only when it lands.' },
   metalspear: { desc: 'A sturdy shaft with a steel point.', use: 'Click to jab: 10 damage, lasts twice as long.' },
-  binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold to spot barrels and islands far away.' },
+  binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold right click to zoom in; also points to the nearest barrel.' }, // [spyglass]
+  spyglass:   { desc: 'A brass-ringed tube with a clear lens.', use: 'Hold right click to zoom in and name far things.' }, // [spyglass]
   drum:       { desc: 'A wooden hand drum with a palm-leaf head.', use: 'Click to play; look up or down to change the note.' }, // [instruments]
   pipes:      { desc: 'Plastic reed tubes tied in a row.', use: 'Click to play soft breathy notes with your friend.' }, // [instruments]
   bells:      { desc: 'Brass-bright scrap bars on a small frame.', use: 'Click to ring a note that fades out softly.' }, // [instruments]
+  camera:     { desc: 'A little box camera with a glass lens.', use: 'Click to snap photos; P opens your album.' }, // [camera]
+  photoframe: { desc: 'A driftwood frame with a glass front.', use: 'Place it, then press E to show a photo.' }, // [camera]
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
   flowerseed: { desc: 'A tiny seed from an island bush.', use: 'Plant it in a flower box.' }, // [bees]
   flowerbox:  { desc: 'A planter full of bright blooms.', use: 'Place near a beehive; bees love it.' }, // [bees]
@@ -107,6 +121,7 @@ export const ITEM_TEXT = Object.freeze({
   honey:      { desc: 'Sweet, golden and sticky.', use: 'Glaze a grilled fish.' }, // [bees]
   wax:        { desc: 'Soft beeswax from the comb.', use: 'Make beeswax candles.' }, // [bees]
   candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
+  taskboard:  { desc: 'A little notice board with three paper notes.', use: 'Place it, then press E to see the crew tasks.' }, // [tasks]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
   berries:    { desc: 'Tart little island berries.', use: 'Blend in a juicer, or eat as a snack.' }, // [juicer]
   coconut:    { desc: 'A hairy brown coconut.', use: 'Blend in a juicer, or eat as a snack.' }, // [juicer]
@@ -125,13 +140,22 @@ export const ITEM_TEXT = Object.freeze({
   hammock:    { desc: 'A rope hammock between two posts.', use: 'Place it on the raft for a cosy corner.' },
   pots:       { desc: 'Three clay pots with little flowers.', use: 'Place it on the raft; E turns it.' },
   sign:       { desc: 'A wooden board you can write on.', use: 'Place it, then press E to write up to three lines.' },
+  flagpole:   { desc: 'A tall pole with a cloth flag that flies in the wind.', use: 'Place it, then press E to design your flag.' }, // [flags]
   kiln:       { desc: 'A stone and clay kiln with a wood fire.', use: 'Place it, load ore, sand or clay and some wood; collect ingots, glass and bricks.' },
   glasslamp:  { desc: 'A lantern with clear glass panes.', use: 'Place it for a warm light on the raft.' },
   sinker:     { desc: 'A small metal weight for the hook line.', use: 'Keep it in your bag: the hook wears half as fast.' },
+  stormrod:   { desc: 'A tall metal rod with a copper tip.', use: 'Place it on the raft: in a storm it catches lightning and grows Storm Shards.' },
+  stormshard: { desc: 'Glassy sand fused by lightning.', use: 'Make a Storm Lantern or a Storm Glass.' },
+  stormlamp:  { desc: 'A lantern with a humming blue shard.', use: 'Glows soft blue at night.' },
+  stormglass: { desc: 'A sealed glass of cloudy crystals.', use: 'Look at it to see when the next storm comes.' },
   puffegg:    { desc: 'A speckled egg from a puffhen.', use: 'Make an Egg Lantern.' },
   feather:    { desc: 'A soft puffhen feather.', use: 'Stuff a Feather Cushion.' },
   nestbox:    { desc: 'A cosy box of straw for puffhens.', use: 'Place it on the raft and a puffhen may come to stay.' },
   cushion:    { desc: 'A plump cushion stuffed with feathers.', use: 'Place it on the raft for a soft seat.' },
+  goatpen:    { desc: 'A cosy fenced corner with a pile of hay.', use: 'Place it on the raft and set out greens; a bramblegoat may come to stay.' },
+  bucket:     { desc: 'A little wooden pail with a rope handle.', use: 'Hold it and press E on a bramblegoat with milk.' },
+  milk:       { desc: 'A pail of fresh, creamy goat milk.', use: 'Drink it (+10 food, +25 water); the pail comes back.' },
+  driftboard: { desc: 'A plank board on two plastic floats, with a paddle.', use: 'Click the water by the raft to launch it, E to climb on.' },
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
@@ -142,12 +166,19 @@ export const ITEM_TEXT = Object.freeze({
   stringlights: { desc: 'A post with a wire of warm little bulbs.', use: 'Glows at night near a charged battery.' }, // [power]
   lamppost:   { desc: 'A tall lamp with a glass head.', use: 'Lights the deck at night near a charged battery.' }, // [power]
   fishtrap:   { desc: 'A woven fish basket on a little arm.', use: 'Place on an edge tile. Seaweed bait helps. Collect with E.' }, // [fishtrap]
+  skyrocket:  { desc: 'A little sky rocket on a stand.', use: 'Place on a tile, then press E to launch it.' }, // [fireworks]
+  scarecrow:  { desc: 'A driftwood post in a leaf skirt and a bucket hat.', use: 'Place it near palm planters; gulls will not peck within about two tiles.' }, // [scarecrow]
+  glidepost:  { desc: 'A tall mast with a grooved wheel on top.', use: 'Hold a Glide Handle and press E on two posts to string a line.' }, // [zipline]
+  glidestep:  { desc: 'A shorter glide post.', use: 'Run a line down to it from a tall post for a speedy glide.' }, // [zipline]
+  glidehandle: { desc: 'A wooden T-bar with a little wheel.', use: 'E links posts or hooks you on a line; Space lets go.' }, // [zipline]
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
   fins:       { desc: 'Webbed fins stitched with puff feathers.', use: 'Works from your bag: swim 30% faster underwater.' },
   airjug:     { desc: 'A sealed jug of fresh air.', use: 'Works from your bag: a dive lasts 75 s instead of 45 s.' },
   goggles:    { desc: 'Goggles with seaglass lenses.', use: 'Works from your bag: see much further underwater.' },
+  courseflag: { desc: 'A start flag with a little course board.', use: 'Place it, pick a course on the board, press E on the pole to race.' },
+  scoreboard: { desc: 'A painted board for race times.', use: 'Shows the best three times for the chosen course.' },
   scraper:    { desc: 'A flat metal scraper for the seafloor.', use: 'Works from your bag: gather sand, clay and ore faster.' },
   cookpot:    { desc: 'A squat clay pot on three stones.', use: 'Add 3 ingredients and wood; cooks 2 servings into bowls.' },
   bowl:       { desc: 'A little carved bowl.', use: 'Collect a meal from the Cooking Pot.' },
@@ -160,6 +191,13 @@ export const ITEM_TEXT = Object.freeze({
   shell:      { desc: 'A bright, sun-bleached shell.', use: 'Pim takes these as coin at his trading barge.' },
   shellwreath:{ desc: 'A rope wreath set with bright shells.', use: 'Decorates the raft; place it on a tile.' },
   glassfloat: { desc: 'A blue glass float in a rope net.', use: 'A rare keepsake from Pim; place it on a tile.' },
+
+  // [recycler] floating junk + Sorting Tub
+  oldboot:    { desc: 'A soggy old boot fished from the sea.', use: 'Sort it in a Sorting Tub for 2 plastic.' },
+  tincan:     { desc: 'A dented tin can fished from the sea.', use: 'Sort it in a Sorting Tub for 2 scrap.' },
+  seajar:     { desc: 'A cloudy glass jar fished from the sea.', use: 'Sort it in a Sorting Tub for 2 sand.' },
+  recycler:   { desc: 'A hand-cranked sorting tub.', use: 'Turns junk into scrap, plastic and sand. No fuel.' },
+  gametable:  { desc: 'A low driftwood table with a board inlay.', use: 'Press E to play draughts or noughts and crosses.' },
 });
 
 const TOOLISH = new Set(['hook', 'hammer', 'fishingrod', 'rod', 'axe', 'spear']);
@@ -396,13 +434,13 @@ export const ITEM_SOURCE = Object.freeze({
   mixcup:     Object.freeze({ tag: 'juicer', how: 'Press E on a juicer with a cup of fresh water and 2 fruit.' }), // [juicer]
   wood:    Object.freeze({ tag: 'found floating', how: 'Hook floating planks. Barrels hold more.' }),
   leaf:    Object.freeze({ tag: 'floating, palm', how: 'Hook floating leaf bundles, or harvest a grown palm.' }),
-  plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too.' }),
-  scrap:   Object.freeze({ tag: 'found floating', how: 'Hook floating scrap. Barrels hold some too.' }),
+  plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too, or sort junk in a Sorting Tub.' }),
+  scrap:   Object.freeze({ tag: 'found floating', how: 'Hook floating scrap. Barrels hold some too, or sort junk in a Sorting Tub.' }),
   seed:    Object.freeze({ tag: 'barrels, palm', how: 'Hook floating barrels, or harvest a grown palm.' }),
   fish:    Object.freeze({ tag: 'fishing rod', how: 'Cast the Fishing Rod into the sea and wait for a bite.' }),
   water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a Filter Cup at the sea.' }),
   // raft-master materials (items.js): barrels, islands, the seafloor and the stations
-  sand:        Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels, scoop it on an island or dive for it.' }),
+  sand:        Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels, scoop it on an island or dive for it, or sort junk in a Sorting Tub.' }),
   clay:        Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
   stone:       Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels or gather rocks on an island.' }),
   metalore:    Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
@@ -412,6 +450,7 @@ export const ITEM_SOURCE = Object.freeze({
   metalingot:  Object.freeze({ tag: 'smelter, kiln', how: 'Smelt metal ore in a smelter or a Seaside Kiln.' }),
   copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in a smelter.' }),
   glass:       Object.freeze({ tag: 'smelter, kiln', how: 'Melt sand in a smelter or a Seaside Kiln.' }),
+  stormshard:  Object.freeze({ tag: 'lightning rod', how: 'Place a Lightning Rod; storms charge it with shards (E to collect).' }),
   saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
   freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
@@ -422,6 +461,7 @@ export const ITEM_SOURCE = Object.freeze({
   // raft animals (animals.js)
   puffegg:     Object.freeze({ tag: 'puffhen', how: 'Place a Nest Box; a puffhen moves in and lays eggs. Press E on the nest to collect.' }),
   feather:     Object.freeze({ tag: 'puffhen', how: 'Sometimes left with the eggs in a puffhen nest box; collect with E.' }),
+  milk:        Object.freeze({ tag: 'goat', how: 'Place a Hay Corner; a goat moves in. Hold a Wooden Pail and press E on it.' }),
   // shark lane (shark.js): harvest the beaten shark with E
   sharkmeat:   Object.freeze({ tag: 'beaten shark', how: 'Fight off the shark with a spear, then press E on its body.' }),
   sharkhead:   Object.freeze({ tag: 'beaten shark', how: 'Harvested with the meat from a beaten shark (E).' }),
@@ -436,6 +476,10 @@ export const ITEM_SOURCE = Object.freeze({
   meal_fishbowl: Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: cooked fish + palm leaf + seed; collect with a bowl.' }),
   meal_custard:  Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: puff egg + seed + fresh water; collect with a bowl.' }),
   meal_stew:     Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: cooked fish + puff egg + seaweed; collect with a bowl.' }),
+
+  oldboot:     Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }), // [recycler]
+  tincan:      Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }),
+  seajar:      Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }),
 });
 
 /**

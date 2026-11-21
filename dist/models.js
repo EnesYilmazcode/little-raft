@@ -590,6 +590,54 @@ const B = {
     for (let i = 0; i < 3; i++) K.add(between([0, 0.055, 0], [Math.cos(i * 2.1) * 0.02, 0.12, Math.sin(i * 2.1) * 0.02], 0.007, 0.006, 5), i ? C.stem : C.beetLight, {});
     K.pop();
   },
+  // [recycler] floating junk: soggy but cheerful, sized like the plastic jug
+  oldboot(K) {
+    K.push([0, 0, 0], [0, 0.3, 0.06]);
+    K.add(rbox(0.32, 0.045, 0.125, 0.018, K.hero), 0x2f3a3c, { m: 'flat', p: [0.01, 0.0225, 0], col: (c, x, y) => { if (y < -0.01) c.multiplyScalar(0.8); if (Math.sin(x * 120) > 0.6 && y < 0) c.multiplyScalar(0.85); } });
+    K.add(rbox(0.25, 0.085, 0.115, 0.03, K.hero), 0x8a6242, { m: 'cloth', p: [0.03, 0.085, 0], col: (c, x, y) => { if (x > 0.08) c.multiplyScalar(1.08); } });
+    K.add(new T.SphereGeometry(0.06, K.seg(10), K.seg(6), 0, Math.PI * 2, 0, Math.PI / 2), 0x94694a, { m: 'cloth', p: [0.11, 0.045, 0], s: [1.15, 1.05, 0.98] });
+    K.add(lathe([[0, 0], [0.064, 0], [0.066, 0.06], [0.06, 0.12], [0.064, 0.16], [0.07, 0.17], [0.056, 0.17], [0.05, 0.02], [0, 0.02]], K.seg(12)), 0x7d5a3f, { m: 'cloth', p: [-0.075, 0.1, 0], s: [1, 1, 0.9], col: (c, x, y) => { if (y > 0.155) c.multiplyScalar(0.78); c.lerp(_c2.set(C.clothPatch), 0.12 * Math.max(0, Math.sin(y * 60))); } });
+    for (let i = 0; i < 3; i++) K.add(new T.TorusGeometry(0.014, 0.0045, 4, K.seg(8)), C.cloth, { p: [-0.012 - i * 0.004, 0.13 + i * 0.04, 0], r: [0, Math.PI / 2, 0], s: [1, 1.3, 1], jit: 0 });
+    K.add(between([-0.02, 0.135, -0.012], [-0.01, 0.12, 0.016], 0.004, 0.004, 4), C.cloth, { jit: 0 });
+    K.add(tube([[-0.07, 0.26, 0.01], [-0.06, 0.31, 0.03], [-0.02, 0.33, 0.05], [0.02, 0.31, 0.07]], 0.008, K.seg(10), 4), C.leaf, { m: 'leaf', col: (c, x, y, z, u, v) => c.lerp(_c2.set(C.leafLight), v * 0.6) });
+    K.add(blade(0.07, 0.03, 3, 0.2, 0.3), C.leafDark, { m: 'leaf', p: [-0.075, 0.265, -0.01], r: [-0.9, 2.4, 0], jit: 0.05 });
+    K.pop();
+    K.ud.floatY = 0.04;
+  },
+  tincan(K) {
+    const R = 0.062, L = 0.17, gap = 1.2, a0 = Math.PI * 1.5;
+    K.push([0, R + 0.004, 0], [0, 0.4, Math.PI / 2]);
+    const g = cyl(R, R, L, K.seg(10), 4, true), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { // one soft dent in the bare strip
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(x, z), da = Math.abs(((a - a0 + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      const d = 1 - 0.16 * smooth(0.7, 0, da) * smooth(L * 0.42, 0, Math.abs(y));
+      p.setXYZ(i, x * d, y, z * d);
+    }
+    g.computeVertexNormals();
+    K.add(g, C.metal, { m: 'metal', col: (c, x, y) => { if (Math.sin(y * 260) > 0.7) c.multiplyScalar(0.86); } });
+    for (const s of [-1, 1]) {
+      K.add(new T.TorusGeometry(R, 0.006, 4, K.seg(12)), 0xb3bcc0, { m: 'metal', p: [0, s * L / 2, 0], r: [Math.PI / 2, 0, 0] });
+      K.add(new T.CircleGeometry(R - 0.002, K.seg(12)), 0x9aa4a8, { m: 'metal', p: [0, s * (L / 2 - 0.004), 0], r: [-s * Math.PI / 2, 0, 0], col: (c, x, y) => { if (Math.hypot(x, y) > R * 0.7 && Math.hypot(x, y) < R * 0.8) c.multiplyScalar(0.8); } });
+    }
+    // pale teal label with a gap where the dent is, one corner peeling up
+    K.add(new T.CylinderGeometry(R + 0.002, R + 0.002, L * 0.6, K.seg(14), 1, true, a0 + gap / 2, Math.PI * 2 - gap), 0x9fd6d0, { m: 'cloth', col: (c, x, y) => { if (Math.abs(y) < 0.01) c.set(C.white); else if (Math.abs(y) < 0.016) c.set(C.teal); } });
+    const fa = a0 + gap / 2;
+    K.add(new T.PlaneGeometry(0.03, L * 0.24), 0x9fd6d0, { m: 'cloth', p: [Math.sin(fa) * (R + 0.012), L * 0.18, Math.cos(fa) * (R + 0.012)], r: [0, fa + 0.6, 0.15] });
+    K.pop();
+    K.ud.floatY = 0.04;
+  },
+  seajar(K) {
+    const prof = [[0, 0], [0.06, 0], [0.072, 0.012], [0.078, 0.05], [0.078, 0.13], [0.07, 0.165], [0.05, 0.185], [0.048, 0.2], [0.054, 0.205], [0.054, 0.215], [0.046, 0.218], [0, 0.218]];
+    K.push([-0.11, 0.078, 0], [0.3, 0, -Math.PI / 2 + 0.12]);
+    K.add(lathe(prof, K.seg(14)), 0x9fd0c8, { m: 'plastic', perFace: true, col: (c, x, y, z) => {
+      c.lerp(_c2.set(0xdff3ee), smooth(0.04, 0.2, y) * 0.55);
+      if (hash3(x * 50, y * 50, z * 50) > 0.88) c.lerp(_c2.set(C.white), 0.6);
+    } });
+    K.add(cyl(0.044, 0.04, 0.04, K.seg(10)), C.cork, { m: 'flat', p: [0, 0.232, 0], col: (c, x, y, z) => c.multiplyScalar(0.88 + hash3(x * 80, y * 80, z * 80) * 0.24) });
+    K.add(new T.TorusGeometry(0.052, 0.006, 4, K.seg(12)), C.rope, { p: [0, 0.195, 0], r: [Math.PI / 2, 0, 0], col: ropeCol(0.33, 0.02) });
+    K.pop();
+    K.ud.floatY = 0.04;
+  },
   potato(K) {
     const g = new T.IcosahedronGeometry(0.1, K.lod ? 1 : 2), p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
