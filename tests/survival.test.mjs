@@ -502,3 +502,50 @@ test('HookCast: caught items that vanish from the world are not paid out', () =>
   assert.equal(events.length, 1);
   assert.deepEqual(events[0].items, [{ id: 'b', token: 'tb', type: 'plastic' }]);
 });
+
+// ================================================================= Ocean
+
+test('Ocean: allocation-free getHeight/getSlope/sample match the reference Gerstner sampler exactly', async () => {
+  const { createOcean } = await import(new URL('ocean.js', base));
+  const ocean = createOcean(T);
+  // Reference copy of the original object-based CPU sampler.
+  const WAVES = [[1.0, 0.35, 0.10, 31.0, 0.50], [0.7, 0.90, 0.065, 19.0, 0.60],
+    [-0.45, 1.0, 0.05, 12.5, 0.60], [0.95, -0.55, 0.04, 9.2, 0.50]];
+  const pre = WAVES.map(([dx, dz, a, l, q]) => {
+    const len = Math.hypot(dx, dz), k = (Math.PI * 2) / l;
+    return { dx: dx / len, dz: dz / len, a, k, c: Math.sqrt(9.8 / k) * 0.6, q };
+  });
+  const displace = (x, z, t, out) => {
+    let ox = 0, oy = 0, oz = 0;
+    for (const w of pre) {
+      const f = w.k * (w.dx * x + w.dz * z - w.c * t), co = Math.cos(f);
+      ox += w.dx * w.q * w.a * co; oz += w.dz * w.q * w.a * co; oy += w.a * Math.sin(f);
+    }
+    out[0] = ox; out[1] = oy; out[2] = oz;
+  };
+  const tmp = [0, 0, 0];
+  const refH = (x, z, t) => {
+    let px = x, pz = z;
+    for (let i = 0; i < 2; i++) { displace(px, pz, t, tmp); px = x - tmp[0]; pz = z - tmp[2]; }
+    displace(px, pz, t, tmp);
+    return ocean.mesh.position.y + tmp[1];
+  };
+  const refS = (x, z, t, e = 0.6) => ({
+    x: (refH(x + e, z, t) - refH(x - e, z, t)) / (2 * e), z: (refH(x, z + e, t) - refH(x, z - e, t)) / (2 * e),
+  });
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const out = { h: 0, sx: 0, sz: 0 }, so = { x: 0, z: 0 };
+  for (let i = 0; i < 2000; i++) {
+    const x = (rnd() - 0.5) * 400, z = (rnd() - 0.5) * 400, t = rnd() * 3000;
+    ocean.update(t);
+    const h = refH(x, z, t), s = refS(x, z, t), s2 = refS(x, z, t, 2.2);
+    assert.ok(Math.abs(ocean.getHeight(x, z) - h) <= 1e-9);
+    const g = ocean.getSlope(x, z);
+    assert.ok(Math.abs(g.x - s.x) <= 1e-9 && Math.abs(g.z - s.z) <= 1e-9);
+    assert.equal(ocean.getSlope(x, z, undefined, 2.2, so), so);
+    assert.ok(Math.abs(so.x - s2.x) <= 1e-9 && Math.abs(so.z - s2.z) <= 1e-9);
+    assert.equal(ocean.sample(x, z, out), out);
+    assert.ok(Math.abs(out.h - h) <= 1e-9 && Math.abs(out.sx - s.x) <= 1e-9 && Math.abs(out.sz - s.z) <= 1e-9);
+  }
+});

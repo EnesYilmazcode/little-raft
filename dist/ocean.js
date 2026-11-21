@@ -203,40 +203,57 @@ export function createOcean(T, options = {}) {
   }
 
   // CPU mirror of the vertex shader (inverts horizontal Gerstner shift with 2 iterations).
-  const pre = WAVES.map(([dx, dz, a, l, q]) => {
+  // Wave params are flattened into one Float64Array (stride 5: k, dx, dz, c, dx*q*a / dz*q*a / a)
+  // and sampled with indexed loops + scalar locals so per-frame calls allocate nothing.
+  // Operation order matches the original object-based version exactly (bit-identical results).
+  const NW = WAVES.length;
+  const W = new Float64Array(NW * 6);
+  WAVES.forEach(([dx, dz, a, l, q], i) => {
     const len = Math.hypot(dx, dz);
+    const ndx = dx / len, ndz = dz / len;
     const k = (Math.PI * 2) / l;
-    return { dx: dx / len, dz: dz / len, a, k, c: Math.sqrt(9.8 / k) * SPEED, q };
+    const o = i * 6;
+    W[o] = k; W[o + 1] = ndx; W[o + 2] = ndz; W[o + 3] = Math.sqrt(9.8 / k) * SPEED;
+    W[o + 4] = ndx * q * a; W[o + 5] = ndz * q * a;
   });
-  function displace(x, z, t, out) {
-    let ox = 0, oy = 0, oz = 0;
-    for (const w of pre) {
-      const f = w.k * (w.dx * x + w.dz * z - w.c * t);
-      const co = Math.cos(f);
-      ox += w.dx * w.q * w.a * co;
-      oz += w.dz * w.q * w.a * co;
-      oy += w.a * Math.sin(f);
-    }
-    out[0] = ox; out[1] = oy; out[2] = oz;
-    return out;
-  }
-  const tmp = [0, 0, 0];
+  const AMP = new Float64Array(WAVES.map((w) => w[2]));
   function getHeight(x, z, t = time) {
     let px = x, pz = z;
-    for (let i = 0; i < 2; i++) {
-      displace(px, pz, t, tmp);
-      px = x - tmp[0];
-      pz = z - tmp[2];
+    for (let it = 0; it < 2; it++) {
+      let ox = 0, oz = 0;
+      for (let i = 0, o = 0; i < NW; i++, o += 6) {
+        const co = Math.cos(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+        ox += W[o + 4] * co;
+        oz += W[o + 5] * co;
+      }
+      px = x - ox;
+      pz = z - oz;
     }
-    displace(px, pz, t, tmp);
-    return mesh.position.y + tmp[1];
+    let oy = 0;
+    for (let i = 0, o = 0; i < NW; i++, o += 6) {
+      oy += AMP[i] * Math.sin(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+    }
+    return mesh.position.y + oy;
   }
   // Approximate surface slope for tilting floating objects: returns {x, z} tilt gradient.
-  function getSlope(x, z, t = time, e = 0.6) {
-    return {
-      x: (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e),
-      z: (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e),
-    };
+  // Pass `out` to reuse an object (its .x/.z are written and it is returned) instead of allocating.
+  function getSlope(x, z, t = time, e = 0.6, out) {
+    const sx = (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e);
+    const sz = (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e);
+    if (!out) return { x: sx, z: sz };
+    out.x = sx; out.z = sz;
+    return out;
+  }
+  // Combined query: sample(x, z, out?, t = now, e = 0.6) -> {h, sx, sz} where
+  //   h  === getHeight(x, z, t)
+  //   sx === getSlope(x, z, t, e).x,  sz === getSlope(x, z, t, e).z  (same central difference)
+  // Replaces a getHeight + getSlope pair with one call; pass a reused `out` to avoid allocation.
+  function sample(x, z, out, t = time, e = 0.6) {
+    const r = out ?? { h: 0, sx: 0, sz: 0 };
+    r.h = getHeight(x, z, t);
+    r.sx = (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e);
+    r.sz = (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e);
+    return r;
   }
 
   function dispose() {
@@ -244,5 +261,5 @@ export function createOcean(T, options = {}) {
     material.dispose();
   }
 
-  return { mesh, update, getHeight, getSlope, uniforms, material, dispose };
+  return { mesh, update, getHeight, getSlope, sample, uniforms, material, dispose };
 }
