@@ -555,22 +555,25 @@ export function craftButtonText(state, done = null) {
   return state === 'ready' ? 'Craft' : state === 'full' ? 'Bag is full' : 'Missing materials';
 }
 
-/** Craft button hint: how many a hold would make right now ('' when one or none). */
-export function holdHint(times, cap = HOLD.max) {
+/** Craft button hint: how many items a hold would make right now ('' when one craft or none).
+ *  `times` and `cap` count crafts; `out` = items per craft, so the hint is in items like every other label. */
+export function holdHint(times, cap = HOLD.max, out = 1) {
   const n = Math.min(Number.isFinite(times) ? Math.floor(times) : cap, cap);
-  return n > 1 ? `hold: up to ${n}` : '';
+  const per = Math.max(1, Math.floor(Number(out) || 1));
+  return n > 1 ? `hold: up to ${n * per}` : '';
 }
 
 /**
  * Craft button text while a hold is running ('Crafting 2 / 4') and just after it ends ('Crafted 4').
- * `out` = items each craft makes, so a nail recipe (x3) reads 'Crafted 12' after 4 crafts.
+ * Counts items, not crafts: `out` = items each craft makes, so a nail recipe (x3) capped at 4 crafts
+ * reads 'Crafting 6 / 12' after 2 and 'Crafted 12' after 4.
  */
 export function holdLabel(done, cap, holding = true, out = 1) {
   const d = Math.max(0, Math.floor(Number(done) || 0));
   const per = Math.max(1, Math.floor(Number(out) || 1));
   if (!holding) return d > 0 ? `Crafted ${d * per}` : '';
   const c = Math.max(d, Math.floor(Number(cap) || 0));
-  return c > 1 ? `Crafting ${d} / ${c}` : 'Crafting';
+  return c > 1 ? `Crafting ${d * per} / ${c * per}` : 'Crafting';
 }
 
 // ---- tooltip facts ----
@@ -619,4 +622,43 @@ export function tipFacts(kind, recipes, nameOf = k => k, max = 4) {
     get = `Make it at the ${nameOf(made.station)}${cost ? ` from ${cost}` : ''}.`;
   }
   return { get, uses };
+}
+
+// ---- recipe list chips and search ----
+
+/** Compact "have/need" for a recipe list chip; a huge stash reads "999+" so chips keep their width. */
+export const chipLabel = row => `${row.have > 999 ? '999+' : row.have}/${row.need}`;
+
+/** One chip per ingredient for a recipe list row, in recipe order: {kind, label, enough}. */
+export function recipeChips(rows) {
+  return (rows || []).map(x => ({ kind: x.kind, label: chipLabel(x), enough: !!x.enough }));
+}
+
+/** Search text, lower-cased and split into words ('' -> []). */
+export const queryWords = q => String(q ?? '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+
+/** Does a recipe match a search? Every word must appear in its name, its output or an ingredient name. */
+export function recipeMatches(recipe, query, nameOf = k => k) {
+  const words = queryWords(query);
+  if (!words.length) return true;
+  if (!recipe) return false;
+  const kinds = [recipe.out?.kind, ...(recipe.reqs || []).map(q => q.kind)].filter(Boolean);
+  const hay = [recipe.name, ...kinds, ...kinds.map(k => nameOf(k))].filter(Boolean).join(' ').toLowerCase();
+  return words.every(w => hay.includes(w));
+}
+
+// ---- recipe text ----
+// Recipes whose id differs from what they make (a batch, or another route to an item) get their own
+// words: the output kind's text would describe the wrong thing (Glass Cups is not "an empty plastic cup").
+export const RECIPE_TEXT = Object.freeze({
+  glasscups:    { desc: 'Three clear cups from one pane of glass.', use: 'Click the sea to scoop water.' },
+  brickplanter: { desc: 'Two brick planters, each with a small palm tree.', use: 'A bit of island on your raft; place on a tile.' },
+  egglamp:      { desc: 'A post lantern lit by a glowing puff egg.', use: 'Lights the raft at night; place on a tile.' },
+  coursekit:    { desc: 'A buoy race kit: a start flag with its course board.', use: 'Place it, pick a course on the board, press E on the pole to race.' },
+});
+
+/** Detail text for a recipe ({id, out:{kind}}): its own words first, then the item it makes. */
+export function recipeText(r) {
+  if (!r) return null;
+  return RECIPE_TEXT[r.id] || ITEM_TEXT[r.id] || ITEM_TEXT[r.out?.kind] || null;
 }
