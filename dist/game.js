@@ -375,7 +375,7 @@ export function mount(transfer = null) {
     get elapsed() { return elapsed; }, get options() { return options; }, get other() { return other; },
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
     play: (ev, s) => play(ev, s), // [treasure-hook] local sound only (finder beeps), never sent
-    esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(),
+    esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(), hasGrill: (x, z) => !!fc?.hasGrill(x, z),
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
   };
   function init() {
@@ -515,8 +515,8 @@ export function mount(transfer = null) {
     wateringGroups.clear();
     raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
     for (const d of world.decor) {
-      let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
-      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); detailed.rotation.y = d.rot || 0; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; }
+      let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
+      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot) detailed.rotation.y = d.rot; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; } // decor-pack models keep their own quarter-turn unless placement rotated them
       const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;
       if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
       if (d.type === 'palm') { cylinder(.38, .28, .5, '#db8764', 0, .25, 0, g); palm(g, 0, .5, 0); }
@@ -847,7 +847,7 @@ export function mount(transfer = null) {
   function wearHook(bag, slot, actor) {
     const i = hookIndex(bag, slot); if (i < 0) return;
     const s = bag.slots[i], before = clamp(s.durability ?? MAX_HEALTH, 0, MAX_HEALTH);
-    s.durability = Math.max(0, before - (wearPerUse(s.kind) || WEAR_PER_CATCH)); // [progression-hook]
+    s.durability = Math.max(0, before - (wearPerUse(s.kind) || WEAR_PER_CATCH) * (bag.count('sinker') > 0 ? .5 : 1)); // [progression-hook]; kiln: a Line Sinker in the bag halves hook wear
     if (before > 0 && s.durability === 0) emit({kind:'notice', text:'Hook worn out: shorter throws. R to repair'}, actor);
     else if (before > 25 && s.durability <= 25) emit({kind:'notice', text:'Hook getting worn. R repairs: ' + Object.entries(repairCost(s.kind) ?? REPAIR_COST).map(([k, n]) => n + ' ' + itemName(k)).join(', ')}, actor); // [progression-hook]
   }

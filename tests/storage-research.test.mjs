@@ -21,6 +21,10 @@ const freshWorld = () => ({ tiles: Array.from({ length: 9 }, (_, i) => [i % 3 - 
 const bagFrom = (slots) => { const s = new Array(SLOT_COUNT).fill(null); slots.forEach((v, i) => { s[i] = v; }); return new Bag({ slots: s, selected: 0 }); };
 const allRecipes = Object.keys(RECIPES);
 const nonStarter = allRecipes.filter(id => !STARTER.includes(id) && TABLE_TREE.has(id)); // see setOwnedElsewhere below
+// Recipe ids that existed before the content packs; later content recipes join the tree by cost, so compare against these only.
+const ORIG = new Set(['rope', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'research', 'receiver', 'antenna', 'cup', 'purifier']);
+const orig = a => a.filter(id => ORIG.has(id));
+const ORIG_NAMES = new Set([...ORIG].map(id => `New recipe: ${RECIPES[id]?.name}!`));
 const env = (decor, pos = null) => ({ decorAt: (x, z) => decor.find(d => d.x === x && d.z === z)?.type ?? null, pos: () => pos });
 const total = (...arrs) => { const out = {}; for (const a of arrs) for (const s of a) if (s) out[s.kind] = (out[s.kind] ?? 0) + s.count; return out; };
 const emptyState = () => stateFrom({ v: 1, chests: {}, seen: [], learned: [], r: 0 }, 'save', freshWorld());
@@ -66,7 +70,7 @@ test('cleanSlice: a JSON round trip is stable', () => {
   const st = stateFrom({ chests: { '1,0': [{ kind: 'wood', count: 3 }, { kind: 'hook', count: 1, durability: 40 }] }, seen: ['wood', 'leaf'], learned: ['bench'], r: 9 }, 'save', freshWorld());
   const once = sliceOf(st), twice = sliceOf(stateFrom(JSON.parse(JSON.stringify(once)), 'save', freshWorld()));
   assert.deepEqual(twice, once);
-  assert.deepEqual(once.learned, ['bench', 'palm']); // recomputed from seen
+  assert.deepEqual(orig(once.learned), ['bench', 'palm']); // recomputed from seen
 });
 
 test('cleanSlice: caps the number of chests at 400', () => {
@@ -264,10 +268,10 @@ test('research: wood unlocks bench, then scrap unlocks lantern; repeats and non-
   const bag = bagFrom([{ kind: 'hook', count: 1 }, { kind: 'wood', count: 3 }, { kind: 'scrap', count: 1 }]);
   const research = (slot, kind) => applyStorageAction(st, { kind: 'storage.research', x: 0, z: 1, slot, expect: { kind } }, 'host', bag, env(crate));
   let r = research(1, 'wood');
-  assert.equal(r.ok, true); assert.deepEqual(r.learned, ['bench']);
+  assert.equal(r.ok, true); assert.deepEqual(orig(r.learned), ['bench']);
   assert.equal(bag.count('wood'), 2);
   r = research(2, 'scrap');
-  assert.deepEqual(r.learned, ['lantern']); assert.equal(bag.slots[2], null);
+  assert.deepEqual(orig(r.learned), ['lantern']); assert.equal(bag.slots[2], null);
   const before = JSON.stringify([st, bag.slots]);
   assert.equal(research(1, 'wood').reason, 'nothing');   // already researched
   assert.equal(research(0, 'hook').reason, 'nothing');   // not an ingredient of a locked recipe
@@ -296,8 +300,10 @@ test('module: research emits one notice per new recipe to everyone; craftLocked 
   bags.host.add('wood', 2); bags.host.add('rope', 1); bags.host.add('leaf', 1);
   const slotOf = k => bags.host.slots.findIndex(s => s?.kind === k);
   assert.equal(mod.action({ kind: 'storage.research', x: 0, z: 1, slot: slotOf('rope'), expect: { kind: 'rope' } }, 'host', bags.host), true);
-  assert.equal(emits.length, 1); // "Researched Rope!" only to the actor, nothing new yet
-  assert.equal(emits[0].to, 'host');
+  const own = emits.filter(e => !/^New recipe: /.test(e.e.text)); // a later content recipe may need rope alone
+  assert.equal(own.length, 1); // "Researched Rope!" only to the actor
+  assert.equal(own[0].to, 'host');
+  assert.ok(!emits.some(e => ORIG_NAMES.has(e.e.text))); // no original recipe needs rope alone
   emits.length = 0;
   mod.action({ kind: 'storage.research', x: 0, z: 1, slot: slotOf('wood'), expect: { kind: 'wood' } }, 'host', bags.host);
   assert.deepEqual(emits.map(e => e.e.text).sort(), ['New recipe: Bench!', 'New recipe: Fishing Rod!']); // net also needs nails now
@@ -460,6 +466,6 @@ test('setOwnedElsewhere: recipes owned by the progression catalogue are never lo
     assert.ok(locked.length > 0);
     for (const id of locked) assert.ok(!ITEMS[id], `${id} is a catalogue recipe`);
     assert.equal(SR.isLearned(st, 'sail'), true);
-    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), []);
+    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), ['fern', 'hammock', 'pennant', 'rug', 'sign']); // only the decor pack's table-tree recipes remain
   } finally { SR.setOwnedElsewhere(id => !TABLE_TREE.has(id)); }
 });

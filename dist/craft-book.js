@@ -23,6 +23,9 @@ const CATEGORY_OF = Object.freeze({
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
+  rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
+  kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
+  nestbox: 'survival', cushion: 'building', // raft animals
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -84,6 +87,20 @@ export const ITEM_TEXT = Object.freeze({
   finder:     { desc: 'A driftwood wand with a brass coil.', use: 'Hold it on island sand: it ticks faster near buried bundles.' },
   spade:      { desc: 'A little wooden spade with a metal blade.', use: 'E on island sand digs up bundles (or a pinch of sand).' },
   maptable:   { desc: 'A little driftwood chart table with brass fittings.', use: 'Place it, press E: see charted islands, drop pins, set a course.' },
+  rug:        { desc: 'A woven mat of leaves and rope.', use: 'Place it on a deck tile; E turns it.' },
+  pennant:    { desc: 'A little flag that flutters in the wind.', use: 'Place it on the raft; it shows which way the wind blows.' },
+  fern:       { desc: 'A post with a hanging fern basket.', use: 'Place it on the raft for some green.' },
+  chime:      { desc: 'Metal tubes that tinkle in the breeze.', use: 'Place it on the raft; E turns it.' },
+  hammock:    { desc: 'A rope hammock between two posts.', use: 'Place it on the raft for a cosy corner.' },
+  pots:       { desc: 'Three clay pots with little flowers.', use: 'Place it on the raft; E turns it.' },
+  sign:       { desc: 'A wooden board you can write on.', use: 'Place it, then press E to write up to three lines.' },
+  kiln:       { desc: 'A stone and clay kiln with a wood fire.', use: 'Place it, load ore, sand or clay and some wood; collect ingots, glass and bricks.' },
+  glasslamp:  { desc: 'A lantern with clear glass panes.', use: 'Place it for a warm light on the raft.' },
+  sinker:     { desc: 'A small metal weight for the hook line.', use: 'Keep it in your bag: the hook wears half as fast.' },
+  puffegg:    { desc: 'A speckled egg from a puffhen.', use: 'Make an Egg Lantern.' },
+  feather:    { desc: 'A soft puffhen feather.', use: 'Stuff a Feather Cushion.' },
+  nestbox:    { desc: 'A cosy box of straw for puffhens.', use: 'Place it on the raft and a puffhen may come to stay.' },
+  cushion:    { desc: 'A plump cushion stuffed with feathers.', use: 'Place it on the raft for a soft seat.' },
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
