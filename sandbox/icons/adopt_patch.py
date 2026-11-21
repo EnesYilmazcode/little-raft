@@ -131,6 +131,6 @@ if __name__ == '__main__':
         (DIST / 'game.js').write_text(game)
         (DIST / 'icon-atlas.js').write_text((HERE / 'icon-atlas.js').read_text())
         (DIST / 'item-icons.js').write_text(items)
-        print('applied: dist/icon-atlas.js, dist/item-icons.js, dist/survival-ui.js, dist/game.js (build', b + ')')
+        print('applied to', DIST, ': icon-atlas.js, item-icons.js, survival-ui.js, game.js (build', b + ')')
     else:
         print('ok: all anchors match', DIST, 'exactly once; item-icons.js imports present:', ' '.join(mods), '(build', b + ')')
