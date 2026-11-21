@@ -1241,6 +1241,15 @@ export function mount(transfer = null) {
       if (!isDrop) award({kind:'collect'}); content?.observe({kind:'collect', type:it.type, loot, net:!!a.net}, actor); // [tasks]
       return;
     }
+    if (a.kind === 'drop') { // [drop] host-authoritative: Q / drag out of the bag; the item floats ~1 m ahead for DROP_TTL s
+      const p = actor === 'guest' ? other : physics;
+      const r = planDrop(a, bag, p, world.items, hasTile);
+      if (!r.ok) { if (r.reason === 'crowded') emit({kind:'notice', text:'Too much is floating here already'}, actor); else if (r.reason === 'nowater') emit({kind:'notice', text:'No open water to drop into'}, actor); return; }
+      const taken = takeFromSlot(bag, r.slot, r.n);
+      world.items.push(makeDrop(nextDropId(world.items), newToken(), taken, r.x, r.z, Math.random() * 6)); syncItems();
+      emit({kind:'notice', text:`Dropped ${taken.count > 1 ? taken.count + ' ' : ''}${itemName(taken.kind)}`, sound:'splash'}, actor);
+      return;
+    }
     if (a.kind === 'build') {
       let placedText = null;
       if (!isInt(a.x) || !isInt(a.z)) return;
