@@ -158,7 +158,7 @@ export function createContent(ctx, features = FEATURES) {
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
     placed(type, x, z, actor) { for (const m of mods) call(m, 'placed', type, x, z, actor); }, // [bed]
     respawnSpot: out => first('respawnSpot', out), // [bed]
-    ride: (dt, p, inp) => !!first('ride', dt, p, inp), riding: () => !!first('riding'), // [zipline] [sit] content hook: first module to take over motion wins (glide line, seat, driftboard)
+    ride: (dt, p, inp) => !!first('ride', dt, p, inp), riding: () => !!first('riding'), hanging: () => mods.some(m => m.name === 'zipline' && !!call(m, 'riding')), // [zipline] hanging = glide line only (the driftboard rides standing) [sit] content hook: first module to take over motion wins (glide line, seat, driftboard)
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     placeBlock: (kind, x, z) => first('placeBlock', kind, x, z), // [fishtrap] reason a decor can't go on (x, z), or null
     beforeUndecor: (d, actor) => first('beforeUndecor', d, actor) || (NO_UNDECOR.has(d?.type) ? 'This one can’t be picked up yet' : null), // [undecor] + modules without undecor hooks keep their stored items
