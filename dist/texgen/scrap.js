@@ -7,7 +7,7 @@ export const panelEdge = true;
 // Roughness: steel ~0.42-0.52, scratches ~0.38, rust 0.88-0.94, paint ~0.86.
 export const normalStrength = 7;
 
-const STEEL = [0.50, 0.515, 0.53], RUST_D = [0.44, 0.28, 0.19], RUST_L = [0.56, 0.36, 0.245], DRIPC = [0.52, 0.37, 0.27];
+const STEEL = [0.55, 0.565, 0.58], RUST_D = [0.43, 0.29, 0.21], RUST_L = [0.55, 0.38, 0.27], DRIPC = [0.52, 0.37, 0.27];
 const BLUE = [0.373, 0.498, 0.584], RED = [0.62, 0.38, 0.31], PIT = [0.40, 0.24, 0.15], HALO = [0.56, 0.47, 0.40];
 
 export default function generate(S, N) {
@@ -48,13 +48,13 @@ export default function generate(S, N) {
         for (let f = 0; f < 7; f++) { const A = LO[f], a = A[r0 + x0] + (A[r0 + x1] - A[r0 + x0]) * fx; lo[f] = a + (A[r1 + x0] + (A[r1 + x1] - A[r1 + x0]) * fx - a) * fy; } }
       // rust: thresholded fbm with a soft halo, lumpy and pitted inside
       const rn = lo[0] + (fine - 0.5) * 0.06;
-      const rust = smooth(0.53, 0.62, rn), halo = smooth(0.43, 0.56, rn) * (1 - rust);
+      const rust = smooth(0.56, 0.65, rn), halo = smooth(0.45, 0.59, rn) * (1 - rust);
       const deep = smooth(0.6, 0.7, rn), pit = rust < 0.01 ? 0 : rust * smooth(0.72, 0.85, vn(PIT_N, u * 40, v * 40));
       // rust run-off: thin vertical streaks hanging below rust patches
-      const drip = lo[6] < 0.46 || rust > 0.99 ? 0 : (1 - rust) * smooth(0.46, 0.58, lo[6]) * smooth(0.45, 0.7, vn(DRIP, u * 40, v * 3));
+      const drip = lo[6] < 0.49 || rust > 0.99 ? 0 : (1 - rust) * smooth(0.49, 0.61, lo[6]) * smooth(0.45, 0.7, vn(DRIP, u * 40, v * 3));
       // paint: faded patches with ragged chipped edges, kept off the rivet strip; rust eats through it
       const pn = lo[1] + (lo[5] - 0.5) * 0.14 + (fine - 0.5) * 0.05;
-      const paint = smooth(0.665, 0.68, pn) * (1 - smooth(0.52, 0.58, rn)) * (1 - strip);
+      const paint = smooth(0.665, 0.68, pn) * (1 - smooth(0.55, 0.61, rn)) * (1 - strip);
       const chip = smooth(0.62, 0.665, pn) * (1 - paint) * (1 - rust) * (1 - strip);
       const red = smooth(0.66, 0.7, lo[3]), sm = smooth(0.4, 0.6, lo[4]) * (1 - rust) * (1 - paint);
       // diagonal scratches (integer slopes and periods keep them seamless), clustered by a low-frequency mask

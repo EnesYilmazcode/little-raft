@@ -1,9 +1,9 @@
 // Plastic: crinkled, crumpled bag / sheet scrap. One tile = one scrap (repeat 1x1).
-// Height = big soft folds (periodic fbm, P=3, dominant) + crinkle tents from three warped Worley layers:
-// cells stretched along x (4x9), stretched along a diagonal (sheared 5x11 grid: X = 5(u+v), Y = 11(v-u))
-// and small square crinkles (P=14). f2-f1 makes tent facets meeting in creases, so wrinkles run in a few
-// pulled directions like a bag rather than an even crackle web. Creases whiten only faintly.
-// Colour: milky white #E4ECF0 -> pale blue #B4CFE0 in fold valleys. Roughness 0.3-0.42; alpha 0.86-0.98.
+// Height = big soft folds (periodic fbm P=3, dominant) + a few long pulled wrinkles (ridged fbm on a sheared
+// 3x7 grid) + crumple facets from three warped Worley layers of mixed size (P=5, 11, 23): f2-f1 tents meet in
+// straight creases, each facet tilted, mountain/valley flipped by a slow field. Creases are shading, not
+// white lines (only the biggest mountain creases whiten faintly), so it reads as a bag, not crackle glass.
+// Colour: milky white #E4ECF0 -> pale blue #B4CFE0 -> #93BAD6 in fold valleys. Roughness 0.3-0.4; alpha 0.86-0.98.
 export const normalStrength = 6;
 
 const C0 = [0xE4, 0xEC, 0xF0].map(v => v / 255), C1 = [0xB4, 0xCF, 0xE0].map(v => v / 255), C2 = [0x93, 0xBA, 0xD6].map(v => v / 255);
