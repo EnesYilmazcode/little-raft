@@ -10,7 +10,7 @@ export const normalStrength = 5;
 export default function generate(S, N) {
   const n = S * S, albedo = new Float32Array(n * 3), height = new Float32Array(n), rough = new Float32Array(n);
   const A = 9, B = 1, A2 = 18, B2 = 18;
-  const groove = [0.46, 0.37, 0.24], lo = [0.70, 0.58, 0.38], hi = [0.88, 0.77, 0.55], fleck = [0.93, 0.86, 0.68];
+  const groove = [0.36, 0.28, 0.17], lo = [0.70, 0.58, 0.38], hi = [0.88, 0.77, 0.55], fleck = [0.93, 0.86, 0.68];
   for (let y = 0; y < S; y++) {
     const v = y / S;
     for (let x = 0; x < S; x++) {

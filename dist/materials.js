@@ -19,13 +19,13 @@ export const PRESETS = {
   plank:   { cell: 'plank',   roughness: 1,    metalness: 0,    normalScale: 0.9, repeat: [1, 3] }, // deck board: u across (0.34 m), v along
   bark:    { cell: 'bark',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 4] }, // deck logs ~0.4 m round x 2 m
   plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
-  foliage: { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 0.7, repeat: [10, 5] }, // dense bush/island canopy, opaque
+  foliage: { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 0.7, repeat: [7, 4] }, // dense bush/island canopy, opaque
   leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], cutout: 0.5, side: 'double' },
   rope:    { cell: 'rope',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [3, 3] }, // tuned for deck lashing torus lay (~32 deg)
   scrap:   { cell: 'scrap',   roughness: 1,    metalness: 0.5,  normalScale: 1.0, repeat: [1, 1], metalMap: true }, // x metal mask in albedo alpha; capped: no env map in game
   sand:    { cell: 'sand',    roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [3, 3] },
   rock:    { cell: 'rock',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 2] },
-  foam:    { cell: 'foam',    roughness: 1,    metalness: 0,    normalScale: 0.3, repeat: [2, 2], transparent: true, depthWrite: false },
+  foam:    { cell: 'foam',    roughness: 1,    metalness: 0,    normalScale: 0.3, repeat: [1, 1], transparent: true, depthWrite: false },
   cloth:   { cell: 'cloth',   roughness: 1,    metalness: 0,    normalScale: 0.7, repeat: [2, 2], side: 'double' },
 };
 
@@ -34,8 +34,8 @@ export const PRESETS = {
 // ocean* = ocean.js uniforms retinted by applyOceanLook().
 export const LIGHTING = {
   background: '#c6e3f0', fog: '#c6e3f0', fogNear: 38, fogFar: 150,
-  hemiSky: '#bfe3ff', hemiGround: '#86b6bc', hemiIntensity: 1.1,
-  sun: '#ffe7c2', sunIntensity: 3.2, exposure: 1.05,
+  hemiSky: '#bfe3ff', hemiGround: '#6f9fa4', hemiIntensity: 1.1,
+  sun: '#ffe7c2', sunIntensity: 2.8, exposure: 1.0,
   skyDome: true, skyZenith: '#6fb4e6', skyCloudLit: '#ffffff', skyCloudShade: '#d3e3ee', skyCoverage: 0.42,
   oceanDeep: '#05497a', oceanShallow: '#13a0b0', oceanZenith: '#4f9fd6',
 };
@@ -60,7 +60,7 @@ const COLOR_TO_PRESET = new Map(Object.entries(COLOR_PRESETS).flatMap(([p, list]
 export const artEnabled = () => typeof location !== 'undefined' && /[?&]art(=1|&|$)/.test(location.search);
 
 const cache = new Map();
-const TINT = 0.65; // how far game palette colours pull a texture's own colour (1 = exact average)
+const TINT = 0.8; // how far game palette colours pull a texture's own colour (1 = exact average)
 const FRAG_HEAD = `
 uniform vec4 lrCell; // atlas cell: xy offset, zw size
 uniform float lrCut; // alpha cutout threshold (0 = off). Not material.alphaTest: three's shadow depth

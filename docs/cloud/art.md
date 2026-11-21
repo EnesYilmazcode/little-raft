@@ -46,13 +46,13 @@ All generators are deterministic and seamless, and each takes 6–26 ms.
 - **Shader patch:** a single patch makes every map read its own atlas cell with `fract()` + `textureGrad`, so cells repeat like ordinary textures with no mip seams. It also adds a per-material UV phase, reads roughness from the normal-atlas alpha, reads metalness from the albedo alpha (scrap), and applies an alpha cutout via the `lrCut` uniform.
   - Leaf cutout deliberately avoids `material.alphaTest`. With alphaTest, three's shadow depth material would copy the map and sample the whole atlas with leaf UVs.
 - **Programs:** all materials share programs under the key `lr-atlas-2`. Measured: 6 programs serve 13 materials. `onBeforeCompile` runs once per material, so each material keeps its own uniforms. **Bump the key whenever `patch()` changes.**
-- **`getMaterial(T, name, {color, repeat})`:** cached. With a game palette colour the texture is tinted: the texture's own average moves 65% of the way to the colour, with a clamped per-channel gain, so dark palette colours don't turn the texture to mud.
+- **`getMaterial(T, name, {color, repeat})`:** cached. With a game palette colour the texture is tinted: the texture's own average moves 80% of the way to the colour, with a clamped per-channel gain, so dark palette colours don't turn the texture to mud.
 - **`materialForColor(T, hex)`:** maps the game's palette hexes (`COLOR_PRESETS`) to presets. It also returns a soft self-lit white for the mesh clouds, and `null` for anything unknown (avatars, hook, UI ghosts).
 - **`LIGHTING` + `applyLighting(scene, renderer, L, {ocean, T})`:** the recommended rig:
-  - Sky-blue hemisphere light `#bfe3ff` with a sea-teal ground colour `#86b6bc` (×1.1).
-  - Warm sun `#ffe7c2` ×3.2, about 3x the fill.
+  - Sky-blue hemisphere light `#bfe3ff` with a sea-teal ground colour `#6f9fa4` (×1.1).
+  - Warm sun `#ffe7c2` ×2.8, about 2.5x the fill.
   - Horizon-matched fog `#c6e3f0` from 38 to 150 m.
-  - ACES tone mapping at exposure 1.05.
+  - ACES tone mapping at exposure 1.0.
   - A sky dome from `sky.js` (zenith `#6fb4e6`, white cumulus wisps).
   - `applyOceanLook` retints `ocean.js`: deep `#05497a`, shallow `#13a0b0`, and a fade into the fog colour so there is no horizon band.
 - **Also exports:** `artEnabled()` and `artStats(T)`.

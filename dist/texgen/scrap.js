@@ -7,7 +7,7 @@ export const panelEdge = true;
 // Roughness: steel ~0.46-0.62, scratches ~0.4, rust ~0.84-0.9, paint ~0.68-0.74. Metalness mask in `metal`.
 export const normalStrength = 7;
 
-const STEEL = [0.55, 0.565, 0.58], RUST_D = [0.43, 0.29, 0.21], RUST_L = [0.55, 0.38, 0.27], DRIPC = [0.52, 0.37, 0.27];
+const STEEL = [0.6, 0.615, 0.63], RUST_D = [0.43, 0.29, 0.21], RUST_L = [0.62, 0.37, 0.2], DRIPC = [0.52, 0.37, 0.27];
 const BLUE = [0.373, 0.498, 0.584], RED = [0.62, 0.38, 0.31], PIT = [0.40, 0.24, 0.15], HALO = [0.56, 0.47, 0.40];
 
 export default function generate(S, N) {
