@@ -42,7 +42,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const inside = u => u < 0.98 && u > -0.98;
 
 // Slab test scratch: a Float64Array, not module-level `let`s (a double stored to a context slot allocates a HeapNumber).
-const TT = new Float64Array(2); // [near, far]
+const TT = new Float64Array(3); // [near, far, inside (1 when the ray starts inside the box)]
 function slab(o, d, lo, hi) {
   if (d > -1e-9 && d < 1e-9) return o >= lo && o <= hi;
   let a = (lo - o) / d, b = (hi - o) / d;
@@ -51,11 +51,14 @@ function slab(o, d, lo, hi) {
   if (b < TT[1]) TT[1] = b;
   return TT[0] <= TT[1];
 }
-// Entry distance of a ray into box b[k..k+5] (y relative to deckY), or -1 (miss, or origin inside).
+// Entry distance of a ray into box b[k..k+5] (y relative to deckY), or -1 on a miss. When the origin is
+// inside the box (standing on stairs) it is the exit distance and TT[2] = 1: 0 would grab every aim.
 function rayBox(ox, oy, oz, dx, dy, dz, b, k, dy0) {
-  TT[0] = -Infinity; TT[1] = Infinity;
+  TT[0] = -Infinity; TT[1] = Infinity; TT[2] = 0;
   if (!slab(ox, dx, b[k], b[k + 3]) || !slab(oy, dy, b[k + 1] + dy0, b[k + 4] + dy0) || !slab(oz, dz, b[k + 2], b[k + 5])) return -1;
-  return TT[0] >= 0 ? TT[0] : -1;
+  if (TT[0] >= 0) return TT[0];
+  if (TT[1] < 0) return -1;
+  TT[2] = 1; return TT[1];
 }
 
 export class BuildGrid {
@@ -246,12 +249,15 @@ export class BuildGrid {
   // ---------- aiming ----------
   pick(ox, oy, oz, dx, dy, dz, deckY, reach) {
     this._rebuild();
-    let best = reach, rec = null;
+    // A box the eye is inside (the stairs underfoot) counts at its exit distance, after any box the ray enters.
+    let best = reach, rec = null, inBest = reach, inRec = null;
     for (let n = 0; n < this._pickN; n++) {
       const t = rayBox(ox, oy, oz, dx, dy, dz, this._pick, n * 6, deckY);
-      if (t >= 0 && t <= best) { best = t; rec = this._pickRec[n]; }
+      if (t < 0) continue;
+      if (TT[2]) { if (t <= inBest) { inBest = t; inRec = this._pickRec[n]; } }
+      else if (t <= best) { best = t; rec = this._pickRec[n]; }
     }
-    return rec;
+    return rec || inRec;
   }
 
   aim(ox, oy, oz, dx, dy, dz, type, rot, deckY, reach, out = this._aimOut) {
