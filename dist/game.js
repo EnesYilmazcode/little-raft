@@ -1391,6 +1391,7 @@ export function mount(transfer = null) {
   on(window, 'wheel', e => { // window, not canvas: in drag-look the hotbar sits over the canvas and must scroll slots too
     if (!running || uiBlocked() || (!isLocked() && !lockFallback) || !wheelForGame(e.target)) return;
     e.preventDefault();
+    if (building?.menu.isOpen) return; // building wheel open: scrolling must not swap off the hammer (closes the wheel, choice lost)
     if (controls && isLocked()) return; // controls lane: input.js steps the hotbar while locked (was double-stepping)
     wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
     if (Math.abs(wheelAcc) < 40) return;
@@ -1411,8 +1412,9 @@ export function mount(transfer = null) {
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
     keys[e.code] = true;
     const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
-    if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
-    if (e.code === 'KeyE' && !e.repeat) interact();
+    const wheelOpen = !!building?.menu.isOpen; // building wheel open: no hotbar swap (drops the hammer, closes the wheel) and no interact
+    if (m && running && !wheelOpen) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
+    if (e.code === 'KeyE' && !e.repeat && !wheelOpen) interact();
     if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
@@ -1433,7 +1435,7 @@ export function mount(transfer = null) {
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
       interact, inventory:openInventory, repair:() => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
-      pause:() => settingsController?.open(),
+      pause:() => settingsController?.open(), buildWheelOpen:() => !!building?.menu.isOpen, // hotbar + interact are swallowed while the build wheel is open
       useDown:() => { if (fc?.pointerDown()) return; if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
       useUp:() => { reeling = false; if (fc?.pointerUp()) return; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; fc?.releaseInput(); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
     signal.addEventListener('abort', () => controls?.dispose());
