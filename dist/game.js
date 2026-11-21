@@ -531,7 +531,7 @@ export function mount(transfer = null) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
     if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
-    play(e.kind === 'build' ? (/repaired/.test(e.text) ? 'repair' : 'build') : e.kind === 'craft' ? 'craft' : e.kind === 'loot' ? 'collect' : 'deny', e.kind === 'notice' ? .6 : 1);
+    play(e.kind === 'build' ? (/repaired/.test(e.text) ? 'repair' : / placed$/.test(e.text) ? 'place' : 'build') : e.kind === 'craft' ? 'craft' : e.kind === 'loot' ? 'collect' : 'deny', e.kind === 'notice' ? .6 : 1);
   }
   function wearHook(bag, slot, actor) {
     const i = hookIndex(bag, slot); if (i < 0) return;
@@ -683,7 +683,7 @@ export function mount(transfer = null) {
   }
 
   // ---------- Movement ----------
-  let swimStroke = 0;
+  let swimStroke = 0, bobAmt = 0, sway = 0;
   const held = (...codes) => codes.some(c => keys[c]);
   function movePlayer(dt, input) {
     if (!running) { walking = false; return; }
@@ -722,9 +722,14 @@ export function mount(transfer = null) {
   function updateCamera(dt) {
     const fov = running ? options.fov : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
     if (running) {
-      const bob = walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0;
-      camera.position.set(physics.x, physics.y + bob, physics.z);
-      camera.rotation.set(pitch, yaw, physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0, 'YXZ');
+      // head bob (vertical + a half-rate side sway) and a little of the raft's tilt, eased so jumps never pop
+      const m = options.cameraMotion, k = Math.min(1, dt * 6);
+      bobAmt += ((walking ? 1 : 0) - bobAmt) * k;
+      const bob = Math.sin(walkPhase) * .03 * m * bobAmt, side = Math.cos(walkPhase * .5) * .022 * m * bobAmt;
+      const tilt = physics.grounded ? (raft.rotation.x * Math.sin(yaw) + raft.rotation.z * Math.cos(yaw)) * CAMERA_ROLL * 2.5 : 0;
+      sway += (tilt - sway) * k;
+      camera.position.set(physics.x + Math.cos(yaw) * side, physics.y + bob, physics.z - Math.sin(yaw) * side);
+      camera.rotation.set(pitch, yaw, (sway + side * .25) * m, 'YXZ');
     } else { // gentle cinematic view for the welcome screen
       const focus = new T.Vector3(-5, 0, 2), d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
       camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
