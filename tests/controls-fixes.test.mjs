@@ -162,6 +162,29 @@ test('CTL-3: pad RT runs rod fishing v2 (fc.pointerDown/pointerUp) before the le
   assert.ok(mouse.indexOf('fc?.pointerDown()') < mouse.indexOf('useSelected('), 'mouse path is the reference');
 });
 
+// ---------------------------------------------------------------- CTL-5
+
+test('CTL-5: crouch defaults to C only, so crouch-walk is never Ctrl+W', () => {
+  const s = inputSetup();
+  assert.deepEqual(s.map.bindingsFor('crouch'), { keys: ['KeyC', null], pad: ['Pad1'] });
+  assert.deepEqual(s.map.actionFor('ControlLeft'), []);
+  s.down('ControlLeft', { ctrlKey: true });
+  assert.equal(s.down('KeyW', { ctrlKey: true }).defaultPrevented, false, 'Ctrl+W is not a game chord');
+  s.tick();
+  assert.equal(s.input.down('crouch'), false);
+});
+
+test('CTL-5: saved bindings that are exactly the old default migrate; customised ones are kept', () => {
+  const store = data => { let raw = JSON.stringify(data); return { getItem: () => raw, setItem: (_, v) => { raw = v; } }; };
+  const saved = keys => ({ v: 1, bindings: { crouch: { keys, pad: ['Pad1'] }, jump: { keys: ['KeyJ', null], pad: ['Pad0'] } }, settings: {} });
+  const old = new ActionMap({ storage: store(saved(['ControlLeft', 'KeyC'])) });
+  assert.deepEqual(old.bindingsFor('crouch').keys, ['KeyC', null]);
+  assert.deepEqual(old.bindingsFor('jump').keys, ['KeyJ', null], 'other saved bindings survive');
+  for (const keys of [['ControlLeft', null], ['KeyC', 'ControlLeft'], ['ControlRight', 'KeyC']]) {
+    assert.deepEqual(new ActionMap({ storage: store(saved(keys)) }).bindingsFor('crouch').keys, keys, `custom ${keys} kept`);
+  }
+});
+
 // ---------------------------------------------------------------- CTL-6
 
 test('CTL-6: a Space tap shorter than a frame still jumps (and rises while diving)', () => {

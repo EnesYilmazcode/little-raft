@@ -44,7 +44,7 @@ export const DEFAULT_BINDINGS = Object.freeze({
   moveRight: b(['KeyD', 'ArrowRight'], ['PadAxis0+']),
   jump: b(['Space'], ['Pad0']),
   sprint: b(['ShiftLeft', 'ShiftRight'], ['Pad10']),
-  crouch: b(['ControlLeft', 'KeyC'], ['Pad1']),
+  crouch: b(['KeyC'], ['Pad1']), // not Ctrl: crouch-walk would be Ctrl+W (closes the tab)
   use: b(['Mouse0'], ['Pad7']),
   aim: b(['Mouse2'], ['Pad6']),
   interact: b(['KeyE'], ['Pad2']),
@@ -135,7 +135,10 @@ export class ActionMap {
   _apply(data) {
     this.bindings = {};
     for (const a of ACTIONS) this.bindings[a.id] = fill(blank(), DEFAULT_BINDINGS[a.id]);
-    const src = data?.bindings && typeof data.bindings === 'object' ? data.bindings : {};
+    const src = data?.bindings && typeof data.bindings === 'object' ? { ...data.bindings } : {};
+    // old default crouch was Ctrl+C; saves that still hold exactly that move to the new default (customised ones stay)
+    const ck = src.crouch?.keys;
+    if (Array.isArray(ck) && ck.length === 2 && ck[0] === 'ControlLeft' && ck[1] === 'KeyC') src.crouch = { ...src.crouch, keys: ['KeyC'] };
     for (const id of Object.keys(src)) if (ACTION_IDS.has(id)) fill(this.bindings[id], src[id]);
     this.settings = { ...SETTINGS_DEFAULTS };
     const s = data?.settings && typeof data.settings === 'object' ? data.settings : {};

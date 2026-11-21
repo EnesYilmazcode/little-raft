@@ -217,6 +217,7 @@ test('regression: wheel notches never skip slots; small trackpad deltas accumula
 
 test('regression: crouch (Ctrl) + S/D/A blocks browser save/bookmark shortcuts; plain Ctrl chords pass', () => {
   const s = setup();
+  s.map.rebind('crouch', 'ControlLeft', { slot: 1 }); // no longer the default (CTL-5), still supported when chosen
   assert.equal(s.down('KeyR', { ctrlKey: true }).defaultPrevented, false, 'Ctrl+R with Ctrl unheld (e.g. rebound) passes');
   s.up('KeyR');
   s.down('ControlLeft', { ctrlKey: true });

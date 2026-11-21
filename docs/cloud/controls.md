@@ -21,7 +21,7 @@ Branch: `claude/raft-controls`. All of the lane's code is in new files under `di
 | Look | Mouse | Right stick (deadzone 0.15, curve 2, 2.6 rad/s) |
 | Jump | Space | A |
 | Sprint (hold or toggle) | Shift | L3 |
-| Crouch (hold or toggle) | Left Ctrl / C | B |
+| Crouch (hold or toggle) | C | B |
 | Use / throw | Left mouse | RT (analog) |
 | Aim / reel | Right mouse | LT (analog) |
 | Interact | E | X |
@@ -73,7 +73,7 @@ In game, the crouch camera sits 0.54 m lower (camera y 1.738 → 1.203).
 - Keys are released on blur, a hidden tab, pointer lock loss (mouse buttons), Meta keyup (stuck keys on macOS) and dialogs opening.
 - Key auto-repeat never counts as a new press, and keys typed in form fields are ignored.
 - The first mouse move after lock is dropped, and so is any move over 300 px.
-- Ctrl chords are blocked while crouching (no Save or Bookmark dialogs).
+- Ctrl chords are blocked while crouching on a Ctrl binding (no Save or Bookmark dialogs). Crouch defaults to C: Ctrl+W would close the tab.
 - One wheel event steps the hotbar exactly once.
 - Gamepads are polled again every frame. Null entries and non-standard mappings are ignored, and the pad used most recently is the one that counts.
 - Triggers have hysteresis (on above 0.5, off below 0.4).
