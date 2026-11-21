@@ -43,7 +43,7 @@ import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, syncHintsFromTracker, BAG_OPEN_KEYS, BAG_CLOSE_KEYS, REEL_PROMPT, LOOK_DONE_RAD, WALK_DONE_S } from './hud.js?build=v3-survival-ae77fa84ac2b';
-import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, pageLock, exitLock, lockLossAction, shouldDeferredRelock, shouldFocusRelock, escapeCooldownRetry } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, pageLock, exitLock, lockLossAction, shouldDeferredRelock, shouldFocusRelock, escapeCooldownRetry, resumeNeedsGesture, reopenPauseOnLockFail } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
@@ -400,7 +400,7 @@ export function mount(transfer = null) {
     get elapsed() { return elapsed; }, get options() { return options; }, get other() { return other; },
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
     esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(),
-    openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
+    openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => resumeLock(),
   };
   function init() {
     const assetBuild = new URL(import.meta.url).searchParams.get('build') || 'dev'; document.querySelectorAll('use[href*="icons.svg"]').forEach(el => el.setAttribute('href', 'icons.svg?build=' + assetBuild + '#' + el.getAttribute('href').split('#')[1]));
@@ -448,7 +448,7 @@ export function mount(transfer = null) {
     return {scene, raft, ocean, camera, signal, get rodModel() { return hands?.itemModel('fishingrod') ?? null; }, role:() => role, netReady:() => networkReady, send, action, notice, beep,
       selectedKind, aim:() => currentAim(), rodTip:() => handPos, player:() => ({x:physics.x, y:physics.y, z:physics.z, yaw}),
       hasTile, decorAt:(x, z) => world.decor.some(d => d.x === x && d.z === z), bagCount:k => localBag().count(k),
-      running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging};
+      running:() => running, uiBlocked, resume:() => resumeLock(), busy:() => !!hook || !!fishWait || !!charging};
   }
   function fallbackAvatar(color) {
     const g = new T.Group();
@@ -739,7 +739,8 @@ export function mount(transfer = null) {
   }
   function lockLost() {
     const now = performance.now();
-    if (pageLock.selfCaused(now) || !running) { earlyRetried = false; return; }
+    // The next unlock after a page exit is the page's, however late it arrives; one while a panel is open never pauses.
+    if (pageLock.lost(now, {blocked:uiBlocked()}) || !running) { earlyRetried = false; return; }
     // Desktop: no Escape key-release accelerator drops fresh locks there, so an early loss is a real Escape.
     const early = !inShell && pageLock.early(now);
     if (!early) earlyRetried = false;
@@ -764,6 +765,12 @@ export function mount(transfer = null) {
     if (ok) requestLock();
     return ok;
   }
+  // Closing a menu or panel back to play. If that relock is refused (no gesture after a browser-taken unlock),
+  // lockFailed reopens the pause menu instead of leaving a free cursor in play.
+  let resumeAt = -Infinity;
+  function resumeLock() { resumeAt = performance.now(); requestLock(); }
+  // settings.js: may Escape close the pause menu to play, or must it wait for Enter/click on Resume?
+  const resumeGestureNeeded = () => resumeNeedsGesture({inShell, browserReleased:pageLock.browserReleased, activation:!!navigator.userActivation?.isActive});
   function requestLock() {
     if (!shouldRequestLock({running, supported:lockSupported, blocked:uiBlocked()}) || isLocked()) return;
     if (escHeld) { relockOnEscUp = true; return; }
@@ -785,6 +792,9 @@ export function mount(transfer = null) {
     }
     const isEvent = typeof Event !== 'undefined' && err instanceof Event;
     if (isEvent && (lockPromisePending || lockHasPromise)) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
+    if (reopenPauseOnLockFail({running, blocked:uiBlocked(), locked:isLocked(), focused:windowFocused(), resumeAt, now:performance.now(), retryPending:!!cooldownTimer})) {
+      resumeAt = -Infinity; settingsController?.open({hint:true}); // Resume is focused: Enter or a click relocks
+    }
     const verdict = lockFailureVerdict({supported:lockSupported, err:isEvent ? null : err, focused:windowFocused(), failures:lockFailures});
     lockFailures = verdict.failures;
     if (!verdict.fallback) { refreshPointerUI(true); return; }
@@ -1479,7 +1489,7 @@ export function mount(transfer = null) {
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
     lookFilter.reset({dropFirst:isLocked()}); // the first move after lock is often a bogus jump
-    if (isLocked()) { lockFallback = false; lockFailures = 0; pageLock.gained(performance.now()); lockedAtBlur = false; retryCheck = cancelTimer(retryCheck); cancelRelock(); }
+    if (isLocked()) { lockFallback = false; lockFailures = 0; resumeAt = -Infinity; pageLock.gained(performance.now()); lockedAtBlur = false; retryCheck = cancelTimer(retryCheck); cancelRelock(); }
     else { if (charging && charging.x === null) charging = null; reeling = false; lockLost(); }
     if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
     down = null; refreshPointerUI(true);
@@ -1610,7 +1620,7 @@ export function mount(transfer = null) {
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
   // Crew/Help closed during play go back to locked play; opened from the pause menu, settings.js reopens it instead.
   for (const id of ['crew', 'help']) on($('#' + id), 'close', e => {
-    if (shouldRelockAfterClose({running, locked:isLocked(), blocked:uiBlocked(), returnToPause:!!e.target?.dataset?.fromPause})) requestLock();
+    if (shouldRelockAfterClose({running, locked:isLocked(), blocked:uiBlocked(), returnToPause:!!e.target?.dataset?.fromPause})) resumeLock();
   });
   const soundLabel = () => setText('#soundButton', 'Sound: ' + (!sound ? 'off' : options.volume > 0 ? 'on' : 'on (volume is 0%)'));
   // Sound on/off: #soundButton (help) and the Settings > Audio toggle share this; SOUND_KEY stays the saved pref.
@@ -1923,7 +1933,7 @@ export function mount(transfer = null) {
       const d = [...document.querySelectorAll('dialog[open]')].pop();
       if (!d) return false; // no settings module (mount failed early): just close the top dialog
       d.close();
-      if (!uiBlocked()) requestLock();
+      if (!uiBlocked()) resumeLock();
       return true;
     }),
     released:guard(() => escReleased()),
@@ -1999,16 +2009,16 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:clearInput}); // [progression-hook]
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => resumeLock(), pause:clearInput}); // [progression-hook]
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
-    settingsController = createSettings({initial:{sound}, onChange:next => { applyOptions(next); if (next.sound !== sound) setSound(next.sound); sfx.setAmbience(next.ambience); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
+    settingsController = createSettings({initial:{sound}, onChange:next => { applyOptions(next); if (next.sound !== sound) setSound(next.sound); sfx.setAmbience(next.ambience); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); resumeLock(); }, onQuit:guard(quitToTitle), needsGesture:resumeGestureNeeded});
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
       onSelect:guard(i => selectSlot(i)),
       onMove:guard((from, to, amount) => moveSlot(from, to, amount)),
       onCraft:guard(id => craft(id)),
-      onResume:guard(() => { play('close'); requestLock(); }),
+      onResume:guard(() => { play('close'); resumeLock(); }),
       onPause:guard(pauseInput),
       getModel:modelOf, // 3D icons rendered from models.js
       recipeGate:id => prog?.recipeGate(id) || content?.craftGate?.(id) || ((r => r ? {locked:true, reason:String(r)} : null)(content?.craftLocked(id, role === 'guest' ? 'guest' : 'host'))), // [progression-hook] + content (Tinker's Desk) locks
@@ -2019,7 +2029,8 @@ export function mount(transfer = null) {
       setPin:guard(id => { if (role === 'guest') guestPin = id; else { world.craftPin = id; save(); } }),
     });
     prog.installUI(); // [progression-hook]
-    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())});
+    // Opened from the pause menu, closing hands back to it (settings.js reopens it) instead of relocking.
+    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => { if (!document.getElementById('logbook')?.dataset.fromPause) resumeLock(); })});
     if (role !== 'guest') retroAward();
     try { window.raftPickupFeed = pickupFeed; } catch {} // prompts.js feed() and onboarding lines post here
     pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar

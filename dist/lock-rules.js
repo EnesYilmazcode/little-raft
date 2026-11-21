@@ -63,15 +63,27 @@ export function createEscGate({ handledWindow = 600, lockWindow = 1500 } = {}) {
 // ---------- Lock losses the page did not cause ----------
 // Every exitPointerLock the page makes marks the tracker first (pageExit), so a later unlock can tell
 // "the page let go" (inventory, pause menu) from "the browser took it" (an Escape Chrome consumed,
-// focus loss, or a fresh lock dropped by Chrome's Escape handling). Times are performance.now() ms.
-export function createLockTracker({ selfWindow = 1000, earlyWindow = 1500 } = {}) {
-  let exitAt = -Infinity, grantedAt = -Infinity;
+// focus loss, or a fresh lock dropped by Chrome's Escape handling). The mark is event-based: the next
+// unlock consumes it however late it arrives (a stalled frame can delay it by seconds); staleAfter only
+// drops a mark whose unlock never came. Times are performance.now() ms.
+// browserReleased stays true from a browser-taken unlock until the next lock: Chrome then refuses a relock
+// without a user gesture, so an Escape alone cannot resume play (resumeNeedsGesture).
+export function createLockTracker({ earlyWindow = 1500, staleAfter = 5000 } = {}) {
+  let exitAt = -Infinity, grantedAt = -Infinity, pending = false, browser = false;
   return {
-    pageExit(now) { exitAt = now; },
-    gained(now) { grantedAt = now; exitAt = -Infinity; },
-    selfCaused(now) { return now - exitAt < selfWindow; },
+    pageExit(now) { exitAt = now; pending = true; },
+    gained(now) { grantedAt = now; exitAt = -Infinity; pending = false; browser = false; },
+    // One unlock arrived; returns true when it must not pause: the page released it, or a menu or panel was
+    // already open (blocked). browserReleased follows the page mark only, since it decides whether a
+    // gesture-less relock can work.
+    lost(now, { blocked = false } = {}) {
+      const byPage = pending && now - exitAt < staleAfter;
+      pending = false; browser = !byPage;
+      return byPage || !!blocked;
+    },
     // Lost soon after it was granted: the "granted, then dropped" pattern.
     early(now) { return now - grantedAt < earlyWindow; },
+    get browserReleased() { return browser; },
   };
 }
 // One tracker per page, shared by game.js, settings.js and survival-ui.js (same module URL).
@@ -100,6 +112,32 @@ export function lockLossAction({ running, locked, blocked, focused = true, hidde
 // Deferred relock after an Escape release (run in a later task, never inside the keyup).
 export function shouldDeferredRelock({ running, blocked, locked, escHeld, focused }) {
   return !!running && !blocked && !locked && !escHeld && !!focused;
+}
+
+// Escape (never a user activation) on a menu that would close back to play. Chrome relocks without a gesture
+// only after the page released the lock itself; after the browser took it (it ate the Escape, alt-tab) the
+// request fails and the cursor is loose in play. The desktop shell runs Escape with a gesture, and a recent
+// click or key (navigator.userActivation.isActive) still counts as one.
+export function resumeNeedsGesture({ inShell = false, browserReleased = false, activation = false } = {}) {
+  return !inShell && !!browserReleased && !activation;
+}
+
+// A relock asked for by closing a menu or panel was refused: reopen the pause menu rather than leave a free
+// cursor in play. Not while a cooldown retry is pending, when unfocused (the alt-tab hint covers it), or stale.
+export function reopenPauseOnLockFail({ running, blocked, locked, focused, resumeAt, now, retryPending = false, window: win = 3000 }) {
+  if (!running || blocked || locked || !focused || retryPending) return false;
+  const since = now - resumeAt;
+  return since >= 0 && since < win;
+}
+
+// Pause menu pointer clicks are ignored for guardMs after it opens: the cursor reappears where the lock began,
+// often over a menu item. Keyboard activation (Enter/Space on the focused button) always counts.
+export function menuClickAllowed({ now, openedAt, keyboard = false, guardMs = 400 }) {
+  return !!keyboard || now - openedAt >= guardMs;
+}
+// Save and quit needs a second activation within confirmMs: 'arm' shows "Click again to quit", 'quit' quits.
+export function quitStep({ now, armedAt = -Infinity, confirmMs = 3000 }) {
+  return now - armedAt < confirmMs ? 'quit' : 'arm';
 }
 
 // Focus came back: relock only if the game was locked when focus left and nothing is open.

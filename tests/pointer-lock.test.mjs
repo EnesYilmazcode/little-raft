@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
-const { classifyLockError, lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, createEscGate, createLockTracker, exitLock, pageLock, lockLossAction, shouldDeferredRelock, shouldFocusRelock, escapeCooldownRetry } = await import(new URL('lock-rules.js', base));
+const { classifyLockError, lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, createEscGate, createLockTracker, exitLock, pageLock, lockLossAction, shouldDeferredRelock, shouldFocusRelock, escapeCooldownRetry, resumeNeedsGesture, reopenPauseOnLockFail, menuClickAllowed, quitStep } = await import(new URL('lock-rules.js', base));
 
 const dom = name => ({ name, message: name });
 
@@ -111,18 +111,41 @@ test('repeats of an unhandled press do not mark it handled', () => {
   assert.equal(g.keyupOpensPause(800), true);
 });
 
-test('CUR2-1: lock tracker tells page exits from browser-taken locks, and early drops', () => {
+test('CUR2-1/CUR3-2: lock tracker tells page exits from browser-taken locks, and early drops', () => {
   const t = createLockTracker();
   t.gained(0);
-  assert.equal(t.selfCaused(5000), false); // nothing marked: the browser took it
+  assert.equal(t.lost(5000), false); // nothing marked: the browser took it
+  assert.equal(t.browserReleased, true);
   assert.equal(t.early(5000), false);
+  t.gained(5500);
   t.pageExit(6000);
-  assert.equal(t.selfCaused(6010), true); // inventory / pause menu released it
-  assert.equal(t.selfCaused(7500), false); // stale mark
+  assert.equal(t.lost(6010), true); // inventory / pause menu released it
+  assert.equal(t.browserReleased, false);
+  assert.equal(t.lost(6020), false); // the mark is consumed by that one unlock
   t.gained(8000);
-  assert.equal(t.selfCaused(8010), false); // a new lock clears the mark
+  assert.equal(t.browserReleased, false); // a new lock clears it
+  assert.equal(t.lost(8010), false); // a new lock clears the mark too
   assert.equal(t.early(8010), true); // granted, then dropped
   assert.equal(t.early(9600), false);
+});
+
+test('CUR3-2: a page release stays the page\'s however late its unlock arrives (stalled frame)', () => {
+  for (const lag of [20, 800, 1300, 1700, 3000, 4900]) {
+    const t = createLockTracker();
+    t.gained(0); t.pageExit(10000);
+    assert.equal(t.lost(10000 + lag), true, `lag ${lag}`);
+    assert.equal(t.browserReleased, false);
+  }
+  const t = createLockTracker();
+  t.gained(0); t.pageExit(10000);
+  assert.equal(t.lost(16000), false); // a mark whose unlock never came goes stale
+});
+
+test('CUR3-2: an unlock while a panel is open never pauses, but still counts as browser-taken for relocks', () => {
+  const t = createLockTracker();
+  t.gained(0);
+  assert.equal(t.lost(100, { blocked: true }), true);
+  assert.equal(t.browserReleased, true);
 });
 
 test('CUR2-1: exitLock marks the shared tracker before releasing, only when locked', () => {
@@ -131,11 +154,61 @@ test('CUR2-1: exitLock marks the shared tracker before releasing, only when lock
   pageLock.gained(0);
   assert.equal(exitLock(doc, 100000), true);
   assert.equal(exited, 1);
-  assert.equal(pageLock.selfCaused(100050), true);
+  assert.equal(pageLock.lost(100050), true);
   pageLock.gained(100100);
   assert.equal(exitLock({ pointerLockElement: null, exitPointerLock() { exited++; } }, 200000), false);
   assert.equal(exited, 1);
-  assert.equal(pageLock.selfCaused(200010), false);
+  assert.equal(pageLock.lost(200010), false);
+  pageLock.gained(200100);
+});
+
+test('CUR3-1: Escape cannot resume play after the browser took the lock, unless shell or a recent gesture', () => {
+  assert.equal(resumeNeedsGesture({ browserReleased: true }), true);
+  assert.equal(resumeNeedsGesture({ browserReleased: true, activation: true }), false); // a click or key in the last ~5 s
+  assert.equal(resumeNeedsGesture({ browserReleased: true, inShell: true }), false); // desktop main relocks with a gesture
+  assert.equal(resumeNeedsGesture({ browserReleased: false }), false); // page released it: Chrome relocks without one
+  // The real sequence: Chrome eats the Esc (no page mark), the pause menu opens, Esc again.
+  const t = createLockTracker();
+  t.gained(0); t.lost(4000);
+  assert.equal(resumeNeedsGesture({ browserReleased: t.browserReleased }), true);
+  // The page saw the Esc: settings.open() released the lock itself.
+  t.gained(5000); t.pageExit(9000); t.lost(9010);
+  assert.equal(resumeNeedsGesture({ browserReleased: t.browserReleased }), false);
+});
+
+test('CUR3-1: a refused relock after closing a menu reopens the pause menu, never a free cursor', () => {
+  const ok = { running: true, blocked: false, locked: false, focused: true, resumeAt: 1000, now: 1400 };
+  assert.equal(reopenPauseOnLockFail(ok), true);
+  assert.equal(reopenPauseOnLockFail({ ...ok, retryPending: true }), false); // cooldown retry first
+  assert.equal(reopenPauseOnLockFail({ ...ok, focused: false }), false); // alt-tab: the away hint
+  assert.equal(reopenPauseOnLockFail({ ...ok, blocked: true }), false);
+  assert.equal(reopenPauseOnLockFail({ ...ok, locked: true }), false);
+  assert.equal(reopenPauseOnLockFail({ ...ok, running: false }), false);
+  assert.equal(reopenPauseOnLockFail({ ...ok, resumeAt: -Infinity }), false); // not a resume (click on the sea)
+  assert.equal(reopenPauseOnLockFail({ ...ok, now: 5000 }), false); // stale
+});
+
+test('CUR3-3: pause menu ignores pointer clicks right after opening, and quit needs a second click', () => {
+  assert.equal(menuClickAllowed({ now: 1100, openedAt: 1000 }), false);
+  assert.equal(menuClickAllowed({ now: 1100, openedAt: 1000, keyboard: true }), true); // Enter on Resume
+  assert.equal(menuClickAllowed({ now: 1450, openedAt: 1000 }), true);
+  assert.equal(quitStep({ now: 5000 }), 'arm');
+  assert.equal(quitStep({ now: 6000, armedAt: 5000 }), 'quit');
+  assert.equal(quitStep({ now: 8500, armedAt: 5000 }), 'arm'); // confirmation expired
+});
+
+test('CUR3-1/3/4: settings and game wire the gesture gate, quit confirm and logbook return-to-pause', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const settings = await readFile(new URL('settings.js', base), 'utf8');
+  const game = await readFile(new URL('game.js', base), 'utf8');
+  assert.match(settings, /gameActive\(\) && gestureNeeded\(\)\) \{[\s\S]{0,200}showHint\(true\); return true; \}/);
+  assert.match(settings, /Click Resume or press Enter/);
+  assert.match(settings, /Click again to quit/);
+  assert.match(settings, /returnToPause = lb; lb\.dataset\.fromPause = '1'/);
+  assert.match(game, /dataset\.fromPause\) resumeLock\(\)/);
+  assert.match(game, /needsGesture:resumeGestureNeeded/);
+  assert.match(game, /pageLock\.lost\(now, \{blocked:uiBlocked\(\)\}\)/);
+  assert.match(game, /reopenPauseOnLockFail\(/);
 });
 
 test('CUR2-1: a lock loss the page did not cause pauses when focused, never when blurred', () => {
