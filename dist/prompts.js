@@ -41,7 +41,9 @@ export function formatFeed(text) { return String(text ?? '').replace(/\s+/g, ' '
 export function isNotice(text, hasKbd) {
   const t = formatFeed(text);
   // "Floor needs" doubles as game.js's hover prompt; the muted "Needs …" prompt already covers it.
-  return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs)/i.test(t);
+  // Purifier status lines are hover prompts (game.js promptTip) whose fuel/boil clock ticks every second: feeding them
+  // stacked a new feed line per second.
+  return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs|Purifying|Purifier:|Fire is full)/i.test(t);
 }
 // Converts a game.js/content-module prompt string ('<kbd>E</kbd>Label', escaped HTML) into prompt rows:
 // a leading <kbd> becomes the key ('Click' -> the LMB glyph); text without a key becomes a muted status line.
@@ -128,7 +130,9 @@ export function statePrompt(s, opt = {}) {
 // because game.js mutes its own game-aim providers while a placeable is held.
 export function placePrompt(s) {
   const name = DECOR_NAMES[s.heldKind] ?? String(s.heldKind).replace(/[-_]+/g, ' ');
-  const place = s.build?.hover && s.build.hover.blocked !== 'nofloor' ? {key:'LMB', label:'Place ' + name} : {label:'Aim at the raft floor', muted:true}; // nofloor: red ghost just off the deck
+  const why = s.build?.hover?.blocked;
+  if (why && why !== 'nofloor') return null; // red ghost: game.js says why (BLOCK_TEXT) in #contextPrompt, like the hammer
+  const place = s.build?.hover && s.build.hover.blocked !== 'nofloor' ? {key:'LMB', label:'Place ' + name} : {label:s.heldKind === 'net' ? 'Aim at the water by the raft edge' : 'Aim at the raft floor', muted:true}; // [nets]; nofloor: red ghost just off the deck
   const aim = s.aimPrompt ? promptFromHtml(s.aimPrompt) : null;
   return aim ? [place, aim] : place;
 }
@@ -223,7 +227,9 @@ function createPrompts(win, doc) {
         const fcStage = safe(() => win.raftFC?.session?.stage) ?? 'idle';
         const sp = statePrompt(state, {throws, fcStage}), cp = safe(() => contextPromptOf(doc.getElementById('contextPrompt')));
         const spKey = hasKey(sp), cpKey = hasKey(cp);
-        for (const p of [cpKey && cp, spKey && sp, !cpKey && cp, !spKey && sp]) if (p) cands.push({prompts:p, priority:0, ray:false});
+        const placing = state?.tool === 'place' && !!sp; // place mode: placePrompt already stacks the aim row, so the Place row leads
+        const order = placing ? [sp, !cpKey && cp] : [cpKey && cp, spKey && sp, !cpKey && cp, !spKey && sp];
+        for (const p of order) if (p) cands.push({prompts:p, priority:0, ray:false});
         list = pickPrompt(cands);
       }
       shown = list; const s = signature(list);

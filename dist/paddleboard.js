@@ -150,7 +150,7 @@ export function createPaddleboard(ctx) {
 
   function prompt(aim) {
     if (R.on) {
-      return nearestTile(tiles(), R.st.x, R.st.z, nt).d <= C.STEP_OFF ? '<kbd>E</kbd>Step onto the raft' : '<kbd>W</kbd>Paddle · <kbd>E</kbd> Hop off';
+      return nearestTile(tiles(), R.st.x, R.st.z, nt).d <= C.STEP_OFF ? '<kbd>E</kbd>Step onto the raft' : '<kbd>W</kbd>Paddle · E to hop off';
     }
     const b = aimBoard(aim); if (!b || b.r) return null;
     return b.s === 'tied' && onDeck(ctx.physics) ? '<kbd>E</kbd>Board the Driftboard · hold E to pick up' : '<kbd>E</kbd>Board the Driftboard';

@@ -1,9 +1,9 @@
 // Islands content module: small islands drift past the raft, dock for a few minutes, and let players
-// gather wood, leaves, seeds, stone and sand with E. Host-authoritative; saved in world.ext.islands.
+// gather leaves, seeds, stone and sand with E, and chop palms for wood with a Stone Axe. Host-authoritative; saved in world.ext.islands.
 // Design and notes: docs/features/islands.md. Pure logic lives in islands-layout.js (unit tested).
 import {
   ISLAND, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
-  applyGather, standOnSand, DEFAULTS,
+  applyGather, standOnSand, DEFAULTS, CHOP, isAxe,
 } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 import { createIslandModels, PALM_H, PALM_BEND } from './islands-models.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
@@ -25,13 +25,14 @@ const SOLID_R = [.28, 0, .42, 0];
 const LOCAL_COOLDOWN = 0.35;
 const SLEW_SNAP = 1, SLEW_RATE = 4; // guest clock: snap past 1 s of error, else ease at 4/s
 
-// Prompt text, built once: PROMPTS[kind][left].
-const LABEL = { palm: 'Gather palm: wood and leaves', bush: 'Pick from bush: leaves, maybe a seed, a flower or berries', /* [juicer] */ rock: 'Gather stone', sand: 'Scoop sand' };
+// Prompt text, built once: PROMPTS[kind][left]. Palms need a Stone Axe (LMB chops, E works too).
+const LABEL = { palm: 'Chop palm', bush: 'Pick from bush: leaves, maybe a seed, a flower or berries', /* [juicer] */ rock: 'Gather stone', sand: 'Scoop sand' };
 const PROMPTS = {};
 for (const k of KINDS) {
   PROMPTS[k] = [];
-  for (let left = 0; left <= NODE_MAX[k]; left++) PROMPTS[k][left] = `<kbd>E</kbd>${LABEL[k]} (${left} left)`;
+  for (let left = 0; left <= NODE_MAX[k]; left++) PROMPTS[k][left] = k === 'palm' ? `<kbd>LMB</kbd>${LABEL[k]} (${left} left)` : `<kbd>E</kbd>${LABEL[k]} (${left} left)`;
 }
+const NEED_AXE = 'Need a Stone Axe';
 const itemName = k => (ITEM_INFO[k] && ITEM_INFO[k].name) || k;
 
 // Read-only view of the live island for sibling modules (treasure.js). Import this file with the same
@@ -54,7 +55,10 @@ export function createIslands(ctx) {
   // Live placement, refreshed in update().
   let shown = false, cx = 0, cz = 0, gy = 0, carryX = NaN, carryZ = NaN;
   const sandState = { onSand: false, lastJump: false };
-  let localCool = 0, bounceNode = -1, bounceT = 0, hoverNode = -1, prompted = false;
+  let localCool = 0, chopCool = 0, bounceNode = -1, bounceT = 0, hoverNode = -1, prompted = false;
+  // Selected bag slot of the local player (the stub ctx in tests has no bag): its index and raw kind.
+  const heldSlot = () => { try { const b = ctx.localBag && ctx.localBag(); const i = b ? b.selectedIndex : -1; return b && b.slots && b.slots[i] ? i : -1; } catch { return -1; } };
+  const holdingAxe = () => { const i = heldSlot(); return i >= 0 && isAxe(ctx.localBag().slots[i].kind); };
   let slew = 0;        // guest: host clock minus ours, eased out in tick()
   let ticked = false;  // afterMove already advanced the clock this frame
 
@@ -214,6 +218,7 @@ export function createIslands(ctx) {
     if (!(dt > 0)) dt = 0;
     if (ticked) ticked = false; else tick(dt);
     if (localCool > 0) localCool -= dt;
+    if (chopCool > 0) chopCool -= dt;
     const isl = st.isl;
     if (authority()) {
       if (!isl) {
@@ -307,7 +312,7 @@ export function createIslands(ctx) {
   function action(a, actor, bag) {
     if (!a || typeof a.kind !== 'string' || a.kind.slice(0, 8) !== 'islands.') return false;
     if (!authority()) return true;
-    if (a.kind !== 'islands.gather') return true;
+    if (a.kind !== 'islands.gather' && a.kind !== 'islands.chop') return true;
     const pos = actor === 'guest' ? ctx.other : ctx.physics;
     gatherState.isl = st.isl; gatherState.layout = layout; gatherState.clock = st.clock;
     gatherState.cx = cx; gatherState.cz = cz;
@@ -316,9 +321,15 @@ export function createIslands(ctx) {
     if (r.ok) {
       writeNode(a.node);
       ctx.observe?.({ kind: 'gather', loot: r.loot }, actor); // [tasks]
-      const text = r.loot.map(([k, n]) => `+${n} ${itemName(k)}`).join(', ');
-      ctx.emit({ kind: 'loot', text }, actor);
+      if (r.loot.length) {
+        const text = r.loot.map(([k, n]) => `+${n} ${itemName(k)}`).join(', ');
+        const loot = {}; for (const [k, n] of r.loot) loot[k] = (loot[k] || 0) + n;
+        ctx.emit({ kind: 'loot', text, loot }, actor);
+      }
+      if (r.felled) ctx.emit({ kind: 'notice', text: 'Timber! The palm comes down', sound: 'collect' }, actor);
+      if (r.broke) ctx.emit({ kind: 'notice', text: 'Your Stone Axe broke!' }, actor);
     } else if (r.reason === 'full') ctx.emit({ kind: 'full', text: 'Your bag is full' }, actor);
+    else if (r.reason === 'axe') ctx.emit({ kind: 'notice', text: NEED_AXE }, actor);
     else if (r.reason === 'reach') ctx.emit({ kind: 'notice', text: 'Get a little closer' }, actor);
     // 'cooldown' is ignored quietly: a second tap within 0.3 s just does nothing.
     return true;
@@ -393,12 +404,37 @@ export function createIslands(ctx) {
     setHover(k);
     if (k < 0) return null;
     const n = layout.nodes[k];
+    if (n.kind === 'palm' && !holdingAxe()) return NEED_AXE;
     return PROMPTS[n.kind][n.max - st.isl.used[k]];
+  }
+
+  // One chop at palm k with the held axe (local side: cooldown, swing sound, pop; the host decides the rest).
+  function chop(k) {
+    if (chopCool > 0) return false;
+    const i = heldSlot();
+    if (i < 0 || !isAxe(ctx.localBag().slots[i].kind)) return false;
+    chopCool = CHOP.COOLDOWN;
+    if (!(ctx.localBag().slots[i].durability > 0)) { ctx.notice?.('This axe is worn out'); return true; }
+    if (k < 0) return true; // a swing at the air
+    if (ctx.action({ kind: 'islands.chop', seed: st.isl.seed, node: k, slot: i }) === false) return true; // not sent
+    try { ctx.play?.('chop', 1); } catch {}
+    bounceNode = k; bounceT = .3;
+    return true;
+  }
+  const palmAt = aim => { const k = pickNode(aim); return k >= 0 && nodeKind[k] === 0 ? k : -1; };
+  // LMB with a bag item (content hook): the Stone Axe swings and chops the palm under the crosshair.
+  function use(aim, kind) {
+    if (kind !== 'axe') return false;
+    return chop(palmAt(aim));
   }
 
   function interact(aim) {
     const k = pickNode(aim);
     if (k < 0) return false;
+    if (nodeKind[k] === 0) { // palms: chop with the axe, or say what is missing
+      if (holdingAxe()) chop(k); else if (localCool <= 0) { localCool = LOCAL_COOLDOWN; ctx.notice?.(NEED_AXE); }
+      return true;
+    }
     if (localCool > 0) return true;
     if (ctx.action({ kind: 'islands.gather', seed: st.isl.seed, node: k }) === false) return true; // not sent
     localCool = LOCAL_COOLDOWN;
@@ -469,5 +505,5 @@ export function createIslands(ctx) {
     groundAt,
   };
 
-  return { name: 'islands', update, afterMove, serialize, load, action, interact, prompt, debug, dispose };
+  return { name: 'islands', update, afterMove, serialize, load, action, interact, prompt, use, debug, dispose };
 }

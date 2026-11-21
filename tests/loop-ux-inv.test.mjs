@@ -84,6 +84,8 @@ test('game.js commits barrel luck only after the loot fits, and nets back off a 
   assert.doesNotMatch(col, /rollBarrel\(/);
   assert.match(col, /rollBarrelTrial\(Math\.random, prog\?\.barrelLuck\)/);
   assert.match(col, /commit\(bag, scratch\); barrel\?\.keep\(\);/);
-  assert.match(col, /else netRefused\.set\(it\.token, performance\.now\(\) \+ NET_RETRY_MS\)/);
-  assert.match(gameSrc, /fits = it => it\.type !== 'cache' && !\(netRefused\.get\(it\.token\) > nowMs\) && lootFits/);
+  // Edge nets (dist/nets.js) replaced the old pull-into-bag nets: a refused barrel just stays in the net, and its
+  // luck is committed only when its loot fits (same trial/keep as hook pickups).
+  assert.match(gameSrc, /emptyNet\(n, bag, type => \{ trial = type === 'barrel' \? rollBarrelTrial\(Math\.random, prog\?\.barrelLuck\)/);
+  assert.match(gameSrc, /\(\) => trial\?\.keep\(\)\);/);
 });

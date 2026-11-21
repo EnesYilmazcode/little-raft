@@ -1,6 +1,7 @@
 // Islands: pure logic (no THREE, no DOM). Layout from a uint32 seed, the drift timeline, save
 // validation, loot rules, the host gather check and the stand-on-sand step. See docs/features/islands.md.
 import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
+import { toolRole, wearPerUse } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 export const ISLAND = Object.freeze({
   FIRST: 90,            // first island in a fresh world (s)
@@ -22,7 +23,16 @@ export const ISLAND = Object.freeze({
 });
 
 export const NODE_KINDS = Object.freeze(['palm', 'bush', 'rock', 'sand']);
-export const NODE_MAX = Object.freeze({ palm: 3, bush: 2, rock: 3, sand: 4 });
+export const NODE_MAX = Object.freeze({ palm: 5, bush: 2, rock: 3, sand: 4 });
+// Palm chopping (Raft numbers, docs/loop/research/fidelity-r2b-world.md): a Stone Axe is needed, 5 chops
+// fell a palm, the felling chop gives 5 planks + 2 leaves, and every chop rolls a coconut and a palm seed.
+export const CHOP = Object.freeze({
+  COOLDOWN: 0.6,        // local swing cooldown (s)
+  HOST_COOLDOWN: 0.5,   // host per-actor chop cooldown (a little slack for network jitter)
+  COCONUT: 0.176, SEED: 0.118,
+  FELL: Object.freeze([['wood', 5], ['leaf', 2]]),
+});
+export const isAxe = kind => toolRole(kind) === 'axe';
 
 const U32 = 4294967296;
 const fin = v => typeof v === 'number' && Number.isFinite(v);
@@ -180,9 +190,20 @@ export function clean(data, layoutOf = layoutFor) {
   return out;
 }
 
-// What one gather gives: [[kind, count], ...].
+// What one chop of palm `node` gives when `used` chops are already done: per-chop coconut and seed rolls
+// (deterministic from the island seed), plus the planks and leaves on the felling chop. Never empty-safe:
+// a middle chop usually gives [] (nothing but progress).
+export function chopLoot(seed, node, used) {
+  const out = [];
+  if (used === NODE_MAX.palm - 1) for (const e of CHOP.FELL) out.push([e[0], e[1]]);
+  if (hash3(seed, (node | 0) * 8 + 101, used) < CHOP.COCONUT) out.push(['coconut', 1]);
+  if (hash3(seed, (node | 0) * 8 + 102, used) < CHOP.SEED) out.push(['seed', 1]);
+  return out;
+}
+
+// What one gather (or palm chop) gives: [[kind, count], ...].
 export function lootFor(kind, seed, node, used) {
-  if (kind === 'palm') return used === NODE_MAX.palm - 1 ? [['wood', 1], ['leaf', 1], ['seed', 1]] : [['wood', 1], ['leaf', 1]];
+  if (kind === 'palm') return chopLoot(seed, node, used);
   if (kind === 'bush') { const h = hash3(seed, node, used); return h < 0.2 ? [['leaf', 1], ['flowerseed', 1]] : h < 0.5 ? [['leaf', 1], ['seed', 1]] : h < 0.75 ? [['leaf', 1]] : [['berries', 2]]; } // [bees] flower seeds [juicer] berries
   if (kind === 'rock') return [['stone', 1]];
   if (kind === 'sand') return [['sand', 1]];
@@ -191,9 +212,12 @@ export function lootFor(kind, seed, node, used) {
 
 // Host gather check. st: {isl, layout, cx, cz, clock, cool:{host, guest}}. pos: actor {x, z} or null.
 // Mutates bag, st.isl.used and st.cool only on success. Returns {ok, reason, loot}.
+// Palms only take 'islands.chop' {seed, node, slot} with an axe in bag slot `slot` (durability left); the
+// chop wears the axe by one use and a worn-out axe breaks (r.broke). Other nodes only take 'islands.gather'.
 export function applyGather(st, a, actor, pos, bag) {
   const no = reason => ({ ok: false, reason, loot: null });
-  if (!a || a.kind !== 'islands.gather') return no('kind');
+  if (!a || (a.kind !== 'islands.gather' && a.kind !== 'islands.chop')) return no('kind');
+  const chop = a.kind === 'islands.chop';
   const isl = st && st.isl, lay = st && st.layout;
   if (!isl || !lay) return no('none');
   if (a.seed !== isl.seed) return no('stale');
@@ -206,16 +230,26 @@ export function applyGather(st, a, actor, pos, bag) {
   const who = actor === 'guest' ? 'guest' : 'host';
   const reach = ISLAND.REACH + (who === 'guest' ? ISLAND.GUEST_SLACK : 0);
   if (dx * dx + dz * dz > reach * reach) return no('reach');
+  if ((n.kind === 'palm') !== chop) return no(chop ? 'node' : 'axe');
   if (st.clock < (st.cool[who] || 0)) return no('cooldown');
   if (!bag || !Array.isArray(bag.slots) || typeof bag.snapshot !== 'function') return no('bag');
+  const si = a.slot;
+  if (chop && !(Number.isInteger(si) && si >= 0 && si < bag.slots.length && bag.slots[si] && isAxe(bag.slots[si].kind) && bag.slots[si].durability > 0)) return no('axe');
   const loot = lootFor(n.kind, isl.seed, k, isl.used[k]);
   let scratch;
   try { scratch = new bag.constructor(bag.snapshot()); } catch { return no('bag'); }
   for (const [kind, c] of loot) if (scratch.add(kind, c) > 0) return no('full');
   for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i];
   isl.used[k]++;
-  st.cool[who] = st.clock + ISLAND.COOLDOWN;
-  return { ok: true, reason: null, loot };
+  st.cool[who] = st.clock + (chop ? CHOP.HOST_COOLDOWN : ISLAND.COOLDOWN);
+  let broke = false;
+  if (chop) {
+    const s = bag.slots[si], d = Math.max(0, Math.min(100, s.durability) - wearPerUse(s.kind));
+    s.durability = d < 1e-9 ? 0 : d;
+    if (s.durability === 0) { bag.slots[si] = null; broke = true; }
+  }
+  if (typeof bag.version === 'number') bag.version++;
+  return { ok: true, reason: null, loot, felled: chop && isl.used[k] >= n.max, broke };
 }
 
 // Stand on island sand after PlayerPhysics.update(). g: sand height (world y) under the player or NaN,

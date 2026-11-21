@@ -142,4 +142,71 @@ export function cushionModel(T) {
   return group(T, decorMesh(T, merge(T, P)), 'decor_cushion');
 }
 
+// Bramblegoat palette (docs/specs/goats.md section 6).
+const GOAT = { cream: 0xf6ead2, creamSh: 0xe6d3b0, toffee: 0xc0803f, toffeeDk: 0x94592c, horn: 0xd9c6a0, hoof: 0x5a4130, nose: 0xe8a7a0, eye: 0x22191a };
+export const GOAT_NECK = Object.freeze([0, 0.4, 0.17]); // head pivot in body space
+
+// Bramblegoat body: a round cream barrel with a toffee saddle patch, four stubby legs with dark hooves,
+// a little up-flicked tail and a neck stub toward the head pivot. Origin at the feet, nose +z.
+export function goatBodyGeometry(T) {
+  const { cream, creamSh, toffee, toffeeDk, hoof } = GOAT;
+  const P = [];
+  P.push(part(T, ball(T, 14, 10), (f, x, y) => (y < -0.5 ? creamSh : cream), [0, 0.3, 0, 0, 0, 0, 0.2, 0.17, 0.27])); // barrel body
+  P.push(part(T, ball(T, 10, 6), f => (hash(f, 5) < 0.2 ? toffeeDk : toffee), [0.02, 0.385, -0.03, 0.08, 0.15, 0.06, 0.16, 0.085, 0.2])); // saddle patch
+  for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+    P.push(part(T, new T.CylinderGeometry(0.035, 0.035, 0.17, 6), cream, [sx * 0.1, 0.105, sz * 0.15])); // leg
+    P.push(part(T, new T.CylinderGeometry(0.039, 0.039, 0.04, 6), hoof, [sx * 0.1, 0.02, sz * 0.15])); // hoof cap
+  }
+  P.push(part(T, new T.ConeGeometry(0.035, 0.09, 6), toffee, [0, 0.44, -0.27, -0.45, 0, 0])); // up-flicked tail
+  P.push(part(T, ball(T, 8, 6), cream, [0, 0.38, 0.17, -0.5, 0, 0, 0.075, 0.1, 0.075])); // neck stub
+  return merge(T, P);
+}
+
+// Bramblegoat head, origin at the neck pivot GOAT_NECK: round head, cream muzzle with a pink nose, big eyes with
+// glints, floppy ears (toffee inside), two blunt nub horns and a tiny three-tuft beard.
+export function goatHeadGeometry(T) {
+  const { cream, creamSh, toffee, horn, nose, eye } = GOAT;
+  const P = [];
+  P.push(part(T, ball(T, 10, 8), cream, [0, 0.06, 0.07, 0, 0, 0, 0.1, 0.095, 0.12])); // head
+  P.push(part(T, ball(T, 6, 4), toffee, [0, 0.12, 0.05, -0.2, 0, 0, 0.07, 0.035, 0.07])); // toffee forelock cap
+  P.push(part(T, ball(T, 8, 6), (f, x, y) => (y < -0.3 ? creamSh : cream), [0, 0.025, 0.16, 0, 0, 0, 0.065, 0.052, 0.06])); // muzzle
+  P.push(part(T, ball(T, 6, 4), nose, [0, 0.045, 0.214, 0, 0, 0, 0.026, 0.016, 0.012])); // nose
+  for (const s of [-1, 1]) {
+    P.push(part(T, ball(T, 6, 5), eye, [s * 0.056, 0.082, 0.15, 0, 0, 0, 0.024, 0.028, 0.018])); // eye
+    P.push(part(T, ball(T, 4, 3), 0xffffff, [s * 0.061, 0.093, 0.165, 0, 0, 0, 0.008, 0.008, 0.006])); // glint
+    P.push(part(T, ball(T, 6, 4), (f, x, y, z) => (z > 0.2 ? toffee : cream), [s * 0.112, 0.035, 0.055, 0.15, s * 0.35, s * 0.8, 0.028, 0.068, 0.036])); // floppy ear, hanging down-out
+    P.push(part(T, new T.ConeGeometry(0.03, 0.05, 7), horn, [s * 0.042, 0.158, 0.03, -0.4, 0, -s * 0.3])); // nub horn
+    P.push(part(T, ball(T, 5, 3), horn, [s * 0.049, 0.178, 0.022, 0, 0, 0, 0.014, 0.012, 0.014])); // blunt tip
+  }
+  for (let k = -1; k <= 1; k++) P.push(part(T, new T.ConeGeometry(0.014, 0.055, 4), creamSh, [k * 0.014, -0.035, 0.16 - Math.abs(k) * 0.01, Math.PI - 0.25, 0, k * 0.25])); // beard
+  return merge(T, P);
+}
+
+// Hay Corner: an L of low slatted fence on the back (-z) and left (-x) tile edges with rope lashings at the corner,
+// a domed hay pile in the back-left corner and a little feed trough on the left rail. Front and right stay open.
+export function goatPenModel(T) {
+  const wood = 0xb8844f, woodDk = 0x8c6136, woodLt = 0xcf9e65, straw = 0xe8c66a, strawDk = 0xcda54b, rope = 0xd8c08f;
+  const P = [], E = 0.78, dome = (w, h) => new T.SphereGeometry(1, w, h, 0, Math.PI * 2, 0, Math.PI / 2);
+  const posts = [[-E, -E, 0.78], [0, -E, 0.6], [E, -E, 0.6], [-E, 0, 0.6], [-E, E, 0.6]];
+  for (const [x, z, h] of posts) {
+    P.push(part(T, new T.CylinderGeometry(0.045, 0.05, h, 8), woodDk, [x, h / 2, z]));
+    P.push(part(T, ball(T, 8, 4), woodDk, [x, h, z, 0, 0, 0, 0.045, 0.025, 0.045])); // rounded top
+  }
+  for (const y of [0.22, 0.45]) {
+    P.push(part(T, new T.BoxGeometry(2 * E, 0.07, 0.04), f => (f % 4 < 2 ? woodLt : wood), [0, y, -E + 0.045])); // back rail
+    P.push(part(T, new T.BoxGeometry(0.04, 0.07, 2 * E), f => (f % 4 < 2 ? woodLt : wood), [-E + 0.045, y, 0])); // left rail
+    P.push(part(T, new T.TorusGeometry(0.06, 0.014, 4, 10), rope, [-E, y, -E, Math.PI / 2, 0, 0])); // rope lashing
+  }
+  P.push(part(T, dome(12, 5), f => (hash(f, 1) < 0.5 ? straw : strawDk), [-0.4, 0, -0.4, 0, 0.4, 0, 0.4, 0.36, 0.34])); // hay dome
+  P.push(part(T, dome(10, 4), f => (hash(f, 2) < 0.5 ? straw : strawDk), [-0.56, 0, 0.0, 0, 0, 0, 0.17, 0.2, 0.25])); // little second heap
+  for (let k = 0; k < 10; k++) { // straw poking out of the pile
+    const a = k / 10 * Math.PI * 1.4 - 0.3, r = 0.25 + hash(k, 9) * 0.12;
+    P.push(part(T, new T.ConeGeometry(0.014, 0.12, 3), k % 2 ? straw : strawDk, [-0.42 + Math.cos(a) * r, 0.27 + hash(k, 4) * 0.06, -0.42 + Math.sin(a) * r, Math.sin(a) * 0.8, 0, -Math.cos(a) * 0.8]));
+  }
+  P.push(part(T, new T.BoxGeometry(0.18, 0.1, 0.42), wood, [-E + 0.14, 0.28, 0.42])); // feed trough
+  P.push(part(T, new T.BoxGeometry(0.13, 0.04, 0.37), strawDk, [-E + 0.14, 0.32, 0.42])); // greens in the trough
+  for (const z of [0.25, 0.59]) P.push(part(T, new T.BoxGeometry(0.03, 0.2, 0.03), woodDk, [-E + 0.14, 0.15, z])); // trough legs
+  return group(T, decorMesh(T, merge(T, P)), 'decor_goatpen');
+}
+
 function group(T, mesh, name) { const g = new T.Group(); g.name = name; g.add(mesh); return g; }

@@ -3,30 +3,58 @@
  "anchors": [
   {
    "file": "game.js",
-   "line": 12,
-   "expectedLine": 12,
+   "line": 13,
+   "expectedLine": 13,
    "matches": 1
   },
   {
    "file": "placement.js",
-   "line": 91,
-   "expectedLine": 91,
+   "line": 147,
+   "expectedLine": 147,
+   "matches": 1
+  },
+  {
+   "file": "live.js",
+   "line": 28,
+   "expectedLine": 28,
    "matches": 1
   }
  ],
  "fails": [],
+ "tests_stock": {
+  "exit": 1,
+  "summary": [
+   "# tests 910",
+   "# pass 909",
+   "# fail 1"
+  ],
+  "failed": [
+   "not ok 12 - atlas: every generator gets a cell and the build stays fast"
+  ]
+ },
+ "tests_patched": {
+  "exit": 1,
+  "summary": [
+   "# tests 926",
+   "# pass 925",
+   "# fail 1"
+  ],
+  "failed": [
+   "not ok 12 - atlas: every generator gets a cell and the build stays fast"
+  ]
+ },
  "stock": {
   "errors": [],
   "fails": [],
   "spawn": {
-   "calls": 157,
-   "triangles": 151511,
-   "geometries": 155,
-   "textures": 16,
-   "programs": 41,
+   "calls": 64,
+   "triangles": 157472,
+   "geometries": 104,
+   "textures": 11,
+   "programs": 114,
    "shadows": true,
-   "glCallsPerFrame": 157,
-   "frameMs": 1845.8
+   "glCallsPerFrame": 65.3,
+   "frameMs": 3784.6
   },
   "decor": [
    "sail",
@@ -38,24 +66,24 @@
   ],
   "tiles": 10,
   "2-decor": {
-   "calls": 167,
-   "triangles": 219484,
-   "geometries": 331,
-   "textures": 16,
-   "programs": 54,
+   "calls": 73,
+   "triangles": 175494,
+   "geometries": 198,
+   "textures": 13,
+   "programs": 136,
    "shadows": true,
-   "glCallsPerFrame": 170.4,
-   "frameMs": 1841.6
+   "glCallsPerFrame": 73.3,
+   "frameMs": 1887.4
   },
   "3-decor-back": {
-   "calls": 121,
-   "triangles": 190370,
-   "geometries": 331,
-   "textures": 16,
-   "programs": 54,
+   "calls": 67,
+   "triangles": 120414,
+   "geometries": 199,
+   "textures": 13,
+   "programs": 136,
    "shadows": true,
-   "glCallsPerFrame": 121,
-   "frameMs": 1584.7
+   "glCallsPerFrame": 67,
+   "frameMs": 1951.3
   },
   "contracts": {
    "sailCloth": true,
@@ -100,14 +128,14 @@
   "errors": [],
   "fails": [],
   "spawn": {
-   "calls": 145,
-   "triangles": 110043,
-   "geometries": 149,
-   "textures": 16,
-   "programs": 41,
+   "calls": 52,
+   "triangles": 133316,
+   "geometries": 98,
+   "textures": 11,
+   "programs": 114,
    "shadows": true,
-   "glCallsPerFrame": 145,
-   "frameMs": 2113.8
+   "glCallsPerFrame": 53.3,
+   "frameMs": 3387.4
   },
   "decor": [
    "sail",
@@ -119,24 +147,24 @@
   ],
   "tiles": 10,
   "2-decor": {
-   "calls": 132,
-   "triangles": 118296,
-   "geometries": 281,
-   "textures": 16,
-   "programs": 56,
+   "calls": 57,
+   "triangles": 141110,
+   "geometries": 154,
+   "textures": 13,
+   "programs": 137,
    "shadows": true,
-   "glCallsPerFrame": 133.5,
-   "frameMs": 1881.9
+   "glCallsPerFrame": 57.3,
+   "frameMs": 2451.3
   },
   "3-decor-back": {
-   "calls": 84,
-   "triangles": 93562,
-   "geometries": 281,
-   "textures": 16,
-   "programs": 56,
+   "calls": 48,
+   "triangles": 86198,
+   "geometries": 154,
+   "textures": 13,
+   "programs": 137,
    "shadows": true,
-   "glCallsPerFrame": 84,
-   "frameMs": 1965.2
+   "glCallsPerFrame": 48,
+   "frameMs": 2487.4
   },
   "contracts": {
    "sailCloth": true,

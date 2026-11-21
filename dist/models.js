@@ -9,7 +9,7 @@ import * as T from './vendor/three.module.js';
 const C = {
   plank: 0xc48c55, plankLight: 0xd9a86c, darkWood: 0x6b4529, log: 0x7d5535, drift: 0xa39684,
   rope: 0xcdb07a, ropeDark: 0x8f7646,
-  white: 0xece9e0, teal: 0x2fa39a, blue: 0x3d8fd1, red: 0xd9483b, yellow: 0xf2c14e, orange: 0xe8792e,
+  white: 0xece9e0, teal: 0x2fa39a, blue: 0x3d8fd1, red: 0xd9483b, yellow: 0xf2c14e, orange: 0xe8792e, strap: 0x2b2622,
   metal: 0x8e989e, darkMetal: 0x3f4448, rust: 0xa5522a,
   leaf: 0x5fae3a, leafDark: 0x3b7f2a, leafLight: 0xa5d65a, stem: 0x86a84a,
   soil: 0x4a3222, soilLight: 0x6b4a31,
@@ -340,27 +340,24 @@ const B = {
     K.ud.floatY = 0.3;
   },
   hook(K) {
-    // plastic grapple: rope-wrapped handle, coiled rope, 3 plastic prongs
-    K.add(rbox(0.05, 0.3, 0.05, 0.02, K.hero), C.white, { m: 'plastic', p: [0, -0.02, 0] });
-    ropeWrap(K, 0, -0.14, 0.08, 0, 0.03, 5.5, 0.0105);
-    K.add(rbox(0.07, 0.04, 0.07, 0.016, K.bev), C.teal, { m: 'plastic', p: [0, -0.18, 0] });
-    K.add(rbox(0.06, 0.04, 0.06, 0.015, K.bev), C.teal, { m: 'plastic', p: [0, 0.14, 0] });
-    K.add(cyl(0.024, 0.03, 0.3, K.seg(10)), C.white, { m: 'plastic', p: [0, 0.31, 0] });
-    K.add(new T.SphereGeometry(0.048, K.seg(12), K.seg(8)), C.teal, { m: 'plastic', p: [0, 0.37, 0], s: [1, 0.8, 1] });
-    K.add(cyl(0.012, 0.03, 0.08, K.seg(10)), C.teal, { m: 'plastic', p: [0, 0.5, 0] });
-    K.add(new T.TorusGeometry(0.03, 0.009, 5, K.seg(12)), C.white, { m: 'plastic', p: [0, 0.56, 0] });
-    const prong = [[0.02, 0.36], [0.09, 0.35], [0.15, 0.39], [0.172, 0.46], [0.155, 0.525], [0.12, 0.54]];
+    // stick grapple (matches the held hook): white bottle grip, wooden stick, dark straps, 3 orange plastic claws
+    K.add(cyl(0.036, 0.038, 0.24, K.seg(12)), C.white, { m: 'plastic', p: [0, -0.06, 0] });
+    K.add(cyl(0.022, 0.036, 0.05, K.seg(12)), C.white, { m: 'plastic', p: [0, 0.085, 0] });
+    K.add(cyl(0.023, 0.025, 0.38, K.seg(9)), C.plank, { m: 'wood', p: [0, 0.29, 0], uvSwap: true });
+    for (const y of [-0.13, 0.11, 0.39, 0.42, 0.45]) K.add(new T.TorusGeometry(y < 0 ? 0.039 : 0.027, 0.008, 4, K.seg(12)), C.strap, { m: 'plastic', p: [0, y, 0], r: [Math.PI / 2, 0, 0] });
+    K.add(rbox(0.07, 0.04, 0.07, 0.014, K.bev), C.strap, { m: 'plastic', p: [0, 0.485, 0] });
+    const prong = [[0.02, 0.49], [0.1, 0.5], [0.17, 0.555], [0.195, 0.64], [0.175, 0.71], [0.13, 0.73]];
     for (let k = 0; k < 3; k++) {
       const a = k * Math.PI * 2 / 3 + Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
-      K.add(tube(prong.map(([r, y]) => [r * ca, y, r * sa]), 0.02, K.seg(12), K.lod ? 5 : 6), C.white, { m: 'plastic' });
+      K.add(tube(prong.map(([r, y]) => [r * ca, y, r * sa]), 0.027, K.seg(12), K.lod ? 5 : 6), C.orange, { m: 'plastic' });
       const tip = prong[prong.length - 1];
-      K.add(along(cyl(0.004, 0.024, 0.08, K.seg(8)), [tip[0] * ca, tip[1] - 0.01, tip[0] * sa], [(tip[0] - 0.07) * ca, tip[1] - 0.035, (tip[0] - 0.07) * sa]), C.teal, { m: 'plastic' });
+      K.add(along(cyl(0.004, 0.024, 0.08, K.seg(8)), [tip[0] * ca, tip[1] - 0.01, tip[0] * sa], [(tip[0] - 0.07) * ca, tip[1] - 0.035, (tip[0] - 0.07) * sa]), C.orange, { m: 'plastic' });
     }
     // rope coil hanging off the butt
-    K.add(new T.TorusGeometry(0.085, 0.014, 5, K.seg(16)), C.rope, { p: [0.02, -0.29, 0], r: [0, Math.PI / 2, 0.2], col: ropeCol(0.53, 0.03) });
-    K.add(new T.TorusGeometry(0.075, 0.014, 5, K.seg(16)), C.rope, { p: [0.0, -0.3, 0.01], r: [0, Math.PI / 2 - 0.3, -0.1], col: ropeCol(0.47, 0.03) });
-    K.add(tube([[0, -0.2, 0], [0.01, -0.22, 0], [0.02, -0.215, 0.0]], 0.012, 6, 5), C.rope, {});
-    K.ud.grip = [0, 0, 0]; K.ud.tip = [0, 0.58, 0]; K.ud.iconRot = [0, 0, -0.6];
+    K.add(new T.TorusGeometry(0.085, 0.014, 5, K.seg(16)), C.rope, { p: [0.02, -0.25, 0], r: [0, Math.PI / 2, 0.2], col: ropeCol(0.53, 0.03) });
+    K.add(new T.TorusGeometry(0.075, 0.014, 5, K.seg(16)), C.rope, { p: [0.0, -0.26, 0.01], r: [0, Math.PI / 2 - 0.3, -0.1], col: ropeCol(0.47, 0.03) });
+    K.add(tube([[0, -0.18, 0], [0.01, -0.2, 0], [0.02, -0.21, 0.0]], 0.012, 6, 5), C.rope, {});
+    K.ud.grip = [0, 0, 0]; K.ud.tip = [0, 0.74, 0]; K.ud.iconRot = [0, 0, -0.6];
   },
   hammer(K) {
     K.add(cyl(0.02, 0.024, 0.52, K.seg(9)), C.drift, { m: 'wood', p: [0, 0.16, 0], uvSwap: true });
@@ -418,6 +415,12 @@ const B = {
     coconut(K, [0, 0.05, 0], 0.06);
     K.add(new T.SphereGeometry(0.012, 6, 4), 0xe8dcc0, { m: 'base', p: [0.03, 0.09, 0.02] });
     K.ud.iconRot = [0.3, 0, 0];
+  },
+  coconut(K) {
+    // island coconut (chopped from palms): a slightly squashed husk with three dark eyes on top
+    coconut(K, [0, 0.062, 0], 0.075);
+    for (let i = 0; i < 3; i++) K.add(new T.SphereGeometry(0.013, 6, 4), 0x24160b, { m: 'base', p: [Math.cos(i * 2.1 + 0.5) * 0.024, 0.12, Math.sin(i * 2.1 + 0.5) * 0.024], s: [1, 0.6, 1] });
+    K.ud.iconRot = [0.45, 0, 0];
   },
   sprout(K) {
     mound(K, 0.07);

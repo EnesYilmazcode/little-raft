@@ -5,12 +5,12 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
-const { createQuality, buildLevels, QUALITY_CONSTANTS: C } = await import(new URL('quality.js', base));
+const { createQuality, buildLevels, setShadows, QUALITY_CONSTANTS: C } = await import(new URL('quality.js', base));
 
 function fakes() {
-  const renderer = { pr: null, calls: 0, setPixelRatio(v) { this.pr = v; this.calls++; } };
+  const renderer = { pr: null, calls: 0, shadowMap: { autoUpdate: true, needsUpdate: false }, setPixelRatio(v) { this.pr = v; this.calls++; } };
   const map = { disposed: 0, dispose() { this.disposed++; } };
-  const sun = { castShadow: true, shadow: { map, mapSize: { x: 1024, y: 1024, set(x, y) { this.x = x; this.y = y; } } } };
+  const sun = { castShadow: true, shadow: { intensity: 1, map, mapSize: { x: 1024, y: 1024, set(x, y) { this.x = x; this.y = y; } } } };
   return { renderer, sun, map };
 }
 const make = (opts = {}) => {
@@ -69,17 +69,25 @@ test('very slow frames (>250 ms) are clamped, not dropped, so the scaler still s
   assert.equal(q.level, q.levels.length - 1, 'reaches the floor');
 });
 
-test('stepping down keeps the shadow map; the last two levels disable castShadow', () => {
+test('stepping down keeps the shadow map; the last two levels stop the shadow pass without touching castShadow', () => {
   const { q, sun, map, renderer } = make();
   run(q, 40, 12100); // steps at 2 s, 7 s, 12 s (sustain counters run through the cooldown)
   assert.equal(q.level, 3); assert.equal(map.disposed, 0); assert.equal(sun.shadow.map, map);
   assert.equal(sun.shadow.mapSize.x, 1024); assert.equal(renderer.pr, 0.85); assert.equal(sun.castShadow, true);
+  assert.equal(renderer.shadowMap.autoUpdate, true);
   run(q, 40, 5000);
-  assert.equal(q.level, 4); assert.equal(sun.castShadow, false); assert.equal(renderer.pr, 0.85);
+  assert.equal(q.level, 4); assert.equal(renderer.pr, 0.85);
+  assert.equal(sun.castShadow, true, 'castShadow unchanged: program keys stay the same');
+  assert.equal(renderer.shadowMap.autoUpdate, false); assert.equal(renderer.shadowMap.needsUpdate, false);
+  assert.equal(sun.shadow.intensity, 0);
   run(q, 40, 5000);
-  assert.equal(q.level, 5); assert.equal(sun.castShadow, false); assert.equal(renderer.pr, 0.7); assert.equal(map.disposed, 0);
+  assert.equal(q.level, 5); assert.equal(sun.castShadow, true); assert.equal(renderer.pr, 0.7); assert.equal(map.disposed, 0);
   run(q, 40, 20000);
   assert.equal(q.level, 5, 'stays at the floor');
+  q.reset({ full: true });
+  assert.equal(q.level, 0); assert.equal(sun.castShadow, true);
+  assert.equal(renderer.shadowMap.autoUpdate, true); assert.equal(renderer.shadowMap.needsUpdate, true, 'one redraw of the stale map');
+  assert.equal(sun.shadow.intensity, 1);
 });
 
 test('steps up with hysteresis (8 s below 17.5 ms)', () => {
@@ -92,13 +100,14 @@ test('steps up with hysteresis (8 s below 17.5 ms)', () => {
 
 test('respects the preset cap', () => {
   const { q, renderer, sun } = make({ preset: 'low' });
-  assert.equal(renderer.pr, 1); assert.equal(sun.castShadow, false);
+  assert.equal(renderer.pr, 1); assert.equal(sun.castShadow, true); assert.equal(renderer.shadowMap.autoUpdate, false);
   run(q, 10, 30000); assert.equal(q.level, 0); assert.equal(renderer.pr, 1);
   run(q, 40, 3000); assert.equal(q.level, 1); assert.equal(renderer.pr, 0.85);
   run(q, 40, 5000); assert.equal(q.level, 2); assert.equal(renderer.pr, 0.7);
   run(q, 40, 20000); assert.equal(q.level, 2);
   q.setCap('medium');
   assert.equal(q.level, 0); assert.equal(renderer.pr, 1.3); assert.equal(sun.castShadow, true);
+  assert.equal(renderer.shadowMap.autoUpdate, true); assert.equal(sun.shadow.intensity, 1);
   run(q, 10, 60000); assert.equal(renderer.pr, 1.3, 'never above medium cap');
 });
 
@@ -152,4 +161,15 @@ test('reset() clears measurements and restarts cooldown; full reset restores top
   q.reset({ full: true });
   assert.equal(q.level, 0); assert.equal(renderer.pr, 1.5); assert.equal(q.upAfter, C.UP_AFTER_MS);
   assert.match(q.describe(), /^high 1\/6: pr 1.5, shadows 1024/);
+});
+
+test('setShadows toggles the pass and intensity, never castShadow; needsUpdate only on an off->on edge', () => {
+  const sm = { autoUpdate: true, needsUpdate: false }, sun = { castShadow: true, shadow: { intensity: 1 } };
+  setShadows(sm, sun, true); assert.equal(sm.needsUpdate, false, 'already on: no extra redraw');
+  setShadows(sm, sun, false);
+  assert.deepEqual([sm.autoUpdate, sm.needsUpdate, sun.castShadow, sun.shadow.intensity], [false, false, true, 0]);
+  setShadows(sm, sun, false); assert.equal(sm.needsUpdate, false);
+  setShadows(sm, sun, true);
+  assert.deepEqual([sm.autoUpdate, sm.needsUpdate, sun.castShadow, sun.shadow.intensity], [true, true, true, 1]);
+  setShadows(null, null, false); // tolerates missing parts
 });

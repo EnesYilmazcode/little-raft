@@ -102,16 +102,25 @@ export function createHook(T) {
   const cap = add(new T.BoxGeometry(0.085, 0.03, 0.09), orange, HX - 0.01, 0.29, 0);
   headParts.push(cap);
   // lashing strap over the hub
-  add(new T.BoxGeometry(0.125, 0.086, 0.022), black, HX - 0.01, 0.24, 0);
-  // three short claws fanned round -X: out, then curling down into a blunt talon
-  const prongs = [[0.03, 0.245], [0.1, 0.262], [0.165, 0.222], [0.19, 0.145], [0.17, 0.085]];
-  for (const [th, s] of [[-0.8, 0.92], [0, 1.05], [0.8, 0.92]]) {
+  add(new T.BoxGeometry(0.125, 0.03, 0.124), black, HX - 0.01, 0.222, 0);
+  // three slim moulded tines fanned round -X: out from the head, down, then hooked back up (a J barb)
+  const tineD = [[0.035, 0.245], [0.088, 0.252], [0.135, 0.228], [0.155, 0.172], [0.147, 0.124], [0.12, 0.103], [0.1, 0.122]];
+  for (const [th, s] of [[-1.05, 0.9], [0, 1.0], [1.05, 0.9]]) {
     const dx = -Math.cos(th), dz = Math.sin(th);
-    const p = prongs.map(([d, y]) => V(HX - 0.01 + dx * d * s, y, dz * d * s));
-    headParts.push(block(orange, p[0], p[1], 0.042, 0.037, Math.PI / 4 - th));
-    headParts.push(block(orange, p[1], p[2], 0.037, 0.028, Math.PI / 4 - th));
-    headParts.push(block(orange, p[2], p[3], 0.028, 0.018, Math.PI / 4 - th));
-    headParts.push(block(orange, p[3], p[4], 0.018, 0.006, Math.PI / 4 - th));
+    const curve = new T.CatmullRomCurve3(tineD.map(([d, y]) => V(HX - 0.01 + dx * d * s, y, dz * d * s)), false, 'centripetal');
+    const TS = 12, RS = 5, g = new T.TubeGeometry(curve, TS, 1, RS, false);
+    const pos = g.attributes.position, c = new T.Vector3(), v = new T.Vector3();
+    for (let i = 0; i <= TS; i++) {                       // taper: thick root, sharp tip
+      const u = i / TS, r = 0.0055 + 0.025 * Math.pow(1 - u, 1.3);
+      curve.getPointAt(u, c);
+      for (let j = 0; j <= RS; j++) {
+        const k = i * (RS + 1) + j;
+        v.fromBufferAttribute(pos, k).sub(c).multiplyScalar(r).add(c);
+        pos.setXYZ(k, v.x, v.y, v.z);
+      }
+    }
+    g.computeVertexNormals();
+    headParts.push(add(g, orange));
   }
   // short back spur so the head reads as a grapple, not a hammer
   headParts.push(block(orange, V(HX + 0.03, 0.25, 0), V(HX + 0.09, 0.215, 0), 0.024, 0.012));

@@ -20,7 +20,7 @@ const fishSince = (S, b, c) => (c.hostWorld ? c.gained('fish') : num(S.fish) - n
 const handGrab = (S, c, type) => !!(c.prev?.pickup && c.prev.hookStage === 'idle' && num(S.collected) > num(c.prev.collected)
   && (type ? c.prev.pickup.type === type : MATS.some(k => inv(S, k) > inv(c.prev, k))));
 const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
-const FRESH = Object.freeze({tiles:9, fish:0, collected:0, stock:{}, me:null, hookHealth:100});
+const FRESH = Object.freeze({tiles:4, fish:0, collected:0, stock:{}, me:null, hookHealth:100});
 const played = (S, c) => c.silent && num(S.collected) > 0; // returning players skip the very first lessons
 // Gather count = the most ever seen of max(gained since the step showed, held now): what you already carry counts, and
 // spending never lowers it. or: a later milestone that proves the step.
@@ -70,7 +70,7 @@ export const STEPS = [
     done:(S, b, c) => fishSince(S, b, c) >= 1},
   {chapter:'ch3', id:'fish3', title:'Catch two more', hint:'Cast and wait, the fish comes to you', needs:['fish1'],
     count:(S, b, c) => [fishSince(S, b, c) - (c.silent ? 1 : 0), 2]},
-  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 4 plank, 3 rope, 3 leaves', needs:['rod'], done:(S, b, c) => placedNow(S, b, c, 'sail')},
+  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 10 planks, 20 leaves, 3 scrap', needs:['rod'], done:(S, b, c) => placedNow(S, b, c, 'sail')},
   {chapter:'ch3', id:'seat', title:'Build a bench', hint:'Somewhere to watch the waves', done:(S, b, c) => placedNow(S, b, c, 'bench')},
   {chapter:'ch3', id:'crate', title:'Make a storage crate', hint:S => use(S, 'crate', 'the crate', '[LMB] on the raft', 'Bag: 4 plank + 1 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'crate')},
   {chapter:'ch3', id:'home', title:'Reach 16 tiles', hint:'A proper little home', count:S => [num(S.tiles), 16], done:(S, b, c) => !c.hostWorld && num(S.tiles) >= 16},
@@ -134,7 +134,7 @@ export function evaluate(steps, P, rawS, {silent = false} = {}) {
   // otherwise the jump in tiles/fish/collected/bag between the two worlds reads as progress.
   if (prev && (num(S.collected) < num(prev.collected) || !!prev.hostWorld !== hostWorld(S))) {
     P.track = {}; swapped = true;
-    if (!prev.hostWorld && S.role === 'solo' && prev.role === 'solo' && num(S.tiles) <= 9 && !num(S.fish)) { P.done = {}; reset = true; }
+    if (!prev.hostWorld && S.role === 'solo' && prev.role === 'solo' && num(S.tiles) <= 4 && !num(S.fish)) { P.done = {}; reset = true; }
   }
   if (silent) {
     const byId = new Map(steps.map(s => [s.id, s])), mark = id => { if (!P.done[id] && byId.has(id)) { P.done[id] = true; silentDone.push(id); arr(byId.get(id).needs).forEach(mark); } };

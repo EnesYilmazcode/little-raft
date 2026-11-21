@@ -9,8 +9,8 @@
 // first-person hook/hammer/rod factories are 6-13k tris, too heavy for a third-person prop), built lazily
 // and cached per kind. update() allocates nothing. Name tag needs a DOM (or OffscreenCanvas); skipped in Node.
 // Draw calls: createAvatar's 36 meshes are baked into one mesh per rigid pivot (body, legs, arms, head+hat)
-// with per-vertex colour + roughness on one shared material (exact same shading), plus the emissive eye shine
-// and the flat-shaded straw: 8 meshes instead of 36. Pivots in body.userData.parts stay animatable.
+// with per-vertex colour + roughness on one shared material (exact same shading; the straw hat is faceted by its
+// geometry, so it bakes in too), plus the emissive eye shine: 7 meshes instead of 36. Pivots in body.userData.parts stay animatable.
 import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { lookColors, lookKey } from './look.js?build=v3-survival-ae77fa84ac2b';
 
@@ -93,6 +93,19 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
       part(g, new T.ConeGeometry(0.026, 0.14, 4), K.steel, 0, 0.77);
       return [0, 0.77, 0];
     },
+    spyglass(g, K) { part(g, Cyl(0.022, 0.026, 0.3, 8), K.woodDark, 0, 0.15); part(g, Cyl(0.03, 0.03, 0.04, 8), K.glow, 0, 0.3); return [0, 0.32, 0]; }, // [spyglass]
+    paddle(g, K) {   // [paddle] plank shaft, flat blade, T-grip
+      part(g, Cyl(0.016, 0.018, 0.8), K.wood, 0, 0.22);
+      part(g, Box(0.13, 0.28, 0.02), K.wood, 0, 0.72);
+      part(g, Box(0.1, 0.025, 0.025), K.woodDark, 0, -0.17);
+      return [0, 0.86, 0];
+    },
+    axe(g, K) {   // [axe] Stone Axe: short haft, lashed stone head
+      part(g, Cyl(0.017, 0.02, 0.46), K.wood, 0, 0.12);
+      part(g, Cyl(0.025, 0.025, 0.05), K.rope, 0, 0.3);
+      part(g, Box(0.05, 0.1, 0.16), K.steel, 0, 0.32, 0.06);
+      return [0, 0.32, 0.12];
+    },
     wood(g, K) { part(g, Box(0.13, 0.5, 0.035), K.wood, 0, 0.12); part(g, Box(0.135, 0.03, 0.04), K.woodDark, 0, 0.3); return [0, 0.12, 0]; },
     leaf(g, K) {
       part(g, Cyl(0.006, 0.008, 0.16, 4), K.leafDark, 0, 0.04);
@@ -126,7 +139,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
   const holder = new T.Group();
   holder.position.set(0, -0.5, 0.03);
   P.rightArm.add(holder);
-  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45, drum: 1.5, pipes: 0.4, bells: 1.2, spade: 1.1, finder: 0.9, spear: 1.0, metalspear: 1.0 }; // [instruments] [treasure]
+  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45, drum: 1.5, pipes: 0.4, bells: 1.2, spade: 1.1, finder: 0.9, spear: 1.0, metalspear: 1.0, spyglass: 1.3, paddle: 1.1, axe: 1.3 }; // [instruments] [treasure] [spyglass] [paddle] [axe]
   const cache = new Map();
   let curKind, cur = null;
   const getModel = (kind) => {

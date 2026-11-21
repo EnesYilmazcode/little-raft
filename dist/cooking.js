@@ -20,10 +20,12 @@
 //   createSmoke(T, {max=48}) -> { points, emit(x,y,z,n,dark), update(dt,wind{x,z}), dispose() }  one draw call
 
 export const COOK_TUNING = Object.freeze({
-  cookSeconds: Object.freeze({ default: 22, perCm: 0.4 }),
-  burnAfter: 20,     // extra seconds after cooked before it chars
-  fuelPerWood: 45,   // seconds of fire per wood
-  maxFuel: 4,        // wood
+  // Raft Simple Grill numbers (docs/loop/research/fidelity-r2b-stations.md): 1 plank = 50 s, holds 2 planks,
+  // a ~30 cm fish takes ~40 s. Raft never burns food; ours only chars after a long two minutes of neglect.
+  cookSeconds: Object.freeze({ default: 28, perCm: 0.4 }),
+  burnAfter: 120,    // extra seconds after cooked before it chars
+  fuelPerWood: 50,   // seconds of fire per wood (plank)
+  maxFuel: 2,        // wood
   slots: 2,
   idleBurn: 10,      // the fire keeps burning this long after the grill is emptied, then idles out
 });
