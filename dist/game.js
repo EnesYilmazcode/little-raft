@@ -37,6 +37,7 @@ import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } f
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
+import { poolCap } from './daynight.js?build=v3-survival-ae77fa84ac2b'; // warmShaders: lantern light count per graphics preset
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { createSceneryInstances } from './scenery-instances.js?build=v3-survival-ae77fa84ac2b';
@@ -414,6 +415,7 @@ export function mount(transfer = null) {
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diving?.warm(renderer); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    renderer.shadowMap.autoUpdate = true; diving?.onChange?.(d => { renderer.shadowMap.autoUpdate = !d.underwater; if (!d.underwater) renderer.shadowMap.needsUpdate = true; }); // nothing underwater receives the sun's shadow: skip the shadow pass
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); singlePass(scene); refreshPointerUI(true);
@@ -492,11 +494,32 @@ export function mount(transfer = null) {
   }
   // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
-  function warmShaders() {
+  // Then, spread over the next second, the variants the game switches to later so none of those switches hitches:
+  // the lantern pool lights (daynight.js adds poolCap of them at the first lantern; the light count is part of every
+  // lit program), the opposite sun.castShadow (quality's shadows-off levels, the shadows setting) and the low-detail
+  // ocean. compileAsync creates the programs synchronously, so the scene is only changed for the duration of a pass.
+  let warmGen = 0;
+  function warmShaders(variantsOnly = false) {
     if (typeof renderer.compileAsync !== 'function') return;
-    hands?.preload(['hammer', 'fishingrod']);
-    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
-    catch (e) { console.warn('shader warm-up failed', e); }
+    const warm = (root = scene) => renderer.compileAsync(root, camera, scene).catch(e => console.warn('shader warm-up failed', e));
+    const pass = (lamps, flipShadow) => {
+      const pool = scene.children.filter(o => o.isPointLight && o.name === 'daynight-lantern-light'), temp = [], cast = sun.castShadow;
+      try {
+        if (lamps) for (let i = pool.length; i < poolCap(options.graphics); i++) { const l = new T.PointLight('#ffb35c', 0, 8, 2); temp.push(l); scene.add(l); }
+        else for (const l of pool) scene.remove(l);
+        if (flipShadow) sun.castShadow = !cast;
+        warm();
+      } finally {
+        sun.castShadow = cast; for (const l of temp) { scene.remove(l); l.dispose(); }
+        if (!lamps) for (const l of pool) scene.add(l);
+      }
+    };
+    const passes = [() => { pass(false, true); if (ocean?.setDetail) { const low = !!ocean.lowDetail; ocean.setDetail(!low); try { warm(ocean.mesh); } finally { ocean.setDetail(low); } } },
+      () => pass(true, false), () => pass(true, true)];
+    const gen = ++warmGen;
+    const step = () => { if (gen !== warmGen || !scene) return; try { passes.shift()(); } catch (e) { console.warn('shader warm-up failed', e); } if (passes.length) later(step, 300); };
+    try { if (!variantsOnly) { hands?.preload(['hammer', 'fishingrod']); warm(); } } catch (e) { console.warn('shader warm-up failed', e); }
+    later(step, 300);
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -1054,10 +1077,14 @@ export function mount(transfer = null) {
     const l = quality.levels[quality.level], sc = clamp(options.renderScale ?? 1, .5, 1);
     if (l) renderer.setPixelRatio(Math.max(.5, l.pixelRatio * sc));
     if (sun) sun.castShadow = options.shadows !== false && !!l?.shadows;
+    renderer.shadowMap.needsUpdate = true; // one refresh even while the shadow pass is paused underwater
+    ocean?.setDetail?.(quality.level >= quality.levels.length - 2); // bottom two levels: cheaper sea shader (pre-compiled)
   }
   function applyOptions(next) {
+    const prevCap = poolCap(options?.graphics);
     options = next; applyVolume();
     if (quality && quality.info.preset !== next.graphics) quality.setCap(next.graphics);
+    if (scene && poolCap(next.graphics) !== prevCap) warmShaders(true); // the lantern light count follows the preset
     applyUserGraphics();
   }
   // Pause menu "quit to title": save, leave any crew, show the title. The world stays loaded for Continue.

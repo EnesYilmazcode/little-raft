@@ -3,6 +3,7 @@
 // See docs/cloud/sailing-spec.md. The raft never moves in x/z: the world drifts past it instead.
 import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 import { createSailingUI } from './sailing-ui.js?build=v3-survival-ae77fa84ac2b';
+import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
 const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22;
 const CLOTH_R = 1.2, CLOTH_Y0 = 1, CLOTH_Y1 = 3.4; // raised cloth hit volume around the mast axis (cheap approximation)
@@ -43,20 +44,21 @@ export function createSailing(T, ctx) {
   };
   const ropeGeo = new T.CylinderGeometry(.022, .022, 1, 6); ropeGeo.translate(0, -.5, 0);
   const rollGeo = new T.CylinderGeometry(ROLL_R, ROLL_R, 1, 10); rollGeo.rotateZ(Math.PI / 2); // unit length along x, scaled per sail
+  // Static wooden frame of the anchor winch (post, crank, arm) as one geometry: one draw instead of three.
+  const frameParts = [new T.CylinderGeometry(.065, .08, 1, 8).translate(0, .5, 0), new T.BoxGeometry(.03, .18, .03).translate(.2, .84, 0), new T.BoxGeometry(.06, .06, .6).translate(0, .97, .3)];
+  const frameGeo = mergeGeometries(T, frameParts); for (const g of frameParts) g.dispose();
   const G = {
-    post: new T.CylinderGeometry(.065, .08, 1, 8), drum: new T.CylinderGeometry(.075, .075, .34, 10),
-    coil: new T.CylinderGeometry(.08, .08, .24, 10), crank: new T.BoxGeometry(.03, .18, .03), arm: new T.BoxGeometry(.06, .06, .6),
+    frame: frameGeo, drum: new T.CylinderGeometry(.075, .075, .34, 10),
+    coil: new T.CylinderGeometry(.08, .08, .24, 10),
     anchor: anchorGeometry(T), rope: ropeGeo, roll: rollGeo, tie: new T.TorusGeometry(ROLL_R + .004, .009, 5, 12).rotateY(Math.PI / 2),
   };
   const mesh = (geo, mat, x, y, z, parent, shadow = true) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = shadow; parent.add(m); return m; };
 
   const fixture = new T.Group(); fixture.name = 'sailingFixture'; scene.add(fixture);
   const anchorRoot = new T.Group(); fixture.add(anchorRoot);
-  mesh(G.post, M.wood, 0, .5, 0, anchorRoot);
+  mesh(G.frame, M.wood, 0, 0, 0, anchorRoot);
   mesh(G.drum, M.woodLight, 0, .9, 0, anchorRoot).rotation.z = Math.PI / 2;
   const coil = mesh(G.coil, M.rope, 0, .9, 0, anchorRoot); coil.rotation.z = Math.PI / 2;
-  mesh(G.crank, M.wood, .2, .84, 0, anchorRoot, false);
-  mesh(G.arm, M.wood, 0, .97, .3, anchorRoot);
   const anchorRope = mesh(G.rope, M.rope, 0, .95, .57, anchorRoot, false);
   const hook = new T.Group(); anchorRoot.add(hook);
   mesh(G.anchor, M.iron, 0, 0, 0, hook, false);
