@@ -175,7 +175,7 @@ test('digit keys select hotbar slots (consumed)', () => {
 
 // ---------------------------------------------------------------- mouse
 
-test('mouse look: radians, first-after-lock dropped, isolated spikes dropped, invertY, consumed', () => {
+test('mouse look: radians, first-after-lock dropped, isolated spikes dropped, invertY left to the game, consumed', () => {
   const s = setup();
   fire(s.doc, 'mousemove', { movementX: 10, movementY: 0 }); s.tick();
   assert.deepEqual(s.input.lookDelta(), { dx: 0, dy: 0 }, 'ignored while unlocked');
@@ -189,7 +189,7 @@ test('mouse look: radians, first-after-lock dropped, isolated spikes dropped, in
   assert.deepEqual(s.input.lookDelta(), { dx: 0, dy: 0 });
   s.map.setSetting('invertY', true);
   fire(s.doc, 'mousemove', { movementX: 0, movementY: 10 }); s.tick();
-  assert.ok(s.input.lookDelta().dy < 0, 'the held 900px spike was not continued, so it is dropped');
+  assert.ok(s.input.lookDelta().dy > 0, 'the held 900px spike was not continued, so it is dropped; controls invertY is not applied (game.js owns it)');
 });
 
 test('mouse look: big flicks turn the camera; an isolated spike is still filtered', () => {

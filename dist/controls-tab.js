@@ -54,7 +54,8 @@ const SLIDERS = {
   padCurve: { label: 'Stick response curve', min: 1, max: 4, step: 0.1, fmt: (v) => v.toFixed(1) },
   padLookSpeed: { label: 'Gamepad look speed', min: 0.5, max: 6, step: 0.1, fmt: (v) => v.toFixed(1) },
 };
-const CHECKS = { invertY: 'Invert mouse Y', padInvertY: 'Invert gamepad Y' };
+// mouse invert-Y is not here: the game's own Settings > Controls 'Invert look Y' owns it (input.js never applies map invertY)
+const CHECKS = { padInvertY: 'Invert gamepad Y' };
 const MODES = { sprintMode: 'Sprint', crouchMode: 'Crouch' };
 const PRESS = 0.5, AXIS = 0.7;
 

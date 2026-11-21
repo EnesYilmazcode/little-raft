@@ -52,7 +52,7 @@ export function createInput({
   // per-frame results are reused in place; the public getters below hand out copies
   let step = 0, slot = -1;
   const look = { dx: 0, dy: 0 }, moveVec = { forward: 0, strafe: 0 }, leftStick = [0, 0], rightStick = [0, 0], padLook = [0, 0], trig = { throw: 0, reel: 0 };
-  let sprintOn = false, crouchOn = false;
+  let sprintOn = false, sprintMoved = false, crouchOn = false; // sprintMoved: toggle sprint has been used while moving
   const connected = new Set(), lastActive = new Map(), padSig = new Map();
   let activeIndex = -1;
   const api = { activeDevice: 'kbm' };
@@ -71,7 +71,7 @@ export function createInput({
     for (const c of padHeld) padSuppressed.add(c);
     padHeld.clear();
     mouseX = mouseY = wheelAcc = 0; smooth.x = smooth.y = 0; lookFilter.reset();
-    resetPadAnalog(); sprintOn = false; crouchOn = false;
+    resetPadAnalog(); sprintOn = sprintMoved = false; crouchOn = false;
   }
   function clear() { held.clear(); quiet(); }
   function resetPadAnalog() { leftStick[0] = leftStick[1] = 0; trig.throw = trig.reel = 0; }
@@ -252,21 +252,26 @@ export function createInput({
     if (!blocked) { f += digital('moveForward') - digital('moveBack'); r += digital('moveRight') - digital('moveLeft'); }
     const m = len(f, r); if (m > 1) { f /= m; r /= m; }
     moveVec.forward = f; moveVec.strafe = r;
-    if (opt('sprintMode') === 'toggle') { if (state.get('sprint').pressed) sprintOn = !sprintOn; if (m < 0.1) sprintOn = false; }
+    // toggle sprint: Shift while standing still arms it for the next move; only stopping after moving cancels it
+    if (opt('sprintMode') === 'toggle') {
+      if (state.get('sprint').pressed) { sprintOn = !sprintOn; sprintMoved = false; }
+      if (m >= 0.1) sprintMoved = sprintOn; else if (sprintMoved) sprintOn = sprintMoved = false;
+    }
     if (opt('crouchMode') === 'toggle' && state.get('crouch').pressed) crouchOn = !crouchOn;
-    // look: mouse (smoothed, sensitivity, invertY) + right stick (already radians)
+    // look: mouse (smoothed, sensitivity) + right stick (already radians, padInvertY applied). Mouse invert-Y is
+    // owned by the game's own setting (settings.js invertY, applied in game.js look()), never applied here too.
     const sm = smoothLook(smooth, mouseX, mouseY, opt('mouseSmoothing') || 0, smoothed);
     mouseX = mouseY = 0;
     const k = MOUSE_LOOK * sens();
     look.dx += sm[0] * k + (pl ? pl[0] : 0);
-    look.dy += sm[1] * k * (opt('invertY') ? -1 : 1) + (pl ? pl[1] : 0);
+    look.dy += sm[1] * k + (pl ? pl[1] : 0);
   }
 
   Object.defineProperty(api, 'activePad', { get: () => activeIndex, enumerable: true });
   const take = (get, reset) => { const v = get(); reset(); return v; };
   const lookDelta = () => { const v = { dx: look.dx, dy: look.dy }; look.dx = look.dy = 0; return v; };
   return Object.assign(api, {
-    update, clear,
+    update, clear, quiet,
     down: id => !!state.get(id)?.down,
     shiftHeld: () => held.has('ShiftLeft') || held.has('ShiftRight'),
     pressed: id => !!state.get(id)?.pressed,

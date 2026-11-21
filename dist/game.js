@@ -431,7 +431,7 @@ export function mount(transfer = null) {
     play: (ev, s) => play(ev, s), // [treasure-hook] local sound only (finder beeps), never sent
     esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(), hasGrill: (x, z) => !!fc?.hasGrill(x, z),
     get building() { return building; }, get brush() { return hands?.itemModel('brush') ?? null; }, woodMat: c => woodMat(c), aim: () => frameAim, // content hook (paint)
-    openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
+    openInventory: () => openInventory(), releaseLock: () => { panelInput(); releaseLock(); }, requestLock: () => requestLock(),
     hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
   };
   function init() {
@@ -885,6 +885,10 @@ export function mount(transfer = null) {
   function clearInput() { keys = {}; charging = null; reeling = false; down = null; lookFilter.reset(); controls?.clear(); fc?.releaseInput(); } // controls lane: also release the input layer
   // A panel opening keeps held keys (keyup still arrives); only window blur really loses keyups. The controls lane drops its own while blocked.
   function pauseInput() { charging = null; reeling = false; down = null; lookFilter.reset(); }
+  // a module panel opens (chest, research desk, sign, map table, animal panel): like pauseInput, keys held through it
+  // still count when it closes (the input layer quiets itself while blocked and closes the build radial); a fishing
+  // charge is dropped as on a lock loss
+  function panelInput() { pauseInput(); fc?.releaseInput(); }
 
   // ---------- Aiming ----------
   const hits = [], aimScratch = {point:null, item:null, dir:new T.Vector3(), at:new T.Vector3()};
@@ -1396,7 +1400,7 @@ export function mount(transfer = null) {
   function movePlayer(frameDt, input) {
     splitSteps(frameDt, .05, .25, steps); // real frame time in equal steps; a long stall must not teleport the player
     const dt = steps.n * steps.step, laneDt = Math.min(dt, .05); // lane hooks keep the old capped frame step
-    const ci = controls?.movement(laneDt, running && input, physics); // controls lane: polls input, applies look, shapes movement
+    const ci = controls?.movement(laneDt, running && input, physics, dt); // controls lane: polls input, applies look, shapes movement
     if (!running) { walking = false; return; }
     const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
     const surf = building ? building.preStep(physics, deckY()) : null; // building-pieces lane hook
@@ -2297,10 +2301,10 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput}); // [progression-hook]
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:panelInput}); // [progression-hook]
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
-    settingsController = createSettings({onChange:next => { applyOptions(next); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
+    settingsController = createSettings({mountControls:el => controls?.mountTab(el) ?? null, onChange:next => { applyOptions(next); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
       onSelect:guard(i => selectSlot(i)),

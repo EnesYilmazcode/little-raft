@@ -34,6 +34,9 @@ export const ACTIONS = Object.freeze([
 const ACTION_IDS = new Set(ACTIONS.map((a) => a.id));
 export const SLOT_COUNT = Object.freeze({ keys: 2, pad: 1 });
 const DEVICES = ['keys', 'pad'];
+// Defaults revision stored with saves. Rev 2 added Numpad1-0 as each hotbar slot's second key; saves from before
+// it hold an empty second slot that is a default, not a choice, so loading one fills the numpad key in.
+const DEFAULTS_REV = 2;
 
 const b = (keys = [], pad = []) => ({ keys, pad });
 export const DEFAULT_BINDINGS = Object.freeze({
@@ -50,7 +53,7 @@ export const DEFAULT_BINDINGS = Object.freeze({
   inventory: b(['Tab', 'KeyI'], ['Pad3']),
   rotate: b(['KeyR'], ['Pad11']),
   pause: b(['Escape'], ['Pad9']),
-  ...Object.fromEntries(hotbar.map((a) => [a.id, b([`Digit${a.id.slice(6)}`])])),
+  ...Object.fromEntries(hotbar.map((a) => [a.id, b([`Digit${a.id.slice(6)}`, `Numpad${a.id.slice(6)}`])])),
   hotbarNext: b(['WheelDown'], ['Pad5']),
   hotbarPrev: b(['WheelUp'], ['Pad4']),
   buildMenu: b([], ['Pad12']),
@@ -138,6 +141,15 @@ export class ActionMap {
     const ck = src.crouch?.keys;
     if (Array.isArray(ck) && ck.length === 2 && ck[0] === 'ControlLeft' && ck[1] === 'KeyC') src.crouch = { ...src.crouch, keys: ['KeyC'] };
     for (const id of Object.keys(src)) if (ACTION_IDS.has(id)) fill(this.bindings[id], src[id]);
+    if (data?.bindings && !(data.rev >= 2)) { // pre-numpad save: add each Numpad key to its free hotbar slot unless the save uses it
+      const used = new Set();
+      for (const e of Object.values(src)) for (const d of DEVICES) if (Array.isArray(e?.[d])) for (const c of e[d]) used.add(c);
+      for (const a of ACTIONS) {
+        if (!a.id.startsWith('hotbar') || !/\d$/.test(a.id)) continue;
+        const np = `Numpad${a.id.slice(6)}`, keys = this.bindings[a.id].keys;
+        if (!used.has(np) && !keys.includes(np) && keys.indexOf(null) >= 0) keys[keys.indexOf(null)] = np;
+      }
+    }
     this.settings = { ...SETTINGS_DEFAULTS };
     const s = data?.settings && typeof data.settings === 'object' ? data.settings : {};
     for (const k of Object.keys(s)) {
@@ -241,7 +253,7 @@ export class ActionMap {
   serialize() {
     const bindings = {};
     for (const a of ACTIONS) bindings[a.id] = this.bindingsFor(a.id);
-    return { v: 1, bindings, settings: { ...this.settings } };
+    return { v: 1, rev: DEFAULTS_REV, bindings, settings: { ...this.settings } };
   }
 
   save() {
