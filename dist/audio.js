@@ -22,7 +22,8 @@
 // Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
 export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
-  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime', 'shutter']); // [camera] + shutter
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime', 'shutter', // [camera] + shutter
+  'whistle', 'pop', 'crackle']); // [fireworks]
 // friendlier names other modules may use; play() resolves them to a recipe above
 export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
@@ -31,7 +32,8 @@ const OUTPUT_SCALE = 0.5;       // keeps full volume comfortable
 const MAX_VOICES = 24;
 const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, place: 0.06, plant: 0.12, water: 0.25, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
   step: 0.16, swim: 0.3, reel: 0.4, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15,
-  detect: 0.05, chime: 0.5, shutter: 0.25 }; // [camera] + shutter
+  detect: 0.05, chime: 0.5, shutter: 0.25, // [camera] + shutter
+  whistle: 0.25, pop: 0.12, crackle: 0.2 }; // [fireworks]
 const SILENT = 0.0001;
 // calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
 const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];
@@ -412,6 +414,18 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       burst(v, t, 'bandpass', 3000, 4, 0.22 * s, 0.001, 0.024);
       burst(v, t + 0.06, 'bandpass', 3400, 4, 0.14 * s, 0.001, 0.014);
       tone(v, t + 0.02, 'triangle', 220, 0.05 * s, 0.01, 0.11, 160);
+    },
+    // [fireworks] sky rocket: a soft rising whistle, a round pop and a few faint crackles (all under the master low-pass)
+    whistle(v, t, s) {
+      tone(v, t, 'sine', 900, 0.08 * s, 0.02, 1.0, 2400);
+      burst(v, t, 'bandpass', 3000, 2, 0.03 * s, 0.02, 0.9);
+    },
+    pop(v, t, s) {
+      burst(v, t, 'lowpass', 700, 0.8, 0.5 * s, 0.001, 0.12);
+      tone(v, t, 'sine', 110, 0.35 * s, 0.002, 0.25, 55);
+    },
+    crackle(v, t, s) {
+      for (let i = 0; i < 8; i++) burst(v, t + rand(0.2, 0.9), 'highpass', rand(4000, 6000), 1, 0.04 * s, 0.001, 0.03);
     },
     // ambience one-shots (played from tick on the ambience bus)
     lap(v, t, s) {

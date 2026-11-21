@@ -986,3 +986,42 @@ Fixes: icons.svg was invalid XML on master (unclosed sprinkler symbol) — close
 Checks: npm test 835/835; shoot2.py errors []; coop2 loopback base failures only (3, 4, 6; 2b flaky under load); loopback verified guest board, guest draughts moves, guest course finish.
 Observed: master now shows health/hunger/thirst vitals bars — a design change from the original "no damage, no hunger" brief made in another lane; not touched here.
 Known limits: held driftboard viewmodel is a plain box; noughts winning line not highlighted; chest/trader/sleep take E before the board while riding.
+
+## 2026-11-21 · loop-features-202611210753-zfs (features)
+
+Base: `origin/claude/raft-master` 7294e26. `raft-integration` was newer by commit time but 685 commits behind master; merging it gave 6 conflicts (held-items, ocean, settings, sky, survival-ui, survival tests), so that is left to the integrator. The branch name has a `-zfs` suffix because a parallel session pushed `loop-features-202611210749` first.
+
+Features (research, spec, build, review for each; then one visual QA pass and one polish pass):
+- **Scarecrow + gentle gulls** (`dist/scarecrow.js`, `scarecrow-model.js`; spec `docs/specs/scarecrow.md`). Gulls 0–2 sometimes land on a watered palm planter and pause its growth (it never goes backwards). The host decides pecks, with one pecking gull per raft and a 90 s cooldown per planter. E shoos the gull through `raftPrompts`, and harvest/water E still work. A Scarecrow protects palms within 4.5 m, and gulls sit on its hat. `world.ext.scarecrow` is only sent over the network; an old host turns the feature off.
+- **Sky Rockets** (`dist/fireworks.js`, `fireworks-model.js`; spec `docs/specs/fireworks.md`). A placeable rocket; E lights it through a host action, then fuse, rise, and a sphere, ring or willow burst. One pooled Points draw call, a hemi sky flash at night, whistle/pop/crackle sounds, and the `firework1` achievement. Old peers get `sound:'none'` and no notice. New `content.effect` and `content.night` hooks.
+- **Ziplines** (`dist/zipline.js`, `zipline-model.js`; spec `docs/specs/zipline.md`). Glide Post and Low Glide Post decor, and a Glide Handle. E on two posts strings a line (4–16 m, rope cost scales with length, blocked by building pieces). Riding uses gravity, drag and input, Space lets go, and you hop off at the end. `world.ext.zipline` holds the lines. Co-op: `HELD[17]=glidehandle`, and pose flag bit 8 means riding (the partner hangs with arms up).
+
+Review fixes:
+- The shoo prompt was invisible because `#contextPrompt` is hidden.
+- The sky flash drifted on dispose and flickered on back-to-back bursts.
+- You could mount a zipline mid-clamber.
+- Riders passed through walls built across a line.
+- Ropes ignored the raft's tilt.
+
+Visual QA (`docs/cloud/qa-round-zfs.md`, shots in `docs/cloud/shots/zfs/`) fixed 9 issues:
+- Real held models for the new placeables (and candle, beehive, flower box).
+- Bolder, bigger bursts and a willow that droops.
+- The gull no longer clips the palm.
+- A chunkier rocket.
+- A hanging ride pose, and the ride stops 1.3 m before the end post.
+- A 1.15x scarecrow.
+- A distinct low-post icon.
+
+Checks: `npm test` 680/680, and shoot.py plus the feature capture scripts ran with no page errors.
+
+Open for next round:
+- **Hidden prompts:** watering, purifier and other content prompts that go through `updateContext` never show, because `#contextPrompt` is `display:none`. They need `raftPrompts` providers.
+- **Mixed icons:** bags mix flat SVG and 3D-rendered icons.
+- **Gold willow:** the willow core still looks warm-white up close.
+- **Not exercised:** the two-browser co-op e2e for all three features was not run.
+- **Island sand:** `islands.afterMove` still runs during a ride.
+
+## 2026-11-21 · integrator D: loop-ux-202611210848, loop-ux-202611210852
+- Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
+- Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
+- Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
