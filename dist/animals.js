@@ -10,7 +10,7 @@ import { puffhenGeometry, eggGeometry, heartGeometry, nestBoxModel, cushionModel
 
 const FLOOR_Y = .2, DECOR_Y = .22, BOX_LIFT = .18, BIRD_R = .24, BIRD_CY = .18, BOX_R = .4, BOX_CY = .3;
 const EGG_SLOTS = [[-.11, .05], [.1, .07], [0, -.1]], EGG_Y = .24;
-const HEART_T = 1.2, ARRIVE_T = 2, GRILL_EVERY = 2, CACHE_EVERY = 5;
+const HEART_T = 1.2, ARRIVE_T = 2, GRILL_EVERY = 2, CACHE_EVERY = 5, SIG_EVERY = 1, PRUNE_EVERY_FRAMES = 30;
 const fin = v => typeof v === 'number' && Number.isFinite(v);
 const isInt = Number.isInteger;
 const round = v => Math.round(v);
@@ -23,9 +23,10 @@ export function createAnimals(ctx) {
   let clock = 0, gotNet = false, lastR = -1;
   let cache = null, cacheR = -1, cacheAt = -1e9;
   let built = false, group = null, birds = null, eggs = null, heart = null, birdMat = null, heartMat = null;
-  let ui = null, uiLoading = null;
+  let ui = null, uiLoading = null, disposed = false;
   // graph
   let graph = null, tilesRef = null, decorRef = null, piecesRef = null, tilesLen = -1, decorLen = -1, piecesLen = -1, grillSig = 0, grillTimer = 0, pruneDecorRef = null, pruneDecorLen = -1;
+  let worldSigV = 0, sigTimer = 0, pruneSig = 0, pruneTick = 0;
   const homeIdx = new Int32Array(MAX_ANIMALS).fill(-1), dists = new Array(MAX_ANIMALS).fill(null), beatOf = new Int32Array(MAX_ANIMALS).fill(-1);
   const plans = Array.from({ length: MAX_ANIMALS }, newPlan), slotId = new Array(MAX_ANIMALS).fill(null);
   const p = { x: 0, z: 0, yaw: 0, hop: 0, moving: false, f: 0, lift: 0 };
@@ -51,6 +52,17 @@ export function createAnimals(ctx) {
     if (Array.isArray(tl)) for (let i = 0; i < tl.length; i++) { const t = tl[i]; if (hasGrill(t[0], t[1])) s += (t[0] * 73856093) ^ (t[1] * 19349663); }
     return s;
   }
+  // Order-independent content hash of the walk inputs (no allocations). Guests get fresh world arrays at 8 Hz and a
+  // same-length decor swap keeps refs and lengths, so refs/lengths alone are not enough.
+  const strH = s => { let h = 0; if (typeof s === 'string') for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193); return h; };
+  const mix = (a, b, c) => { let h = Math.imul((a | 0) ^ 0x27d4eb2d, 0x9e3779b1) ^ Math.imul((b | 0) + 0x165667b1, 0x85ebca6b) ^ Math.imul(c | 0, 0xc2b2ae35); h ^= h >>> 15; return Math.imul(h, 0x2c1b3c6d); };
+  function decorSig(d) { let s = 0; if (Array.isArray(d)) for (let i = 0; i < d.length; i++) { const e = d[i]; if (e) s = (s + mix(e.x, e.z, strH(e.type))) | 0; } return s; }
+  function worldSig(w) {
+    let s = decorSig(w.decor);
+    const tl = w.tiles; if (Array.isArray(tl)) for (let i = 0; i < tl.length; i++) { const t = tl[i]; if (Array.isArray(t)) s = (s + mix(t[0], t[1], 0x51ed27)) | 0; }
+    const pc = w.pieces; if (Array.isArray(pc)) for (let i = 0; i < pc.length; i++) { const q = pc[i]; if (q && q.l === 0) s = (s + mix(q.i, q.j, strH(q.t) + (q.r & 1) + 0x3c6ef3)) | 0; }
+    return s;
+  }
   function rebuildGraph() {
     const w = ctx.world;
     graph = buildGraph(w?.tiles, w?.decor, w?.pieces, hasGrill);
@@ -68,18 +80,27 @@ export function createAnimals(ctx) {
   function refreshGraph(dt) {
     const w = ctx.world; if (!w) return;
     const tl = Array.isArray(w.tiles) ? w.tiles.length : 0, dl = Array.isArray(w.decor) ? w.decor.length : 0, pl = Array.isArray(w.pieces) ? w.pieces.length : 0;
-    let dirty = !graph || w.tiles !== tilesRef || w.decor !== decorRef || w.pieces !== piecesRef || tl !== tilesLen || dl !== decorLen || pl !== piecesLen;
+    const moved = w.tiles !== tilesRef || w.decor !== decorRef || w.pieces !== piecesRef || tl !== tilesLen || dl !== decorLen || pl !== piecesLen;
+    let dirty = !graph;
     grillTimer -= dt;
     if (grillTimer <= 0) { grillTimer = GRILL_EVERY; const s = grillSignature(); if (s !== grillSig) { grillSig = s; dirty = true; } }
+    sigTimer -= dt;
+    if (moved || sigTimer <= 0 || dirty) {
+      sigTimer = SIG_EVERY;
+      tilesRef = w.tiles; decorRef = w.decor; piecesRef = w.pieces; tilesLen = tl; decorLen = dl; piecesLen = pl;
+      const s = worldSig(w); if (s !== worldSigV) { worldSigV = s; dirty = true; }
+    }
     if (!dirty) return;
-    tilesRef = w.tiles; decorRef = w.decor; piecesRef = w.pieces; tilesLen = tl; decorLen = dl; piecesLen = pl;
     rebuildGraph();
   }
   function pruneHomes() { // host: animals and lures whose nest box is gone leave quietly
     const d = ctx.world?.decor, dl = Array.isArray(d) ? d.length : -1;
-    if (d === pruneDecorRef && dl === pruneDecorLen) return;
-    pruneDecorRef = d; pruneDecorLen = dl;
-    if (!Array.isArray(d)) return;
+    if (d === pruneDecorRef && dl === pruneDecorLen && --pruneTick > 0) return;
+    pruneTick = PRUNE_EVERY_FRAMES;
+    if (!Array.isArray(d)) { pruneDecorRef = d; pruneDecorLen = dl; return; }
+    const sig = decorSig(d);
+    if (d === pruneDecorRef && dl === pruneDecorLen && sig === pruneSig) return;
+    pruneDecorRef = d; pruneDecorLen = dl; pruneSig = sig;
     const before = st.list.length + st.lures.length;
     const next = cleanAnimals(st, d);
     if (next.list.length + next.lures.length !== before) { next.r = st.r; st = next; bump(); rehome(); }
@@ -288,7 +309,7 @@ export function createAnimals(ctx) {
 
   function loadUI() {
     if (ui || uiLoading || typeof document === 'undefined') return uiLoading;
-    uiLoading = import('./animals-ui.js').then(m => { ui = m.createAnimalsUI(ctx); return ui; }).catch(e => { console.error('animals ui failed', e); uiLoading = null; return null; });
+    uiLoading = import('./animals-ui.js').then(m => { if (disposed) return null; ui = m.createAnimalsUI(ctx); return ui; }).catch(e => { console.error('animals ui failed', e); uiLoading = null; return null; });
     return uiLoading;
   }
   function openRename(id) {
@@ -330,7 +351,8 @@ export function createAnimals(ctx) {
     } else if (verb === 'feed' || verb === 'pet' || verb === 'name') {
       if (!idOk) return true;
       const an = findId(st, a.id); if (!an) return fail(actor, 'That Puffhen wandered off');
-      birdPos(an, tmp);
+      if (verb === 'name') { const wp = toWorld(TILE * an.home[0], FLOOR_Y, TILE * an.home[1]); tmp.x = wp.x; tmp.z = wp.z; } // the dialog opens at the box
+      else birdPos(an, tmp);
       if (!near(actor, tmp.x, tmp.z)) return fail(actor, 'Step a little closer');
       if (verb === 'feed') { if (!FOODS.includes(a.food) || !bag) return true; res = feed(st, a.id, a.food, bag, t); }
       else if (verb === 'pet') res = pet(st, a.id, t);
@@ -368,12 +390,13 @@ export function createAnimals(ctx) {
     }
     st = cleanAnimals(d, ctx.world?.decor);
     clock = st.t; lastR = -1; gotNet = false; cache = null;
-    pruneDecorRef = ctx.world?.decor; pruneDecorLen = Array.isArray(pruneDecorRef) ? pruneDecorRef.length : -1;
+    pruneDecorRef = ctx.world?.decor; pruneDecorLen = Array.isArray(pruneDecorRef) ? pruneDecorRef.length : -1; pruneSig = decorSig(pruneDecorRef); pruneTick = PRUNE_EVERY_FRAMES;
     graph = null; rehome();
   }
   function snap(d, first) { // guest clock follows the host within 2 s
     if (!d || typeof d !== 'object' || !fin(d.t) || Math.abs(d.t) > 1e9) return;
     if (first || Math.abs(d.t - clock) > 2) clock = d.t;
+    else clock += (d.t - clock) * .15; // slew: frame-capped dt drifts at low fps; keep the wander in phase without a jump
   }
 
   // ------------------------------------------------------------------ QA helpers
@@ -440,7 +463,7 @@ export function createAnimals(ctx) {
     },
     debug,
     dispose() {
-      ui?.destroy(); ui = null;
+      disposed = true; ui?.destroy(); ui = null;
       if (!built) return;
       group.removeFromParent();
       for (const m of [birds, eggs, heart]) { m.geometry.dispose(); m.dispose?.(); }
