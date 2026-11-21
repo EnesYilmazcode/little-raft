@@ -185,7 +185,7 @@ test('recipes and ITEM_INFO for cups and purifier', () => {
 test('purifier-model: named meshes and state painting', () => {
   const g = createPurifier(T);
   assert.equal(g.name, 'craft_purifier'); assert.equal(g.userData.craftType, 'purifier');
-  for (const n of ['purifierBase', 'purifierLegs', 'purifierRing', 'fireTray', 'embers', 'pot', 'potWater', 'spout', 'shelf', 'cup', 'cupWater', 'steam0', 'steam1', 'steam2']) assert.ok(g.getObjectByName(n), n);
+  for (const n of ['purifierBase', 'purifierMetal', 'embers', 'potWater', 'cup', 'cupWater', 'steam0', 'steam1', 'steam2']) assert.ok(g.getObjectByName(n), n);
   const box = new T.Box3().setFromObject(g), size = box.getSize(new T.Vector3());
   assert.ok(size.x <= .9 && size.z <= .6 && size.y <= .85, JSON.stringify(size));
   const get = n => g.getObjectByName(n);

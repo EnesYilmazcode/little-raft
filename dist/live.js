@@ -22,7 +22,7 @@ const PRELOAD = [
   'deck.js', 'decor-pack-models.js', 'display-model.js', 'display.js' /* [display] */, 'decor-pack.js', 'diving-gear-core.js', 'diving-gear.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js',
   'fish-journal.js', 'fish-models.js', 'fish-trap-model.js', 'fish-trap.js' /* [fishtrap] */, 'fish-species.js', 'fishing-cooking.js', 'fishing-rules.js',
   'fishing-tool.js', 'fishing-v2.js', 'gull-models.js', 'gull.js' /* [gull] */, 'hammer.js', 'hands.js', 'held-items.js', 'hook-physics.js', 'hook.js',
-  'hud.js', 'input-map.js', 'input-rules.js', 'input.js', 'instrument-models.js', 'instruments.js',
+  'hud.js', 'icon-models.js', 'input-map.js', 'input-rules.js', 'input.js', 'instrument-models.js', 'instruments.js',
   'inventory-state.js', 'islands-layout.js', 'islands-models.js', 'islands.js', 'item-icons.js', 'item-svg.js',
   'item-tooltips.js', 'items.js', 'juicer-model.js', 'juicer.js' /* [juicer] */, 'kiln-core.js', 'kiln-model.js', 'kiln.js', 'lock-rules.js', 'logbook-ui.js',
   'logbook.js', 'look-ui.js', 'look.js', 'maptable-model.js', 'maptable.js', 'materials.js', 'merge-geo.js',

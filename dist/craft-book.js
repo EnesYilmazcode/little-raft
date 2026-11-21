@@ -34,6 +34,7 @@ const CATEGORY_OF = Object.freeze({
   // content (engine, sleep, paint)
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
+  cup: 'survival', purifier: 'survival', // water: scoop the sea, purify it
   fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
   cookpot: 'building', bowl: 'survival',
   shellwreath: 'building',

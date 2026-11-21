@@ -1,5 +1,6 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
@@ -1064,7 +1065,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (warmTimer >= 0) { clearTimeout(warmTimer); warmAll(); }
     clearSrc(); clearSay();
     safe(onPause);
-    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+    exitLock(document); // marked page-initiated (lock-rules.js), so the game does not treat it as a lost lock
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     if (trackEl) trackEl.hidden = true;
     buildRecipes();

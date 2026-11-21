@@ -21,19 +21,21 @@ export const QUALITY_CONSTANTS = Object.freeze({
   COOLDOWN_MS: 5000,      // no change of any kind this soon after a change
   REVERT_MS: 5000,        // a step-down within this long after the post-up cooldown ends counts as a revert
   SHADOW_FULL: 1024,
-  SHADOW_LOW: 512,
 });
 
 const C = QUALITY_CONSTANTS;
 
-// Ladder from best to worst; `null` pixel ratio means "the preset's own value".
+// Ladder from best to worst; `null` pixel ratio means "the preset's own value" (each step is also
+// clamped to the preset cap and the device ratio). No smaller shadow map step: the shadow pass is a
+// handful of cheap draws, so shrinking the map saved nothing; the cost is the PCF taps per lit pixel,
+// which only pixel ratio or switching shadows off reduce (game.js pre-compiles the shadowless programs).
 const LADDER = [
   { pixelRatio: null, shadows: true, shadowMapSize: C.SHADOW_FULL },
   { pixelRatio: 1.15, shadows: true, shadowMapSize: C.SHADOW_FULL },
   { pixelRatio: 1.0, shadows: true, shadowMapSize: C.SHADOW_FULL },
-  { pixelRatio: 1.0, shadows: true, shadowMapSize: C.SHADOW_LOW },
-  { pixelRatio: 0.85, shadows: true, shadowMapSize: C.SHADOW_LOW },
-  { pixelRatio: 0.85, shadows: false, shadowMapSize: C.SHADOW_LOW },
+  { pixelRatio: 0.85, shadows: true, shadowMapSize: C.SHADOW_FULL },
+  { pixelRatio: 0.85, shadows: false, shadowMapSize: C.SHADOW_FULL },
+  { pixelRatio: 0.7, shadows: false, shadowMapSize: C.SHADOW_FULL },
 ];
 
 const round = (v) => Math.round(v * 1000) / 1000;
