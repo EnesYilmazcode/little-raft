@@ -133,15 +133,19 @@ export const PALETTE_KEYS = Object.freeze([
   key(0.91, '#2c4068', '#22355f', '#0b2840', '#184660', '#a8bff0', '#6a80b4', '#22364e', '#4c5c84', '#1d2d58', '#0f1a3c'),
   key(0.94, '#6c7299', '#536392', '#163a50', '#2d5e70', '#c6b8da', '#9a9ec6', '#37495e', '#9490b0', '#4e5c8c', '#2a3768'), // predawn
 ]);
-// Rain pulls every colour toward a cool grey-green of similar brightness.
-export const RAIN_MIX = 0.65;
-const RAIN_TINT = new Float32Array([0.9, 0.98, 1.04]);
+// Rain pulls every colour toward a cool slate grey-blue. The sky and cloud slots (horizon, zenith, cloud,
+// sky mid and zenith) are also pressed toward an overcast brightness (bright day skies come down to a
+// slate ~#5d6b78, dim night skies keep theirs); light, sun and water keep their brightness.
+export const RAIN_MIX = 0.85;
+const RAIN_TINT = new Float32Array([0.88, 1.0, 1.13]);
+const RAIN_SKY_SLOT = [1, 1, 0, 0, 0, 0, 0, 1, 1, 1]; // per palette colour (o / 3)
 export function rainBlend(r, g, b, rain, out, o) {
-  const l = 0.3 * r + 0.59 * g + 0.11 * b;
+  const l0 = 0.3 * r + 0.59 * g + 0.11 * b;
+  const l = RAIN_SKY_SLOT[(o / 3) | 0] ? Math.min(l0 * 0.9, 0.17 + 0.33 * l0) : l0 * 0.9;
   const k = rain * RAIN_MIX;
-  out[o] = r + (l * 0.9 * RAIN_TINT[0] - r) * k;
-  out[o + 1] = g + (l * 0.9 * RAIN_TINT[1] - g) * k;
-  out[o + 2] = b + (l * 0.9 * RAIN_TINT[2] - b) * k;
+  out[o] = r + (Math.min(1, l * RAIN_TINT[0]) - r) * k;
+  out[o + 1] = g + (Math.min(1, l * RAIN_TINT[1]) - g) * k;
+  out[o + 2] = b + (Math.min(1, l * RAIN_TINT[2]) - b) * k;
 }
 export function paletteAt(phase, rain, out) {
   const p = phaseAt(phase * DAY_SECONDS);
@@ -234,12 +238,12 @@ uniform vec3 uBox;
 varying float vFade;
 void main() {
   if (aIdx > uRain) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vFade = 0.0; return; }
-  vec3 drift = vec3(uWind * 3.0, -9.0, uWind * 1.2) * uTime;
-  vec3 p = uCam + mod(position + drift - uCam, uBox) - uBox * 0.5;
-  p += vec3(-uWind * 0.25, 0.8, -uWind * 0.1) * aTop;
+  vec3 vel = vec3(uWind * 4.0, -9.0, uWind * 1.6);
+  vec3 p = uCam + mod(position + vel * uTime - uCam, uBox) - uBox * 0.5;
+  p -= vel * (0.042 * aTop); // short streak along the fall, slanting with the wind
   vec4 mv = viewMatrix * vec4(p, 1.0);
   float d = length(mv.xyz);
-  vFade = smoothstep(1.4, 3.0, d) * (1.0 - smoothstep(6.0, 9.0, d));
+  vFade = smoothstep(1.2, 2.6, d) * (1.0 - smoothstep(5.5, 9.0, d)) * (1.0 - 0.75 * aTop); // tail fades out
   gl_Position = projectionMatrix * mv;
 }`;
 const RAIN_FS = /* glsl */`
@@ -257,7 +261,7 @@ const LANTERN_PARTS = ['lanternGlow', 'flame', 'lanternGlass', 'candle'];
 const LANTERN_MULT = [2.4, 2.2, 1.1, 3.0];
 const GLASS_NIGHT = '#ffb35c'; // glass emissive is tinted toward this at night so it reads amber, not cream
 const MAX_LANTERNS = 64, MAX_PARTS = MAX_LANTERNS * 4;
-const STAR_COUNT = 700, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 600;
+const STAR_COUNT = 700, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 1600;
 const SUN_RADIUS = Math.hypot(-15, 28, 12);
 // The one shadow-casting light is the sun by day and the moon by night. Its direction swaps when the
 // sun crosses the horizon, so its intensity fades to 0 over this band of |sunHeight| around the swap.
@@ -542,6 +546,7 @@ export function createDayNight(ctx) {
       sk.uSunColor.value.copy(cSun).lerp(WHITE, 0.5);
       sk.uCloudLit.value.copy(cCloud); sk.uCloudShade.value.copy(cCloud).multiply(vTmpC.copy(WHITE).lerp(cHemiSky, 0.7));
       sk.uCoverage.value = 0.56 + 0.2 * (W.cloud - 0.25); // calm = the round-1 look, rain a bit heavier
+      if (sk.uWet) sk.uWet.value = wet; // rain: soft greyed cumulus, flat overcast
     }
     // clouds
     const low = 1 - smooth(0.1, 0.5, Math.abs(L.sunHeight)); // sun near the horizon: lit from below, not dark
@@ -563,8 +568,8 @@ export function createDayNight(ctx) {
     // rain
     rain.visible = wet > 0.01;
     rainUniforms.uRain.value = wet; rainUniforms.uWind.value = W.wind;
-    cRain.copy(cHemiSky).lerp(cHorizon, 0.3).lerp(cRainCool, 0.5 * nf).multiplyScalar(0.8 + 0.6 * L.light);
-    rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = (0.85 + 0.15 * nf) * Math.min(1, wet * 1.5);
+    cRain.copy(cHemiSky).lerp(cHorizon, 0.5).lerp(cRainCool, 0.5 * nf).lerp(WHITE, 0.2 * (1 - nf)).multiplyScalar(0.8 + 0.6 * L.light);
+    rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = (0.5 + 0.2 * nf) * Math.min(1, wet * 1.5); // many faint streaks, not a few scratches
     poolI = nf < 0.15 ? 0 : POOL_PEAK * smooth(0.15, 1, nf);
   }
 
