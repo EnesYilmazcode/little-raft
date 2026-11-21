@@ -1,6 +1,6 @@
 # Little Raft
 
-A small original 3D cooperative raft sandbox. No hunger or damage: hook supplies, extend the raft, craft decorations and automatic collection nets, and fish.
+A small original 3D cooperative raft survival game. Hook supplies, extend the raft, craft tools and nets, fish, and keep yourself fed and watered while a shark circles. New games start in Normal mode (hunger, thirst, health and a shark that bites the raft). Settings → Gameplay picks the mode for new games: Relaxed (the original calm sandbox: no needs, no shark, no damage), Peaceful, Easy, Normal or Hard. Saves made before game modes load as Relaxed.
 
 Run `python -m http.server 8766 --directory dist`, then open http://localhost:8766. Serve over HTTPS for remote play. Built with Three.js 0.170.0 and PeerJS 1.5.4, vendored under `dist/vendor`. Their upstream MIT licenses apply. Google Fonts are optional; system fonts are the fallback.
 
@@ -19,6 +19,8 @@ Online play uses PeerJS's public signaling broker and browser WebRTC data channe
 - Space: jump; Shift: run. You can fall into the water; hold Space near the edge to climb aboard.
 - Craft a hammer to build foundations (2 wood + 2 plastic); craft decorations before placing them.
 - Craft a fishing rod, then click water and wait for a catch.
+- Left mouse with food or a drink selected: eat or drink. Health, hunger and thirst bars sit at the lower left.
+- Wooden spear (8 wood + 3 rope): left mouse stabs. Hurt the shark enough during an attack to drive it off; kill it for shark meat to grill.
 - L: open the raft logbook (message-bottle notes and achievements).
 - Purifier: scoop sea water with a cup, pour it into a purifier, take fresh water and water palm planters; harvest ripe palms with E.
 - Receiver: place one with up to 3 antennas (2+ tiles away) to detect drifting signal caches; follow the SIGNAL readout and hook the buoy.
