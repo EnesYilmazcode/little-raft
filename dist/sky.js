@@ -3,19 +3,24 @@
 //   import { createSky } from './sky.js?build=v3-survival-ae77fa84ac2b';
 //   const sky = createSky(THREE);
 //   scene.add(sky.group);
-//   // per frame: sky.update(elapsedSeconds);
+//   // per frame: sky.update(elapsedSeconds, renderer);
 //
-// One inside-out sphere (radius 150, fits camera.far = 200), one draw call,
-// no textures. Gradient, sun disk/halo and soft procedural clouds are all
-// computed per pixel from the world-space view direction. The dome recentres
-// on the rendering camera, ignores fog, and is drawn after other opaques.
+// One inside-out sphere (radius 150, fits camera.far = 200), one draw call.
+// Gradient, sun disk/halo and soft procedural clouds are computed by a shader
+// into a small upper-hemisphere texture (re-baked every few seconds for cloud
+// drift, needs sky.update(t, renderer)); the dome itself only samples it.
+// The dome recentres on the rendering camera, ignores fog, and is drawn after
+// other opaques.
 
+const V0 = 0.45; // lowest sphere v baked; below it the texture clamps to the horizon row
+
+// Bake pass: a full-target quad; each texel is one view direction laid out
+// like SphereGeometry's uv (u = azimuth, v = 1 - polar/PI), v remapped to V0..1.
 const vertexShader = /* glsl */ `
-varying vec3 vWorldPos;
+varying vec2 vUv;
 void main() {
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vWorldPos = wp.xyz;
-  gl_Position = projectionMatrix * viewMatrix * wp;
+  vUv = uv;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
 }
 `;
 
@@ -29,7 +34,7 @@ uniform vec3 uCloudLit;
 uniform vec3 uCloudShade;
 uniform float uTime;
 uniform float uCoverage;
-varying vec3 vWorldPos;
+varying vec2 vUv;
 
 float hash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
@@ -62,7 +67,9 @@ float fbm(vec2 p) {
 }
 
 void main() {
-  vec3 dir = normalize(vWorldPos - cameraPosition);
+  float phi = vUv.x * 6.28318530718;
+  float theta = (1.0 - mix(0.45, 1.0, vUv.y)) * 3.14159265359;
+  vec3 dir = vec3(-cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));
   float y = dir.y;
 
   // Tropical gradient: pale cyan haze only in a thin band at the horizon,
@@ -98,12 +105,7 @@ void main() {
   // Below the horizon (behind the ocean fade) match the fog colour exactly.
   col = mix(col, uHorizon, smoothstep(0.0, -0.02, y));
 
-  // Tiny dither against gradient banding.
-  col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
-
   gl_FragColor = vec4(col, 1.0);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
 }
 `;
 
@@ -122,20 +124,34 @@ export function createSky(T, options = {}) {
     uCoverage: { value: options.coverage ?? 0.5 }, // fbm threshold control
   };
 
+  // Baked sky texture (linear colour; the dome material converts on output).
+  const target = new T.WebGLRenderTarget(options.bakeWidth ?? 1024, options.bakeHeight ?? 384, {
+    type: T.HalfFloatType, generateMipmaps: false, depthBuffer: false,
+    minFilter: T.LinearFilter, magFilter: T.LinearFilter,
+  });
+  target.texture.wrapS = T.RepeatWrapping;
+  const bakeMaterial = new T.ShaderMaterial({ uniforms, vertexShader, fragmentShader, depthTest: false, depthWrite: false });
+  const bakeScene = new T.Scene();
+  const bakeQuad = new T.Mesh(new T.PlaneGeometry(2, 2), bakeMaterial);
+  bakeQuad.frustumCulled = false;
+  bakeScene.add(bakeQuad);
+  const bakeCamera = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
   const geometry = new T.SphereGeometry(150, 48, 24);
-  const material = new T.ShaderMaterial({
-    uniforms,
-    vertexShader,
-    fragmentShader,
+  const uv = geometry.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setY(i, Math.max(0, (uv.getY(i) - V0) / (1 - V0)));
+  const material = new T.MeshBasicMaterial({
+    map: target.texture,
+    color: uniforms.uHorizon.value.clone(), // until the first bake
     side: T.BackSide,
     depthWrite: false,
     depthTest: true,
     fog: false,
-    lights: false,
     // Unlit backdrop: keep exact authored colours so the horizon matches
     // scene.background / fog / ocean distance fade (which are not tonemapped).
     toneMapped: false,
   });
+  material.map = null;
 
   const mesh = new T.Mesh(geometry, material);
   mesh.name = 'sky-dome';
@@ -152,14 +168,29 @@ export function createSky(T, options = {}) {
   group.name = 'sky';
   group.add(mesh);
 
-  function update(time) {
+  // Clouds drift slowly, so re-baking every few seconds is invisible.
+  let lastBake = -Infinity;
+  const bakeEvery = options.bakeEvery ?? 4;
+  function update(time, renderer) {
     uniforms.uTime.value = time || 0;
+    if (!renderer || Math.abs(uniforms.uTime.value - lastBake) < bakeEvery) return;
+    lastBake = uniforms.uTime.value;
+    const prev = renderer.getRenderTarget(), prevXr = renderer.xr.enabled;
+    renderer.xr.enabled = false;
+    renderer.setRenderTarget(target);
+    renderer.render(bakeScene, bakeCamera);
+    renderer.setRenderTarget(prev);
+    renderer.xr.enabled = prevXr;
+    if (!material.map) { material.map = target.texture; material.color.set(0xffffff); material.needsUpdate = true; }
   }
 
   function dispose() {
     group.remove(mesh);
     geometry.dispose();
     material.dispose();
+    bakeQuad.geometry.dispose();
+    bakeMaterial.dispose();
+    target.dispose();
   }
 
   return {

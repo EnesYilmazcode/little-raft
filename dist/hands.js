@@ -51,8 +51,8 @@ export function createHands(T, { modelFactory = null } = {}) {
     m.customProgramCacheKey = () => 'vmKeyShade';
     return m;
   };
-  const skin = keyShade(mat(0xb6786a, 0.6, { emissive: 0x160805, map: tx.skin }));
-  const skinPalm = keyShade(mat(0xbb8274, 0.64, { emissive: 0x160805, map: tx.skin }));
+  const skin = keyShade(mat(0xb47c5e, 0.6, { emissive: 0x160805, map: tx.skin }));
+  const skinPalm = keyShade(mat(0xbc8468, 0.64, { emissive: 0x160805, map: tx.skin }));
   const nail = keyShade(mat(0xd8ae9c, 0.38, { emissive: 0x120806 }));
   const crease = mat(0x7a4a3a, 0.8);
   const sleeveMat = keyShade(mat(0x5a7462, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));

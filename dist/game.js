@@ -873,7 +873,7 @@ export function mount(transfer = null) {
     if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); notice('Host disconnected. You are back on your own raft.'); }
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
     ocean.update(elapsed, camera);
-    sky?.update(elapsed);
+    sky?.update(elapsed, renderer);
     updateRaft(dt); movePlayer(dt, running && !dialog);
     updateAvatars(dt); updateCamera(dt);
     frameAim = running && !dialog ? currentAim() : null;
