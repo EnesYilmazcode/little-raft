@@ -453,6 +453,27 @@ class Bot:
             self.m['state_calls'] = self.m.get('state_calls', 0) + 1
             self.m['state_s'] = round(self.m.get('state_s', 0) + time.monotonic() - t, 2)
 
+    def until(self, js, timeout_s=6.0):
+        """Poll a page condition (timer-polled, so it does not wait on slow rAF) instead of a fixed sleep + one read:
+        returns as soon as it holds, and tolerates a heavily loaded box up to timeout_s. Then runs due checks."""
+        if self.stopping:   # never wait past the run's hard deadline
+            timeout_s = max(.2, min(timeout_s, self.args.duration + 8 - self.el()))
+        try:
+            # Fast path: key/click handlers run synchronously, so the condition usually holds already and one
+            # evaluate (~1 s) is far cheaper than setting up wait_for_function (~5 s on this box).
+            ok = bool(self.page.evaluate(f'!!({js})'))
+            if not ok:
+                t = self.el()
+                self.page.wait_for_function(js, polling=100, timeout=timeout_s * 1000)
+                ok = True
+                self.m['slow_waits'] = (self.m.get('slow_waits') or [])[-9:] + [[js[:60], round(self.el() - t, 1)]]
+        except Exception as e:
+            if 'Timeout' not in type(e).__name__ and 'Timeout' not in str(e):
+                raise
+            ok = False
+        self.wait(0)
+        return ok
+
     def aim_at(self, wx, wy, wz):
         """Point the camera at a world point (computed in-page: one round-trip). Returns the state after aiming."""
         return self.page.evaluate('([x, y, z]) => window.__playbot.aim(x, y, z)', [wx, wy, wz])
@@ -466,18 +487,19 @@ class Bot:
             s = self.page.evaluate("({lock: raftDebug.state.pointerLocked, inv: raftDebug.state.inventoryOpen, fb: raftDebug.state.lockFallback,"
                                    " dlg: [...document.querySelectorAll('dialog')].some(d => d.open)})")
             if s['inv']:
-                self.page.keyboard.press('Tab'); self.wait(400); continue
+                self.page.keyboard.press('Tab'); self.until('!raftDebug.state.inventoryOpen', 3); continue
             if s['dlg']:
-                self.page.keyboard.press('Escape'); self.wait(500); continue
+                self.page.keyboard.press('Escape'); self.until("![...document.querySelectorAll('dialog')].some(d => d.open)", 3); continue
             if s['lock'] or s['fb']:
                 return True
-            self.page.mouse.click(self.cx, self.cy); self.wait(700)
+            self.page.mouse.click(self.cx, self.cy)
+            self.until('raftDebug.state.pointerLocked || raftDebug.state.lockFallback', 3)
         self.m['relock_failures'] += 1
         self.act('could not regain pointer lock')
         return False
 
-    def select(self, kind):
-        st = self.state()
+    def select(self, kind, st=None):
+        st = st or self.state()
         if st['heldKind'] == kind:
             return True
         slots = st['inventory']['slots']
@@ -490,12 +512,7 @@ class Bot:
         return True
 
     def wait_idle_hook(self, max_s):
-        end = self.el() + max_s
-        while self.el() < end:
-            if self.page.evaluate('raftDebug.state.hookStage') == 'idle':
-                return True
-            self.wait(400)
-        return False
+        return self.until("raftDebug.state.hookStage === 'idle'", max_s)
 
     # ---------- actions ----------
     def a_walk(self):
@@ -541,13 +558,14 @@ class Bot:
             self.page.mouse.wheel(0, 120); self.wait(200)
 
     def a_throw(self):
-        if not self.select('hook'):
+        r = self.page.evaluate('({st: raftDebug.state, tg: raftDebug.targets})')
+        if not self.select('hook', r['st']):
             return
-        st = self.state()
+        st = r['st']
         if st['hookStage'] != 'idle':
             self.act('throw skipped: hook busy'); return
         coll0 = st['collected']
-        tg = [t for t in self.page.evaluate('raftDebug.targets') if not t['pending'] and t['distance'] < 18]
+        tg = [t for t in r['tg'] if not t['pending'] and t['distance'] < 18]
         if tg:
             tg.sort(key=lambda t: (t['distance'], t['id']))
             t = tg[min(len(tg) - 1, self.rng.randint(0, 2))]
@@ -560,12 +578,7 @@ class Bot:
         self.m['throws'] += 1
         self.page.mouse.move(self.cx, self.cy); self.mouse_down(); self.wait(hold); self.mouse_up()
         # let it fly / land, then reel
-        end = self.el() + self.args.hook_wait_s
-        while self.el() < end:
-            stg = self.page.evaluate('raftDebug.state.hookStage')
-            if stg in ('floating', 'idle', 'done'):
-                break
-            self.wait(400)
+        self.until("['floating', 'idle', 'done'].includes(raftDebug.state.hookStage)", self.args.hook_wait_s)
         if self.page.evaluate('raftDebug.state.hookStage') in ('floating', 'reeling'):
             self.act('reel (hold LMB)')
             self.mouse_down()
@@ -590,50 +603,49 @@ class Bot:
     def a_inventory(self):
         self.m['menus'] += 1
         self.act('open inventory Tab')
-        self.page.keyboard.press('Tab'); self.wait(500)
-        if not self.page.evaluate('raftDebug.state.inventoryOpen'):
-            self.fail('inventory_did_not_open', 'Tab while playing did not open the inventory')
+        self.page.keyboard.press('Tab')
+        if not self.until('raftDebug.state.inventoryOpen'):
+            self.fail('inventory_did_not_open', 'Tab while playing did not open the inventory within 6 s')
             return
+        self.wait(300)
         n = self.m['actions'].get('inventory', 0)   # 1st close is Esc, 2nd Tab, then random
         if n == 1 or (n > 2 and self.rng.random() < .5):
             self.act('close inventory Esc')
-            self.page.keyboard.press('Escape'); self.wait(600)
+            self.page.keyboard.press('Escape')
+            self.until('!raftDebug.state.inventoryOpen')
+            self.wait(300)   # a late keyup-path pause would show up here
             r = self.page.evaluate("({inv: raftDebug.state.inventoryOpen, pause: !!document.querySelector('#options')?.open})")
             if self.m['pause_open_after_inv_esc'] is None:
                 self.m['pause_open_after_inv_esc'] = r['pause']
             if r['inv'] and r['pause']:
                 self.fail('esc_inventory_both_open', 'Esc from the inventory left both inventory and pause open')
             elif r['inv']:
-                self.fail('esc_inventory_stuck', 'Esc did not close the inventory')
+                self.fail('esc_inventory_stuck', 'Esc did not close the inventory within 6 s')
         else:
             self.act('close inventory Tab')
-            self.page.keyboard.press('Tab'); self.wait(500)
-            if self.page.evaluate('raftDebug.state.inventoryOpen'):
-                self.fail('tab_inventory_stuck', 'Tab did not close the inventory')
-        self.ensure_lock()
+            self.page.keyboard.press('Tab')
+            if not self.until('!raftDebug.state.inventoryOpen'):
+                self.fail('tab_inventory_stuck', 'Tab did not close the inventory within 6 s')
 
     def a_pause(self):
         self.m['menus'] += 1
-        self.ensure_lock()
         self.act('pause Esc')
-        self.page.keyboard.press('Escape'); self.wait(700)
-        r = self.page.evaluate("({pause: !!document.querySelector('#options')?.open, active: raftDebug.state.active})")
-        if not r['pause']:
-            self.fail('pause_did_not_open', 'Esc while playing (pointer locked) did not open the pause menu')
+        self.page.keyboard.press('Escape')
+        if not self.until("!!document.querySelector('#options')?.open"):
+            self.fail('pause_did_not_open', 'Esc while playing (pointer locked) did not open the pause menu within 6 s')
         self.wait(self.rng.randint(300, 1200))
         self.act('resume Esc')
-        self.page.keyboard.press('Escape'); self.wait(700)
-        if self.page.evaluate("!!document.querySelector('#options')?.open"):
-            self.fail('pause_did_not_close', 'second Esc did not close the pause menu')
-        self.ensure_lock()
+        self.page.keyboard.press('Escape')
+        if not self.until("!document.querySelector('#options')?.open"):
+            self.fail('pause_did_not_close', 'second Esc did not close the pause menu within 6 s')
 
     def a_build(self):
         if not self.select('hammer'):
             return
-        pl = self.page.evaluate('raftDebug.placements')
+        r = self.page.evaluate('({pl: raftDebug.placements, me: raftDebug.state.me})')
+        pl, me = r['pl'], r['me']
         if not pl:
             self.act('no placements'); return
-        me = self.state()['me']
         pl.sort(key=lambda c: (math.hypot(c['world']['x'] - me['x'], c['world']['z'] - me['z']), c['x'], c['z']))
         c = pl[min(len(pl) - 1, self.rng.randint(0, 3))]
         self.aim_at(c['world']['x'], c['world']['y'], c['world']['z'])
@@ -722,7 +734,7 @@ def main():
     ap.add_argument('--check-interval', type=float, default=.5, help='in-page invariant sample period (s)')
     ap.add_argument('--drain-interval', type=float, default=4.0, help='how often Python drains/checks the samples (s)')
     ap.add_argument('--viewport', default='960x540', help='WxH; smaller keeps swiftshader responsive')
-    ap.add_argument('--shot-interval', type=float, default=None, help='seconds between screenshots (default max(30, duration/10))')
+    ap.add_argument('--shot-interval', type=float, default=None, help='seconds between screenshots (default max(45, duration/10))')
     ap.add_argument('--stall-ms', type=float, default=8000, help='max rAF gap before frame_stall (swiftshader-generous)')
     ap.add_argument('--y-floor', type=float, default=-4.0, help='player eye y below this is a failure')
     ap.add_argument('--hook-wait-s', type=float, default=None, help='max wait for hook flight / reel (default min(25, duration/6))')
@@ -732,7 +744,7 @@ def main():
     ap.add_argument('--headed', action='store_true')
     args = ap.parse_args()
     # each screenshot costs ~5 s on swiftshader (it waits for a composited frame), so keep periodic ones sparse
-    args.shot_interval = args.shot_interval or max(30.0, args.duration / 10)
+    args.shot_interval = args.shot_interval or max(45.0, args.duration / 10)
     # keep slow hook/fish waits proportional so a short run is not one long wait
     args.hook_wait_s = args.hook_wait_s or min(25.0, max(8.0, args.duration / 6))
     args.fish_wait_s = args.fish_wait_s or min(15.0, max(6.0, args.duration / 10))
