@@ -3,14 +3,16 @@
 Design for two Raft staples in Little Raft: a chest you put items into, and a
 table that teaches you new recipes when you feed it materials. Both stay
 friendly (nothing is lost for good, nothing punishes you) and lean (new files,
-cached materials, no per-frame work, one small hook block in `game.js`).
+cached materials, no per-frame work). It plugs in through the content registry
+(`dist/content.js`, `docs/features/content-hooks.md`) and needs **no edits to
+`game.js`, `content.js` or `inventory-state.js`**.
 
 ## 1. What Raft does
 
-raft.wiki.gg blocks automated fetches (HTTP 401 and a "Blocked - wiki.gg" page
-on the API), so the facts below come from search snippets of the wiki's
-mirror and from guide sites. Each is marked with where it came from. The
-pages to recheck by hand are
+raft.wiki.gg could not be reached again in this pass (Nov 2026: the sandbox
+cannot resolve the host, and earlier passes got HTTP 401 and a "Blocked -
+wiki.gg" page). The facts below come from search snippets and guide sites,
+and each one is marked with its source. Recheck these pages by hand:
 <https://raft.wiki.gg/wiki/Research_Table> and
 <https://raft.wiki.gg/wiki/Small_Storage>.
 
@@ -58,7 +60,7 @@ pages to recheck by hand are
 |---|---|---|
 | Separate small, medium and large storage | One chest: the existing **Crate** decor gets 12 slots | `crate` is already craftable (4 wood, 1 scrap) and placeable, so we add no new item. 12 sits between Raft's small and medium tiers. |
 | Drag stacks between panels | **Click a stack to send it across.** Shift+click sends half. A "Put all" button stores everything except the hotbar. | Works with mouse, touch and gamepad focus, and needs no drag code. |
-| Research Table, 14 planks + 2 scrap | **Research Table**, 6 wood + 2 scrap, known from the start | Same role, priced for our smaller economy. |
+| Research Table, 14 planks + 2 scrap | **Research Table** (`research` item/decor, already in `content-items.js`), 6 wood + 2 scrap, known from the start | Same role, priced for our smaller economy. |
 | Research uses up the item | Uses up **1** of the item, once per kind | Same as Raft, and it only costs one of each kind ever. |
 | "Learn" button per recipe | **Recipes learn themselves** once all their ingredients are researched. You get a toast ("New recipe: Lantern!") and a short glow on that recipe | One fewer click. You still see what each item you research opens up. |
 | Blueprints | Out of scope (future: drift a bottle with a blueprint) | Keeps this change small. |
@@ -92,229 +94,365 @@ too, and you keep the item.
 
 - Research takes one item and nothing else. If no recipe needs that item, the
   table turns it away and you keep it.
-- Chests never vanish. Today decor can't be removed. When removal arrives, a
-  crate that still holds items can't be picked up ("Empty the crate first"),
-  so nothing is ever destroyed.
-- Old saves never lose recipes (see section 4). Any recipe whose output you
-  already own, or have placed as decor, counts as learned.
+- Chest contents are never deleted. If a crate is missing at a key that has
+  data (removed later, a bad save, a guest visiting), the data stays in the
+  save but is hidden. Placing a crate on that tile again shows it.
+- Old saves never lose recipes (section 4).
 
-## 3. Data model
+## 3. State: `world.ext.storage`
 
-All state lives in the existing `world` object, so it saves, loads and syncs
-along with tiles and decor.
+The module's slice is `world.ext.storage`. `serialize()` returns it and
+`load(data, from)` restores it.
 
 ```js
-world.storage = {            // keyed by the crate's tile, same key decor uses
-  "1,-1": [slot|null, ... ×12],   // slot = {kind, count, durability?}; same shape as Bag slots
-};
-world.research = {
+{
   v: 1,
-  seen:    ["wood", "leaf"], // ingredient kinds already researched (sorted, unique)
-  learned: ["bench", "palm"] // recipe ids learned beyond STARTER (sorted, unique)
-};
+  chests: {                    // keyed by "x,z", the same tile key decor uses
+    "1,-1": [slot|null, ... x12]   // slot = {kind, count, durability?}, the Bag slot shape
+  },
+  seen:    ["leaf", "wood"],   // researched ingredient kinds (sorted, unique)
+  learned: ["bench", "palm"],  // learned recipe ids beyond STARTER (sorted, unique)
+  legacy:  true,               // optional: set once when an old save was grandfathered
+  r: 17                        // rev, a mutation counter (cheap change detection)
+}
 ```
 
-- Each crate's chest is `world.storage[x + ',' + z]`. A crate without an entry
-  is an empty chest. The entry is created on the first store.
-- Entries whose tile has no crate are dropped by `cleanStorage` (guards
-  against bad or hand-edited saves).
-- Stack limits come from `ITEM_INFO[kind].maxStack`, so tools stack to 1 and
-  keep their `durability`.
-- Research is per raft, shared by the whole crew, the same way tiles are. Your
-  brother learns what you learn while he's aboard.
+- **Research is shared per raft**, like tiles. Whatever anyone researches is
+  learned by the whole crew, so there is no per-player bookkeeping. A guest
+  sees the host raft's tree while visiting and gets their own back on
+  `load(..., 'restore')`.
+- **Slot validation uses `Bag`.** For each slot, the module builds a
+  28-slot snapshot with that slot at index 0 (`{slots, selected:0}`), runs
+  `new Bag(snap)` in a try/catch, and keeps `bag.slots[0]` (so tools get
+  their default `durability`). Any slot that throws becomes `null`. Arrays are
+  padded or trimmed to 12. Bag's own rules on kinds, counts, maxStack and
+  durability are the only rules, so new item kinds from other fleets just
+  work. This runs only in `load`, never per frame.
+- **Size.** `cleanExt` caps each `world.ext` at 200,000 chars. The worst case
+  is 400 crates, which fits in about 170k as plain JSON. `load` keeps at most
+  400 chest keys and drops all-empty chests.
+- **Cheap sync.** `serialize()` returns one cached object, rebuilt only when
+  `r` changed. On the guest, `load(data, 'net')` returns early when `data.r`
+  equals the last `r` it applied (and the object is the same shape), so there
+  is no revalidation 8 times a second.
+- **Model.** Crates already have a model in `crafts.js`. The research table
+  model comes from `decorModel('research')`: a small desk built in
+  `dist/storage-research-model.js` with one cached material. It runs only
+  when `rebuildRaft()` runs.
 
-### New item and recipe
+### Recipe gating
 
-```js
-// dist/storage-research.js
-export const EXTRA_ITEMS = { research: { kind:'research', name:'Research Table', icon:'icon-repair', maxStack:20, tool:false, placeholder:true } };
-export const EXTRA_RECIPES = { research: { id:'research', name:'Research Table', output:{kind:'research', count:1}, cost:{wood:6, scrap:2} } };
-export const EXTRA_DECOR = ['research'];
-export const EXTRA_BLOCK = { research: .5 };
-```
+`STARTER = ['rope','hook','hammer','crate','research']` is always learned.
+Any other recipe in `RECIPES` is learned when its id is in `learned`. After
+each research, `learned` is recomputed with one rule: a recipe becomes learned
+once every key of its `cost` is in `seen`. So recipes that other fleets add
+join the tree with no extra work.
 
-`ITEM_INFO` and `RECIPES` are frozen, so `inventory-state.js` has to spread
-these in before `Object.freeze` (hook H1 below). This is a change to an
-existing file, but it is two spread lines and the only way to add an item kind
-without forking the Bag.
+`craftLocked(recipe, actor)` returns `"Research it first at a Research
+Table"` when the recipe is locked, and `null` otherwise. It runs on the host,
+through the craft hook that already exists.
 
-## 4. Save format and compatibility
-
-Same `localStorage` key and the same `{...world, items: []}` blob, with two
-new optional fields: `storage` and `research`.
+## 4. Backward compatibility (critical)
 
 | Situation | Behaviour |
 |---|---|
-| Old save, no `research` | **All recipes learned.** Players with a raft already keep everything. A "fresh" world (9 tiles, no decor, `collected == 0`) instead starts with `STARTER` only, so the tree still teaches new players. |
-| Old save, no `storage` | `{}`: every existing crate is an empty chest. |
-| New save opened by an old client | `cleanWorld` drops the unknown fields and items in chests are lost on that client. We accept this because releases only move forward. The fields are still present when a new client reopens the save, as long as the old client hasn't autosaved over it. |
-| Learned ids no longer in `RECIPES` | Kept in the array and ignored, so a recipe that comes back later is still learned. |
-| Bad entries (wrong kind, count ≤ 0, over maxStack, non-array) | Slot becomes `null`. Counts over the cap are clamped, never split into extra items. |
+| `load(undefined, 'save')` and the world is **progressed** | **Grandfathered**: `learned` = every current recipe id, `seen` = every ingredient kind, `legacy: true`. Nothing the player could craft yesterday is locked today. |
+| `load(undefined, 'save')` and the world is **brand new** | The locked tree: `STARTER` only. |
+| `load(undefined, 'net')` (an old host without this module) | Everything is treated as learned and the data is not saved. The old host allows all crafts anyway. The guest tracks `hostHasStorage = false`: E on a crate shows the notice "Your friend’s raft doesn’t have chests yet" (also used as the prompt) instead of a panel the host would ignore, and repeated `undefined` slices at 8 Hz are skipped, so nothing is rebuilt. |
+| `load(garbage, *)` | Every field is validated separately. A bad `learned` array on a save also falls back to the progressed or new rule above. The module never throws. |
+| Learned ids no longer in `RECIPES` | Kept and ignored, so a recipe that comes back is still learned. |
+| An old client opens a new save | The old `cleanWorld` drops `ext`. This is accepted because releases only move forward. |
 
-`cleanStorage(v.storage, tiles, decor)` and `cleanResearch(v.research, v)` run
-inside `cleanWorld`, so host snapshots received by a guest are checked the
-same way as saves.
+"Progressed" means any one of these is true for `ctx.world`:
+`tiles.length > 9`, `decor.length > 0`, `collected > 0`, `fish > 0`, or a
+kind in `hostInventory` or `guestInventory` that is any recipe's output other
+than `hook`. This matches the `built` / `untouched` test in `bagsFromWorld`,
+so a legacy world that `game.js` treats as touched is grandfathered too.
+"Brand new" is the `newWorld()` shape: 9 tiles, no decor, nothing collected,
+and only the starting hook. Once a world is saved with `ext.storage`, the
+grandfather check never runs again.
 
-### Co-op sync
+**Orphan chests.** If a chest key has no `crate` in `world.decor`, its data is
+kept and serialized but hidden: no prompt, no panel, and actions on it are
+refused. Placing a crate on that tile shows the contents again.
 
-- The host is in charge, as with everything else. New action kinds go through
-  the existing `action()` → `applyAction(a, actor)` path:
-  - `{kind:'chest', x, z, op:'put'|'take', slot, amount?, expect:{kind,count}}`
-    moves one stack between the actor's bag and that chest. `expect` must
-    match the current contents of the source slot or the action is dropped.
-    This keeps two players clicking the same stack from duplicating it.
-  - `{kind:'chestAll', x, z}` puts every non-hotbar bag stack into the chest.
-  - `{kind:'research', slot, expect:{kind}}` checks that the actor stands
-    within reach of a research table, takes 1 from that slot, adds the kind to
-    `seen`, re-derives `learned`, and emits a toast to `'all'` for each new
-    recipe.
-- The guest does not predict chest or research changes. It shows a small
-  "…" on the clicked slot until the next host state, which arrives about every
-  0.12 s, and the canonical bag snapshot clears it.
-- Bandwidth: `storage` rides along in the state message. The worst case is
-  400 crates × 12 slots, but in practice it's a handful of crates. To keep
-  messages small, the host sends `storage` only when `world.storageRev`
-  changed since the last ack and otherwise sends `storageRev` alone. The guest
-  keeps its last copy.
-- Old host with a new guest: the state has no `research`, so the guest treats
-  everything as learned. That matches what the old host allows.
-- `craft` on the host gets one guard: if the recipe isn't learned, it emits
-  "Research it first at a Research Table" and stops. The UI already blocks
-  this, so the guard only catches modified clients and races.
+## 5. Actions (host-authoritative, atomic)
 
-## 5. API
+Guests send these with `ctx.action(a)`. Solo and host players call the same
+path directly, so there is one code path. `action(a, actor, bag)` handles
+`a.kind` values that start with `storage.` and returns `true` for them, even
+when it refuses the action. Every field is checked: integers in range, `x,z`
+as a key that has a crate (or a `research` decor for research), and the actor
+within reach. For reach, the host's position is the camera and the guest's
+is `ctx.other`. If the host's position is unknown, reach is not enforced. A
+guest with no known pose yet (`ctx.other` is null) is refused with `reach`.
+Reach is 3.2 m to the tile centre. A `to` slot that holds a different kind is
+refused with "That slot already holds something else". A `put` or `putAll`
+that would grow the JSON slice past `MAX_SLICE_CHARS` (150k chars;
+`content.js` caps all of `ext` at 200k) is refused with a friendly notice.
+`take` is never size-checked, so a crowded world can always be emptied. A
+stale click (`expect` mismatch or an empty source slot) says "Someone moved
+that — try again" and bumps the view revision so the panel repaints at once.
 
-### `dist/storage-research.js` (pure: no DOM, no THREE, safe in `node --test`)
-
-```js
-export const CHEST_SLOTS = 12;
-export const STARTER = Object.freeze(['rope','hook','hammer','crate','research']);
-export const EXTRA_ITEMS, EXTRA_RECIPES, EXTRA_DECOR, EXTRA_BLOCK;
-export const tileKey = (x, z) => x + ',' + z;
-
-export function cleanStorage(raw, tiles, decor) → {[key]: slot[]}
-export function cleanResearch(raw, world) → {v:1, seen:string[], learned:string[]}
-export function freshResearch() → {v:1, seen:[], learned:[]}
-export function isLearned(research, recipeId) → boolean   // STARTER ∪ learned; null research → true
-export function researchable(research, kind) → boolean    // an ingredient of some not-yet-learned recipe and not yet seen
-export function feed(research, kind) → string[]           // mutates; returns newly learned ids (sorted)
-export function lockedBy(research, recipeId) → string[]   // ingredient kinds still to research (for the UI hint)
-export function chestOf(storage, x, z) → slot[]           // creates lazily
-export function moveStack(fromSlots, i, toSlots, amount?) → number  // moved count; merges into partial stacks first, then empties; keeps durability
-export function putAll(bagSlots, chestSlots, skip = 8) → number
-export function chestEmpty(storage, x, z) → boolean
-```
-
-Every function checks its own input and never throws on junk. Moving into a
-full chest leaves the leftover in the source slot.
-
-### `dist/storage-research-ui.js` (DOM)
-
-```js
-export function createStorageResearchUI({ onChest, onChestAll, onResearch, getBag, getWorld, itemIcon, onClose })
-  → { openChest(x, z), openResearch(), refresh(), decorateRecipes(rootEl), close(), isOpen() }
-```
-
-- One `<dialog id="lrChest">` and one `<dialog id="lrResearch">`, built once
-  the first time they open and reused after that. Class names start with
-  `lr-sr-`.
-- The chest panel shows 12 chest slots above the 28 bag slots, using the same
-  slot look as `survival-ui.js` (copied CSS tokens, not imported). Painting
-  uses a per-slot signature like `paintRecipes`, so an unchanged slot never
-  touches the DOM.
-- The research panel has a drop row with one tile per researchable kind you
-  carry (click to research), a "Researched" chip list, and "Next up" rows
-  showing locked recipes with their still-needed kinds greyed.
-- `decorateRecipes(rlist)` sets `data-locked="1"` and a `title` hint ("Needs
-  research: scrap") on each `.sv-recipe` whose recipe isn't learned. One
-  injected style rule, `.sv-recipe[data-locked]{filter:grayscale(1);opacity:.45;pointer-events:none}`,
-  greys locked recipes without depending on `paintRecipes`' `disabled`
-  logic. A `.sv-lock` badge is appended once per button. It runs when the
-  inventory opens and whenever `research` changes. It doesn't watch the DOM.
-- Esc closes the panel and returns pointer lock the same way the inventory
-  does (`onClose`).
-
-### `dist/research-table-model.js`
-
-`createResearchTable(T) → THREE.Group`: a small desk with a book and a
-magnifier, about 1 m tall, origin on the floor top like `createCraft`. It
-merges into 2 meshes with vertex colors and uses one module-level cached
-`MeshStandardMaterial` registered as shared. `rebuildRaft` disposes geometry,
-so the model builds new geometry on each call, as `crafts.js` does. That only
-happens on build events, never per frame.
-
-## 6. Hooks into existing files
-
-Every hook is wrapped in `// >>> storage-research` … `// <<< storage-research`.
-
-| # | File | Change |
+| kind | fields | effect |
 |---|---|---|
-| H1 | `dist/inventory-state.js` | `import { EXTRA_ITEMS, EXTRA_RECIPES } from './storage-research.js'` and spread them into `ITEM_INFO` / `RECIPES` before freezing (each value wrapped in `Object.freeze` / `recipe()`). |
-| H2 | `dist/game.js` top | Import the three modules, and use `DECOR_TYPES = [..., ...EXTRA_DECOR]` and `BLOCK_RADIUS` spread with `EXTRA_BLOCK`. |
-| H3 | `dist/game.js` `cleanWorld` / `newWorld` / `copyWorld` | Add `storage: cleanStorage(v.storage, tiles, decor), research: cleanResearch(v.research, v)` to the returned object. `newWorld` uses `{}` and `freshResearch()`. |
-| H4 | `dist/game.js` `applyAction` | At the top: `if (SR_ACTIONS.has(a.kind)) { srApply(a, actor, bag); return; }`, and a learned guard in `craft`. `srApply` lives in the new module as `applySR(world, a, bag, ctx)`, where ctx has `{emit, actor, near(x, z), itemName}`. |
-| H5 | `dist/game.js` `interact` | Before `openInventory()`: `if (srUI && srInteract(currentAim())) return;`. A crate within `PICKUP_REACH` opens the chest, and a research decor opens the table. |
-| H6 | `dist/game.js` `rebuildRaft` | `if (d.type === 'research') detailed = createResearchTable(T);` |
-| H7 | `dist/game.js` `openInventory` / state receive | Call `srUI.decorateRecipes(...)` after opening and after a state that changed `research`. |
-| H8 | `package.json` | Add `tests/storage-research.test.mjs` to `npm test`. |
+| `storage.put` | `x, z, from` (bag slot 0..27), `to?` (chest slot), `amount?`, `expect:{kind,count}` | Moves a stack from the bag into the chest. It merges into partial stacks first, then empty slots, or goes into `to` when that slot is empty or the same kind. |
+| `storage.take` | `x, z, from` (chest slot 0..11), `to?` (bag slot), `amount?`, `expect:{kind,count}` | Moves a stack from the chest into the bag, with the same merge rules. Leftover stays in the chest. |
+| `storage.putAll` | `x, z` | Puts every non-hotbar bag stack (slots 8..27) into the chest until it is full. |
+| `storage.research` | `x, z` (the table), `slot` (bag), `expect:{kind}` | If the kind is still researchable, removes 1, adds the kind to `seen`, recomputes `learned`, and emits `{kind:'notice', text:'New recipe: Lantern!'}` to `'all'` for each new recipe. Otherwise it emits a friendly refusal ("That doesn't teach anything new") and takes nothing. |
 
-H1 is the only hook outside `game.js`. If the inventory fleet objects, the
-fallback is to drop the new item and let the existing **bench** act as the
-research table. Then H1 and H6 go away, and the cost is a less Raft-like
-name.
+**Atomic.** Each action runs fully inside one synchronous `action()` call.
+The module checks everything first, then mutates the chest and the actor's
+`bag.slots` together, then increments `r`. `expect` must match the source
+slot exactly or the action is dropped. This stops two players who click the
+same stack in the same tick from duplicating it. Items are moved, never
+created: the item total across bag and chest is checked in tests. The
+durability of a tool travels with its slot, and tools never stack.
 
-## 7. Test plan
+The guest does not predict any of this. The next host state (about 0.12 s
+later) carries both the bag and `ext.storage`.
 
-### Unit (`tests/storage-research.test.mjs`, `node --test`, uses `RAFT_DIST` like `survival.test.mjs`)
+## 6. UI
 
-1. `moveStack` merges into a partial stack before using an empty slot, and
-   returns the right moved count.
-2. `moveStack` into a full chest moves 0 and leaves the source unchanged.
-3. `moveStack` keeps `durability` on tools and never stacks two tools.
-4. Shift (half) moves `ceil(count / 2)`.
-5. `putAll` skips hotbar slots 0–7 and stops when the chest fills, leaving the
-   rest in the bag.
-6. The total item count across bag + chest is the same before and after every
-   move (property loop with 500 random moves).
-7. `cleanStorage` drops keys with no crate, unknown kinds, NaN or negative
-   counts, and non-array values. It clamps over-max counts and pads or trims
-   to 12 slots.
-8. `cleanResearch(undefined, oldWorld)` returns all recipes learned for a
-   built world, and `STARTER` only for a fresh world.
-9. `feed`: wood then scrap returns `['bench']` then `['lantern']`. Feeding a
-   kind twice returns `[]`, and `researchable` turns it away.
-10. `feed('hook')` is turned away (not an ingredient). `lockedBy('sail')`
-    lists exactly the missing kinds.
-11. `isLearned(null, id)` is true (old host compatibility).
-12. JSON round trip: `cleanWorld(JSON.parse(JSON.stringify(world)))` keeps
-    storage and research byte for byte.
-13. `EXTRA_RECIPES.research` is craftable by `Bag`, and `ITEM_INFO.research`
-    exists after H1.
+`dist/storage-research-ui.js` (DOM only) is created lazily by the module the
+first time E is pressed on a chest or table. It builds one
+`<dialog id="lrStorage" class="lr-sr">` and injects one `<style
+id="lr-sr-style">`.
 
-### Headless (`python shoot.py dist .qa/storage-research`)
+- **Opening.** `interact(aim)` picks the nearest `crate` or `research` decor
+  within reach of `aim`, calls `ctx.releaseLock()`, and calls
+  `dialog.showModal()`. An open `<dialog>` already makes the engine's
+  `uiBlocked()` true, so movement, E and hotbar keys pause with no new hook.
+  `prompt(aim)` returns "E: Open crate" or "E: Research table".
+- **Closing.** Escape uses the dialog's native `cancel`, and there is also a
+  close button and a backdrop click. On `close` the UI calls
+  `ctx.requestLock()` when `ctx.running`. The panel also closes itself when
+  the decor is gone or the player walks out of reach, checked in `update()`
+  with no allocations.
+- **Look.** It copies the survival-ui tokens: a wood frame (`#b48d55` to
+  `#8a663a` gradient, `#3e2a17` border), dark inner panels (`#3a2716eb`), 52 px
+  slots, the same font, `sv-short` red counts, and the same durability bar
+  colours. It uses class names starting with `lr-sr-` and only nests the
+  survival-ui slot markup (`.sv-slot > .sv-art/.sv-count/.sv-dur`).
+- **Icons and slot painting.** One tiny documented hook in `survival-ui.js`:
+  `export { iconSVG, slotSig, paintSlot, itemName }; // content hook
+  (storage-research)`. The panel reuses `paintSlot`, which compares
+  signatures, so an unchanged slot never touches the DOM. It repaints only
+  when `r` or the bag snapshot signature changes. The UI imports
+  `./survival-ui.js?build=<same build query>` (taken from its own
+  `import.meta.url`) so it shares the engine's module instance.
+- **Chest panel.** 12 chest slots sit above the 28 bag slots (hotbar row at
+  the bottom). Click a stack to move all of it across, and Shift+click to
+  move half. A "Put all" button stores everything outside the hotbar.
+- **Research panel.** A drop row shows one tile for each researchable kind
+  in the bag (click it to research). Below it are "Researched" chips and
+  "Next up" rows: locked recipes with the kinds they still need greyed out.
+- **Locked recipes in the craft list.** They are **shown greyed with a lock
+  badge, not hidden**, so players can see what is coming. The module
+  annotates the DOM, with no further survival-ui hook. When
+  `#inventory[open]` turns true, or `r` changes while it is open (a boolean
+  and integer check in `update()`), it sets `data-locked="1"` and a `title`
+  ("Needs research: scrap") on each `.sv-recipe[data-recipe]` that is not
+  learned, and appends one `.lr-sr-lock` badge. The CSS rule
+  `#inventory .sv-recipe[data-locked]{filter:grayscale(1);opacity:.5;pointer-events:none}`
+  works no matter how `paintRecipes` sets `disabled`. Even if a modified
+  client bypasses it, `craftLocked` still refuses on the host.
 
-- `chest-open.png`: place a crate, press E, chest panel open with 3 stacks.
-- `research-open.png`: research table placed, panel showing "Next up" rows.
-- `recipes-locked.png`: inventory with lantern / sail greyed and lock badges.
-- `recipes-unlocked.png`: same after feeding wood + rope.
-- Check the console for zero errors, and check that the frame time is
-  unchanged with the panels closed (no new per-frame work).
+## 7. Debug (`raftDebug.content.storage`)
 
-### Co-op (`check_multiplayer.py` style, two pages)
+| helper | does |
+|---|---|
+| `openChest(x, z)` | Places a crate there if the tile is free (debug only), then opens the chest panel. |
+| `research(kind)` | Runs `storage.research` as the local actor, skipping the reach and item checks. Returns the newly learned ids. |
+| `unlockAll()` | Learns every recipe and sees every kind. |
+| `state()` | A deep copy of the slice, plus `{open, locked: [...ids]}`. |
 
-- Guest stores 5 wood in the host's crate. The host sees it, and after a
-  reload the save still has it.
-- Both players take the same stack in the same tick. Exactly one gets it, and
-  the item total is conserved.
-- Guest researches scrap. Both see the "New recipe: Lantern!" toast, and the
-  guest can craft a lantern on its next state.
-- Old save fixture (no `storage` / `research`) loads with all recipes and
-  empty crates.
+## 8. Files and hooks
 
-## 8. Files
-
-- `dist/storage-research.js`: pure logic and constants
-- `dist/storage-research-ui.js`: chest and research dialogs, recipe lock decoration
-- `dist/research-table-model.js`: table mesh
+- `dist/storage-research.js`: `createStorage(ctx)` plus the exported pure
+  helpers (`cleanSlice`, `isProgressed`, `learnedFrom`, `moveStack`,
+  `putAll`, `applyStorageAction`). These need no DOM and no THREE, so they
+  are testable in node.
+- `dist/storage-research-ui.js`: the dialog and the craft-list annotation.
+- `dist/storage-research-model.js`: the research table mesh.
 - `tests/storage-research.test.mjs`
-- Hooks H1–H8 above
+- Shared-file edit: **one export line** in `dist/survival-ui.js`, marked
+  `// content hook`. Nothing in `game.js`, `content.js` or
+  `inventory-state.js` changes.
+
+## 9. Test plan
+
+**Unit** (`node --test`, imports like `tests/survival.test.mjs`):
+
+1. Slice validation: junk, `null`, arrays and bad slots become valid. Each
+   slot is checked by Bag, tools gain durability, and arrays are padded or
+   trimmed to 12. A JSON round trip is stable.
+2. Grandfathering: `load(undefined,'save')` on a world with 10 tiles, one
+   with decor, one with a crafted sail in the bag, or one with `collected > 0`
+   learns every recipe. A `newWorld()`-shaped world gets `STARTER` only.
+   `load(undefined,'net')` locks nothing.
+3. Orphans: a chest key with no crate survives serialize and load. Actions on
+   it are refused, and the interact prompt is null.
+4. `put` and `take` merge into partial stacks first, a full target moves 0,
+   amount and half work, and durability is kept.
+5. `expect` mismatch, out-of-range slots, a non-integer `x`, a missing crate
+   and an out-of-reach actor are all refused with no state change.
+6. Conservation: 500 random put, take and putAll actions keep the total item
+   count of bag plus chest.
+7. Research: wood unlocks `bench`, then scrap unlocks `lantern`. A kind
+   researched twice, or a non-ingredient like `hook`, is refused and the item
+   is kept. A notice is emitted per new recipe.
+8. `craftLocked` returns a reason for a locked recipe and `null` for
+   `STARTER` and learned recipes.
+9. `serialize()` returns the same object when `r` has not changed.
+
+**Headless shots** (own playwright script, PW_CHROME): `chest-open.png` via
+`openChest`, `research-open.png`, `recipes-locked.png` with greyed and badged
+rows, and `recipes-unlocked.png` after `unlockAll()`. Also check for zero
+console errors and that Escape closes the panel and the game resumes.
+
+**Co-op** (two pages): the guest stores 5 wood and the host sees it after a
+reload. Both players take the same stack at once and exactly one gets it. The
+guest researches scrap, both players see the toast, and the guest can craft a
+lantern.
+
+**Old save fixture**: a 12-tile world with no `ext` keeps every recipe, and
+its crates are empty chests.
+
+
+## 10. What was built (Nov 2026)
+
+Everything above is implemented through the content registry, with one shared-file line.
+
+**Files**
+
+- `dist/storage-research.js`: `createStorage(ctx)` plus the pure, exported helpers
+  (`cleanSlot`, `cleanChest`, `cleanSlice`, `isProgressed`, `stateFrom`, `sliceOf`, `learnedFrom`,
+  `researchableKinds`, `lockedRecipes`, `moveStack`, `putAll`, `applyStorageAction`). No DOM, no
+  THREE in the logic, so node tests import it directly.
+- `dist/storage-research-ui.js`: the `<dialog id="lrStorage">` and the craft-list lock badges. It
+  is loaded with a dynamic `import()` the first frame the game runs, so node never loads it.
+- `dist/storage-research-model.js`: the Research Table model.
+- `tests/storage-research.test.mjs`: 24 tests (section 9's unit plan, the model cache, the
+  review fixes below, and the research icon).
+- Shared-file edits, each marked `// content hook` where the format allows:
+  - one line at the end of `dist/survival-ui.js`:
+    `export { iconSVG, slotSig, paintSlot, itemName }; // content hook (storage-research)`;
+  - `'research'` added to the `SPRITES` set in `dist/survival-ui.js`, so the new symbol is used;
+  - a new `<symbol id="icon-research">` in `dist/icons.svg` (an open book on a desk with a
+    spark), drawn in the same palette and 2 px `#153e49` outline style as the other icons;
+  - `dist/content-items.js`: the Research Table uses `icon-research` instead of the Bench's
+    `icon-repair`.
+  Nothing in `game.js`, `content.js` or `inventory-state.js` changed.
+
+**Backward compatibility** follows section 4 exactly. `stateFrom(data, from, world)` holds the
+rule: a missing or bad `learned` list on `'save'`/`'restore'` grandfathers a progressed world
+(every current recipe learned, every ingredient seen, `legacy: true`), and a brand-new world gets
+`STARTER` only. `'net'` with no slice locks nothing. `isProgressed` also treats a legacy
+stock-only save (no `hostInventory`) as progressed unless it is the untouched 5/3/1 kit, which is
+the same test `bagsFromWorld` uses.
+
+**Additions to the slice.** `s` is a short random session id the host writes next to `r`. The
+guest skips `load(data,'net')` only when both `r` and `s` match what it last applied, so a host
+that reloads and replays the same `r` values with different data is still picked up.
+
+**Actions** run through `applyStorageAction`, which checks everything first and then changes the
+chest, the bag and `r` together. Refusals send one friendly notice to the actor ("Step a little
+closer", "The crate is full", "Your bag is full", "That doesn't teach anything new"). A research
+that completes no recipe yet tells the actor "Researched Rope! It helps with something new";
+each new recipe goes to everyone as "New recipe: Net!".
+
+**Model.** The table is a small scholar's desk: plank top, lower shelf with books and a seed jar,
+an open book with a ribbon, ink pot and quill, a globe on a brass stand, a candle, a rolled map
+and a spyglass, and a backboard with two blueprints and a note pinned on. It is one merged,
+vertex-coloured `BufferGeometry` with one `MeshStandardMaterial`, plus a tiny emissive flame (a
+second material whose `emissiveIntensity` flickers in `update()`, with no lights added). Both are
+built once on the first `decorModel('research')`. Each call returns a new `Group` that shares them.
+`rebuildRaft()` disposes the children it removes, so the shared geometry and material `dispose`
+methods are no-ops, and the module's `dispose()` frees them for real.
+
+**UI.**
+- The crate panel: 12 chest slots (6 x 2) above the backpack (7 x 3) and the hotbar row, in the
+  inventory's wood-frame style. Click moves a stack across, Shift+click moves half, and "Put all
+  in crate" keeps the hotbar. E, Tab, Escape, the close button or a backdrop click closes it.
+  It also closes when the crate is removed or you walk more than about 4 m away.
+- The research panel: on the left, "Study an item" shows a tile for every kind the table still
+  wants. Tiles for items you carry are clickable and say what they unlock ("Unlocks Lantern").
+  Tiles for items you don't have are dimmed and say "Find one first". Below are "Studied" chips.
+  On the right, "Recipes to discover" lists locked recipes with a lock badge, a tick on each
+  ingredient already studied, and an "almost!" tag when only one is missing. When a recipe is
+  learned, a glowing banner appears ("New recipe: Lantern! Find it in your craft list.").
+- The craft list (Tab): locked recipes move to the bottom under the heading "Discover at a
+  Research Table". They are dimmed and show a lock badge and "Study Scrap", and they can't be
+  clicked. A recipe learned since the list was last open glows once. `craftLocked` still refuses
+  on the host.
+
+**Debug** (`raftDebug.content.storage`): `openChest(x,z)` (a guest never places decor; it only
+opens an existing crate), `openResearch(x,z)`, `research(kind)`, `unlockAll()`, `lockAll()`,
+`fill(x,z,slots)`, `close()`, `rev()` (the local view revision), `state()`.
+
+**`legacy`** is not read by any rule. It records that an old save was grandfathered, survives
+save/load, and shows in `debug.state()` for QA.
+
+**Review fixes (Nov 2026)**
+- Imports: both modules import `inventory-state.js` and `survival-ui.js` with the same
+  `?build=v3-survival-ae77fa84ac2b` query as `game.js`, so each is evaluated once and shares the
+  engine's instance.
+- UI loading: if the dynamic import of the UI fails, `uiFailed` stops it retrying every frame.
+  `open()` releases pointer lock only once the UI exists. On the first (async) open, the panel is
+  skipped if another UI opened meanwhile or the crate/table is gone or out of reach.
+- `destroy()` marks the panel closed before closing it, removes every dialog listener (one
+  `AbortController`), so `onClosed` cannot request pointer lock during dispose, strips
+  `data-locked`, lock badges, needs text, the first/fresh classes, `title`, `tabindex` and the
+  aria-label override from the craft-list rows, removes `#lr-sr-style`, and clears the glow timers.
+- Locked craft-list rows get `aria-label="Locked — needs research"` (re-applied if survival-ui
+  repaints the row, and restored when the recipe is learned).
+- After a mouse click a slot button gives focus back to the panel, so Space or Enter cannot click
+  it again. Keyboard activation keeps focus as usual.
+
+**Visual QA fixes (Nov 2026)**
+- Study tiles for a kind you do not carry say how to get one. A kind with a recipe says
+  "Craft one first (2 Palm Leaf)". Only raw materials say "Find one first".
+- Layout: the dialog is anchored near the top (`margin-top: min(10vh, 72px)`) instead of being
+  centred, so it no longer jumps when tiles disappear. In research mode the banner row is always
+  reserved. The header and banner stay put and only the body scrolls. The two research columns
+  now stack only below 700 px wide (they fit side by side in about 662 x 533). Study tiles are
+  capped at 96 px wide.
+- A study that completes no recipe shows a soft in-dialog banner: "Studied Palm Leaf. One step
+  closer to Palm Planter, Sail." The toast is hidden behind the modal.
+- A tile's hint reads "Helps: X, Y" instead of "A step closer". Tiles that unlock a recipe sort
+  first. "almost!" shows only when a recipe has more than one ingredient and all but one are
+  studied.
+- The craft list starts with a "N more recipes to discover ↓" button (outside `.sv-rlist`, which
+  survival-ui owns). Clicking it scrolls to the first locked row. While recipes are locked and
+  no Research Table is placed or carried, the Research Table row glows gently.
+- At 100% the research panel collapses to "Bookworm! You know every recipe." plus the studied
+  chips.
+- The HUD hotbar (`.tools.sv-hotbar`) is hidden while the panel is open (`body.lr-sr-open`).
+- The craft-list annotation only writes when something changes: `update()` re-runs it only when
+  the view revision, the first row element (survival-ui rebuilt the list) or the has-table flag
+  changes, and each write is skipped when the value is already there. A MutationObserver on
+  `#inventory` saw zero mutations over 2.5 s with Tab open. The Playwright click timeouts were not
+  caused by moving rows: the click lands ("click action done"), then Playwright times out in
+  "waiting for scheduled navigations" while the slow software-GL frame runs. The row's box is
+  identical across 8 frames.
+- At 100% the reserved banner space is dropped, so the small "Bookworm!" panel has no gap.
+
+**Screenshots** are in `docs/cloud/shots/content/`: `storage-world.png` (table and crate on the
+raft), `storage-chest.png`, `storage-research.png`, `storage-recipes-locked.png` and
+`storage-research-800x600.png`. They were re-shot after the visual QA fixes (256 colours, each under
+250 KB).
+
+**Headless check** (Playwright, solo, preloaded save): walking up to the table and pressing E opens
+the research panel. Escape closes it without opening the pause menu. A click puts a bag stack
+into the crate and Shift+click takes half back. Studying Palm Leaf learns Palm Planter and shows
+the banner. Tab shows the locked rows, and `unlockAll()` clears them. No page errors.
+
+**Not done / known issues**
+- The two-page co-op check (section 9) was not run, because the headless sandbox has no PeerJS
+  signalling. The guest path is covered by the unit tests: `ctx.action` dispatches it, `'net'`
+  loads are idempotent, and the guest sees the `'all'` notices.
+- Reach for actions uses the player's feet position (`ctx.physics`) for the host and `ctx.other`
+  for the guest. It is not the camera, as section 5 says, though the two match on x/z.
+- Recipes that other fleets add later are locked for grandfathered saves until their ingredients
+  are studied. This is by design (`learned` was "every recipe at the time").

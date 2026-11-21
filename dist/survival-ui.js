@@ -16,7 +16,7 @@ const SPRITE_URL = (() => {
 })();
 
 // Symbols that actually exist in icons.svg.
-const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass']);
+const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'research']); // content hook: + research (storage-research)
 // Item kind (normalised) -> sprite symbol.
 const SPRITE_FOR = {
   hook: 'hook', plastichook: 'hook', grapplinghook: 'hook',
@@ -650,3 +650,4 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 }
 
 export default createSurvivalUI;
+export { iconSVG, slotSig, paintSlot, itemName }; // content hook (storage-research)
