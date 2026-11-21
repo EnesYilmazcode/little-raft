@@ -1,16 +1,54 @@
 // Floating plastic resource: weathered milk jug. Pure procedural, no assets.
-// createPlastic(T) -> THREE.Group (~0.65 x 0.7 x 0.4, centered on origin).
-export function createPlastic(T) {
-  const root = new T.Group();
-  root.name = 'plastic';
-  const geometries = [];
-  const materials = [];
-  const own = (g) => (geometries.push(g), g);
-  const mat = (o) => {
-    const m = new T.MeshStandardMaterial(Object.assign({ roughness: 0.7, metalness: 0 }, o));
-    materials.push(m);
-    return m;
+// createPlastic(T, opts?) -> THREE.Group (~0.65 x 0.7 x 0.4, centered on origin).
+// Two meshes: the vertex-coloured jug (body, lip, cap, handle, seam) and the translucent creases.
+// opts.shared: reuse one cached geometry set and module-wide materials (root and meshes get
+// userData.shared = true: never dispose them). Otherwise root.userData.dispose() frees what it made.
+let cached = null;
+
+function makeMaterials(T) {
+  return {
+    jug: new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0, side: T.DoubleSide }),
+    crease: new T.MeshStandardMaterial({
+      color: 0xa9d2ec, roughness: 0.7, metalness: 0, transparent: true, opacity: 0.55, side: T.DoubleSide,
+      forceSinglePass: true, polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false,
+    }),
   };
+}
+
+// Bake each part's transform and colour (material colour x existing colour attribute) into one geometry.
+function bake(T, parts) {
+  const geos = parts.map(([g, color, o]) => {
+    o.updateMatrix();
+    const n = g.index ? g.toNonIndexed() : g;
+    if (n !== g) g.dispose();
+    n.applyMatrix4(o.matrix);
+    const c = new T.Color(color), old = n.attributes.color, cnt = n.attributes.position.count;
+    const col = new Float32Array(cnt * 3);
+    for (let i = 0; i < cnt; i++) {
+      col[i * 3] = c.r * (old ? old.getX(i) : 1);
+      col[i * 3 + 1] = c.g * (old ? old.getY(i) : 1);
+      col[i * 3 + 2] = c.b * (old ? old.getZ(i) : 1);
+    }
+    n.setAttribute('color', new T.BufferAttribute(col, 3));
+    return n;
+  });
+  let count = 0;
+  for (const g of geos) count += g.attributes.position.count;
+  const out = new T.BufferGeometry();
+  for (const [name, size] of [['position', 3], ['normal', 3], ['color', 3]]) {
+    const arr = new Float32Array(count * size);
+    let o = 0;
+    for (const g of geos) { arr.set(g.attributes[name].array, o); o += g.attributes[name].array.length; }
+    out.setAttribute(name, new T.BufferAttribute(arr, size));
+  }
+  geos.forEach((g) => g.dispose());
+  out.computeBoundingSphere();
+  return out;
+}
+
+function buildGeometry(T) {
+  const parts = []; // [geometry, colour, transform holder]
+  const at = () => new T.Object3D();
 
   const Z = 0.2 / 0.27; // depth squash -> 0.4 deep
   // Body profile (radius, y) with beveled base and shoulders.
@@ -28,7 +66,7 @@ export function createPlastic(T) {
   };
 
   // 1. Hollow body (open neck, double-sided) with dents + weathered vertex tint.
-  const bodyGeo = own(new T.LatheGeometry(prof.map(([r, y]) => new T.Vector2(r, y)), 40));
+  const bodyGeo = new T.LatheGeometry(prof.map(([r, y]) => new T.Vector2(r, y)), 20);
   {
     const p = bodyGeo.attributes.position;
     const col = new Float32Array(p.count * 3);
@@ -51,39 +89,34 @@ export function createPlastic(T) {
     bodyGeo.setAttribute('color', new T.BufferAttribute(col, 3));
     bodyGeo.computeVertexNormals();
   }
-  const body = new T.Mesh(bodyGeo, mat({ color: 0xf2f0e6, vertexColors: true, side: T.DoubleSide }));
-  body.name = 'jugBody';
-  root.add(body);
+  parts.push([bodyGeo, 0xf2f0e6, at()]);
 
   // 2. Neck lip ring.
-  const lip = new T.Mesh(own(new T.TorusGeometry(0.079, 0.008, 6, 24)), mat({ color: 0xe8e6da }));
-  lip.rotation.x = Math.PI / 2; lip.position.y = 0.268; lip.scale.set(1, 1, 1);
-  root.add(lip);
+  const lip = at();
+  lip.rotation.x = Math.PI / 2; lip.position.y = 0.268;
+  parts.push([new T.TorusGeometry(0.079, 0.008, 6, 24), 0xe8e6da, lip]);
 
   // 3. Blue cap with knurled edge (radial segments) and slight tilt.
-  const blue = mat({ color: 0x2f6fc4 });
-  const cap = new T.Mesh(own(new T.CylinderGeometry(0.086, 0.09, 0.07, 28)), blue);
+  const blue = 0x2f6fc4;
+  const cap = at();
   cap.position.y = 0.315; cap.rotation.z = 0.03;
-  root.add(cap);
+  parts.push([new T.CylinderGeometry(0.086, 0.09, 0.07, 14), blue, cap]);
   // 4. Cap tamper ring.
-  const ring = new T.Mesh(own(new T.TorusGeometry(0.088, 0.007, 6, 28)), blue);
+  const ring = at();
   ring.rotation.x = Math.PI / 2; ring.position.y = 0.283;
-  root.add(ring);
+  parts.push([new T.TorusGeometry(0.088, 0.007, 6, 28), blue, ring]);
 
   // 5. Handle loop (half torus bulging out on +x, ends buried in shoulder).
-  const handle = new T.Mesh(own(new T.TorusGeometry(0.085, 0.022, 8, 20, Math.PI)), mat({ color: 0xeeece0 }));
+  const handle = at();
   handle.rotation.z = -Math.PI / 2; handle.position.set(0.228, 0.06, 0);
   handle.scale.set(1, 1, 1.25);
-  root.add(handle);
+  parts.push([new T.TorusGeometry(0.085, 0.022, 8, 20, Math.PI), 0xeeece0, handle]);
 
   // 6. Mold seam running up the -x side and across the base.
   const seamPts = [];
   for (let y = 0.24; y >= -0.345; y -= 0.02) seamPts.push(new T.Vector3(-radiusAt(y) - 0.002, y, 0));
   seamPts.push(new T.Vector3(0, -0.352, 0), new T.Vector3(radiusAt(-0.34), -0.352, 0));
-  const seam = new T.Mesh(
-    own(new T.TubeGeometry(new T.CatmullRomCurve3(seamPts), 48, 0.0035, 4, false)),
-    mat({ color: 0xdcdacb }));
-  root.add(seam);
+  parts.push([new T.TubeGeometry(new T.CatmullRomCurve3(seamPts), 24, 0.0035, 3, false), 0xdcdacb, at()]);
 
   // 7. Light-blue creased plastic triangles on the front/back faces.
   const tris = [
@@ -100,22 +133,40 @@ export function createPlastic(T) {
     const pts = s > 0 ? t : [t[0], t[2], t[1]];
     pts.forEach(([x, y]) => pos.push(x, y, zOn(x, y, s)));
   });
-  const creaseGeo = own(new T.BufferGeometry());
+  const creaseGeo = new T.BufferGeometry();
   creaseGeo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
   creaseGeo.computeVertexNormals();
-  const creases = new T.Mesh(creaseGeo, mat({
-    color: 0xa9d2ec, transparent: true, opacity: 0.55, side: T.DoubleSide,
-    polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false,
-    forceSinglePass: true,
-  }));
-  root.add(creases);
+  return { jug: bake(T, parts), crease: creaseGeo };
+}
 
-  root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+export function createPlastic(T, opts = {}) {
+  const shared = !!opts.shared;
+  let geos, mats;
+  if (shared) {
+    if (!cached) {
+      cached = { geos: buildGeometry(T), mats: makeMaterials(T) };
+      for (const m of Object.values(cached.mats)) { m.name = 'plastic-shared'; m.userData.shared = true; }
+    }
+    ({ geos, mats } = cached);
+  } else { geos = buildGeometry(T); mats = makeMaterials(T); }
+  const root = new T.Group();
+  root.name = 'plastic';
+  const body = new T.Mesh(geos.jug, mats.jug);
+  body.name = 'jugBody';
+  body.castShadow = true; body.receiveShadow = true;
+  const creases = new T.Mesh(geos.crease, mats.crease);
+  creases.receiveShadow = true;
+  root.add(body, creases);
   root.userData.type = 'plastic';
   root.userData.size = { x: 0.65, y: 0.7, z: 0.4 };
-  root.userData.dispose = () => {
-    geometries.forEach((g) => g.dispose());
-    materials.forEach((m) => m.dispose());
-  };
+  if (shared) {
+    root.userData.shared = body.userData.shared = creases.userData.shared = true;
+    root.userData.dispose = () => {};
+  } else {
+    root.userData.dispose = () => {
+      Object.values(geos).forEach((g) => g.dispose());
+      Object.values(mats).forEach((m) => m.dispose());
+    };
+  }
   return root;
 }
