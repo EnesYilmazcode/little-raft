@@ -462,7 +462,7 @@ export function mount(transfer = null) {
         },
         circler:() => wildlifeMod?.circler ?? null,
         onBite:(x, z) => emit({kind:'shark', fx:'bite', x, z}, 'all'),
-        onBroke:(x, z) => { fc?.dropTile?.(x, z); rebuildRaft(); fitShadow(); emit({kind:'shark', fx:'broke', x, z, text:'The shark tore a foundation off the raft!'}, 'all'); },
+        onBroke:(x, z) => { fc?.dropTile?.(x, z); content?.mods?.find(m => m.name === 'storage')?.dropTile?.(x, z); rebuildRaft(); fitShadow(); emit({kind:'shark', fx:'broke', x, z, text:'The shark tore a foundation off the raft!'}, 'all'); },
         onHurt:(i, n) => { if (i === 0) hurtLocal(n); else emit({kind:'shark', hurt:n}, 'guest'); },
         onWarn:() => emit({kind:'shark', text:'The shark is biting the raft!'}, 'all'),
         sendHit:dmg => action({kind:'shark:hit', dmg}),
@@ -1089,7 +1089,7 @@ export function mount(transfer = null) {
     }
     if (a.kind === 'shark:hit') { // shark lane: a guest's spear hit (the host's own hits go straight to the sim)
       const p = actor === 'guest' ? other : physics, now = performance.now();
-      if (!shark || !p || !Number.isFinite(a.dmg) || now - sharkHitAt[actor] < 450 || shark.distanceTo(p.x, p.z) > 6) return;
+      if (!shark || !p || !Number.isFinite(a.dmg) || now - sharkHitAt[actor] < 250 || shark.distanceTo(p.x, p.z) > 6) return;
       sharkHitAt[actor] = now; shark.applyHit(a.dmg); return;
     }
     if (content?.action(a, actor, bag)) return; // content hook: module actions (chest, research, gather…)
