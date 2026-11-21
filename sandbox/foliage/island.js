@@ -115,7 +115,7 @@ export function buildIsland(T, F, kit, { seed = 1, radius = 7, top = 0.35, densi
   const bushes = scatter({ count: Math.round(12 * D), radius, seed: seed * 5 + 3, minDist: 1.1, accept: inGrass, heightAt, avoid, scale: [0.75, 1.3] });
   kit.bush.forEach((geo, v) => {
     const set = bushes.filter((_, i) => i % kit.bush.length === v);
-    if (set.length) add(F.instanced('bush', geo, set), 46 + radius);
+    if (set.length) add(F.instanced('bush', geo, set), 74 + radius);
   });
   const ferns = scatter({ count: Math.round(16 * D), radius, seed: seed * 11 + 4, minDist: 0.7, accept: (px, pz) => rr(px, pz) < 0.62, heightAt, avoid, scale: [0.8, 1.3] });
   if (ferns.length) add(F.instanced('fern', kit.fern, ferns), 34 + radius);
