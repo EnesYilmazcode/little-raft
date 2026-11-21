@@ -69,3 +69,9 @@ test('CRAFT-6: the locked section is a real header row, not a ::before squeezed 
   assert.match(sv, /className = 'sv-rsection'/);
   assert.match(sv, /#inventory \.sv-recipe::before\{[^}]*width:3px/, 'the ready stripe is untouched');
 });
+
+test('CRAFT-5: the Receiver uses its compass sprite instead of a blank placeholder tile', async () => {
+  const { ITEM_INFO } = await import(new URL('inventory-state.js', base));
+  assert.equal(ITEM_INFO.receiver.placeholder, false);
+  assert.match(await src('icons.svg'), new RegExp(`id="${ITEM_INFO.receiver.icon}"`));
+});
