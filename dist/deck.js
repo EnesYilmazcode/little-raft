@@ -225,7 +225,7 @@ const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.95
 // the atlas colours share the atlas material (uv moved into their column) and the rest share `flat`, their colour
 // baked into vertices: one shadow-casting timber mesh plus one non-casting rope/nail mesh.
 function mergedGroup(T, parts, mat, shared) {
-  const buckets = new Map();
+  const buckets = new Map(), byColor = new Map();
   for (const p of parts) {
     let m;
     if (shared?.atlas.has(p.color)) { shared.atlas.remap(p.geometry, p.color); m = shared.atlas.material; }
@@ -233,7 +233,7 @@ function mergedGroup(T, parts, mat, shared) {
       const c = new T.Color(p.color), n = p.geometry.attributes.position.count, a = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
       p.geometry.setAttribute('color', new T.BufferAttribute(a, 3)); m = shared.flat;
-    } else m = mat(p.color);
+    } else { if (!byColor.has(p.color)) byColor.set(p.color, mat(p.color)); m = byColor.get(p.color); }
     if (!buckets.has(m)) buckets.set(m, new Map());
     const byCast = buckets.get(m);
     if (!byCast.has(p.castShadow)) byCast.set(p.castShadow, {name:p.name, list:[]});
