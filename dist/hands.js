@@ -323,14 +323,13 @@ export function createHands(T, { modelFactory = null } = {}) {
       // Own resources of a shared (factory) model: merged geometry and material copies, so prep() never
       // changes the materials world copies of the same cached model use.
       const own = kind === 'fishingrod' ? [] : mergeByMaterial(T, item);   // the rod keeps its animated parts
-      if (item.userData.shared) {
-        const copies = new Map();
-        item.traverse((o) => {
-          if (!o.isMesh) return;
-          const one = (x) => { if (!copies.has(x)) { const c = x.clone(); copies.set(x, c); own.push(c); } return copies.get(x); };
-          o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
-        });
-      }
+      // also copy any material that is itself shared (e.g. the craft driftwood), whatever built the model
+      const copies = new Map(), sharedModel = !!item.userData.shared;
+      item.traverse((o) => {
+        if (!o.isMesh) return;
+        const one = (x) => { if (!sharedModel && !x.userData?.shared) return x; if (!copies.has(x)) { const c = x.clone(); delete c.userData.shared; copies.set(x, c); own.push(c); } return copies.get(x); };
+        o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
+      });
       pivot.add(item); prep(pivot); pivot.visible = false;
       (h.hand === 'left' ? leftHolder : toolHolder).add(pivot);
       m = { pivot, item, own };
