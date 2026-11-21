@@ -2,14 +2,14 @@
 // Table, plus lock badges on the inventory craft list. It reads state through the small `api` object
 // from storage-research.js and changes nothing itself: every click becomes a ctx.action().
 // update() runs per frame; it only compares numbers/strings and repaints on change.
-import { iconSVG, slotSig, paintSlot, itemName } from './survival-ui.js';
-import { RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js';
+import { iconSVG, slotSig, paintSlot, itemName } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 const CHEST = 12;
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
-const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="#ffcf9a" stroke="#2a1b0e" stroke-width="1.2"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7" fill="none" stroke="#2a1b0e" stroke-width="1.6"/><circle cx="8" cy="10.6" r="1.1" fill="#2a1b0e"/></svg>';
+const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="#ffcf9a" stroke="#2a1b0e" stroke-width="1.2"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7" fill="none" stroke="#ffcf9a" stroke-width="1.7"/><circle cx="8" cy="10.6" r="1.1" fill="#2a1b0e"/></svg>';
 const CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="#9fe07a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 const CSS = `
@@ -66,7 +66,7 @@ const CSS = `
 #lrStorage .lr-sr-chips{display:flex;flex-wrap:wrap;gap:5px}
 #lrStorage .lr-sr-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px 3px 4px;border-radius:12px;background:#24170caa;box-shadow:inset 0 0 0 1px #d4b07a33;font:600 12px/1 ${FONT};color:#eadcbe}
 #lrStorage .lr-sr-chip .sv-icon{width:18px;height:18px}
-#lrStorage .lr-sr-chip svg:not(.sv-icon){width:13px;height:13px}
+#lrStorage .lr-sr-chip svg:not(.sv-icon){width:14px;height:14px;margin-left:3px}
 #lrStorage .lr-sr-chip.lr-sr-need{color:#cdbd9a;box-shadow:inset 0 0 0 1px #ffbd6655}
 #lrStorage .lr-sr-chip.lr-sr-need .sv-icon{filter:grayscale(.7);opacity:.7}
 #lrStorage .lr-sr-chip.lr-sr-have{color:#ffcf9a}
@@ -83,8 +83,8 @@ const CSS = `
 #lrStorage .lr-sr-banner.show{display:flex;animation:lrSrGlow 1.6s ease-out}
 #lrStorage .lr-sr-banner .sv-icon{width:26px;height:26px}
 @keyframes lrSrGlow{0%{transform:scale(.96);box-shadow:0 0 0 2px #3e2a17,0 0 0 #ffbd6600}30%{transform:scale(1.02);box-shadow:0 0 0 2px #3e2a17,0 0 28px #ffe3a6}100%{transform:none;box-shadow:0 0 0 2px #3e2a17,0 0 18px #ffbd66aa}}
-.lr-sr-lock{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#3e2a17;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
-.lr-sr-lock svg{width:13px;height:13px}
+.lr-sr-lock{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#3e2a17;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
+.lr-sr-lock svg{display:block;width:15px;height:15px}
 /* craft list in #inventory */
 #inventory .sv-rlist{display:flex;flex-direction:column}
 #inventory .sv-recipe[data-locked]{order:1;pointer-events:none;cursor:default;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
@@ -161,6 +161,10 @@ export function createStorageUI(api) {
   let mode = null, tx = 0, tz = 0, isOpen = false, lastRev = -1, prevKnown = null, bannerTimer = 0;
   const prevKind = new Array(SLOT_COUNT).fill(null), prevCount = new Int32Array(SLOT_COUNT), prevDur = new Float64Array(SLOT_COUNT);
   let inv = null, invWasOpen = false, invRev = -1;
+  let lockedRows = []; // craft-list rows we marked locked (aria-label is re-applied if survival-ui repaints it)
+  const timers = new Set(); // craft-list glow timeouts
+  const ac = new AbortController(), on = { signal: ac.signal };
+  const LOCKED_LABEL = 'Locked — needs research';
 
   // ---------- painting ----------
   function bagChanged(bag) {
@@ -178,7 +182,7 @@ export function createStorageUI(api) {
     for (let i = 0; i < CHEST; i++) { const s = chest ? chest[i] : null; if (s) used++; paintSlot(chestEls[i], s, slotSig(s), `Crate slot ${i + 1}`); }
     for (let i = 0; i < SLOT_COUNT; i++) { const s = bag?.slots[i] ?? null; paintSlot(bagEls[i], s, slotSig(s), i < HOTBAR_SIZE ? `Hotbar slot ${i + 1}` : `Backpack slot ${i - HOTBAR_SIZE + 1}`); }
     head.used.textContent = `${used} / ${CHEST}`;
-    head.sub.textContent = used ? `${used} of ${CHEST} slots used` : 'Empty and ready for your things';
+    head.sub.textContent = used >= CHEST ? 'Full! Stack things up or place another crate' : used ? 'Your things stay safe here' : 'Empty and ready for your things';
     let any = false; if (bag) for (let i = HOTBAR_SIZE; i < SLOT_COUNT; i++) if (bag.slots[i]) { any = true; break; }
     head.putAll.disabled = !any || used >= CHEST && !canMerge(bag, chest);
   }
@@ -220,7 +224,7 @@ export function createStorageUI(api) {
   function showBanner(text, kind) {
     head.banner.innerHTML = (kind ? iconSVG(RECIPES[kind]?.output.kind ?? kind) : '') + `<span>${esc(text)}</span>`;
     head.banner.classList.remove('show'); void head.banner.offsetWidth; head.banner.classList.add('show');
-    clearTimeout(bannerTimer); bannerTimer = setTimeout(() => head.banner.classList.remove('show'), 4200);
+    clearTimeout(bannerTimer); bannerTimer = setTimeout(() => head.banner.classList.remove("show"), 6500);
   }
   function paint() {
     lastRev = api.rev; bagChanged(api.bag());
@@ -248,13 +252,16 @@ export function createStorageUI(api) {
     isOpen = false; mode = null;
     if (ctx.running) ctx.requestLock?.();
   }
-  dlg.addEventListener('close', onClosed);
-  dlg.addEventListener('cancel', e => { e.preventDefault(); close(); });
-  dlg.addEventListener('keydown', e => { if ((e.code === 'KeyE' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } });
-  dlg.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
+  dlg.addEventListener('close', onClosed, on);
+  dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, on);
+  dlg.addEventListener('keydown', e => { if ((e.code === 'KeyE' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } }, on);
+  dlg.addEventListener('wheel', e => e.stopPropagation(), { passive: true, signal: ac.signal });
   dlg.addEventListener('click', e => {
     if (e.target === dlg) { close(); return; }
     const t = e.target.closest?.('button'); if (!t) return;
+    // A mouse click leaves focus on the button, and Space/Enter would then click it again. Hand focus back
+    // to the panel after pointer clicks; keyboard activation (detail 0) keeps its focus.
+    if (e.detail > 0) { t.blur(); try { $('.lr-sr-wrap').focus({ preventScroll: true }); } catch {} }
     if (t.classList.contains('lr-sr-x')) { close(); return; }
     if (t.classList.contains('lr-sr-putall')) { api.send({ kind: 'storage.putAll', x: tx, z: tz }); paint(); return; }
     if (t.dataset.study) { study(t.dataset.study); return; }
@@ -271,8 +278,8 @@ export function createStorageUI(api) {
       if (half && s.count > 1) a.amount = Math.ceil(s.count / 2);
       api.send(a); pop(t); paint();
     }
-  });
-  dlg.addEventListener('contextmenu', e => { if (e.target.closest?.('.sv-slot')) e.preventDefault(); });
+  }, on);
+  dlg.addEventListener('contextmenu', e => { if (e.target.closest?.('.sv-slot')) e.preventDefault(); }, on);
   function pop(el) { el.classList.remove('lr-sr-pop'); void el.offsetWidth; el.classList.add('lr-sr-pop'); }
   function study(kind) {
     const bag = api.bag(); if (!bag) return;
@@ -288,25 +295,47 @@ export function createStorageUI(api) {
   function annotate() {
     const rows = inv.querySelectorAll('.sv-recipe[data-recipe]'), seen = new Set(api.state.seen), fresh = api.takeFresh();
     let first = true;
+    lockedRows = [];
     rows.forEach(el => {
       const id = el.dataset.recipe, r = RECIPES[id], locked = !!r && !api.isLearned(id);
       el.classList.remove('lr-sr-first');
       const body = el.querySelector('.sv-rbody'), art = el.querySelector('.sv-rart');
       let badge = el.querySelector('.lr-sr-lock'), needs = el.querySelector('.lr-sr-needs');
       if (!locked) {
-        if (el.dataset.locked) { delete el.dataset.locked; el.removeAttribute('title'); el.tabIndex = 0; }
+        if (el.dataset.locked) unlockRow(el);
         badge?.remove(); needs?.remove();
-        if (fresh.includes(id)) { el.classList.remove('lr-sr-fresh'); void el.offsetWidth; el.classList.add('lr-sr-fresh'); setTimeout(() => el.classList.remove('lr-sr-fresh'), 2500); }
+        if (fresh.includes(id)) {
+          el.classList.remove('lr-sr-fresh'); void el.offsetWidth; el.classList.add('lr-sr-fresh');
+          const t = setTimeout(() => { timers.delete(t); el.classList.remove('lr-sr-fresh'); }, 2500); timers.add(t);
+        }
         return;
       }
       const miss = Object.keys(r.cost).filter(k => !seen.has(k)).map(k => itemName(k));
       const text = miss.length ? 'Study ' + miss.join(' + ') : 'Study at a Research Table';
-      el.dataset.locked = '1'; el.title = 'Needs research: ' + (miss.join(', ') || 'visit a Research Table'); el.tabIndex = -1;
+      if (!el.dataset.locked) { el.dataset.locked = '1'; el.dataset.srAria = el.getAttribute('aria-label') ?? ''; }
+      el.title = 'Needs research: ' + (miss.join(', ') || 'visit a Research Table'); el.tabIndex = -1;
+      el.setAttribute('aria-label', LOCKED_LABEL); lockedRows.push(el);
       if (first) { el.classList.add('lr-sr-first'); first = false; }
       if (!badge && art) { badge = document.createElement('span'); badge.className = 'lr-sr-lock'; badge.innerHTML = LOCK; art.append(badge); }
       if (!needs && body) { needs = document.createElement('span'); needs.className = 'lr-sr-needs'; body.append(needs); }
       if (needs && needs.textContent !== text) needs.textContent = text;
     });
+  }
+
+  function unlockRow(el) {
+    const aria = el.dataset.srAria;
+    delete el.dataset.locked; delete el.dataset.srAria;
+    el.removeAttribute('title'); el.removeAttribute('tabindex');
+    if (aria) el.setAttribute('aria-label', aria); else el.removeAttribute('aria-label');
+  }
+  function unannotate() {
+    const host = inv?.isConnected ? inv : document.getElementById('inventory'); if (!host) return;
+    host.querySelectorAll('.sv-recipe').forEach(el => {
+      if (el.dataset.locked) unlockRow(el);
+      el.querySelector('.lr-sr-lock')?.remove(); el.querySelector('.lr-sr-needs')?.remove();
+      el.classList.remove('lr-sr-first', 'lr-sr-fresh');
+    });
+    lockedRows = [];
   }
 
   // ---------- per frame ----------
@@ -319,12 +348,19 @@ export function createStorageUI(api) {
     if (!inv || !inv.isConnected) inv = document.getElementById('inventory');
     const invOpen = !!inv && inv.open;
     if (invOpen && (!invWasOpen || invRev !== api.rev)) { invRev = api.rev; annotate(); }
+    else if (invOpen) for (let i = 0; i < lockedRows.length; i++) if (lockedRows[i].getAttribute('aria-label') !== LOCKED_LABEL) lockedRows[i].setAttribute('aria-label', LOCKED_LABEL);
     invWasOpen = invOpen;
   }
 
   return {
     open, close, update,
     openInfo: () => (isOpen ? { mode, x: tx, z: tz } : null),
-    destroy() { clearTimeout(bannerTimer); close(); dlg.remove(); },
+    destroy() {
+      clearTimeout(bannerTimer); for (const t of timers) clearTimeout(t); timers.clear();
+      isOpen = false; mode = null; ac.abort(); // no onClosed -> no requestLock while the game is disposing
+      if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } }
+      dlg.remove(); unannotate();
+      document.getElementById('lr-sr-style')?.remove();
+    },
   };
 }
