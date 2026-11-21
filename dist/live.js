@@ -14,6 +14,7 @@ const CSS_FILES = ['style.css', 'graphics.css'];
 // flattens the 6-level import waterfall. tests/live-preload.test.mjs keeps this list in step with the imports;
 // a stale entry only costs a wasted request, a missing one just loads late via the normal import.
 const PRELOAD = [
+  'anchor-model.js', 'anchor-rules.js', /* [anchor] */
   'animals-core.js', 'armor.js', 'animals-models.js', 'animals.js', 'audio.js', 'avatar.js', 'axe-model.js', 'bake.js', 'bees-model.js',
   'bees.js', 'bottle.js', 'camera-models.js', 'camera.js' /* [camera] */, 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
   'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js', 'content.js', 'controls.js',

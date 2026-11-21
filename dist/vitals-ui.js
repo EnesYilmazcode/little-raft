@@ -43,7 +43,7 @@ const CSS = `
 #lrFaint[popover]:not(:popover-open){display:none}
 #lrFaint.on{opacity:1;animation:lvFaintIn .5s ease}
 @keyframes lvFaintIn{from{opacity:0}}
-#lrFaint div{font:700 30px/1.2 ${FONT};color:#f6ecd6;letter-spacing:.04em;text-shadow:0 2px 6px #000}
+#lrFaint div{max-width:calc(100vw - 32px);text-align:center;font:700 30px/1.2 ${FONT};color:#f6ecd6;letter-spacing:.04em;text-shadow:0 2px 6px #000}
 #lrFaint small{display:block;margin-top:8px;font:500 14px/1.3 ${FONT};letter-spacing:0;opacity:.8;text-align:center}
 @media(max-width:760px){#lrVitals{bottom:108px;width:134px;padding:4px 6px 4px 3px;gap:4px}#lrVitals .lv-row{grid-template-columns:17px 1fr 18px}
   #lrVitals .lv-tab{width:17px;height:17px;margin-right:-4px}#lrVitals svg{width:10px;height:10px}#lrVitals .lv-track{height:8px}}

@@ -1,7 +1,7 @@
 // Little Raft - stylized low-poly foliage (palms, bushes, ferns, broadleaf plants, grass) with GPU wind.
 // Drop-in for dist/: no imports, the caller passes the THREE namespace (same convention as crafts.js).
 //
-//   import { createFoliage } from './foliage.js?build=...';
+//   import { createFoliage } from ./foliage.js with the build's ?build= stamp (unquoted here: tests/module-specifiers scans string literals)
 //   const F = createFoliage(T);                       // one per scene; owns the shared wind uniforms
 //   const palm = F.geometry('palm', { seed: 3 });     // BufferGeometry: position/normal/color, base at origin
 //   const mesh = F.instanced('palm', palm, placements); // InstancedMesh, one draw call, sways + casts shadows
