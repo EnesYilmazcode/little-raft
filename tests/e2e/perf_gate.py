@@ -32,6 +32,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 DEFAULT_BUDGET = HERE / 'perf_budget.json'
 MAX_FRAMES = 20000  # ring capacity; preallocated so recording never grows the heap
+SEED_JS = (HERE / 'seed_random.js').read_text('utf-8')
 
 INIT_JS = r"""
 (() => {
@@ -230,8 +231,8 @@ def breakdown(snap):
 SESSION = ('open {url}, click #solo, wait {warmup:g}s warmup, then for {duration:g}s repeat a ~8s cycle: '
            'press 1 (hook), hold W 0.9s, hold A/D 0.5s, right-drag to look, hold LMB 0.7s to throw the hook, wait 1.4s, '
            'hold LMB 1.2s to reel, press 2,3,4,1, every 3rd cycle Tab (inventory) then Tab to close, hold S 0.5s, Space; '
-           'viewport {width}x{height}, SwiftShader Chromium. '
-           'Rerun: python3.13 tests/e2e/perf_gate.py --dist {dist} --out <dir> (full samples in <dir>/perf_gate.json)')
+           'viewport {width}x{height}, SwiftShader Chromium, {seedtxt}. '
+           'Rerun: python3.13 tests/e2e/perf_gate.py --dist {dist}{seedarg} --out <dir> (full samples in <dir>/perf_gate.json)')
 
 
 def get(d, path):
@@ -290,10 +291,14 @@ def run(args, budget):
     if not (dist / 'index.html').is_file(): raise RuntimeError(f'no index.html in {dist}')
     report = {'errors': [], 'console': []}
     with StaticServer(dist) as srv, sync_playwright() as p:
-        repro = SESSION.format(dist=dist, url=f'{dist}/index.html (served over http)', warmup=args.warmup, duration=args.duration, width=args.width, height=args.height)
+        repro = SESSION.format(dist=dist, url=f'{dist}/index.html (served over http)', warmup=args.warmup, duration=args.duration, width=args.width, height=args.height,
+                               seedtxt=f'Math.random seeded with {args.seed} (mulberry32, tests/e2e/seed_random.js)' if args.seed is not None else 'unseeded Math.random',
+                               seedarg='' if args.seed == 1 else (' --no-seed' if args.seed is None else f' --seed {args.seed}'))
         b = launch_chromium(p, extra_args=['--enable-precise-memory-info'])
         try:
             ctx = b.new_context(viewport={'width': args.width, 'height': args.height})
+            if args.seed is not None:
+                ctx.add_init_script(SEED_JS.replace('__SEED__', str(int(args.seed))))
             ctx.add_init_script(INIT_JS)
             page = ctx.new_page()
             page.on('pageerror', lambda e: report['errors'].append(str(e)[:300]))
@@ -378,6 +383,8 @@ def main():
     ap.add_argument('--warmup', type=float, default=None, help='seconds of idle play before recording (default from budget, else 6)')
     # Small viewport on purpose: SwiftShader is fill-rate bound and draw/triangle/heap metrics
     # do not depend on resolution, so this just buys more frames per second of wall time.
+    ap.add_argument('--seed', type=int, default=1, help='seed for Math.random/crypto.randomUUID (makes the floating-supply mix repeatable); --no-seed for the real RNG')
+    ap.add_argument('--no-seed', dest='seed', action='store_const', const=None)
     ap.add_argument('--width', type=int, default=640); ap.add_argument('--height', type=int, default=360)
     args = ap.parse_args()
     t_start = time.time()
