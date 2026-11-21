@@ -151,7 +151,7 @@ export function createFoliage(T, options = {}) {
       Object.assign(shader.uniforms, wind, u);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\n' + PARS)
-        .replace('#include <begin_vertex>', '#define FOL_COLOR_PASS\n' + BODY);
+        .replace('#include <begin_vertex>', (mat.isMeshBasicMaterial ? '' : '#define FOL_COLOR_PASS\n') + BODY);
       if (p.dither) shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nuniform vec2 uFade;\nvarying float vFolVis;')
         .replace('#include <clipping_planes_fragment>', DITHER_FRAG);
@@ -503,10 +503,10 @@ const BUILDERS = {
     const r = rng(o.seed ?? 5), B = makeBuilder(T), V = (x, y, z) => new T.Vector3(x, y, z), UP = V(0, 1, 0);
     B.setNormals(() => UP);
     const base = new T.Color(o.base || 0x4c7d30), tip = new T.Color(o.tip || 0xa8c95a);
-    const n = o.blades ?? 10;
+    const n = o.blades ?? 10, wk = o.width ?? 1, sp = o.spread ?? 1;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + r() * 0.6, d = 0.03 + r() * 0.07, h = (o.h ?? 0.26) * (0.7 + r() * 0.6), lean = 0.08 + r() * 0.14;
-      const dir = V(Math.cos(a), 0, Math.sin(a)), side = V(-Math.sin(a), 0, Math.cos(a)).multiplyScalar(0.028 + r() * 0.012);
+      const a = (i / n) * Math.PI * 2 + r() * 0.6, d = (0.03 + r() * 0.07) * sp, h = (o.h ?? 0.26) * (0.7 + r() * 0.6), lean = 0.08 + r() * 0.14;
+      const dir = V(Math.cos(a), 0, Math.sin(a)), side = V(-Math.sin(a), 0, Math.cos(a)).multiplyScalar((0.028 + r() * 0.012) * wk);
       const b0 = dir.clone().multiplyScalar(d), mid = b0.clone().addScaledVector(dir, lean * 0.4).add(V(0, h * 0.55, 0));
       const tp = b0.clone().addScaledVector(dir, lean * 1.3).add(V(0, h, 0));
       const cm = base.clone().lerp(tip, 0.5), ct = tip.clone().multiplyScalar(0.9 + r() * 0.2);

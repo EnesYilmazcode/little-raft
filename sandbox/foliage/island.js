@@ -4,7 +4,7 @@
 import { scatter, rng } from './foliage.js';
 
 // Built once per scene and shared by every island.
-export function createFoliageKit(T, F, { leaves = 'geo' } = {}) {
+export function createFoliageKit(T, F, { leaves = 'geo', grass = GRASS } = {}) {
   const palmKind = leaves === 'card' ? 'palmCard' : 'palm';
   return {
     palmKind,
@@ -13,14 +13,17 @@ export function createFoliageKit(T, F, { leaves = 'geo' } = {}) {
     bush: [F.geometry('bush', { seed: 11 }), F.geometry('bush', { seed: 12, lumps: 3, dark: 0x356f2a, light: 0x86b84f, flower: 0xf2c94c }), F.geometry('bush', { seed: 13, flowers: false, lumps: 5 })],
     fern: F.geometry('fern', { seed: 23 }),
     broadleaf: F.geometry('broadleaf', { seed: 31 }),
-    grass: F.geometry('grass', { seed: 5 }),
-    beachGrass: F.geometry('grass', { seed: 6, blades: 7, h: 0.34, base: 0x8a9550, tip: 0xe0d79a }),
+    grassCount: grass.count,
+    grass: F.geometry('grass', { seed: 5, blades: grass.blades, width: grass.width, spread: grass.spread }),
+    beachGrass: F.geometry('grass', { seed: 6, blades: Math.max(4, grass.blades - 3), width: grass.width, spread: grass.spread, h: 0.34, base: 0x8a9550, tip: 0xe0d79a }),
   };
 }
 
 export const DENSITY = { sparse: 0.35, normal: 1, dense: 2 };
+// grass tufts per island at density 1, blades per tuft, blade width and tuft spread multipliers
+export const GRASS = { count: 260, blades: 8, width: 1.5, spread: 1.7 };
 
-export function buildIsland(T, F, kit, { seed = 1, radius = 7, top = 0.35, density = 1, x = 0, z = 0, plants = true } = {}) {
+export function buildIsland(T, F, kit, { seed = 1, radius = 7, top = 0.35, density = 1, x = 0, z = 0, plants = true, grassOnly = false } = {}) {
   const r = rng(seed), g = new T.Group();
   g.position.set(x, 0, z);
   g.name = 'island_' + seed;
@@ -118,7 +121,8 @@ export function buildIsland(T, F, kit, { seed = 1, radius = 7, top = 0.35, densi
   if (ferns.length) add(F.instanced('fern', kit.fern, ferns), 34 + radius);
   const broad = scatter({ count: Math.round(9 * D), radius, seed: seed * 13 + 5, minDist: 1.0, accept: inGrass, heightAt, avoid, scale: [0.8, 1.4] });
   if (broad.length) add(F.instanced('broadleaf', kit.broadleaf, broad), 40 + radius);
-  const grass = scatter({ count: Math.round(520 * D), radius, seed: seed * 17 + 6, minDist: 0.16, accept: (px, pz, q, rn) => grassy(px, pz) || (rr(px, pz) < 0.92 && rn() < 0.06), heightAt, scale: [0.7, 1.4] });
+  if (grassOnly) g.clear();
+  const grass = scatter({ count: Math.round(kit.grassCount * D), radius, seed: seed * 17 + 6, minDist: 0.16 * Math.sqrt(520 / kit.grassCount), accept: (px, pz, q, rn) => grassy(px, pz) || (rr(px, pz) < 0.92 && rn() < 0.06), heightAt, scale: [0.7, 1.4] });
   const beach = grass.filter(p => !grassy(p.x, p.z)), lawn = grass.filter(p => grassy(p.x, p.z));
   if (lawn.length) add(F.instanced('grass', kit.grass, lawn), 27 + radius);
   if (beach.length) add(F.instanced('grass', kit.beachGrass, beach), 27 + radius);
