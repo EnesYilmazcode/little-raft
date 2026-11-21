@@ -345,21 +345,43 @@ export function createDayNight(ctx) {
   const rain = new T.LineSegments(rainGeo, rainMat);
   rain.name = 'daynight-rain'; rain.frustumCulled = false; rain.visible = false; rain.renderOrder = 5;
 
-  // ---- lantern pool lights (fixed count, added before the first render)
+  // ---- lantern pool lights (fixed count). Every lit program is compiled for the number of point lights in the
+  // scene, so the pool joins the scene only once the first lantern exists, and then stays (intensity 0 by day;
+  // never toggled, since each light count is another program variant).
   const pool = [];
   for (let i = 0; i < POOL_LIGHTS; i++) {
     const l = new T.PointLight('#ffb35c', 0, POOL_RANGE, 2);
     l.castShadow = false; l.name = 'daynight-lantern-light'; pool.push(l);
   }
-  const owned = [stars, moon, rain, ...pool];
-  let attached = null;
+  const owned = [stars, moon, rain];
+  let attached = null, poolOn = false, poolPending = false, disposed = false;
   function attach(scene) {
     if (attached === scene) return;
-    if (attached) for (const o of owned) attached.remove(o);
+    if (attached) { for (const o of owned) attached.remove(o); if (poolOn) for (const l of pool) attached.remove(l); }
     attached = scene;
-    if (scene) for (const o of owned) scene.add(o);
+    if (scene) { for (const o of owned) scene.add(o); if (poolOn) for (const l of pool) scene.add(l); }
   }
   attach(scene0);
+  // warm: compile the new program variants off-frame (renderer.compileAsync) and add the lights once they are ready;
+  // without a renderer (or on the very first scan, before anything was drawn) they are added straight away.
+  function enablePool(warm) {
+    if (poolOn || poolPending || !attached) return;
+    const r = ctx.renderer, cam = ctx.camera, scene = attached;
+    if (warm && cam && r && typeof r.compileAsync === 'function') {
+      let p = null;
+      for (const l of pool) scene.add(l); // compile() reads the lights from the scene synchronously
+      try { p = r.compileAsync(scene, cam); } catch { p = null; }
+      for (const l of pool) scene.remove(l);
+      if (p && typeof p.then === 'function') {
+        poolPending = true;
+        const done = () => { poolPending = false; if (disposed || poolOn) return; poolOn = true; if (attached) for (const l of pool) attached.add(l); };
+        p.then(done, done);
+        return;
+      }
+    }
+    poolOn = true;
+    for (const l of pool) scene.add(l);
+  }
 
   // ---- lantern cache
   const partMat = new Array(MAX_PARTS).fill(null), partBase = new Float32Array(MAX_PARTS), partMult = new Float32Array(MAX_PARTS);
@@ -415,10 +437,16 @@ export function createDayNight(ctx) {
   }
 
   // ---- per frame
-  function applyVisuals(dt) {
-    const scene = ctx.scene, cam = ctx.camera, raft = ctx.raft;
-    attach(scene);
-    const phase = Number.isFinite(pinPhase) ? pinPhase : optOut ? PINNED_DAY : phaseAt(clock);
+  // The sky, light and palette move slowly (a 20 minute day, 25 s weather blends), so they are recomputed at most
+  // every SLOW_STEP seconds of clock (or when a pin, the seed, the scene or the ocean changes) and kept in typed
+  // arrays and scratch colours; each frame only does the camera, sun-target, cloud, rain and lantern work.
+  const SLOW_STEP = 0.1;
+  const S_NF = 0, S_WET = 1, S_LIGHT = 2, S_UP = 3, S_SUNI = 4, S_HEMII = 5, S_EXPO = 6, S_FOGN = 7, S_FOGF = 8,
+    S_STAR = 9, S_MOON = 10, S_POOL = 11, S_RAINA = 12, S_PHASE = 14 /* pinPhase at the last refresh */, S_CLOCK = 15, S_GROW = 16;
+  const SL = new Float64Array(17).fill(NaN);
+  const cSpec = new T.Color(), cFoam = new T.Color(), cCloudE = new T.Color();
+  let slowSeed = -1, slowPinW = -2, slowScene = null, slowOcean = null, partsNf = NaN;
+  function refreshSlow(phase, scene) {
     lightAt(phase, L);
     if (pinWeather >= 0) { W.weather = W.weatherNext = WEATHERS[pinWeather]; W.blend = 0; weatherParams(pinWeather, pinWeather, 0, W); }
     else if (optOut) { W.weather = W.weatherNext = 'calm'; W.blend = 0; weatherParams(0, 0, 0, W); }
@@ -429,12 +457,6 @@ export function createDayNight(ctx) {
     setSRGB(cSun, 12); setSRGB(cHemiSky, 15); setSRGB(cHemiGround, 18); setSRGB(cCloud, 21);
     const cool = Math.max(0, W.wind - 0.15) * (1 - wet) * 0.08; // breezy: a touch cooler
     cHorizon.r *= 1 - cool; cHorizon.g *= 1 - cool * 0.4; cCloud.r *= 1 - cool;
-
-    // sky, fog
-    if (scene) {
-      if (scene.background?.isColor) scene.background.copy(cHorizon);
-      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 25 - 9 * wet; scene.fog.far = 125 - 45 * wet; }
-    }
     // sun / moon direction
     const th = sunAngle(phaseAt(phase * DAY_SECONDS));
     const ct = Math.cos(th), st = Math.sin(th);
@@ -443,56 +465,74 @@ export function createDayNight(ctx) {
     else vDir.set(-AXIS.x * ct - SIDE.x * 0.6, -st * 0.5, -AXIS.z * ct - SIDE.z * 0.6).normalize(); // the moon rides low, opposite the sun
     const dayI = 2.5 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = 0.6 * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
-    if (sun) {
-      sun.position.set(vDir.x * SUN_RADIUS, Math.max(vDir.y, 0.42) * SUN_RADIUS, vDir.z * SUN_RADIUS).add(sun.target.position); // game.js fits the shadow box around sun.target
-      sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, nf > 0.5 ? 0.55 : 0);
+    SL[S_NF] = nf; SL[S_WET] = wet; SL[S_LIGHT] = L.light; SL[S_UP] = up ? 1 : 0;
+    SL[S_SUNI] = Math.max(dayI + moonI, nf > 0.5 ? 0.55 : 0);
+    SL[S_HEMII] = 0.75 + 1.05 * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet);
+    SL[S_EXPO] = 1 - 0.15 * nf;
+    SL[S_FOGN] = 25 - 9 * wet; SL[S_FOGF] = 125 - 45 * wet;
+    const spec = (up ? smooth(-0.02, 0.15, L.sunHeight) : 0.18 * smooth(-0.02, 0.2, -L.sunHeight)) * (1 - 0.7 * wet);
+    cSpec.copy(oceanSunColor).multiply(cSun).multiplyScalar(spec);
+    cFoam.copy(oceanFoam).lerp(cHemiSky, 0.35 * nf).multiplyScalar(1 - 0.5 * nf); // soft moonlit foam
+    cCloudE.copy(cCloud).multiplyScalar(0.32 + 0.18 * nf); // soft self-lit undersides
+    SL[S_GROW] = 1 + (W.cloud - 0.25) * 0.5;
+    SL[S_STAR] = nf * (1 - 0.85 * W.cloud * W.cloud);
+    SL[S_MOON] = smooth(0.1, 0.7, nf) * (1 - 0.75 * wet);
+    SL[S_POOL] = nf < 0.15 ? 0 : POOL_PEAK * smooth(0.15, 1, nf);
+    cRain.copy(cHemiSky).lerp(cHorizon, 0.3).multiplyScalar(0.8 + 0.6 * L.light);
+    SL[S_RAINA] = 0.85 * Math.min(1, wet * 1.5);
+    // sky, fog, lights, ocean, clouds: nothing else writes these, so they only change here
+    if (scene) {
+      if (scene.background?.isColor) scene.background.copy(cHorizon);
+      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = SL[S_FOGN]; scene.fog.far = SL[S_FOGF]; }
     }
-    if (hemi) {
-      hemi.color.copy(cHemiSky); hemi.groundColor.copy(cHemiGround);
-      hemi.intensity = 0.75 + 1.05 * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet);
-    }
-    if (renderer) renderer.toneMappingExposure = 1 - 0.15 * nf;
-    // ocean
+    if (sun) { sun.color.copy(cSun); sun.intensity = SL[S_SUNI]; }
+    if (hemi) { hemi.color.copy(cHemiSky); hemi.groundColor.copy(cHemiGround); hemi.intensity = SL[S_HEMII]; }
+    if (renderer) renderer.toneMappingExposure = SL[S_EXPO];
     const u = ctx.ocean?.uniforms;
     if (u) {
       u.uSky?.value.copy(cHorizon); u.uZenith?.value.copy(cZenith); u.uDeep?.value.copy(cDeep); u.uShallow?.value.copy(cShallow);
       if (u.uFadeFar && scene?.fog) u.uFadeFar.value = scene.fog.far;
       u.uSunDir?.value.copy(vDir);
-      if (u.uSunColor) {
-        const spec = (up ? smooth(-0.02, 0.15, L.sunHeight) : 0.18 * smooth(-0.02, 0.2, -L.sunHeight)) * (1 - 0.7 * wet);
-        u.uSunColor.value.copy(oceanSunColor).multiply(cSun).multiplyScalar(spec);
-      }
-      if (u.uFoam) u.uFoam.value.copy(oceanFoam).lerp(cHemiSky, 0.35 * nf).multiplyScalar(1 - 0.5 * nf); // soft moonlit foam
+      u.uSunColor?.value.copy(cSpec);
+      u.uFoam?.value.copy(cFoam);
     }
-    // clouds
-    cloudMat.color.copy(cCloud); cloudMat.emissive.copy(cCloud).multiplyScalar(0.32 + 0.18 * nf); // soft self-lit undersides
+    cloudMat.color.copy(cCloud); cloudMat.emissive.copy(cCloudE);
+    for (let i = 0; i < cloudGroups.length; i++) { const g = cloudGroups[i]; g.scale.x = cloudBase[i * 3 + 1] * SL[S_GROW]; g.scale.z = cloudBase[i * 3 + 2] * SL[S_GROW]; }
+    starUniforms.uOpacity.value = SL[S_STAR]; stars.visible = SL[S_STAR] > 0.01;
+    moonUniforms.uOpacity.value = SL[S_MOON]; moon.visible = SL[S_MOON] > 0.01;
+    rain.visible = wet > 0.01;
+    rainUniforms.uRain.value = wet; rainUniforms.uWind.value = W.wind; rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = SL[S_RAINA];
+  }
+
+  function applyVisuals(dt) {
+    const scene = ctx.scene, cam = ctx.camera, raft = ctx.raft;
+    attach(scene);
+    const phase = Number.isFinite(pinPhase) ? pinPhase : optOut ? PINNED_DAY : phaseAt(clock);
+    if (!(Math.abs(clock - SL[S_CLOCK]) < SLOW_STEP) || !Object.is(pinPhase, SL[S_PHASE])
+      || seed !== slowSeed || pinWeather !== slowPinW || scene !== slowScene || ctx.ocean !== slowOcean) {
+      SL[S_CLOCK] = clock; SL[S_PHASE] = pinPhase; slowSeed = seed; slowPinW = pinWeather; slowScene = scene; slowOcean = ctx.ocean;
+      refreshSlow(phase, scene);
+    }
+    const nf = SL[S_NF];
+    // sun follows its target (game.js fits the shadow box around sun.target)
+    if (sun) sun.position.set(vDir.x * SUN_RADIUS, Math.max(vDir.y, 0.42) * SUN_RADIUS, vDir.z * SUN_RADIUS).add(sun.target.position);
+    // clouds drift
     const drift = (W.wind - 0.15) * 0.9 * dt;
-    for (let i = 0; i < cloudGroups.length; i++) {
-      const g = cloudGroups[i];
-      if (drift > 0) { g.position.x += drift; if (g.position.x > 85) g.position.x -= 170; }
-      const grow = 1 + (W.cloud - 0.25) * 0.5;
-      g.scale.x = cloudBase[i * 3 + 1] * grow; g.scale.z = cloudBase[i * 3 + 2] * grow;
-    }
-    // stars and moon
-    const starA = nf * (1 - 0.85 * W.cloud * W.cloud);
-    starUniforms.uTime.value = time; starUniforms.uOpacity.value = starA;
-    stars.visible = starA > 0.01;
-    const moonA = smooth(0.1, 0.7, nf) * (1 - 0.75 * wet);
-    moonUniforms.uOpacity.value = moonA;
-    moon.visible = moonA > 0.01;
+    if (drift > 0) for (let i = 0; i < cloudGroups.length; i++) { const g = cloudGroups[i]; g.position.x += drift; if (g.position.x > 85) g.position.x -= 170; }
+    // stars and moon follow the camera
+    if (stars.visible) starUniforms.uTime.value = time;
     if (cam) {
       stars.position.copy(cam.position);
-      moon.position.copy(cam.position).addScaledVector(vDir, MOON_DIST);
-      if (!up) moon.position.y = cam.position.y + Math.max(vDir.y, 0.12) * MOON_DIST;
-      moon.lookAt(cam.position);
+      if (moon.visible) {
+        moon.position.copy(cam.position).addScaledVector(vDir, MOON_DIST);
+        if (SL[S_UP] === 0) moon.position.y = cam.position.y + Math.max(vDir.y, 0.12) * MOON_DIST;
+        moon.lookAt(cam.position);
+      }
     }
     // rain
-    rain.visible = wet > 0.01;
     if (rain.visible) {
-      rainUniforms.uTime.value = time; rainUniforms.uRain.value = wet; rainUniforms.uWind.value = W.wind;
+      rainUniforms.uTime.value = time;
       if (cam) rainUniforms.uCam.value.copy(cam.position);
-      cRain.copy(cHemiSky).lerp(cHorizon, 0.3).multiplyScalar(0.8 + 0.6 * L.light);
-      rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = 0.85 * Math.min(1, wet * 1.5);
     }
     // lanterns
     if (raft) {
@@ -502,14 +542,15 @@ export function createDayNight(ctx) {
         let stale = false;
         for (let i = 0; i < lanternCount; i++) if (lanternGroups[i].parent !== raft) { stale = true; break; }
         const sig = lanternSignature(raft, ctx.world);
-        if (stale || sig !== signature) { signature = sig; scanLanterns(raft); }
+        if (stale || sig !== signature) { const first = signature < 0; signature = sig; scanLanterns(raft); partsNf = NaN; if (lanternCount > 0) enablePool(!first); }
       }
-      for (let i = 0; i < partCount; i++) partMat[i].emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf);
+      if (nf !== partsNf) { partsNf = nf; for (let i = 0; i < partCount; i++) partMat[i].emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf); }
       rankClock += dt;
       if (rankClock >= 0.5) { rankClock = 0; rankLanterns(raft, cam); }
     }
-    const poolI = nf < 0.15 ? 0 : POOL_PEAK * smooth(0.15, 1, nf);
+    const poolI = SL[S_POOL];
     poolLit = 0;
+    if (!poolOn) return;
     for (let i = 0; i < POOL_LIGHTS; i++) {
       const l = pool[i], k = poolPick[i];
       if (k < 0 || k >= lanternCount || poolI <= 0 || !raft) { l.intensity = 0; continue; }
@@ -550,6 +591,7 @@ export function createDayNight(ctx) {
   }
 
   function dispose() {
+    disposed = true;
     restoreParts();
     attach(null);
     for (let i = 0; i < cloudMeshes.length; i++) cloudMeshes[i].material = cloudOrig[i];

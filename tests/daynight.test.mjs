@@ -186,7 +186,7 @@ test('module runs headless without throwing; light and child counts stay fixed',
   m.load(undefined, 'save'); m.load('garbage', 'net'); m.load({ clock: 'x' }, 'restore');
   m.update(1 / 60);
   const nLights = lights(), nChildren = ctx.scene.children.length;
-  assert.equal(nLights, 2 + POOL_LIGHTS);
+  assert.equal(nLights, 2, 'no pool lights before the first lantern');
   m.debug.setPhase(0.31); m.update(1 / 60);
   assert.equal(m.debug.state().poolLit, 0);
   for (const l of ctx.scene.children) if (l.isPointLight) assert.equal(l.intensity, 0, 'pool lights off at noon');
@@ -212,6 +212,7 @@ test('night is readable: brightness floors hold and lanterns light up', () => {
   assert.equal(st.lanterns, 1); assert.equal(st.poolLit, 1);
   near(g.children.find(c => c.name === 'flame').material.emissiveIntensity, 3 * 1.6, 1e-6);
   near(g.children.find(c => c.name === 'lanternGlow').material.emissiveIntensity, 1.6 * 2.4, 1e-6);
+  assert.equal(ctx.scene.children.filter(o => o.isPointLight).length, POOL_LIGHTS);
   const lit = ctx.scene.children.filter(o => o.isPointLight && o.intensity > 0);
   assert.equal(lit.length, 1);
   near(lit[0].position.x, 2.3, 1e-3); near(lit[0].position.y, 1.46, 1e-3);
@@ -219,6 +220,25 @@ test('night is readable: brightness floors hold and lanterns light up', () => {
   ctx.raft.remove(g); ctx.world.decor.length = 0;
   for (let i = 0; i < 20; i++) m.update(1 / 30);
   assert.equal(m.debug.state().lanterns, 0); assert.equal(m.debug.state().poolLit, 0);
+  assert.equal(ctx.scene.children.filter(o => o.isPointLight).length, POOL_LIGHTS, 'pool stays once added (no program churn)');
+  m.dispose();
+  assert.equal(ctx.scene.children.filter(o => o.isPointLight).length, 0);
+});
+
+test('a lantern placed later adds the pool after compileAsync warms the new programs', async () => {
+  const ctx = stubCtx();
+  let compiled = 0, lightsAtCompile = -1;
+  ctx.renderer.compileAsync = scene => { compiled++; lightsAtCompile = scene.children.filter(o => o.isPointLight).length; return Promise.resolve(); };
+  const m = createDayNight(ctx);
+  m.debug.setPhase(0.82); m.debug.freeze(true);
+  m.update(1 / 30);
+  addLantern(ctx, 2, 0);
+  for (let i = 0; i < 20; i++) m.update(1 / 30);
+  assert.equal(compiled, 1); assert.equal(lightsAtCompile, POOL_LIGHTS);
+  await new Promise(r => setTimeout(r, 0));
+  m.update(1 / 30);
+  assert.equal(ctx.scene.children.filter(o => o.isPointLight).length, POOL_LIGHTS);
+  assert.equal(m.debug.state().poolLit, 1);
   m.dispose();
 });
 
