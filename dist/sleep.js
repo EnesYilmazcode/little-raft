@@ -2,8 +2,10 @@
 // E on a bed at dusk/night lies you down; when everyone aboard is in bed the screen fades to black,
 // the host skips the clock to morning and everyone wakes beside their bed. Cozy only: no penalties,
 // nothing happens unless every player chose to lie down, and E always gets you up again.
-// Slice world.ext.sleep = { v:1, in:{host:[x,z]|null, guest:[x,z]|null}, fade:0|1, skips }.
-// Host-authoritative actions 'sleep.lie' / 'sleep.up'; the skip itself is 'daynight.skipTo'.
+// Slice world.ext.sleep = { v:1, in:{host:[x,z]|null, guest:[x,z]|null}, fade:0|1, skips, spawn:{host, guest} }.
+// spawn[role] is the bed tile that player last slept in or used (Raft: a bed is your respawn point). It is saved,
+// sent to the guest like the rest of the slice, and cleared by the host once that tile no longer holds a bed.
+// Host-authoritative actions 'sleep.lie' / 'sleep.up' / 'sleep.spawn'; the skip itself is 'daynight.skipTo'.
 import { DAYNIGHT_LIVE, MORNING } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 import { buildBed } from './sleep-model.js?build=v3-survival-ae77fa84ac2b';
 
@@ -24,6 +26,8 @@ export const TEXT = Object.freeze({
   oldHost: 'Your brother’s raft doesn’t have beds yet',
   noBed: 'Find a bed to lie down',
   reach: 'Step a little closer',
+  spawn: '<kbd>E</kbd>Set respawn point',
+  spawnSet: 'Respawn point set',
 });
 
 // ------------------------------------------------------------------ pure helpers
@@ -37,7 +41,7 @@ export function canSleep(day) {
   return day.phase >= SLEEP_START || day.phase < SLEEP_END ? null : TEXT.notSleepy;
 }
 
-export const defaultSleep = () => ({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 0 });
+export const defaultSleep = () => ({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 0, spawn: { host: null, guest: null } });
 
 /** Validate a world.ext.sleep slice. Never throws; junk becomes defaults field by field. */
 export function cleanSleep(d) {
@@ -48,7 +52,29 @@ export function cleanSleep(d) {
   if (isTile(inn.guest)) out.in.guest = [inn.guest[0], inn.guest[1]];
   out.fade = d.fade === 1 ? 1 : 0;
   out.skips = isInt(d.skips) && d.skips >= 0 && d.skips <= MAX_SKIPS ? d.skips : 0;
+  const sp = d.spawn && typeof d.spawn === 'object' && !Array.isArray(d.spawn) ? d.spawn : {};
+  if (isTile(sp.host)) out.spawn.host = [sp.host[0], sp.host[1]];
+  if (isTile(sp.guest)) out.spawn.guest = [sp.guest[0], sp.guest[1]];
   return out;
+}
+
+/** The bed tile [x,z] role respawns at, or null when it has none or the tile no longer holds a bed. No allocations. */
+export function spawnBed(slice, role, world) {
+  const b = slice && slice.spawn ? slice.spawn[role] : null;
+  if (!isTile(b)) return null;
+  const tiles = Array.isArray(world?.tiles) ? world.tiles : null, decor = Array.isArray(world?.decor) ? world.decor : null;
+  if (!tiles || !decor) return null;
+  let tile = false, bed = false;
+  for (let i = 0; i < tiles.length; i++) { const t = tiles[i]; if (t && t[0] === b[0] && t[1] === b[1]) { tile = true; break; } }
+  for (let i = 0; i < decor.length; i++) { const d = decor[i]; if (d && d.x === b[0] && d.z === b[1]) { bed = d.type === 'bed'; break; } }
+  return tile && bed ? b : null;
+}
+
+/** Where role wakes after fainting: beside its spawn bed (true, out = {x,z} metres), else false (raft centre). */
+export function respawnSpot(slice, role, world, out) {
+  const b = spawnBed(slice, role, world); if (!b) return false;
+  getUpSpot(world, b[0], b[1], out);
+  return true;
 }
 
 /** Everyone aboard is in bed (the host always counts; the guest only while connected). */
@@ -81,7 +107,7 @@ export function createSleep(ctx, opts = {}) {
   let slice = defaultSleep();
   let seq = 'idle', t = 0, fadeT = 0, seqKey = 0, fadeDur = FADE, motionChecked = false;
   let hostHas = true, netSeen = false, netUndef = false;
-  let nHx = NaN, nHz = NaN, nGx = NaN, nGz = NaN, nFade = -1, nSkips = -1; // last net copy (primitives)
+  let nHx = NaN, nHz = NaN, nGx = NaN, nGz = NaN, nFade = -1, nSkips = -1, nSpawn = NaN; // last net copy (primitives)
   let guestFadeHeld = 0, lastSkips = 0;
   let lying = false, lx = 0, lz = 0, upSent = false, otherWasIn = false;
   let model = null, veil = null, veilOpacity = -1;
@@ -137,12 +163,29 @@ export function createSleep(ctx, opts = {}) {
     const other = actor === 'host' ? 'guest' : 'host';
     if (same(slice.in[other], a.x, a.z)) { refuse(TEXT.taken, actor); return; }
     slice.in[actor] = [a.x, a.z];
+    setSpawn(a.x, a.z, actor);
+  }
+  // Raft: the bed you sleep in (or use by day) becomes your respawn point.
+  function setSpawn(x, z, actor) {
+    if (same(slice.spawn[actor], x, z)) return;
+    slice.spawn[actor] = [x, z];
+    ctx.emit?.({ kind: 'notice', text: TEXT.spawnSet }, actor);
+  }
+  function useBed(a, actor) {
+    if (!isInt(a.x) || !isInt(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return;
+    if (decorAt(a.x, a.z) !== 'bed') { refuse(TEXT.noBed, actor); return; }
+    const p = posOf(actor);
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z) || Math.hypot(p.x - a.x * 2, p.z - a.z * 2) > REACH) { refuse(TEXT.reach, actor); return; }
+    setSpawn(a.x, a.z, actor);
   }
 
   const keyOf = () => (slice.in.host ? 1 : 0) + (slice.in.guest ? 2 : 0) + (ctx.other ? 4 : 0);
   function hostStep(dt) {
     if (!ctx.other && slice.in.guest) slice.in.guest = null;
-    for (const r of ROLES) { const b = slice.in[r]; if (b && decorAt(b[0], b[1]) !== 'bed') slice.in[r] = null; }
+    for (const r of ROLES) {
+      const b = slice.in[r]; if (b && decorAt(b[0], b[1]) !== 'bed') slice.in[r] = null;
+      const s = slice.spawn[r]; if (s && decorAt(s[0], s[1]) !== 'bed') slice.spawn[r] = null; // bed removed, or its tile lost to the shark
+    }
     const all = allInBed(slice.in, !!ctx.other), key = keyOf();
     if ((seq === 'hold' || seq === 'out') && (!all || key !== seqKey)) seq = 'idle'; // someone got up or left: fade back in
     if (seq === 'idle') {
@@ -212,29 +255,33 @@ export function createSleep(ctx, opts = {}) {
       if (data === undefined) { if (!netUndef) { netUndef = true; hostHas = false; slice = defaultSleep(); } return; }
       const h = data && data.in && data.in.host, g = data && data.in && data.in.guest;
       const hx = Array.isArray(h) ? h[0] : NaN, hz = Array.isArray(h) ? h[1] : NaN, gx = Array.isArray(g) ? g[0] : NaN, gz = Array.isArray(g) ? g[1] : NaN;
-      const f = data && data.fade, s = data && data.skips;
-      if (netSeen && !netUndef && Object.is(hx, nHx) && Object.is(hz, nHz) && Object.is(gx, nGx) && Object.is(gz, nGz) && f === nFade && s === nSkips) return;
-      nHx = hx; nHz = hz; nGx = gx; nGz = gz; nFade = f; nSkips = s; netUndef = false; hostHas = true;
+      const f = data && data.fade, s = data && data.skips, sp = spawnCode(data && data.spawn);
+      if (netSeen && !netUndef && Object.is(hx, nHx) && Object.is(hz, nHz) && Object.is(gx, nGx) && Object.is(gz, nGz) && f === nFade && s === nSkips && Object.is(sp, nSpawn)) return;
+      nHx = hx; nHz = hz; nGx = gx; nGz = gz; nFade = f; nSkips = s; nSpawn = sp; netUndef = false; hostHas = true;
       slice = cleanSleep(data);
       if (netSeen && slice.skips > lastSkips) ctx.notice?.(TEXT.morning, 2600);
       lastSkips = slice.skips; netSeen = true;
       return;
     }
-    // save / restore: only the counter survives; nobody starts a session in bed
+    // save / restore: the counter and the respawn beds survive; nobody starts a session in bed
     const c = cleanSleep(data);
-    slice = defaultSleep(); slice.skips = c.skips;
-    seq = 'idle'; t = 0; fadeT = 0; netSeen = false; netUndef = false; hostHas = true; nFade = -1; nSkips = -1;
+    slice = defaultSleep(); slice.skips = c.skips; slice.spawn = c.spawn;
+    seq = 'idle'; t = 0; fadeT = 0; netSeen = false; netUndef = false; hostHas = true; nFade = -1; nSkips = -1; nSpawn = NaN;
     lastSkips = slice.skips; guestFadeHeld = 0; forgetLying();
   }
 
   const send = a => ctx.action(a);
+  // Net change test for the spawn pair as one number (tiles are |x|,|z| <= 25; 51 values per axis, 0 = none). No allocation.
+  const tileCode = b => (isTile(b) ? (b[0] + 25) * 51 + b[1] + 25 + 1 : 0);
+  const spawnCode = sp => (sp && typeof sp === 'object' ? tileCode(sp.host) * 4096 + tileCode(sp.guest) : -1);
 
   // Which TEXT key the context prompt shows (null = nothing to say).
   function promptKey(aim) {
     if (lying) return otherPresent() && !slice.in[otherRole()] ? 'waiting' : 'sleeping';
     const d = target(aim); if (!d) return null;
     if (oldHost()) return 'oldHost';
-    const why = canSleep(day()); if (why) return why === TEXT.tooBright ? 'tooBright' : 'notSleepy';
+    const why = canSleep(day());
+    if (why) return !same(slice.spawn[myRole()], d.x, d.z) ? 'spawn' : why === TEXT.tooBright ? 'tooBright' : 'notSleepy';
     if (same(slice.in[otherRole()], d.x, d.z)) return 'taken';
     return 'sleep';
   }
@@ -242,6 +289,7 @@ export function createSleep(ctx, opts = {}) {
   const GET_UP = Object.freeze({ key: 'E', label: 'Get up' });
   const PROVIDED = Object.freeze({
     sleep: Object.freeze({ key: 'E', label: 'Sleep' }),
+    spawn: Object.freeze({ key: 'E', label: 'Set respawn point' }),
     sleeping: Object.freeze([{ label: 'Sleeping…', muted: true }, GET_UP]),
     waiting: Object.freeze([{ label: 'Waiting for your brother (1/2)', muted: true }, GET_UP]),
     notSleepy: Object.freeze({ label: TEXT.notSleepy, muted: true }),
@@ -268,18 +316,22 @@ export function createSleep(ctx, opts = {}) {
       if (isGuest() || (actor !== 'host' && actor !== 'guest')) return true;
       if (a.kind === 'sleep.lie') lie(a, actor);
       else if (a.kind === 'sleep.up') slice.in[actor] = null;
+      else if (a.kind === 'sleep.spawn') useBed(a, actor);
       return true;
     },
     interact(aim) {
       if (lying) { upSent = true; send({ kind: 'sleep.up' }); return true; }
       const d = target(aim); if (!d) return false;
       if (oldHost()) { ctx.notice?.(TEXT.oldHost, 2400); return true; }
-      const why = canSleep(day()); if (why) { ctx.notice?.(why, 2400); return true; }
+      const why = canSleep(day());
+      if (why) { if (same(slice.spawn[myRole()], d.x, d.z)) ctx.notice?.(why, 2400); else send({ kind: 'sleep.spawn', x: d.x, z: d.z }); return true; } // by day E still makes it your respawn point
       if (same(slice.in[otherRole()], d.x, d.z)) { ctx.notice?.(TEXT.taken, 2400); return true; }
       send({ kind: 'sleep.lie', x: d.x, z: d.z });
       return true;
     },
     prompt(aim) { lastAim = aim ?? null; return TEXT[promptKey(aim)] ?? null; },
+    /** content hook: where the LOCAL player wakes after fainting (beside its respawn bed). False = raft centre. */
+    respawn(out) { return !!out && respawnSpot(slice, myRole(), ctx.world, out); },
     afterMove(physics) {
       if (!lying || !physics) return;
       bedPose(lx, lz, deck(), pose);

@@ -697,14 +697,16 @@ export function mount(transfer = null) {
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     eating = {item:kind, slot:localBag().selectedIndex, t:0}; beep(420);
   }
+  const wakeSpot = {x:0, z:0}; // reused respawn spot (sleep: beside the respawn bed)
   function updateVitals(dt, dialog) {
     if (!running) { eating = null; return; }
     if (fainted >= 0) { // passed out: a short dark beat, then wake up on the raft
       fainted += dt; vitalsUI?.faint(true);
       if (fainted >= 2.6) {
         fainted = -1; const c = cleanVitals(RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
-        diving?.cancel(); const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving
-        vitalsUI?.faint(false); notice('You wake up on the raft, hungry and thirsty', 3200);
+        const bed = !!content?.respawn(wakeSpot); // sleep: Raft respawns you at the bed you last slept in
+        diving?.cancel(); const s = bed ? wakeSpot : spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving
+        vitalsUI?.faint(false); notice(bed ? 'You wake up in your bed, hungry and thirsty' : 'You wake up on the raft, hungry and thirsty', 3200);
       }
       return;
     }
