@@ -197,7 +197,10 @@ test('item tooltips anchor beside the element instead of trailing the pointer', 
   const tt = src('item-tooltips.js');
   const place = tt.slice(tt.indexOf('function place()'), tt.indexOf('function show('));
   assert.match(place, /anchorTip\(cur\.el\.getBoundingClientRect\(\)/);
-  assert.doesNotMatch(tt, /'pointermove'/, 'no pointer-follow placement');
+  assert.doesNotMatch(tt, /'pointermove'[^\n]*(place\(|transform)/, 'no pointer-follow placement');
+  assert.match(tt, /on\(root, 'pointermove', e => \{ if \(armed \|\| \(!e\.movementX && !e\.movementY\)\) return; armed = true;/, 'pointermove only arms the tips after the bag opens');
+  assert.match(tt, /on\(doc, BAG_OPEN_EVENT, \(\) => \{ armed = false; hide\(\); \}\)/, 'no tip under a still pointer when the bag opens');
+  assert.match(tt, /if \(clipped\(el\)\) \{ hide\(\); return; \}/, 'rows scrolled out of the list get no tip');
   assert.match(tt, /on\(root, 'close', hide, \{ capture: true \}\)/, 'hidden when the bag closes');
   assert.match(tt, /tipFacts\(/, 'shows where to get it and what it is used in');
 });

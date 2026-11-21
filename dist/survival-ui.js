@@ -13,6 +13,8 @@ const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
 const INST_KEY = '__littleRaftSurvivalUI';
 /** Fired on document whenever the local bag's contents or selection change (item-tooltips.js listens). */
 export const BAG_EVENT = 'littleraft:bagchange';
+/** Fired on document when the bag opens: hover tooltips wait for a real pointer move (item-tooltips.js). */
+export const BAG_OPEN_EVENT = 'littleraft:bagopen';
 
 const BUILD = (() => { try { return new URL(import.meta.url).searchParams.get('build') || 'dev'; } catch { return 'dev'; } })();
 const SPRITE_URL = (() => {
@@ -258,7 +260,14 @@ const CSS = `
 #inventory .sv-tab:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
 #inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-tbadge:empty{display:none}
-#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-color:#c4ae80 #5e4426}
+#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-color:#c4ae80 #5e4426;scroll-padding:6px 0}
+/* Scroll cue: the list fades out at an edge that has more rows past it (classes set by fadeList). */
+#inventory .sv-rlist.sv-more-b{-webkit-mask-image:linear-gradient(#000 calc(100% - 30px),#0000);mask-image:linear-gradient(#000 calc(100% - 30px),#0000)}
+#inventory .sv-rlist.sv-more-t{-webkit-mask-image:linear-gradient(#0000,#000 22px);mask-image:linear-gradient(#0000,#000 22px)}
+#inventory .sv-rlist.sv-more-t.sv-more-b{-webkit-mask-image:linear-gradient(#0000,#000 22px,#000 calc(100% - 30px),#0000);mask-image:linear-gradient(#0000,#000 22px,#000 calc(100% - 30px),#0000)}
+/* Gate headers ("Study X at a Tinker's Desk to unlock") wrap instead of being cut off. */
+#inventory .sv-rlist .sv-recipe.lr-sr-first{margin-top:38px}
+#inventory .sv-rlist .sv-recipe.lr-sr-first::before{top:auto;bottom:calc(100% + 4px);height:auto;max-height:32px;white-space:normal;line-height:16px;text-overflow:clip}
 #inventory .sv-recipe{position:relative;display:grid;grid-template-columns:42px 1fr auto;gap:9px;align-items:center;flex:none;width:100%;height:auto;min-height:0;margin:0;padding:5px 8px 5px 6px;
   border:0;border-radius:4px;text-align:left;background:linear-gradient(180deg,#d6c397,#c4ae80);box-shadow:inset 0 0 0 1px #7a5a34;
   color:#3e2a17;font:600 14px/1.25 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:background .08s,box-shadow .08s}
@@ -366,6 +375,10 @@ const CSS = `
 #craftTracker .ct-foot{margin-top:6px;font:600 11px/1.3 ${FONT};color:#f4efe299}
 #craftTracker .ct-foot kbd{font:800 10px/1 ${FONT};padding:1px 4px;border-radius:3px;box-shadow:inset 0 0 0 1px #ffffff40;color:#fff6e0}
 @media(max-width:760px){#craftTracker{bottom:110px;right:10px;width:180px}}
+/* Short screens: compact tabs and detail card so the recipe list keeps room for several rows. */
+@media(max-height:760px){#inventory .sv-craft>.sv-h{display:none}#inventory .sv-tab{gap:1px;padding:4px 2px 3px}#inventory .sv-tab .sv-icon{width:17px;height:17px}#inventory .sv-tab>span{font-size:11px}
+  #inventory .sv-detail{gap:5px;padding:7px 8px}#inventory .sv-dhead{grid-template-columns:44px 1fr auto;gap:8px}#inventory .sv-dart{width:44px;height:44px}#inventory .sv-dart .sv-icon{width:40px;height:40px}
+  #inventory .sv-ddesc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}#inventory .sv-ing{padding:2px 8px 2px 4px}#inventory .sv-craftbtn{height:36px}}
 `;
 
 function ensureStyle() {
@@ -539,6 +552,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let activeTab = dlg.dataset.svTab || null, pickId = dlg.dataset.svPick || null, shownPick = null, ingEls = [];
   let hold = null, btnDenyTimer = 0, countTimer = 0, flashUntil = 0;
   let pickedByUser = false; // false: pickId is an automatic default, re-chosen on open once states are known
+  let tabByUser = false;    // false: the tab is automatic, and opens where something new can be crafted
   let tipAnchor = null;
   let pinId = null, trackEl = null, trackSig = null;
   const store = () => { try { return window.localStorage; } catch { return null; } };
@@ -594,10 +608,17 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const tabEl = tabsEl.querySelector(`.sv-tab[data-cat="${activeTab}"]`);
     if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
     applyPick();
+    if (isOpen) fadeList();
+  }
+  // Fade the list edge that has more rows beyond it, so a cut-off row reads as "scroll for more".
+  function fadeList() {
+    const top = rlist.scrollTop > 2, bottom = rlist.scrollTop + rlist.clientHeight < rlist.scrollHeight - 2;
+    if (rlist.classList.contains('sv-more-t') !== top) rlist.classList.toggle('sv-more-t', top);
+    if (rlist.classList.contains('sv-more-b') !== bottom) rlist.classList.toggle('sv-more-b', bottom);
   }
   function setTab(id, focus = false) {
     if (!groups.some(g => g.id === id)) return;
-    if (id !== activeTab) { stopHold(); flashUntil = 0; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); flushIcons(); applyTab(); }
+    if (id !== activeTab) { tabByUser = true; stopHold(); flashUntil = 0; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); flushIcons(); applyTab(); }
     if (focus) tabsEl.querySelector(`.sv-tab[data-cat="${id}"]`)?.focus();
   }
   function setPick(id) {
@@ -1114,6 +1135,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     try { renderNow(bagKinds(), 80); } catch (e) { console.warn('bag icons', e); } // usually all cached already
     flushIcons();
     clearSrc(); clearSay();
+    hideTip(); hoverIdx = null; tipArmed = false;
+    try { document.dispatchEvent(new CustomEvent(BAG_OPEN_EVENT)); } catch {}
     safe(onPause);
     if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
@@ -1126,6 +1149,11 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     render(true);
     reorderRecipes();
     dock();
+    if (!tabByUser) { // nothing new to make here, but there is in another tab: open that one
+      const news = cat => recipeEls.filter(v => v.cat === cat && v.state === 'ready' && !v.owned).length;
+      const go = news(activeTab) ? null : groups.find(g => news(g.id));
+      if (go) { activeTab = go.id; pickId = null; pickedByUser = false; }
+    }
     if (!pickedByUser) pickId = null; // re-choose the default: the first ready recipe that is not a spare tool
     applyTab();
     try { wrap.focus({ preventScroll: true }); } catch {}
@@ -1138,7 +1166,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const ins = dockInsets(hb, { cb: craftEl?.getBoundingClientRect(), bb: bagEl?.getBoundingClientRect() }, innerHeight);
     for (const k of ['cb', 'bb']) { const v = ins[k] + 'px'; if (dlg.style.getPropertyValue('--dock-' + k) !== v) dlg.style.setProperty('--dock-' + k, v); }
   }
-  window.addEventListener('resize', dock, opt);
+  window.addEventListener('resize', () => { dock(); fadeList(); }, opt);
   function close() {
     if (!isOpen) return;
     isOpen = false;
@@ -1254,8 +1282,11 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     }
   }, opt);
   dlg.addEventListener('dragend', () => { if (dragging) endDrag(); if (src != null) held.hidden = false; }, opt);
-  dlg.addEventListener('pointermove', e => { px = e.clientX; py = e.clientY; if (src != null) placeHeld(); }, opt); // picked stack follows the pointer
+  // The panel appearing under a still pointer sends a pointerover: no tooltip until the pointer really moves.
+  let tipArmed = true;
+  dlg.addEventListener('pointermove', e => { px = e.clientX; py = e.clientY; if (src != null) placeHeld(); if (e.movementX || e.movementY) tipArmed = true; }, opt); // picked stack follows the pointer
   dlg.addEventListener('pointerover', e => {
+    if (!tipArmed) return;
     const el = slotFrom(e);
     if (el) {
       const i = +el.dataset.index;
@@ -1268,7 +1299,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (tipAnchor) hideTip();
   }, opt);
   dlg.addEventListener('pointerleave', () => { hoverIdx = null; hideTip(); }, opt);
-  rlist.addEventListener('scroll', () => { if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor); }, { ...opt, passive: true });
+  rlist.addEventListener('scroll', () => { fadeList(); if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor); }, { ...opt, passive: true });
   // Hold-to-craft on the craft button (mouse, touch, pen; Enter / Space).
   D.btn.addEventListener('pointerdown', e => {
     if (e.button !== 0 || !e.isPrimary) return;
