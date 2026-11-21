@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { BAIT, BAIT_STAGE, createBaitState, throwBait, stepBait, syncLure, baitNet, baitFloating } = await import('../dist/bait.js');
+const { BAIT, BAIT_STAGE, createBaitState, throwBait, stepBait, syncLure, baitNet, baitFloating, offIsland } = await import('../dist/bait.js');
 const { SHARK, createSharkState, step, startAttack, hit, lured } = await import('../dist/shark.js');
 const { ITEMS, recipeTable } = await import('../dist/items.js');
 const { Bag } = await import('../dist/inventory-state.js');
@@ -131,6 +131,24 @@ test('a spear hit while it eats sends it off, but it comes back to the bait', ()
   hit(s, SHARK.REPEL); assert.equal(s.state, 'flee');
   step(s, 0.05, w, env);
   assert.equal(s.state, 'lure');
+});
+
+test('a bait on a docked island rolls back to sea, past the raft docked off the shore', () => {
+  // round island of radius 8 centred at (20, 0); sand above the water inside r < 8
+  const isl = { cx: 20, cz: 0, R: 8, groundAt: (x, z) => { const r = Math.hypot(x - 20, z); return r < 8 ? 0.4 - r * 0.07 : NaN; } };
+  const b = floating(18, 0);
+  assert.equal(offIsland(b, isl, grid()), true);
+  assert.ok(!(isl.groundAt(b.x, b.z) > -0.15), 'in the water');
+  assert.ok(Math.hypot(b.x - 20, b.z) > 8, 'past the shore');
+  const tiles = grid(); // 3x3 raft at the origin (x -3..3), docked 1 m off an island centred at (12, 0)
+  const near = { cx: 12, cz: 0, R: 8, groundAt: (x, z) => isl.groundAt(x + 8, z) };
+  const c = floating(6, 0);
+  assert.equal(offIsland(c, near, tiles), true);
+  assert.ok(c.x < -3, `clears the raft: ${c.x}`);
+  const x0 = c.x; stepBait(c, 0.1, tiles); assert.equal(c.x, x0, 'stepBait leaves it there');
+  assert.equal(offIsland(c, near, tiles), false, 'already wet');
+  const d = floating(5, 0); assert.equal(offIsland(d, null, tiles), false, 'no island');
+  const e = createBaitState(); assert.equal(offIsland(e, isl, tiles), false, 'not floating');
 });
 
 test('a dead shark ignores the bait', () => {

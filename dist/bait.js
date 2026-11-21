@@ -10,6 +10,7 @@
 //     'bait:throw' action and renders the bait from 4 numbers riding on the shark pose (shark.setNetExtra/netTail).
 // The bait is not saved: an active bait is dropped on reload or hot swap (the shark simply resumes circling).
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
+import { islandNow } from './islands.js?build=v3-survival-ae77fa84ac2b'; // same specifier as content.js: one shared instance
 
 export const BAIT = Object.freeze({
   KIND: 'sharkbait', DURATION: 80, SPEED: 8.5, LOFT: 0.45, GRAVITY: 9.8, DECK_Y: 0.35, WATER_Y: 0,
@@ -74,6 +75,25 @@ export function stepBait(b, dt, tiles, flowX = 0, flowZ = 0) {
   return 0;
 }
 export const baitFloating = b => b.stage === BAIT_STAGE.floating;
+// A floating bait on (or drifted onto) a docked island's sand rolls back out to sea, far enough past the
+// waterline that the shark's LURE circle stays in the water, and past any raft tiles in the way (a docked raft
+// sits right off the shore). isl: {cx, cz, R, groundAt(x, z) -> y | NaN}.
+export function offIsland(b, isl, tiles = null, clear = 2.6) {
+  if (!baitFloating(b) || !isl || !(isl.R > 0) || typeof isl.groundAt !== 'function') return false;
+  const wet = y => !(y === y) || y < BAIT.WATER_Y - 0.15;
+  if (wet(isl.groundAt(b.x, b.z))) return false;
+  let dx = b.x - isl.cx, dz = b.z - isl.cz, l = Math.hypot(dx, dz);
+  if (l < 1e-3) { dx = 1; dz = 0; l = 1; }
+  const tl = Array.isArray(tiles) ? tiles : [], ux = dx / l, uz = dz / l;
+  let r = l;
+  while (r < l + isl.R + 30 && !wet(isl.groundAt(isl.cx + ux * r, isl.cz + uz * r))) r += 0.5;
+  r += clear;
+  let crossed = false;
+  while (r < l + isl.R + 90 && onTile(tl, isl.cx + ux * r, isl.cz + uz * r)) { r += 0.25; crossed = true; }
+  if (crossed) r += BAIT.EDGE_OFF - 1; // as far off the raft edge as pushOff puts it
+  b.x = isl.cx + ux * r; b.z = isl.cz + uz * r;
+  return true;
+}
 // Writes the shark's lure target ({active, x, z}) from the bait. Only a floating bait attracts the shark.
 export function syncLure(b, lure) {
   if (!lure) return;
@@ -183,6 +203,7 @@ export function attachBait(ctx) {
     if (!guest()) {
       const f = ctx.flow ? ctx.flow() : null, w = ctx.world();
       const ev = stepBait(b, dt, w && w.tiles, f ? f.x : 0, f ? f.z : 0);
+      offIsland(b, islandNow(), w && w.tiles); // never floats on the sand (the shark would swim through the island)
       if (ev === 1) { ctx.emit?.({ kind: 'notice', text: 'The shark smells the bait' }, 'all'); shark?.fx?.('lure', b.x, b.z); }
       if (shark) { syncLure(b, shark.lure); shark.setNetExtra?.(baitNet(b, out)); }
       shown.stage = b.stage; shown.x = b.x; shown.y = b.y; shown.z = b.z;
