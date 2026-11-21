@@ -19,6 +19,7 @@ import { floorTarget, decorCheck, normaliseDecor, createGhosts, tileAt, wrapRot,
 import * as Farm from './farming.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
+import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -28,6 +29,7 @@ import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 // (the brother's, persisted in the save) and applies every action against the actor's bag.
 
 // ---------- Immutable configuration ----------
+const FARM_SOUND = Object.freeze({plant:'plant', water:'water', fill:'splash'}); // harvest uses the pickup sound
 const DECOR_TYPES = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']); // placeable bag items
 const ITEM_TYPES = Object.freeze(['wood', 'leaf', 'scrap', 'barrel', 'plastic']);         // floating debris kinds
 const ITEM_NAMES = Object.freeze({wood:'plank', leaf:'bundle of leaves', scrap:'piece of scrap', barrel:'barrel', plastic:'plastic jug'});
@@ -180,7 +182,8 @@ export function mount(transfer = null) {
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, friend, player, sun;
-  let hands = null;
+  let hands = null, offIconReady = null;
+  const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
   let farmView = null, farmSeen = null, farmLast = 0; // farming
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
@@ -344,7 +347,7 @@ export function mount(transfer = null) {
     sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.receiveShadow = true; scene.add(ocean.mesh); ocean.update(elapsed);
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
-    farmView = createFarmView(T, {getModel:k => getModel(k)}); scene.add(farmView.group); // farming
+    farmView = createFarmView(T, {getModel:modelOf}); scene.add(farmView.group); // farming
     itemsGroup = new T.Group(); scene.add(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => createCraft(T, k)});
@@ -375,7 +378,7 @@ export function mount(transfer = null) {
 
   // First-person viewmodel: one hands controller that swaps the held item model per hotbar kind.
   function buildViewmodels() {
-    hands = createHands(T); hands.preload(['hook']);
+    hands = createHands(T, {modelFactory:modelOf}); hands.preload(['hook']); // 3D models from models.js, built-ins as fallback
     // Viewmodels draw last (transparent queue, renderOrder 1000) after a camera-owned marker clears depth, so the
     // world never clips them while fingers and tools still depth-sort correctly against each other.
     const depthClear = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({colorWrite:false, depthWrite:false, depthTest:false, transparent:true}));
@@ -645,7 +648,7 @@ export function mount(transfer = null) {
       rebuildRaft(); emit({kind:'build', sound:a.recipe === 'floor' ? 'build' : 'place'}, 'all'); // the new piece appearing is the feedback; no centre text
       return;
     }
-    if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); if (r.text) emit(r.items ? {kind:r.effect, text:r.text, items:r.items} : {kind:r.effect, text:r.text}, actor); if (r.changed) farmSeen = null; return; } // farming
+    if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); if (r.text) emit({kind:r.effect, text:r.text, ...(r.items ? {loot:r.items} : {}), ...(r.ok && FARM_SOUND[a.op] ? {sound:FARM_SOUND[a.op]} : {})}, actor); if (r.changed) farmSeen = null; return; } // farming
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
@@ -1320,7 +1323,7 @@ export function mount(transfer = null) {
   }
   function dispose() {
     if (disposed) return;
-    pause(); disposed = true; ac.abort(); sfx.destroy();
+    pause(); disposed = true; ac.abort(); sfx.destroy(); offIconReady?.();
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
     for (const id of timers) clearTimeout(id); timers.clear();
@@ -1341,7 +1344,9 @@ export function mount(transfer = null) {
       onCraft:guard(id => craft(id)),
       onResume:guard(() => { play('close'); requestLock(); }),
       onPause:guard(clearInput),
+      getModel:modelOf,
     });
+    pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
   } catch (e) {
