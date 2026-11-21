@@ -148,3 +148,21 @@ Own `MeshStandardMaterial`s (roughness .8; disposeGeometry frees them), castShad
   (safe, invisible). **Known limitation (accepted, no Bag redesign):** if an old-build guest's bag snapshot contains
   receiver/antenna, its `snapBag` throws on the unknown kind and the guest bag cannot sync; both players must run the same build.
 - Downgrade (old build, new save) drops receiver/antenna decor and resets a bag holding them. Mention in patch notes.
+
+## Implementation notes
+- `signalTick` returns right after a spawn (event `detected`, mirror item pushed, no drift in that tick), so the spawn
+  distance equals `TIERS[n].range` exactly (or the ±78 clamp). Drift starts on the next tick.
+- `near` is checked against the distance *after* this tick's move. A held cache (hook) still gets the `near` check.
+- The `!hasR && !cache` early return also removes any stray `cache` items (keeps §3 "stale mirrors" true on the idle path).
+- The spawn token is capped to 79 chars so it always passes `cleanSignal` / `cleanWorld`.
+- The cache beam mesh has `raycast = () => {}` so the invisible 8 u beam never becomes an aim/pickup target.
+- The listening pill shows a neutral `◌` glyph (unrotated) in the `.sig-arrow` slot since there is no bearing yet. The bearing glyph is `↑` instead of `▲`: an equilateral
+  triangle looks the same every 120° of rotation (a 149° bearing rendered as ◀ in the Playwright check).
+- HUD visibility is reconciled every frame against `el.hidden` (only the innerHTML is string-cached), so a hot-swap where
+  the old engine's `dispose()` hides the nodes after the new mount has drawn cannot leave the pill hidden.
+- Antenna toast: "counts" is decided by comparing `countAntennas` before/after the push; with no receiver on the raft the
+  "(put it 2+ tiles from the receiver)" hint is shown.
+- cleanWorld item-type check was already extended by the logbook lane (`|| it.type === 'bottle'`); `'cache'` is in ITEM_TYPES, compatible.
+- Review fix: the centre rule (`r + STOP_GAP`) alone parks the cache far off the deck on long/L-shaped rafts (a 41×1 raft left it
+  ~25 u off the long side, beyond a worn hook's 16 u reach). Drift now also continues while the gap to the nearest tile square
+  exceeds `STOP_GAP + 2`; compact rafts are unchanged. The HUD marker only writes its transform/class when the value changes.

@@ -146,3 +146,12 @@ Check that `npm test` passes and that the `shoot.py` `errors` list is empty. A s
 - Achievements and notes belong to the raft save. A guest never evaluates or writes them: `award` returns early for a guest. While a guest visits, it sees the host's logbook read-only. On `restoreOwnRaft` its own progress returns, followed by a retro pass.
 - Hot-swap: both fields travel via `capture()` and then `liveWorld` (cleanWorld/copyWorld), with no extra transfer field. A previous engine's `#logbook` node and the instance key are reused or destroyed cleanly.
 - Never throw on a bad peer payload. Every peer value passes through `cleanProgress`.
+
+## Implementation notes
+- `restoreOwnRaft()` ends with `queueMicrotask(guard(retroAward))` instead of a direct `retroAward()`. Both callers (`closeConnection`, the host-left handler) set `role = 'solo'` only after `restoreOwnRaft()` returns, so a direct call would still see `role === 'guest'` and `award` would return `[]`. The microtask runs right after, as solo.
+- The 12 note strings are stored without the surrounding quotation marks used in the research doc.
+- `ITEM_TYPES` already held the receiver's `'cache'` but was still a plain `includes` test, so `cleanWorld` uses `(ITEM_TYPES.includes(it.type) || it.type === 'bottle')` as written.
+- The `logbookUI?.update?.()` call in `frame()` sets `logbookUI = null` when it throws, so a broken view cannot spam the console every frame; the game keeps running.
+- The "new" dot: when the Notes tab is shown, the viewer's previous `little-raft-logbook-seen` value is kept for the rest of that opening (so the dot stays visible while reading) and the current count is written straight away.
+- The toast uses the `bottle` icon for notes and the existing `compass` icon for achievements (no trophy symbol exists).
+- `#logbook .lb-close` and tabs cancel style.css's global `button:hover{transform}` lift.
