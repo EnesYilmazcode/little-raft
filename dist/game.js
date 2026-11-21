@@ -630,7 +630,7 @@ export function mount(transfer = null) {
     for (const token of pending.keys()) if (!live.has(token)) pending.delete(token);
     for (const item of world.items) {
       if (itemMeshes.has(item.token)) continue;
-      const g = itemModel(item); g.userData.token = item.token; singlePass(g);
+      const g = itemModel(item); g.userData.token = item.token; g.userData.fp = {x:0, z:0, ok:false}; singlePass(g); // fp: smoothed float spot, one shape for every item type
       g.traverse(o => { o.castShadow = false; }); // the ocean takes no shadows, so floating supplies skip the shadow pass
       g.position.set(item.x, ITEM_FLOAT, item.z);
       itemsGroup.add(g); itemMeshes.set(item.token, g);
@@ -1383,11 +1383,12 @@ export function mount(transfer = null) {
     for (const it of world.items) {
       const m = itemMeshes.get(it.token); if (!m) continue;
       m.visible = !isPending(it); m.scale.setScalar(1);
-      const u = m.userData;
-      if (role === 'guest' && u.sx !== undefined && Math.hypot(it.x - u.sx, it.z - u.sz) < 3) { const k = Math.min(1, dt * 8); u.sx += (it.x - u.sx) * k; u.sz += (it.z - u.sz) * k; }
-      else { u.sx = it.x; u.sz = it.z; }
-      const s = ocean.sample(u.sx, u.sz, oceanSample);
-      m.position.set(u.sx, s.h + ITEM_FLOAT, u.sz);
+      const u = m.userData.fp ?? (m.userData.fp = {x:0, z:0, ok:false});
+      const ix = it.x, iz = it.z;
+      if (role === 'guest' && u.ok && Math.hypot(ix - u.x, iz - u.z) < 3) { const k = Math.min(1, dt * 8); u.x += (ix - u.x) * k; u.z += (iz - u.z) * k; }
+      else { u.x = ix; u.z = iz; u.ok = true; }
+      const s = ocean.sample(u.x, u.z, oceanSample);
+      m.position.set(u.x, s.h + ITEM_FLOAT, u.z);
       m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
