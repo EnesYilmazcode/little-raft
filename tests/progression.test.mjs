@@ -264,7 +264,8 @@ test('items: exports are deeply frozen and helpers return safe values', () => {
 
 test('rollBarrel: bounds hold for edge rand values', () => {
   const lootMax = {};
-  for (const e of BARREL_LOOT) lootMax[e.kind] = (lootMax[e.kind] || 0) + e.max * (e.pool === 'basic' ? I.BARREL_ROLLS.basic : I.BARREL_ROLLS.treasure);
+  const R = I.BARREL_ROLLS;
+  for (const e of BARREL_LOOT) lootMax[e.kind] = (lootMax[e.kind] || 0) + e.max * (e.pool === 'basic' ? R.max - R.treasure : R.treasure);
   const check = (out) => {
     let n = 0;
     for (const [k, v] of Object.entries(out)) {
@@ -272,8 +273,7 @@ test('rollBarrel: bounds hold for edge rand values', () => {
       assert.ok(Number.isInteger(v) && v >= 1 && v <= lootMax[k], `${k} ${v}`);
       n += v;
     }
-    const picks = I.BARREL_ROLLS.basic + I.BARREL_ROLLS.treasure;
-    assert.ok(n >= picks, `at least one item per pick (${n})`);
+    assert.ok(n >= R.min && n <= R.max, `${R.min}-${R.max} items per barrel (${n})`);
   };
   for (const v of [0, 0.9999999, 1, NaN, -1, 2, Infinity, -Infinity, '0.5', null, undefined, {}]) check(rollBarrel(() => v));
   check(rollBarrel());
@@ -284,8 +284,8 @@ test('rollBarrel: bounds hold for edge rand values', () => {
   const a = rng(42), b = rng(42);
   for (let i = 0; i < 50; i++) assert.deepEqual(rollBarrel(a), rollBarrel(b));
   // rand=0 picks the first row of each pool at its min, 1 picks the last at its max
-  assert.deepEqual(rollBarrel(() => 0), { wood: 6, clay: 1 });
-  assert.deepEqual(rollBarrel(() => 1), { scrap: 6 + 1 });
+  assert.deepEqual(rollBarrel(() => 0), { wood: 3, clay: 1 });
+  assert.deepEqual(rollBarrel(() => 1), { coconut: 5, scrap: 1 });
 });
 
 test('rollBarrel: treasure materials appear at sane rates', () => {
@@ -293,6 +293,22 @@ test('rollBarrel: treasure materials appear at sane rates', () => {
   const N = 4000;
   for (let i = 0; i < N; i++) for (const [k, v] of Object.entries(rollBarrel(r))) tot[k] = (tot[k] || 0) + v;
   for (const k of ['clay', 'stone', 'metalore', 'sand', 'seaweed', 'copperore']) assert.ok(tot[k] / N > 0.03, `${k} rate ${tot[k] / N}`);
+});
+
+test('rollBarrel: Raft-like shape, 4-6 single items with the Raft basic odds', () => {
+  assert.deepEqual({ ...I.BARREL_ROLLS }, { min: 4, max: 6, treasure: 1 });
+  const basic = BARREL_LOOT.filter((e) => e.pool === 'basic'), total = basic.reduce((s, e) => s + e.weight, 0);
+  const pct = Object.fromEntries(basic.map((e) => [e.kind, Math.round((e.weight / total) * 1000) / 10]));
+  assert.deepEqual(pct, { wood: 37.7, leaf: 18.9, plastic: 14.2, scrap: 9.4, rope: 7.1, stone: 6.1, flowerseed: 3.3, coconut: 3.3 });
+  for (const e of BARREL_LOOT) assert.equal(e.max, 1, `${e.kind} one per pick`);
+  const r = rng(21), sizes = { 4: 0, 5: 0, 6: 0 }, N = 6000;
+  let wood = 0;
+  for (let i = 0; i < N; i++) {
+    const out = rollBarrel(r), n = Object.values(out).reduce((s, v) => s + v, 0);
+    sizes[n]++; wood += out.wood || 0;
+  }
+  for (const k of [4, 5, 6]) assert.ok(sizes[k] / N > 0.28 && sizes[k] / N < 0.39, `size ${k}: ${sizes[k] / N}`);
+  assert.ok(Math.abs(wood / N - 4 * 0.377) < 0.08, `planks per barrel ${wood / N}`);
 });
 
 test('rollBarrel luck: null/undefined/junk luck keeps the plain roll', () => {
@@ -363,7 +379,9 @@ test('rollBarrel luck: deterministic for the same rand and luck state, and real 
     const out = rollBarrel(r, luck);
     for (const k of Object.keys(I.BARREL_PITY)) if (out[k]) { worst[k] = Math.max(worst[k] ?? 0, i - (last[k] ?? -1) - 1); last[k] = i; }
   }
-  for (const [k, n] of Object.entries(I.BARREL_PITY)) assert.ok(worst[k] <= n + 3, `${k} worst gap ${worst[k]}`);
+  // Overdue kinds queue behind each other (one forced pick per barrel), so allow one wait per pity kind.
+  const queue = Object.keys(I.BARREL_PITY).length;
+  for (const [k, n] of Object.entries(I.BARREL_PITY)) assert.ok(worst[k] <= n + queue, `${k} worst gap ${worst[k]}`);
 });
 
 // ============================================================ migration
