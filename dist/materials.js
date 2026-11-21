@@ -5,7 +5,7 @@
 // from the normal atlas alpha. All patched materials share one program per feature set.
 //
 //   getMaterial(T, 'planks')                    -> shared preset material
-//   getMaterial(T, 'plank', {color:'#bb8a53'})  -> same preset, tinted so its average equals the colour
+//   getMaterial(T, 'plank', {color:'#bb8a53'})  -> same preset, tinted toward the colour (TINT, clamped gain)
 //   materialForColor(T, '#bb8a53')              -> game palette hex -> textured material (or null)
 //   applyLighting(scene, renderer)              -> recommended warm tropical rig (LIGHTING)
 //   artEnabled()                                -> true when the page URL has ?art (temporary hook gate)
@@ -18,7 +18,7 @@ export const PRESETS = {
   planks:  { cell: 'planks',  roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1] },
   plank:   { cell: 'plank',   roughness: 1,    metalness: 0,    normalScale: 0.9, repeat: [1, 3] }, // deck board: u across (0.34 m), v along
   bark:    { cell: 'bark',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 1] },
-  plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 1.3, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
+  plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
   foliage: { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [10, 5] }, // dense bush/island canopy, opaque
   leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], alphaTest: 0.5, side: 'double' },
   rope:    { cell: 'rope',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [1, 3] },
@@ -33,7 +33,7 @@ export const PRESETS = {
 // the horizon so the sea melts into the sky. Distances in metres. sky* = optional gradient dome (sky.js),
 // ocean* = ocean.js uniforms retinted by applyOceanLook().
 export const LIGHTING = {
-  background: '#cde6f2', fog: '#cde6f2', fogNear: 45, fogFar: 150,
+  background: '#c6e3f0', fog: '#c6e3f0', fogNear: 38, fogFar: 150,
   hemiSky: '#bfe3ff', hemiGround: '#86b6bc', hemiIntensity: 1.1,
   sun: '#ffe7c2', sunIntensity: 3.2, exposure: 1.05,
   skyDome: true, skyZenith: '#6fb4e6', skyCloudLit: '#ffffff', skyCloudShade: '#d3e3ee', skyCoverage: 0.42,
@@ -49,20 +49,23 @@ export const COLOR_PRESETS = {
   rope: ['#a8946c', '#b89a64', '#e9d39a'],
   scrap: ['#4b4844', '#8e9aa2', '#6f6964', '#6d757b', '#9a5a32'],
   foliage: ['#4f9b72'],
+  plastic: ['#f2f0e6'], // jug body (plastic.js), swapped in by the game hook
   leaf: ['#72ae59', '#519b55', '#6bb84c', '#5fae45', '#7d8a3d'],
   sand: ['#e6d7a3'],
   cloth: ['#fff3cf'],
 };
+const COLOR_OPTS = { '#f2f0e6': { repeat: [3, 1] } }; // per-colour overrides (jug lathe uv: u around ~1.7 m)
 const COLOR_TO_PRESET = new Map(Object.entries(COLOR_PRESETS).flatMap(([p, list]) => list.map(c => [c.toLowerCase(), p])));
 
 export const artEnabled = () => typeof location !== 'undefined' && /[?&]art(=1|&|$)/.test(location.search);
 
 const cache = new Map();
+const TINT = 0.65; // how far game palette colours pull a texture's own colour (1 = exact average)
 const FRAG_HEAD = `
 uniform vec4 lrCell; // atlas cell: xy offset, zw size
-uniform vec2 lrScale; // tiles per uv unit
+uniform vec4 lrScale; // xy tiles per uv unit, zw phase offset
 vec4 lrTex(sampler2D s, vec2 uv) {
-  uv *= lrScale;
+  uv = uv * lrScale.xy + lrScale.zw;
   vec2 dx = dFdx(uv) * lrCell.zw, dy = dFdy(uv) * lrCell.zw;
   return textureGrad(s, lrCell.xy + fract(uv) * lrCell.zw, dx, dy);
 }
@@ -93,11 +96,13 @@ export function getMaterial(T, name, opts = {}) {
   });
   const [rx, ry] = opts.repeat ?? p.repeat;
   m.userData.lr = { preset: name, uvScale: [rx, ry] };
-  if (opts.color) { // tint: per-channel gain so the textured average lands on the requested colour
-    const c = new T.Color(opts.color), mean = cell.mean;
-    m.color.setRGB(c.r / Math.max(mean[0], 0.02), c.g / Math.max(mean[1], 0.02), c.b / Math.max(mean[2], 0.02), T.LinearSRGBColorSpace);
+  if (opts.color) { // tint: move the textured average TINT of the way to the requested colour, gain clamped
+    const c = new T.Color(opts.color), g = (want, mean) => Math.min(1.8, Math.max(0.45, (mean + (want - mean) * TINT) / Math.max(mean, 0.02)));
+    m.color.setRGB(g(c.r, cell.mean[0]), g(c.g, cell.mean[1]), g(c.b, cell.mean[2]), T.LinearSRGBColorSpace);
   }
-  const u = { cell: { value: new T.Vector4(...cell.uv) }, scale: { value: new T.Vector2(rx, ry) } };
+  // Per-material uv phase (hash of the key) so differently tinted boards/logs don't line up knots and nails.
+  let h = 2166136261; for (const ch of key) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const u = { cell: { value: new T.Vector4(...cell.uv) }, scale: { value: new T.Vector4(rx, ry, (h & 1023) / 1024, ((h >>> 10) & 1023) / 1024) } };
   m.userData.lr.uniforms = u;
   m.onBeforeCompile = sh => patch(T, sh, u);
   m.customProgramCacheKey = () => 'lr-atlas-1';
@@ -111,7 +116,7 @@ export function getMaterial(T, name, opts = {}) {
 const SOFT = { '#e7f9eb': { emissive: '#e6f0f5', emissiveIntensity: 0.6 } };
 export function materialForColor(T, color) {
   const hex = String(color).toLowerCase(), preset = COLOR_TO_PRESET.get(hex);
-  if (preset) return getMaterial(T, preset, { color });
+  if (preset) return getMaterial(T, preset, { color, ...COLOR_OPTS[hex] });
   if (!SOFT[hex]) return null;
   if (!cache.has(hex)) cache.set(hex, new T.MeshStandardMaterial({ color: hex, roughness: 1, metalness: 0, ...SOFT[hex] }));
   return cache.get(hex);
