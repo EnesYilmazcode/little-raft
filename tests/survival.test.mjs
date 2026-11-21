@@ -502,3 +502,15 @@ test('HookCast: caught items that vanish from the world are not paid out', () =>
   assert.equal(events.length, 1);
   assert.deepEqual(events[0].items, [{ id: 'b', token: 'tb', type: 'plastic' }]);
 });
+
+test('item icons degrade to flat sprites when WebGL is unavailable', async () => {
+  const icons = await import(new URL('item-icons.js', base));
+  const seen = [];
+  const off = icons.onIconReady(k => seen.push(k));
+  assert.equal(icons.iconURL('wood'), null);           // queued, nothing cached yet
+  await new Promise(r => setTimeout(r, 60));           // queue drains; no document -> no WebGL
+  assert.equal(icons.iconURL('wood'), null);
+  assert.deepEqual(seen, []);
+  icons.setModelProvider(() => null);                  // swapping providers must not throw
+  off();
+});
