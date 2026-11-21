@@ -107,11 +107,13 @@ export function createHands(T, { modelFactory = null } = {}) {
     m.customProgramCacheKey = () => 'vmKeyShade';
     return m;
   };
-  const skin = keyShade(mat(0xc89068, 0.6, { emissive: 0x1c0e06, map: tx.skin }));
-  const skinPalm = keyShade(mat(0xc08562, 0.64, { emissive: 0x1c0e06, map: tx.skin }));
-  const skinTip = keyShade(mat(0xcc8e6c, 0.6, { emissive: 0x1c0e06, map: tx.skin })); // finger ends a touch pinker: fingers read as fingers
-  const nail = keyShade(mat(0xe0b294, 0.38, { emissive: 0x120806 }));
-  const crease = mat(0x8e5a3c, 0.8);
+  // Warm muted tan with only a faint emissive lift (a stronger one flattened the shading into an orange glow).
+  const skin = keyShade(mat(0xbd8668, 0.5, { emissive: 0x0a0504, map: tx.skin }));
+  const skinPalm = keyShade(mat(0xb27b5e, 0.54, { emissive: 0x0a0504, map: tx.skin }));
+  const skinTip = keyShade(mat(0xc28c70, 0.5, { emissive: 0x0a0504, map: tx.skin })); // finger ends a touch pinker: fingers read as fingers
+  const knuckle = keyShade(mat(0xc79476, 0.48, { emissive: 0x0a0504, map: tx.skin })); // knuckle caps catch the light
+  const nail = keyShade(mat(0xd8ae94, 0.38, { emissive: 0x060302 }));
+  const crease = mat(0x86543a, 0.8);
   const sleeveMat = keyShade(mat(0x5a7462, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
   const cuffMat = keyShade(mat(0x465c4e, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
   const ropeMat = mat(0xc4a46c, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
@@ -122,9 +124,9 @@ export function createHands(T, { modelFactory = null } = {}) {
   // carries the base, so setLook() recolours every baked hand and sleeve by setting one material colour.
   const BODY_SKIN = new T.Color('#f2c29b');           // avatar.js default skin (dist/look.js PALETTE.skin[0])
   const toneOf = (m) => { const c = m.color.clone(); return new T.Color(c.r / BODY_SKIN.r, c.g / BODY_SKIN.g, c.b / BODY_SKIN.b); };
-  const skinTones = [skin, skinPalm, skinTip, nail, crease].map((m) => [m, toneOf(m)]);
+  const skinTones = [skin, skinPalm, skinTip, knuckle, nail, crease].map((m) => [m, toneOf(m)]);
   const SLEEVE_BASE = sleeveMat.color.clone();
-  const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin })); skinV.color.copy(BODY_SKIN);
+  const skinV = keyShade(mat(0xffffff, 0.5, { emissive: 0x0a0504, vertexColors: true, map: tx.skin })); skinV.color.copy(BODY_SKIN);
   const clothV = keyShade(mat(0xffffff, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); clothV.color.copy(SLEEVE_BASE);
   const ropeV = mat(0xffffff, 1.0, { vertexColors: true, map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   const tint = (m) => m.material.color;
@@ -177,14 +179,14 @@ export function createHands(T, { modelFactory = null } = {}) {
     const k = (gripR + 0.010) / 0.042;
     const P = (aDeg, R, y) => V(R * Math.cos(aDeg * DEG), y, -R * Math.sin(aDeg * DEG));
     const palm = [
-      ellipsoid(parent, skin, V(0.016 * k, -0.004, 0.047 * k), 0.030 * k, 0.050, 0.040 * k, -0.22),
-      ellipsoid(parent, skinPalm, V(-0.010 * k, 0.024, 0.050 * k), 0.020 * k, 0.022, 0.028 * k, 0.3),
+      ellipsoid(parent, skin, V(0.019 * k, -0.004, 0.047 * k), 0.024 * k, 0.048, 0.040 * k, -0.22),
+      ellipsoid(parent, skinPalm, V(-0.007 * k, 0.024, 0.050 * k), 0.016 * k, 0.020, 0.028 * k, 0.3),
     ];
     const defs = [
-      { y: 0.029, r: 0.0098, a1: 72, a2: 150, len: 0.083, spread: 0.010 },  // index
-      { y: 0.009, r: 0.0104, a1: 75, a2: 156, len: 0.090, spread: 0.003 },  // middle
-      { y: -0.011, r: 0.0098, a1: 73, a2: 152, len: 0.085, spread: -0.004 }, // ring
-      { y: -0.029, r: 0.0086, a1: 68, a2: 144, len: 0.068, spread: -0.012 }, // pinky
+      { y: 0.029, r: 0.0083, a1: 72, a2: 150, len: 0.083, spread: 0.010 },  // index
+      { y: 0.009, r: 0.0088, a1: 75, a2: 156, len: 0.090, spread: 0.003 },  // middle
+      { y: -0.011, r: 0.0083, a1: 73, a2: 152, len: 0.085, spread: -0.004 }, // ring
+      { y: -0.029, r: 0.0073, a1: 68, a2: 144, len: 0.068, spread: -0.012 }, // pinky
     ];
     const fingers = defs.map((f, i) => {
       const R = gripR + f.r * 1.02;
@@ -210,19 +212,22 @@ export function createHands(T, { modelFactory = null } = {}) {
       seg(ext, skinTip, e1, e2, f.r * 0.95, f.r * 0.78);
       ellipsoid(ext, nail, e2.clone().add(V(0.0045, 0, 0.004)), 0.0035, f.r * 0.62, 0.008);
       seg(ext, crease, e1.clone().add(V(f.r * 0.85, -0.0052, 0)), e1.clone().add(V(f.r * 0.85, 0.0052, 0)), 0.0013, 0.0013, 6);
+      // knuckle cap: a small lighter bump over each MCP joint on the back of the hand
+      const kn = P(-12, R + 0.003 + f.r * 0.45, f.y);
+      for (const g of [curl, ext, tight]) ellipsoid(g, knuckle, kn, f.r * 0.8, f.r * 0.92, f.r * 0.8);
       parent.add(curl, ext, tight);
       return { curl, ext, tight };
     });
     const thumbCurl = new T.Group(), thumbExt = new T.Group(), thumbTuck = new T.Group();
     const t0 = V(0.0, 0.032, 0.055 * k), t1 = V(-0.036 * k, 0.047, 0.028 * k), t2 = V(-0.047 * k, 0.045, -0.008 * k);
-    seg(thumbCurl, skin, t0, t1, 0.0135, 0.0118);
-    seg(thumbCurl, skinTip, t1, t2, 0.0118, 0.0094);
+    seg(thumbCurl, skin, t0, t1, 0.0118, 0.0104);
+    seg(thumbCurl, skinTip, t1, t2, 0.0104, 0.0082);
     const u1 = V(-0.026 * k, 0.062, 0.030 * k), u2 = V(-0.040 * k, 0.083, 0.004 * k);
-    seg(thumbExt, skin, t0, u1, 0.0135, 0.0118);
-    seg(thumbExt, skinTip, u1, u2, 0.0118, 0.0094);
+    seg(thumbExt, skin, t0, u1, 0.0118, 0.0104);
+    seg(thumbExt, skinTip, u1, u2, 0.0104, 0.0082);
     const w1 = V(-0.024 * k, 0.030, 0.026 * k), w2 = V(-0.026 * k, 0.012, 0.004 * k);   // tucked over the curled middle finger
-    seg(thumbTuck, skin, t0, w1, 0.0135, 0.0118);
-    seg(thumbTuck, skinTip, w1, w2, 0.0118, 0.0094);
+    seg(thumbTuck, skin, t0, w1, 0.0118, 0.0104);
+    seg(thumbTuck, skinTip, w1, w2, 0.0104, 0.0082);
     parent.add(thumbCurl, thumbExt, thumbTuck);
     // Each pose is baked into one mesh (palm + its finger and thumb variants): one draw call per hand.
     const poses = {
