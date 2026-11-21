@@ -96,7 +96,7 @@ const CSS = `
 .lr-sr-lock svg{display:block;width:15px;height:15px}
 /* craft list in #inventory */
 #inventory .sv-rlist{display:flex;flex-direction:column}
-#inventory .sv-recipe[data-locked]{order:1;pointer-events:none;cursor:default;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
+#inventory .sv-recipe[data-locked]{order:1;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
 #inventory .sv-recipe[data-locked] .sv-rart{position:relative}
 #inventory .sv-recipe[data-locked] .sv-rart .sv-icon{filter:grayscale(1) brightness(.75);opacity:.6}
 #inventory .sv-recipe[data-locked] .sv-rname{color:#d9c9a6}

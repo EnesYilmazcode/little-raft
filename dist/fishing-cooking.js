@@ -281,7 +281,7 @@ export function createFishingCooking(T, host) {
     if (session) { if (session.stage === 'charging') session.cancel(); else session.holding = false; }
     return was;
   }
-  let held = null, heldT = 0;
+  let held = null, heldT = 0, heldUntil = 0; // heldUntil: wall-clock deadline, so the caught fish leaves on time when game dt is clamped on slow frames
   function dropHeld() { if (!held) return; held.parent?.remove(held); held.userData.dispose?.(); held = null; }
   function onCatch(c) {
     const sp = speciesById(c?.species); if (!sp) return;
@@ -302,7 +302,7 @@ export function createFishingCooking(T, host) {
       held.scale.setScalar(Math.min(1, 0.36 / (held.userData.length || c.cm / 100)));
       held.position.set(-0.1, -0.17, -0.6); held.rotation.set(0.15, 0.3, 0.45); // held up left of centre, clear of the rod
       held.traverse((o) => { o.renderOrder = 999; o.castShadow = false; }); // viewmodel: no shadow pass
-      camera.add(held); heldT = 2.2;
+      camera.add(held); heldT = 2.2; heldUntil = performance.now() + 2200;
     }
     dirty = true;
   }
@@ -389,7 +389,7 @@ export function createFishingCooking(T, host) {
     const out = !!session && session.stage !== 'idle' && session.stage !== 'charging';
     const ud = host.rodModel?.userData;
     if (out && ud) { if (ud.float) ud.float.visible = false; if (ud.leader) ud.leader.visible = false; }
-    if (held) { heldT -= dt; wiggle(held, time, 1.2); if (heldT <= 0) dropHeld(); }
+    if (held) { heldT -= dt; wiggle(held, time, 1.2); if (heldT <= 0 || performance.now() >= heldUntil) dropHeld(); }
     // grills
     const sim = !isGuest(role), cookDt = host.running() ? dt : 0; // title screen / paused: food and fuel hold, fire still flickers
     for (const g of grills.values()) {
@@ -468,6 +468,18 @@ export function createFishingCooking(T, host) {
     get prompt() { return prompt; },
     hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
     dropTile(x, z) { const g = grillAt(x, z); if (!g || isGuest(host.role())) return false; removeGrill(g); markChanged(); return true; }, // shark lane: a destroyed foundation takes its grill with it
+    recordTrapCatch(list) { // [fishtrap] fish from a fish trap land in the collector's own journal (cleaned by recordCatch)
+      if (!Array.isArray(list)) return;
+      let fullOnce = false;
+      for (const c of list.slice(0, 3)) {
+        const sp = speciesById(c?.species); if (!sp) continue;
+        const prev = journal.entry(sp.id), res = journal.recordCatch({ species: c.species, cm: c.cm, stars: c.stars });
+        if (res.isNew) toast(`New species! ${sp.name} added to your journal`);
+        else if (res.isRecord && prev) toast(`New record! ${sp.name} ${journal.entry(sp.id).bestCm.toFixed(1)} cm (was ${prev.bestCm.toFixed(1)})`);
+        if (res.basketed === false && !fullOnce) { fullOnce = true; toast('Basket full. Cook a few on a grill.', true); }
+      }
+      dirty = true;
+    },
     reset() { syncRole(); clearGrills(); if (stash) stash = []; markChanged(); save(); }, // New game: no grills, the journal stays
     get rodReeling() { return !!session && session.stage === 'reeling' && session.holding; },
     capture() { save(); return { v: 1, journal: journal.snapshot(), grills: isGuest(lastRole) ? (stash || []) : snapshots() }; },

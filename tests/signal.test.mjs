@@ -26,7 +26,7 @@ const cacheItems = w => w.items.filter(i => i.type === 'cache');
 let tokenN = 0; const tok = () => 'tok-' + (++tokenN);
 
 test('items and recipes: receiver and antenna are craftable bag items', () => {
-  assert.equal(ITEM_INFO.receiver.icon, 'icon-compass');
+  assert.equal(ITEM_INFO.receiver.icon, 'icon-receiver'); // its own drawing (was the borrowed compass, blank in the bag)
   assert.equal(ITEM_INFO.antenna.icon, 'icon-antenna');
   assert.deepEqual({...RECIPES.receiver.cost}, {wood:3, scrap:4, plastic:3, rope:2});
   assert.deepEqual({...RECIPES.antenna.cost}, {wood:2, scrap:1, rope:1});

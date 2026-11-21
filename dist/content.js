@@ -15,6 +15,7 @@
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   decorModel(type, d)       -> THREE.Object3D for a CONTENT_DECOR type, or null (d = the world.decor entry, read-only)
+//   placeBlock(kind, x, z)    -> BLOCK_TEXT reason a decor kind can't go on that tile, else null // [fishtrap]
 //   sailPush(sailing, out)    write an extra water-relative push (m/s) into out.x/out.z; return true if non-zero.
 //                             Host and guest must compute it from synced data (engine: motors).
 //   steerTargets()            -> array of raft-local {x,z} extra hold-R steering grab points (engine: wheels)
@@ -23,6 +24,7 @@
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
 //   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
+//   link(env)                 optional: env.wind() / env.night() live daynight getters // [power]
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
@@ -49,8 +51,11 @@ import { createJuicer } from './juicer.js?build=v3-survival-ae77fa84ac2b'; // [j
 import { createDivingGear } from './diving-gear.js?build=v3-survival-ae77fa84ac2b';
 import { createTrader } from './trader.js?build=v3-survival-ae77fa84ac2b';
 import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
+import { createDisplay } from './display.js?build=v3-survival-ae77fa84ac2b'; // [display]
+import { createPower } from './power.js?build=v3-survival-ae77fa84ac2b'; // [power]
+import { createFishTrap } from './fish-trap.js?build=v3-survival-ae77fa84ac2b'; // [fishtrap]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createJuicer, createGull, createDivingGear, createTrader, createCookpot]; // [bees] + createBees; round 3 diving gear, trader, cookpot; [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createJuicer, createGull, createFishTrap, createDisplay, createDivingGear, createTrader, createCookpot]; // [bees] + createBees; [power] after bees; [fishtrap] [display]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -86,6 +91,9 @@ export function createContent(ctx, features = FEATURES) {
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
+  const dn = () => mods.find(m => m.name === 'daynight' && !m.dead), num = (v, d) => (Number.isFinite(v) ? v : d); // [power]
+  const env = { wind: () => num(dn()?.wind, .15), night: () => num(dn()?.night, 0) }; // [power] live getters, never spread
+  for (const m of mods) call(m, 'link', env); // [power] optional link(env) hook
   return {
     mods, debug,
     update(dt) { for (const m of mods) call(m, 'update', dt); },
@@ -100,10 +108,12 @@ export function createContent(ctx, features = FEATURES) {
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
+    placeBlock: (kind, x, z) => first('placeBlock', kind, x, z), // [fishtrap] reason a decor can't go on (x, z), or null
     decorModel: (type, d) => first('decorModel', type, d),
     sailPush: (s, out) => !!first('sailPush', s, out),
     steerTargets: () => first('steerTargets'),
     rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
+    wind: () => env.wind(), night: () => env.night(), // [power] live daynight wind / nightFactor (fallbacks .15 / 0)
     diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveMods === 'function') call1(m, out); } return out; }, // shared dive modifier hook (no per-frame rest-arg arrays)
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
