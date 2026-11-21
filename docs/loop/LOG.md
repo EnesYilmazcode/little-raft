@@ -493,6 +493,7 @@ Fleet: 8 subsystem hunters (lock, craft, build, hook, survival, net, input, hud)
 - Electron was not run here. The desktop Esc path was checked only by reading the code.
 - The machine was heavily loaded, so shoot.py frame times are not comparable between runs.
 
+
 ## 2026-11-21 · integrator A, round 2/3
 Two integrator sessions are running on claude/raft-master; each merges the other's pushes before pushing.
 - Merged loop-visuals-202611210451 (driftwood palette, scenery-islands.js, sky.follow() tracks day/night) and resolved it
@@ -587,3 +588,4 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
   Skipped loop-perf-0548/0540, loop-visuals-0451, loop-ux-0547, loop-features-0534 (see STATUS).
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
+
