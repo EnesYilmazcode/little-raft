@@ -102,3 +102,18 @@ test('blur during a panel still forgets held keys', () => {
   assert.equal(s.input.move().forward, 0);
 });
 
+// ---------------------------------------------------------------- A2: sub-frame jump tap
+test('a quick Space tap inside one (slow) frame still jumps', () => {
+  const c = createControls({ canvas: null, isBlocked: () => false, hotbarSize: 8, slot: () => 0 });
+  const physics = { grounded: true, swimming: false, vx: 0, vz: 0, vy: 0 };
+  fire(win, 'keydown', { code: 'Space', key: ' ', target: win });
+  fire(win, 'keyup', { code: 'Space', key: ' ', target: win });
+  const out = c.movement(1 / 10, true, physics);
+  assert.equal(out.jump, true);
+  assert.equal(c.movement(1 / 10, true, physics).jump, false, 'one jump per tap');
+  fire(win, 'keydown', { code: 'Space', key: ' ', target: win });
+  fire(win, 'keyup', { code: 'Space', key: ' ', target: win });
+  assert.equal(c.movement(1 / 10, false, physics).jump, false, 'inactive: no jump');
+  c.dispose?.();
+});
+
