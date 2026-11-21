@@ -4,7 +4,7 @@
 const STYLE_ID = 'lr-build-menu-style';
 const SPRITE = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
 const MAT_SPRITE = { wood: 'wood', leaf: 'leaf', scrap: 'scrap' };
-const MAT_NAME = { wood: 'wood', leaf: 'leaf', plastic: 'plastic', scrap: 'scrap', rope: 'rope' };
+const MAT_NAME = { wood: 'planks', leaf: 'leaf', plastic: 'plastic', scrap: 'scrap', rope: 'rope' };
 
 // Original 24x24 line icons (stroke = currentColor).
 const ICONS = {

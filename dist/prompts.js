@@ -45,8 +45,11 @@ export function isNotice(text, hasKbd) {
 }
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };
-export const costText = cost => Object.entries(cost).map(([k, n]) => `${n} ${k}`).join(' · ');
-export const missingText = (stock, cost) => Object.entries(cost).filter(([k, n]) => have(stock, k) < n).map(([k, n]) => `${n - have(stock, k)} ${k}`).join(' · ');
+// Materials by the names the bag shows (wood is "plank" everywhere the player reads it).
+const MAT_WORD = {wood:['plank', 'planks'], leaf:['leaf', 'leaves']};
+const matWord = (k, n) => (MAT_WORD[k] ? MAT_WORD[k][n === 1 ? 0 : 1] : k);
+export const costText = cost => Object.entries(cost).map(([k, n]) => `${n} ${matWord(k, n)}`).join(' · ');
+export const missingText = (stock, cost) => Object.entries(cost).filter(([k, n]) => have(stock, k) < n).map(([k, n]) => `${n - have(stock, k)} ${matWord(k, n - have(stock, k))}`).join(' · ');
 // Horizontal distance (m) from (x, z) to the nearest raft tile's edge; 0 when over a tile, Infinity with no tiles.
 export function raftDistance(x, z, tiles) {
   let best = Infinity; if (!Number.isFinite(x) || !Number.isFinite(z)) return best;
