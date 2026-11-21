@@ -294,3 +294,88 @@ Fleet: 8 subsystem hunters (lock, craft, build, hook, survival, net, input, hud)
 - The hold-to-craft progress is still a bar, not a ring.
 - Electron was not run here. The desktop Esc path was checked only by reading the code.
 - The machine was heavily loaded, so shoot.py frame times are not comparable between runs.
+
+## UX round 3: claude/loop-ux-202611210742 (base: origin/claude/raft-master bc4244a + UX rounds 1 and 2 merged)
+
+raft-master had moved on with new lanes (progression and stations, watering, diving, onboarding, logbook, building pieces, 10-slot hotbar). UX rounds 1 and 2 were merged into it first (23139c3).
+
+Fleet:
+- 8 subsystem hunters: lock, craft, build, hook/diving, survival, net/save, input, hud
+- 1 new-player UX reviewer reading screenshots
+- 1 crafting UX builder
+- 2 adversarial verifiers per findings file (18 in all)
+- 9 fixers, each adding regression tests
+
+The lock hunter and verifiers ran the real desktop shell in Electron 45.4.1 under Xvfb, using both sendInputEvent and real XTest keys.
+
+### Fixed (confirmed by both verifiers)
+- **Cursor and lock (LOCK-R3-1..5):**
+  - In the desktop app, one Esc tap in locked play freed the cursor without opening pause, because Chromium consumes the keydown to exit the lock. main.cjs now handles the orphan keyUp: it runs a full press in locked play, and only opens pause after a fullscreen change. A page-side backstop opens pause on a lock loss the page did not cause.
+  - The relock pending state is tied to requestLock for every panel, so closing a chest, smelter or logbook shows no cursor.
+  - A SecurityError during the relock cooldown no longer drops the game into drag-look for good.
+  - electron_check.py works with the onboarding title and sends a single Esc.
+  - A Logbook opened from pause returns to pause.
+- **Controls (INPUT3-1..6, DESIGN):** round 2's input fixes had only reached a bypassed legacy path. There is now one input path (input.js, controls.js) and the legacy keys[] path is removed.
+  - Held keys survive panels.
+  - A per-instance look filter replaces the 300-count drop, so flicks are kept.
+  - A quick Space tap jumps.
+  - Dive swimming substeps.
+  - Shift/Ctrl+wheel rotates.
+  - X never removes with the Q wheel open.
+- **Crafting (CRAFT-1..6, UX3-3/4/5/6):**
+  - Tinker's-Desk-locked recipes no longer show as Ready and "craft" nothing.
+  - One gate drives the rows, the tracker and the host.
+  - Every locked recipe shows greyed, with its unlock reason and a real LOCKED header, Raft-style.
+  - Hold-to-craft shows a progress ring with the count.
+  - 3D icons for all 36 progression items; the Receiver is no longer blank.
+  - Readable selected tab.
+  - A longer recipe list that doesn't re-sort while open.
+  - Bag icons pre-render, so there is no pop-in.
+  - One name per material ("Plank" everywhere).
+- **No centred popups (UX3-2):** smelter, research, logbook and fish notebook share one docked right-hand side sheet. How to play is a page in the pause rail.
+- **HUD (HUD-2..6, UX3-1, UX3-8):**
+  - The throw charge bar fills again.
+  - Tracker and fish toasts stack in one top-left column.
+  - The onboarding and pickup feeds no longer overlap.
+  - Pause hover moves focus.
+  - The shader warm-up page error is fixed (sync compile).
+  - Stations, crates and the tinker's desk show "E Use …" crosshair prompts.
+  - J, N and L are listed, and the goals panel is renamed "Goals".
+- **Building (BUILD-1..6, CRAFT-4):**
+  - One removal targeter with a red ghost and a precise refusal reason.
+  - Can't remove the tile a player stands on.
+  - Stations are removable when empty ("Empty the Smelter first").
+  - Edge walls are never left floating.
+  - Stairs and decor share a tile-occupied rule.
+  - The nearest hit wins.
+- **Saves (NET-1..4, SURV-2):**
+  - New dist/save-store.js keeps progression, grills, logbook seen, onboarding, hints and the pin inside the world save, with one guarded write. This fixes the smelter-output duplication on reload, stale tabs overwriting stations, and New game carrying old research and stations.
+  - The title menu rebuilds, so Continue shows after Save and quit.
+- **Hook and diving (HOOK-R3-1..6):**
+  - Quitting mid-dive no longer leaves the title underwater.
+  - Barrel loot is rolled once, so full-bag hold and collect agree.
+  - Crouch-toggle doesn't trap the diver.
+  - A hook resting on deck stays put while sailing.
+  - E picks up debris while diving.
+  - A full-bag fish goes to the basket honestly.
+- **Survival (SURV-1,3,4,5):**
+  - The dead palm seed is removed from drops.
+  - Floors under grills can't be removed.
+  - Legacy water becomes freshcup on load.
+  - Grills and the day clock don't advance on the title.
+
+### Not fixed or design questions
+- UX3-7 (hold-to-craft repeats tools): the verifiers split. The owner asked for hold-to-craft-many, so it is left as is.
+- Removing a fuelled station loses its fuel: there is no way to take fuel back out.
+
+### Checks
+- `npm test`: 772 pass, 0 fail. The atlas build-time test in art.test.mjs flakes under load average 30–40 while the fleet runs; it passes when the machine is quiet.
+- `tests/e2e/esc-relock.py`: PASS.
+- `tests/e2e/electron_check.py --xvfb --input xtest --no-hot-swap` in real Electron 45.4.1: PASS, 51/51, esc_presses_to_pause 1.
+- `python shoot.py dist <out>`: no errors.
+
+### Open for next round
+- A single large mouse event followed by a tiny one (700 then 3) is still treated as a spike. Judge by timing.
+- Recipe-output icons for items not in the bag can still pop from SVG to 3D. Smelter fuel chips use flat sprites.
+- Check that a removed station's saved state doesn't come back when a new station is placed on the same tile.
+- Fish caught as a guest are not saved if the tab closes, the same as the guest bag.
