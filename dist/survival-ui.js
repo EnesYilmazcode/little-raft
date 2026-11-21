@@ -251,7 +251,7 @@ const CSS = `
 #inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#e0cfa5,#d6c397);color:#3e2a17;box-shadow:inset 0 0 0 2px #4a3520,0 2px 0 #4a3520}
 #inventory .sv-tab[aria-selected="true"] .sv-icon{opacity:1}
 #inventory .sv-tab:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
-#inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
+#inventory .sv-tbadge{position:absolute;right:1px;top:1px;min-width:13px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 9px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-tbadge:empty{display:none}
 #inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-color:#c4ae80 #5e4426}
 #inventory .sv-recipe{position:relative;display:grid;grid-template-columns:42px 1fr auto;gap:9px;align-items:center;flex:none;width:100%;height:auto;min-height:0;margin:0;padding:5px 8px 5px 6px;
