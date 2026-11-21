@@ -1127,15 +1127,19 @@ export function mount(transfer = null) {
     if (sun) sun.castShadow = options.shadows !== false && !!l?.shadows;
     shadowDirty(); // a new map size or shadow switch needs a fresh map
   }
-  // Called by the quality scaler one step before it turns shadows off: compiles the shadowless variant of every
-  // program now, in the background where KHR_parallel_shader_compile exists, so that step swaps programs
-  // instead of compiling them mid-game. compile() reads the light state synchronously, so castShadow is only
-  // off for the duration of the call and no frame renders without shadows.
+  // Called by the quality scaler one step before it turns shadows off: compiles the shadowless variant of the
+  // programs drawn last frame now, in the background where KHR_parallel_shader_compile exists, so that step swaps
+  // programs instead of compiling them mid-game. Only last frame's objects (not the whole scene): hidden models
+  // would leave never-used programs behind. compile() reads the light state synchronously, so castShadow is off
+  // only during these calls and no frame renders without shadows.
   let shadowlessWarmed = false;
   function warmShadowless() {
     if (shadowlessWarmed || !sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
-    shadowlessWarmed = true; sun.castShadow = false;
-    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shadowless warm-up failed', e)); }
+    shadowlessWarmed = true;
+    const list = renderer.renderLists.get(scene, 0), drawn = new Set();
+    for (const items of [list.opaque, list.transmissive, list.transparent]) for (const it of items) if (it.object) drawn.add(it.object);
+    sun.castShadow = false;
+    try { for (const o of drawn) renderer.compileAsync(o, camera, scene).catch(e => console.warn('shadowless warm-up failed', e)); }
     catch (e) { console.warn('shadowless warm-up failed', e); }
     finally { sun.castShadow = true; }
   }
