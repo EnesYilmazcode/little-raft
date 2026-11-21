@@ -116,3 +116,16 @@ Existing tests that must keep passing: `tests/progression.test.mjs` (:100 comple
 
 ## Out of scope
 Placeable music stand, recorded songs, RMB articulations, per-note keys, a feed line and achievements. The audio `note()` API is generic, so these can come later.
+
+## Build notes (deviations)
+- `createInstruments(T, host)` takes `T` first, as section 10 shows (section 3's header omits it). `host.now?.()` is an optional clock for tests; otherwise it uses `performance.now()`.
+- `friendPos` returns `friend.position` whenever `other` is set, ignoring `friend.visible`. coop.js hides game.js's fallback avatar each frame while its own remote avatar is drawn, but `friend.position` still tracks the peer. Gating on `visible` would have muted every remote note in normal co-op.
+- The useSelected hook goes one line lower than :952, right after `const kind = ...`, because it needs `kind`. Guests still waiting for the host can't play.
+- The create line first calls `instruments?.dispose()` so a rebuilt scene doesn't leak the old prompt provider.
+- Hold rotations were tuned from headless screenshots so each part reads in first person: drum `rx:-0.7` (green head toward the eye), pipes `rx:0.2` (stepped tubes upright), bells `rx:-1.25` (bars face the eye). The spec's values (.3 / -1.2 / .9) showed the drum's side, the pipes end-on and the bells edge-on.
+- The bells SIZE is .26 (was .22). The bells model sets `userData.gripFrac = [-.4, 0, 0]`, and the held-items hook turns it into a grip function so the fist holds the rail ends instead of covering the bars. The other two kinds use the centre grip (`null`).
+- The bells mallet rests in front of the bars (x≈.03–.12) rather than off to the right, which keeps the bounding box under .3 m.
+- Local strike sprites are drawn at 0.5x scale. At .5 m, a .14 m plane covered about a fifth of the screen height. Remote sprites stay full size.
+- coop.js now exports `HELD` and freezes it.
+- `tests/survival.test.mjs` hard-codes the Tools tab order, so `drum, pipes, bells` were appended to it.
+- The avatar.js fallback friend model (old clients) gets no instrument meshes, so it shows an empty hand, as the spec allows.
