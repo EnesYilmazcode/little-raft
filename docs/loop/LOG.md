@@ -278,3 +278,26 @@ Known limits:
 - The tileArmor contract exists (world.tileArmor) but no armor item yet.
 - Eating has no hand animation.
 Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/foundation costs; crop plots (potato/beet); simple purifier fuel and timings (30 s per cup); shark bait.
+
+## 2026-11-21 · loop-features-202611210534 (features, round 2)
+Base: origin/claude/raft-master (7555d67) with round 1 (loop-features-202611210451) merged in (conflicts in game.js/index.html/inventory-state.js resolved; all lanes + round 1 coexist).
+All three features are content-registry modules (dist/content.js FEATURES), state in world.ext[name].
+- **Seaside Kiln** (`kiln`) — research-gated station (stone 4, clay 4, scrap 1) smelting metal ore → Metal Bar, sand → Glass Pane, clay → Fired Brick with wood fuel; recipes Glass Lantern (lit at night), Line Sinker (halves hook wear; one game.js line in wearHook), Glass Cups ×3, Brick Planters ×2. Files: kiln.js, kiln-core.js, kiln-model.js.
+- **Puffhen raft animals** (`animals`) — starter Nest Box lured with a palm seed (or 3 leaves); hens wander deterministically on the host clock (no positions sent), lay Puff Eggs (+ feathers), can be fed, petted (hearts) and renamed; Feather Cushion decor and Egg Lantern recipe. Files: animals.js, animals-core.js, animals-models.js, animals-ui.js. game.js: contentCtx.hasGrill.
+- **Decor pack + signboards** (`decorpack`) — Woven Deck Mat, Wind Pennant, Hanging Fern Post, Shell Chime, Rope Hammock, Clay Pot Trio (first clay use) and a writable Signboard (3×18 chars, cleaned, CanvasTexture cache); quarter-turn rotation with E. Files: decor-pack.js, decor-pack-models.js, signs-core.js, signs-ui.js. game.js: decorModel(type, d).
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (13 agents).
+Review fixes: kiln guest revision skip for old hosts; sign text lone surrogates + huge input, sign dialog lifecycle on dispose; puffhen rename reach, guest clock slew, graph rebuild churn, dialog leak; storage-research tests made robust to new recipes; icons for sand/stone/clay/ore/pots/sign/chime; hammock pillow, cushion tufts.
+Checks: npm test 342/342; shoot.py errors []; coop-e2e (loopback) all pass except test 4 middle-click ping (fails on base too); sign write/turn verified host↔guest over loopback.
+Known limits: decor collision is a centre circle (fern/hammock posts walkable); doorway clipping of hens; glass lantern glass looks pale at night; mat/fern/hammock borrow icons.
+
+## 2026-11-21 · loop-features-202611210722 (features, round 3)
+Base: origin/claude/raft-master (6ab9b24, already holding round 1) + round 2 (loop-features-202611210534) merged in (re-based 3-way merge; kiln metal now uses master's `metalingot`/`glass`/`brick`; decor-pack rotation kept via `userData.ownRot`). raft-integration (newer timestamp) was skipped as base: it is a divergent line 558 commits behind master without the lanes.
+Avoided features already taken by other loop-features runs (paint, sleep, motor/wheel, beehive, rain barrel, instruments, treasure, map table, customise).
+- **Diving gear** (`divegear`) — Puff-Feather Fins (swim ×1.3), Breath Jug (45→75 s air), Seaglass Goggles (fog ×1.53, lighter vignette, lens frame overlay), Tide Scraper (gather ×0.6); works while in the bag. New shared registry hook `content.diveMods(out)` → diving.js `getMods`; underwater-fx `fogMul`/`uVig`.
+- **Cooking pot & meals** (`cookpot`, last in FEATURES) — clay/stone/scrap pot, Driftwood Bowls, 6 meals from fish/seaweed/eggs/seeds/fresh water giving one timed per-player buff (swim, walk/jump, breath, reel, night vision, all-round). MOVE_MUL (player-physics) and HOOK_MUL (hook-physics) multipliers; buffs `{host, guest}` host-owned, applied locally.
+- **Pim's Barge** (`trader`) — visiting trade barge (first at 4 min, then every 10–14 min) docking at the bow; Bright Shell currency, 6 seeded offers per visit, Shell Wreath plan (plan-gated recipe) and rare Glass Float decor; trade dialog.
+Fleet: 1 merge agent, 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (14 agents).
+Review/QA fixes: diveMods per-frame allocation; rain hidden underwater; night-vision floor restored after buff/without daynight; guest wore-off toast; stale net flag after leaving; wreath craft row locked until plan; trade dialog per-frame string; Tinker's Desk heading wrap in Tools tab; goggles lenses on portrait phones; "Move closer to Pim" wording.
+Checks: npm test 609/609; shoot2.py errors []; coop2 loopback: only base failures (3 join feed, 6 remote hook); guest buff isolation and guest trade verified over loopback.
+Harness note: master's title menu hides #solo/#welcomeCrew, so shoot.py and tests/coop-e2e.mjs time out as written; patched copies click via JS.
+Known limits: barge has no collision (you can swim through it); held meal steals E from grill/stations (prompt says Eat); leftover guest buff can pass to the next guest until reload; journal chip overlaps hotbar slot 1 on phones (master); pale seabed fade band (pre-existing).
