@@ -7,7 +7,7 @@
 //
 // One inside-out sphere (radius 150, fits camera.far = 200), one draw call.
 // Gradient, sun disk/halo and soft procedural clouds are computed by a shader
-// into a small upper-hemisphere texture (re-baked every few seconds for cloud
+// into a small upper-hemisphere texture (baked once; optional slow re-bake for cloud
 // drift, needs sky.update(t, renderer)); the dome itself only samples it.
 // The dome recentres on the rendering camera, ignores fog, and is drawn after
 // other opaques.
@@ -168,9 +168,9 @@ export function createSky(T, options = {}) {
   group.name = 'sky';
   group.add(mesh);
 
-  // Clouds drift slowly, so re-baking every few seconds is invisible.
+  // Baked once on the first update; pass bakeEvery (seconds) for cloud drift.
   let lastBake = -Infinity;
-  const bakeEvery = options.bakeEvery ?? 4;
+  const bakeEvery = options.bakeEvery ?? Infinity; // static by default: re-baking costs about a frame under software GL
   function update(time, renderer) {
     uniforms.uTime.value = time || 0;
     if (!renderer || Math.abs(uniforms.uTime.value - lastBake) < bakeEvery) return;
