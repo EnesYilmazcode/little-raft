@@ -170,13 +170,13 @@ const LIST = [
 
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
-    recipe: cook('grill', 'fish', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
+    recipe: cook('grill', 'fish', { time: 40, fuel: 0.8 }), unlock: atStation('grill'), // = cooking.js cookTime at 30 cm; 1 plank burns 50 s
     tip: 'A cosy, smoky meal. Click with it in hand to eat (+35 food).' }),
   item('honeyfish', 'Honey Glazed Fish', 'food', { iconTint: '#e8a83a', stack: 10, // [bees]
     recipe: hand({ cookedfish: 1, honey: 1 }), unlock: discover('honey'),
     tip: 'Grilled fish with a honey glaze. The seagull is very jealous.' }),
   item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
-    recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    recipe: cook('grill', 'sharkmeat', { time: 60, fuel: 1.2 }), unlock: atStation('grill'), // Raft: big cuts take ~60 s
     tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
 
   // ----- build / decor (placeable on raft tiles) -----
