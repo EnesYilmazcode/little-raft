@@ -1,9 +1,12 @@
 // Held item models (procedural, own art). ES module.
-// buildItemModel(T, kind) -> Group in "as held" metres, origin = centre of its bounds, with
-//   userData.kind, userData.size {x,y,z}, userData.grip [x,y,z] (where a fist closes, root space).
-// Every call builds fresh geometry/materials: render it once (icons) or cache it (viewmodel).
-// HOLD[kind] says how the first-person hand carries it: hand 'right'|'left', default pose, and the
-// rotation/offset of the grip frame (fist grip axis = local Y).
+// buildItemModel(T, kind, factory?) -> Group in "as held" metres, origin = centre of its bounds, with
+//   userData.kind, userData.size {x,y,z}, userData.grip [x,y,z] (where a fist closes, root space),
+//   userData.shared = true when the meshes came from `factory` (cached geometry: never dispose).
+// factory(kind) -> Object3D|null is optional (e.g. (k) => getModel(k) from models.js); it is used for
+// carried / placeable kinds and for kinds this file has no mesh for. Tools keep their own tuned models.
+// Any other kind still gets something sensible: a generic bundle, so every hotbar slot shows in hand.
+// holdFor(kind) says how the first-person hand carries it: hand 'right'|'left', default pose, and the
+// rotation of the grip frame (fist grip axis = local Y).
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
@@ -12,6 +15,10 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
+// Items you aim at the raft to place: the free hand points at the spot while one of these is held.
+export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds']);
+export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
+const TOOL_KINDS = ['hook', 'hammer', 'fishingrod'];
 
 export const HOLD = Object.freeze({
   hook:       { hand: 'right', pose: 'grip' },
@@ -23,10 +30,15 @@ export const HOLD = Object.freeze({
   plastic:    { hand: 'right', pose: 'grip', rx: 0.1, ry: 1.2, rz: 0.1 },
   rope:       { hand: 'right', pose: 'grip', ry: 0.4 },
   fish:       { hand: 'right', pose: 'grip', rx: 0.15, ry: -0.5, rz: 0.15 },
-  ...Object.fromEntries(DECOR_KINDS.map((k) => [k, { hand: 'left', pose: 'point' }])),
+  cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
+  water:      { hand: 'right', pose: 'grip', ry: 0.3 },
+  ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: 'point' }])),
 });
+// Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
+export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
 
-const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.15, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13 };
+const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.15, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
+  planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11 };
 
 function fit(T, model, maxDim, gripFn) {
   const root = new T.Group();
@@ -86,10 +98,53 @@ function buildFish(T) {
   return g;
 }
 
-// Kind -> fresh model. Unknown kinds return null.
-export function buildItemModel(T, kind) {
+function buildCup(T, full) {
+  const g = new T.Group();
+  const shell = new T.MeshStandardMaterial({ color: 0xd8d2c2, roughness: 0.6 });
+  const cup = new T.Mesh(new T.CylinderGeometry(0.045, 0.035, 0.1, 14, 1, true), new T.MeshStandardMaterial({ color: 0xd8d2c2, roughness: 0.6, side: T.DoubleSide }));
+  const base = new T.Mesh(new T.CircleGeometry(0.035, 14), shell); base.rotation.x = Math.PI / 2; base.position.y = -0.05;
+  const rim = new T.Mesh(new T.TorusGeometry(0.045, 0.004, 5, 18), shell); rim.rotation.x = Math.PI / 2; rim.position.y = 0.05;
+  g.add(cup, base, rim);
+  if (full) {
+    const w = new T.Mesh(new T.CircleGeometry(0.042, 14), new T.MeshStandardMaterial({ color: 0x5fb3c8, roughness: 0.15, metalness: 0.1 }));
+    w.rotation.x = -Math.PI / 2; w.position.y = 0.035; g.add(w);
+  }
+  return g;
+}
+
+function buildSeeds(T) {
+  const g = new T.Group(), m = new T.MeshStandardMaterial({ color: 0xb98d4f, roughness: 0.7 });
+  const s = new T.SphereGeometry(1, 10, 8);
+  [[0, 0, 0, 0.3], [0.02, 0.006, 0.012, 1.4], [-0.018, 0.004, 0.014, -0.8], [0.004, 0.014, -0.012, 2.2]].forEach(([x, y, z, r]) => {
+    const e = new T.Mesh(s, m); e.scale.set(0.012, 0.02, 0.012); e.position.set(x, y, z); e.rotation.z = r; g.add(e);
+  });
+  return g;
+}
+
+// A small cloth bundle tied with rope: stands in for any kind without a model of its own.
+function buildBundle(T) {
+  const g = new T.Group();
+  const cloth = new T.Mesh(new T.BoxGeometry(0.1, 0.08, 0.08), new T.MeshStandardMaterial({ color: 0xcdbb94, roughness: 0.95 }));
+  const tie = new T.MeshStandardMaterial({ color: 0x8a6e44, roughness: 1 });
+  const b1 = new T.Mesh(new T.BoxGeometry(0.104, 0.084, 0.012), tie), b2 = new T.Mesh(new T.BoxGeometry(0.012, 0.084, 0.084), tie);
+  g.add(cloth, b1, b2);
+  return g;
+}
+
+// Kind -> fresh model ('' / null -> null). Never null for a real kind: falls back to a bundle.
+export function buildItemModel(T, kind, factory = null) {
+  if (!kind) return null;
   let root = null;
-  if (kind === 'hook') {
+  const left = holdFor(kind).hand === 'left';
+  if (factory && !TOOL_KINDS.includes(kind) && (left || !HOLD[kind])) {
+    let m = null;
+    try { m = factory(kind); } catch { m = null; }
+    if (m?.isObject3D) {
+      root = fit(T, m, SIZE[kind] || 0.16, (s) => new T.Vector3(0, left ? -s.y / 2 : -s.y * 0.2, 0));
+      root.userData.shared = true;
+    }
+  }
+  if (root) { /* factory model */ } else if (kind === 'hook') {
     const m = createHook(T); m.scale.setScalar(0.55);
     // handle axis sits at x=.2, y≈-.27 in createHook's inner group (inner is re-centred)
     const inner = m.children[0], gp = new T.Vector3(0.2, -0.272, 0).add(inner.position).multiplyScalar(0.55);
@@ -119,8 +174,14 @@ export function buildItemModel(T, kind) {
   } else if (DECOR_KINDS.includes(kind)) {
     const c = createCraft(T, kind);
     if (c) root = fit(T, c, SIZE[kind], (s) => new T.Vector3(0, -s.y / 2, 0)); // grip = base centre
+  } else if (kind === 'cup' || kind === 'water') {
+    root = fit(T, buildCup(T, kind === 'water'), SIZE[kind], () => new T.Vector3(0, 0, 0));
+  } else if (kind === 'seed' || kind === 'seeds') {
+    root = fit(T, buildSeeds(T), SIZE[kind], (s) => new T.Vector3(0, -s.y / 2, 0));
+  } else if (kind === 'planter') {
+    root = fit(T, createCraft(T, 'palm'), SIZE.planter, (s) => new T.Vector3(0, -s.y / 2, 0));
   }
-  if (!root) return null;
+  if (!root) root = fit(T, buildBundle(T), 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
   root.name = 'item_' + kind;
   root.userData.kind = kind;
   root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
