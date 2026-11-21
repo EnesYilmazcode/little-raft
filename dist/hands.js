@@ -1,4 +1,4 @@
-// First-person viewmodel hands (original procedural meshes, no textures). ES module.
+// First-person viewmodel hands (original procedural meshes and tiny generated textures, no image files). ES module.
 // Usage:
 //   const hands = createHands(THREE, { modelFactory });  // factory optional, e.g. (k) => getModel(k) (models.js)
 //   camera.add(hands.group);                       // camera must be in the scene
@@ -15,7 +15,7 @@
 // Camera space: origin at the eye, looking -Z, +Y up, +X right. The right fist grips near (0.38,-0.32,-0.80),
 // the left near (-0.34,-0.35,-0.70). Each arm is posed ABSOLUTELY every frame from smoothed weights, so
 // nothing accumulates or drifts. Held models are built lazily once per kind and cached.
-import { buildItemModel, holdFor, isPlaceable, PLACEABLE_KINDS } from './held-items.js?build=v3-survival-ae77fa84ac2b';
+import { buildItemModel, holdFor, isPlaceable, PLACEABLE_KINDS, surfaceTextures } from './held-items.js?build=v3-survival-ae77fa84ac2b';
 export { buildItemModel, isPlaceable, PLACEABLE_KINDS };
 const POSES = ['point', 'throw', 'grip', 'open'];
 
@@ -38,14 +38,27 @@ export function createHands(T, { modelFactory = null } = {}) {
     const m = new T.MeshStandardMaterial({ color, roughness, metalness: 0, ...extra });
     mats.push(m); return m;
   };
-  const skin = mat(0xc89068, 0.62, { emissive: 0x1c0e06 });
-  const skinPalm = mat(0xc08562, 0.66, { emissive: 0x1a0c05 });
-  const nail = mat(0xe0b294, 0.4, { emissive: 0x1c0e06 });
-  const crease = mat(0x8e5a3c, 0.8);
-  const sleeveMat = mat(0x52705e, 0.95);
-  const cuffMat = mat(0x3e5648, 0.95);
-  const ropeMat = mat(0xb89a64, 0.95);
-  const ropeDarkMat = mat(0x8a6e44, 1.0);
+  // Skin: pinkish sun-tanned, faintly mottled. The scene lights reach the viewmodel from wherever the sun
+  // happens to be, so a fixed view-space key term (upper left, toward the eye) adds a soft light-to-shadow
+  // fall-off across forearms and round each finger instead of the flat, evenly lit wax look.
+  const tx = surfaceTextures(T);
+  const keyShade = (m) => {
+    m.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        float vmKey = clamp(dot(normal, normalize(vec3(-0.45, 0.75, 0.5))) * 0.5 + 0.5, 0.0, 1.0);
+        diffuseColor.rgb *= mix(0.42, 1.1, vmKey * vmKey * (3.0 - 2.0 * vmKey));`);
+    };
+    m.customProgramCacheKey = () => 'vmKeyShade';
+    return m;
+  };
+  const skin = keyShade(mat(0xb6786a, 0.6, { emissive: 0x160805, map: tx.skin }));
+  const skinPalm = keyShade(mat(0xbb8274, 0.64, { emissive: 0x160805, map: tx.skin }));
+  const nail = keyShade(mat(0xd8ae9c, 0.38, { emissive: 0x120806 }));
+  const crease = mat(0x7a4a3a, 0.8);
+  const sleeveMat = keyShade(mat(0x5a7462, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
+  const cuffMat = keyShade(mat(0x465c4e, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
+  const ropeMat = mat(0xc4a46c, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
+  const ropeDarkMat = mat(0x8a6e44, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
 
   // Viewmodel meshes draw in the transparent queue after the camera's depth-clear marker (see game.js),
   // never cast shadows and are never culled.
