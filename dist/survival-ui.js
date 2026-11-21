@@ -458,6 +458,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let dragging = false, dragFrom = null, dragAmt = 0, overEl = null;
   let hoverIdx = null;
   let lastSig = null, bagSig = null;
+  let gateSig = null, gateAt = 0; // recipe gates seen by the open bag (goals / unlocks change mid-session)
+  const GATE_POLL_MS = 250;
   // Per-frame fast path: skip snapshot + string signatures when nothing visible changed.
   // Bag.version catches method mutations; the typed-array shadow catches direct .slots writes
   // (game.js edits counts/durability in place), so the HUD never goes stale.
@@ -969,11 +971,27 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function hideTip() { if (tip) tip.hidden = true; tipAnchor = null; }
 
   // ---------- render ----------
+  // One string for every recipe's gate: '' open, 'h' hidden, 'l<reason>' locked.
+  function gateSignature() {
+    return recipeList().map(r => { const g = gate(r.id); return r.id + ':' + (g?.hidden ? 'h' : g?.locked ? 'l' + (g.reason || '') : ''); }).join('|');
+  }
+  // While the bag is open, a recipe that unlocks or becomes a goal shows up (or loses its lock) at once.
+  function syncGates(now) {
+    if (now < gateAt) return false;
+    gateAt = now + GATE_POLL_MS;
+    const gs = gateSignature();
+    if (gs === gateSig) return false;
+    gateSig = gs;
+    buildRecipes(); // rebuilds the rows only when the visible set changed
+    recipeEls.forEach(v => { v.sig = null; });
+    return true;
+  }
   function render(force) {
     if (!alive) return;
     const bag = bagNow();
     ensureTools();
     if (!bag) return;
+    if (isOpen && !dragging && syncGates(performance.now())) { force = true; lastSig = null; }
     const mode = (isOpen ? 1 : 0) | (dragging ? 2 : 0);
     const ver = bag.version, sel0 = bag.selectedIndex;
     if (!force && bag === fastBag && typeof ver === 'number' && ver === fastVer && sel0 === fastSel
@@ -1014,6 +1032,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     if (trackEl) trackEl.hidden = true;
     buildRecipes();
+    gateSig = gateSignature(); gateAt = performance.now() + GATE_POLL_MS;
     invalidate();
     invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });

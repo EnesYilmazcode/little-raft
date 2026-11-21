@@ -61,6 +61,18 @@ test('CRAFT-2: the pinned tracker shows a locked recipe as locked', () => {
   assert.match(fn, /const key = sig \+ '\|' \+ pinId \+ '\|' \+ \(g \?/, 'gate change repaints the tracker');
 });
 
+test('CRAFT-6: an open bag rebuilds its recipes when gates change', () => {
+  const s = src('survival-ui.js');
+  assert.match(s, /function gateSignature\(\)/);
+  const sync = s.slice(s.indexOf('function syncGates('), s.indexOf('function render('));
+  assert.match(sync, /if \(gs === gateSig\) return false;/);
+  assert.match(sync, /buildRecipes\(\);/);
+  const render = s.slice(s.indexOf('function render('), s.indexOf('function canOpenNow('));
+  assert.match(render, /if \(isOpen && !dragging && syncGates\(performance\.now\(\)\)\) \{ force = true; lastSig = null; \}/, 'checked before the fast path');
+  assert.ok(render.indexOf('syncGates(') < render.indexOf('shadowSame(bag.slots, false)'), 'not skipped by the unchanged-bag fast path');
+  assert.match(s, /buildRecipes\(\);\n\s*gateSig = gateSignature\(\);/, 'open() records the gates it built with');
+});
+
 // ---- item-tooltips.js with a minimal fake DOM ----
 function fakeEl(tag = 'div') {
   const attrs = {};
