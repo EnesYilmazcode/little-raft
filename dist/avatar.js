@@ -5,6 +5,9 @@
 // Feet rest at y = 0, head centred at y ~1.6, eyes at y ~1.65, facing +Z.
 // All geometries and materials are created per avatar and owned by it;
 // call group.userData.dispose() to free them.
+// Every part is baked into one vertex-coloured mesh (one draw call, one shadow caster). The pivot groups
+// in userData.parts are kept for reference but are now empty: nothing animates them.
+import { bakeMeshes } from './bake.js?build=v3-survival-ae77fa84ac2b';
 
 export function createAvatar(T, color) {
   const root = new T.Group();
@@ -154,14 +157,18 @@ export function createAvatar(T, color) {
     strap.rotation.x = -0.05;
   }
 
+  const parts = [];
+  root.traverse((o) => { if (o.isMesh) parts.push(o); });
+  const body = bakeMeshes(parts, root, 'avatarBaked');
+  body.castShadow = true; body.receiveShadow = true;
+  for (const m of parts) m.removeFromParent();
+  for (const g of geos) g.dispose();
+  for (const m of mats) m.dispose();
+  root.add(body);
+
   root.userData.parts = { head, leftArm, rightArm, leftLeg, rightLeg };
   root.userData.eyeHeight = 1.65;
-  root.userData.dispose = () => {
-    for (const g of geos) g.dispose();
-    for (const m of mats) m.dispose();
-    geos.length = 0;
-    mats.length = 0;
-  };
+  root.userData.dispose = body.userData.dispose;
 
   return root;
 }

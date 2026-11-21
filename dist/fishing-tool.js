@@ -16,11 +16,12 @@
 //   gripAxis    Vector3  unit rod axis (+Y, butt -> tip)
 //   float       Group    float (hide while the line is cast out)
 //   leader      Mesh     tip -> float line (hide while cast out)
-//   rodLine     Mesh     reel -> guides -> tip line (always visible)
-//   reelSpool   Mesh     spool (rotate .rotation.x to animate reeling; axis is model X)
+//   rodLine     Mesh     the baked static rod (blank, handle, guides, reel frame, reel -> tip line; always visible)
+//   reelSpool   Mesh     spool + crank (rotate .rotation.x to animate reeling; axis is model X)
 //   size        {x,y,z}  approximate bounds
-//   meshCount   number   (17)
+//   meshCount   number   parts modelled (17); they are baked into 4 meshes: rod, spool, float, leader
 //   dispose()   frees all owned geometries and materials
+import { createPalette, bakeGeometry } from './bake.js?build=v3-survival-ae77fa84ac2b';
 export function createFishingTool(T) {
   const root = new T.Group();
   root.name = 'fishingRod';
@@ -263,6 +264,41 @@ export function createFishingTool(T) {
   }
 
   // ---------- reference nodes ----------
+  // ---------- bake: static rod parts -> 1 mesh, spool + crank -> 1, float -> 1 (leader stays as is) ----------
+  {
+    const pal = createPalette({ size: 16 });
+    mats.push(pal);                                           // dispose() frees the palette too
+    const mk = (geo, name) => { const m = new T.Mesh(G(geo), pal.material); m.name = name; m.castShadow = m.receiveShadow = false; m.frustumCulled = false; return m; };
+    const old = new Set();
+    root.updateMatrixWorld(true);
+    const parts = [];
+    for (const c of root.children.slice()) {
+      if (c === spool || c === leader || !c.isMesh) continue;
+      if (c.isInstancedMesh) {
+        for (let i = 0; i < c.count; i++) {
+          const t = new T.Mesh(c.geometry, c.material); t.matrixAutoUpdate = false;
+          c.getMatrixAt(i, t.matrix); t.matrix.premultiply(c.matrixWorld); t.matrixWorld.copy(t.matrix);
+          parts.push(t);
+        }
+      } else parts.push(c);
+      root.remove(c); old.add(c.geometry);
+    }
+    const rod = mk(bakeGeometry(parts, null, pal), 'rodBaked');
+    root.add(rod);
+    rodLine = rod;
+    const spoolParts = [spool, ...spool.children];
+    const spoolBaked = mk(bakeGeometry(spoolParts, spool, pal), 'reelSpool');
+    spoolBaked.position.copy(spool.position); spoolBaked.quaternion.copy(spool.quaternion); spoolBaked.scale.copy(spool.scale);
+    root.remove(spool); root.add(spoolBaked);
+    spoolParts.forEach((m) => old.add(m.geometry));
+    spool = spoolBaked;
+    const floatParts = float.children.slice();
+    const floatBaked = mk(bakeGeometry(floatParts, float, pal), 'floatBaked');
+    floatParts.forEach((m) => { float.remove(m); old.add(m.geometry); });
+    float.add(floatBaked);
+    for (const g of old) { g.dispose(); const i = geos.indexOf(g); if (i >= 0) geos.splice(i, 1); }
+  }
+
   const grip = V3(0, -0.56, 0);
   const gripNode = new T.Object3D(); gripNode.name = 'grip'; gripNode.position.copy(grip); root.add(gripNode);
   const tipNode = new T.Object3D(); tipNode.name = 'rodTip'; tipNode.position.copy(tipPoint); root.add(tipNode);
