@@ -1168,7 +1168,7 @@ export function mount(transfer = null) {
       if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : 'Point at an empty raft floor'); return; }
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
       if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
-      swing = 1; ghostHold = {kind, x:v.x, z:v.z}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
+      swing = 1; ghostHold = {kind, x:v.x, z:v.z, rot:kind === 'hammer' ? 0 : placeRot}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
     }
     if (kind === 'fishingrod') {
       if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to fish'); return; }
@@ -1445,9 +1445,9 @@ export function mount(transfer = null) {
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
-    if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.x !== hover.x || ghostHold.z !== hover.z)) ghostHold = null;
-    if (!hover || ghostHold) { ghosts.hide(); return; } // just-placed spot: no ghost over the new piece until the aim moves off
     const floor = kind === 'hammer';
+    if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.rot !== (floor ? 0 : placeRot) || hover.x !== ghostHold.x || hover.z !== ghostHold.z)) ghostHold = null; // keep the ghost off the piece just placed until the aim moves
+    if (!hover || ghostHold) { ghosts.hide(); return; }
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
   }
   function hostState() {
@@ -1621,7 +1621,7 @@ export function mount(transfer = null) {
     const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
     if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat) interact();
-    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration
+    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : e.altKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration (Shift+R in 15 degree steps, Alt+R back)
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => {
