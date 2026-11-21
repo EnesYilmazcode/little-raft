@@ -9,3 +9,4 @@ desktop/*.pid
 desktop/last-release.json
 .releases/
 !docs/cloud/shots/**/*.png
+sandbox/icons/_patched/

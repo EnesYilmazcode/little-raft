@@ -13,5 +13,8 @@ export function createWoodMaterial(T, color) {
   for(let r=1;r<6;r++){ctx.beginPath();ctx.ellipse(x,y,r*1.4,r*4.7,.1,0,Math.PI*2);ctx.strokeStyle=`rgba(68,37,19,${.18-r*.02})`;ctx.lineWidth=.7;ctx.stroke();}
  }
  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
- return new T.MeshStandardMaterial({map:texture,bumpMap:texture,bumpScale:.018,roughness:.86,metalness:0});
+ // The bump term samples its map three times per pixel; anisotropic filtering there is invisible at this bump
+ // scale but costly on software GL, so the bump reads the same canvas through an isotropic twin.
+ const bump=texture.clone();bump.anisotropy=1;
+ return new T.MeshStandardMaterial({map:texture,bumpMap:bump,bumpScale:.018,roughness:.86,metalness:0});
 }

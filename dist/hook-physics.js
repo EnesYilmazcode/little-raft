@@ -4,7 +4,7 @@
 // and do not claim to reproduce, any other game's internals.
 //
 // API
-//   new HookCast(T, { origin, direction, target, maxRange = 32, charge = 1, drift })
+//   new HookCast(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deck })
 //     T         : the THREE namespace (only T.Vector3 is used)
 //     origin    : Vector3-like throw start (player hand, y ~ 1.2). Copied, never mutated.
 //     direction : Vector3-like camera aim. Copied and normalized. Elevation decides the arc/range.
@@ -14,6 +14,9 @@
 //     charge    : [0,1]; launch speed = 7 + charge * 11 m/s (+1.0 m/s upward throw boost).
 //     drift     : optional {x,z} m/s water drift for the floating hook. Default mirrors game.js
 //                 item drift (z += .22/s, x += sin(time*.13)*.04/s) so hook and supplies co-drift.
+//     deck      : optional (x, z) -> deck surface y, or null over water. A hook coming down onto
+//                 the raft rests on the planks (onDeck) instead of falling through to the water.
+//                 `deckAt` is accepted as an older name for the same callback.
 //
 //   Public fields
 //     position    : Vector3  current hook position
@@ -24,17 +27,26 @@
 //     distance    : horizontal distance from last known hand to hook
 //     tension     : [0,1] rope tension (0 slack, 1 taut)
 //     tethered    : true once the rope hit maxRange during flight (horizontal motion stopped)
-//     landing     : null while flying, then Vector3 splash point (actual ballistic x/z, y = WATER_Y)
+//     landing     : null while flying, then Vector3 splash point (actual ballistic x/z, y = WATER_Y
+//                   or the deck height when it landed on the raft)
+//     onDeck      : true while the hook rests on (or is reeled across) the deck
 //     flightT     : seconds spent in flight (used by game.js for the spin animation)
 //
-//   update(dt, { hand, items, reeling = false, time })
+//   update(dt, { hand, items, reeling = false, time, skip })
 //     -> null | { kind:'collected', items:[{id,token,type}...], id, token } | { kind:'returned' }
 //     items: Array of { id, token, type, x, z } (or with .position). Never mutated.
+//     skip : optional predicate skip(item) -> truthy to ignore that item, exactly as if it were
+//            absent from `items` (not catchable; a caught entry matching only skipped items is
+//            dropped). Lets callers pass their live item array instead of a filtered copy, e.g.
+//            hook.update(dt, { hand, items: world.items, skip: isPending, reeling, time }).
 //     When `items` is an array, caught entries whose id/token vanished are dropped.
+//     The per-frame path (update/ropePoints with `out`) allocates nothing.
 //     The event is emitted EXACTLY ONCE, when a reeling hook comes within 0.7 m of the hand.
 //
 //   caughtPosition(index = 0, out?) -> Vector3 | null   bundled render spot for caughtItems[index]
-//   ropePoints(hand, segments = 16) -> Array<Vector3>   hand -> hook (array/vectors are reused per hook)
+//   ropePoints(hand, segments = 16, out?) -> Array<Vector3>   hand -> hook. Without `out` the array and
+//     vectors are reused per hook. With `out` (an array, ideally of Vector3s) it is filled in place:
+//     missing/invalid entries are replaced by new Vector3s, length is set to segments + 1; returns `out`.
 //   cancel() -> stage = 'done' (no event)
 
 export const WATER_Y = 0.05;
@@ -59,20 +71,12 @@ const REEL_SKIM = 0.06, REEL_RISE_DIST = 2;           // reeling: skim height, r
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 const finVec = (v) => !!v && fin(v.x) && fin(v.y) && fin(v.z);
-const itemX = (it) => (it.position ? it.position.x : it.x);
-const itemZ = (it) => (it.position ? it.position.z : it.z);
-const sameItem = (a, b) => a.id === b.id && a.token === b.token;
-
-// Squared horizontal distance from point P to segment AB.
-function segDist2(ax, az, bx, bz, px, pz) {
-  const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
-  const t = l2 > 1e-12 ? clamp(((px - ax) * dx + (pz - az) * dz) / l2, 0, 1) : 0;
-  const ex = ax + dx * t - px, ez = az + dz * t - pz;
-  return ex * ex + ez * ez;
-}
+// Math.hypot is a varargs builtin that V8 does not lower: it allocates on every call. Hot paths use these.
+const len2 = (x, z) => Math.sqrt(x * x + z * z);
+const len3 = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 
 export class HookCast {
-  constructor(T, { origin, direction, target, maxRange = 32, charge = 1, drift } = {}) {
+  constructor(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deck, deckAt } = {}) {
     this.T = T;
     const o = finVec(origin) ? origin : { x: 0, y: 1.2, z: 0 };
     this.origin = new T.Vector3(o.x, o.y, o.z);
@@ -95,6 +99,7 @@ export class HookCast {
     this.drift = drift && (fin(drift.x) || fin(drift.z))
       ? { x: fin(drift.x) ? drift.x : 0, z: fin(drift.z) ? drift.z : 0 } : null;
 
+    this.deck = typeof deck === 'function' ? deck : typeof deckAt === 'function' ? deckAt : null; // deckAt: older name
     this.position = this.origin.clone();
     this.stage = 'flying';
     this.caughtItems = [];
@@ -103,12 +108,16 @@ export class HookCast {
     this.tethered = false;
     this.landing = null;
     this.flightT = 0;
+    this.onDeck = false;
     this.floatTime = 0;
     this.base = this.origin.clone(); // floating anchor on the water (bob applied on top)
     this._hand = this.origin.clone();
     this._clock = 0;
     this._emitted = false;
     this._ropePts = [];
+    this._skip = null; // per-update skip predicate (see update)
+    this._h = 0.01;    // current substep length (s) and its sim time, set by update()
+    this._t = 0.01;
 
     // Thrown from at/below the water: it is simply in the water where it is.
     if (this.position.y <= WATER_Y) this._splash(this.position.x, this.position.z, null);
@@ -120,22 +129,29 @@ export class HookCast {
   // ---------- catching ----------
 
   _isCaught(it) {
-    for (const c of this.caughtItems) if (sameItem(c, it)) return true;
+    const c = this.caughtItems, id = it.id, token = it.token;
+    for (let i = 0; i < c.length; i++) if (c[i].id === id && c[i].token === token) return true;
     return false;
   }
 
   /** Catch every not-yet-caught item within `radius` of the horizontal segment A->B. */
   _sweep(items, ax, az, bx, bz, radius) {
     if (!items || this.caughtItems.length >= MAX_CAUGHT) return;
-    const r2 = radius * radius;
-    for (const it of items) {
+    const r2 = radius * radius, skip = this._skip;
+    // Segment terms hoisted out of the item loop (squared point-to-segment distance, inlined).
+    const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz, il2 = l2 > 1e-12 ? 1 / l2 : 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
       if (!it) continue;
-      const x = itemX(it), z = itemZ(it);
-      if (!fin(x) || !fin(z) || this._isCaught(it)) continue;
-      if (segDist2(ax, az, bx, bz, x, z) <= r2) {
-        this.caughtItems.push({ id: it.id, token: it.token, type: it.type });
-        if (this.caughtItems.length >= MAX_CAUGHT) return;
-      }
+      const pos = it.position;
+      const x = pos ? pos.x : it.x, z = pos ? pos.z : it.z;
+      if (!fin(x) || !fin(z)) continue;
+      let t = ((x - ax) * dx + (z - az) * dz) * il2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ex = ax + dx * t - x, ez = az + dz * t - z;
+      if (ex * ex + ez * ez > r2 || this._isCaught(it) || (skip && skip(it))) continue;
+      this.caughtItems.push({ id: it.id, token: it.token, type: it.type });
+      if (this.caughtItems.length >= MAX_CAUGHT) return;
     }
   }
 
@@ -150,10 +166,14 @@ export class HookCast {
   }
 
   _prune(items) {
-    const c = this.caughtItems;
+    const c = this.caughtItems, skip = this._skip;
     for (let i = c.length - 1; i >= 0; i--) {
+      const id = c[i].id, token = c[i].token;
       let found = false;
-      for (const it of items) if (it && sameItem(it, c[i])) { found = true; break; }
+      for (let j = 0; j < items.length; j++) {
+        const it = items[j];
+        if (it && it.id === id && it.token === token && !(skip && skip(it))) { found = true; break; }
+      }
       if (!found) c.splice(i, 1);
     }
   }
@@ -162,67 +182,104 @@ export class HookCast {
 
   /** Keep (x,z) within maxRange of the hand. Returns true if it had to clamp. */
   _tether(p) {
-    const h = this._hand, dx = p.x - h.x, dz = p.z - h.z, d = Math.hypot(dx, dz);
+    const h = this._hand, dx = p.x - h.x, dz = p.z - h.z, d = len2(dx, dz);
     if (d <= this.maxRange || d < 1e-9) return false;
     const k = this.maxRange / d;
     p.x = h.x + dx * k; p.z = h.z + dz * k;
     return true;
   }
 
-  _splash(x, z, items) {
-    this.position.set(x, WATER_Y, z);
+  /** Deck surface y at (x,z), or null over water. */
+  _deckAt(x, z) {
+    if (!this.deck) return null;
+    const y = this.deck(x, z);
+    return fin(y) && y > WATER_Y ? y : null;
+  }
+
+  _splash(x, z, items, y = WATER_Y) {
+    this.onDeck = y > WATER_Y;
+    this.position.set(x, y, z);
     this.base.set(x, WATER_Y, z);
-    this.landing = new this.T.Vector3(x, WATER_Y, z);
+    this.landing = new this.T.Vector3(x, y, z);
     this.velocity.set(0, 0, 0);
     this.stage = 'floating';
-    if (items) this._sweep(items, x, z, x, z, CATCH_RADIUS);
+    if (items && !this.onDeck) this._sweep(items, x, z, x, z, CATCH_RADIUS);
   }
 
-  _stepFlight(h, items) {
+  _stepFlight(items) {
+    const h = this._h;
     const p = this.position, v = this.velocity;
     const px = p.x, py = p.y, pz = p.z;
-    const n = { x: px + v.x * h, z: pz + v.z * h };
-    let ny = py + v.y * h - 0.5 * GRAVITY * h * h;
+    let nx = px + v.x * h, nz = pz + v.z * h;
+    const ny = py + v.y * h - 0.5 * GRAVITY * h * h;
     v.y -= GRAVITY * h;
-    if (this._tether(n)) { v.x = 0; v.z = 0; this.tethered = true; } // rope taut: just drop
+    { // tether (same as _tether, on scalars): rope taut -> stop horizontal motion, just drop
+      const hd = this._hand, dx = nx - hd.x, dz = nz - hd.z, d = len2(dx, dz);
+      if (d > this.maxRange && d >= 1e-9) {
+        const k = this.maxRange / d;
+        nx = hd.x + dx * k; nz = hd.z + dz * k;
+        v.x = 0; v.z = 0; this.tethered = true;
+      }
+    }
     this.flightT += h;
-    if (ny <= WATER_Y || this.flightT >= MAX_FLIGHT_TIME) {
-      const f = ny <= WATER_Y && py > ny ? clamp((py - WATER_Y) / (py - ny), 0, 1) : 1;
-      const sx = px + (n.x - px) * f, sz = pz + (n.z - pz) * f;
-      this._sweepFlight(items, px, py, pz, sx, WATER_Y, sz);
-      this._splash(sx, sz, items);
+    // Only a hook coming down from above the planks can land on them.
+    const dy = this._deckAt(nx, nz), floor = dy !== null && py >= dy ? dy : WATER_Y;
+    if (ny <= floor || this.flightT >= MAX_FLIGHT_TIME) {
+      const f = ny <= floor && py > ny ? clamp((py - floor) / (py - ny), 0, 1) : 1;
+      const sx = px + (nx - px) * f, sz = pz + (nz - pz) * f;
+      if (floor === WATER_Y) this._sweepFlight(items, px, py, pz, sx, WATER_Y, sz);
+      this._splash(sx, sz, items, floor);
       return;
     }
-    this._sweepFlight(items, px, py, pz, n.x, ny, n.z);
-    p.set(n.x, ny, n.z);
+    // Guarded here so the common high-flight substep makes no call (double args would be boxed).
+    const lim = WATER_Y + FLIGHT_CATCH_HEIGHT;
+    if (items && (py <= lim || ny <= lim)) this._sweepFlight(items, px, py, pz, nx, ny, nz);
+    p.set(nx, ny, nz);
   }
 
-  _stepFloat(h, items, time) {
+  _stepFloat(items) {
+    const h = this._h, time = this._t;
     const b = this.base, ax = b.x, az = b.z;
+    if (this.onDeck) { // resting on the planks: no drift, no bob, only the rope can drag it
+      this._tether(b);
+      const dy = this._deckAt(b.x, b.z);
+      if (dy !== null) { this.position.set(b.x, dy, b.z); return; }
+      this.onDeck = false; // dragged off the edge: back in the water
+    }
     const vx = this.drift ? this.drift.x : Math.sin(time * 0.13) * 0.04;
     const vz = this.drift ? this.drift.z : 0.22;
     b.x += vx * h; b.z += vz * h;
-    this._tether(b); // a walking player drags the floating hook along
+    const dragged = this._tether(b); // a walking player drags the floating hook along
+    const dy = this._deckAt(b.x, b.z);
+    if (dy !== null) {
+      // The rope hauls it up onto the planks; plain drift just bumps it against the hull.
+      if (dragged) { this.onDeck = true; this.position.set(b.x, dy, b.z); return; }
+      b.x = ax; b.z = az;
+    }
     this.floatTime += h;
     this._sweep(items, ax, az, b.x, b.z, CATCH_RADIUS);
     this.position.set(b.x, WATER_Y + Math.sin(this.floatTime * BOB_FREQ) * BOB_AMP + BOB_LIFT, b.z);
   }
 
   /** Returns true when the hook reached the hand. */
-  _stepReel(h, items) {
+  _stepReel(items) {
+    const h = this._h;
     const p = this.position, hd = this._hand, ax = p.x, az = p.z;
-    const dx = hd.x - ax, dz = hd.z - az, d = Math.hypot(dx, dz);
+    const dx = hd.x - ax, dz = hd.z - az, d = len2(dx, dz);
     if (d > 1e-9) { const k = Math.min(1, (REEL_SPEED * h) / d); p.x += dx * k; p.z += dz * k; }
     this._sweep(items, ax, az, p.x, p.z, CATCH_RADIUS);
-    const rem = Math.hypot(hd.x - p.x, hd.z - p.z);
+    const rem = len2(hd.x - p.x, hd.z - p.z);
     const rise = clamp(1 - rem / REEL_RISE_DIST, 0, 1);
-    p.y = Math.max(WATER_Y, WATER_Y + REEL_SKIM + (hd.y - WATER_Y) * rise);
+    const dy = this._deckAt(p.x, p.z), floor = dy !== null ? dy : WATER_Y;
+    this.onDeck = dy !== null;
+    p.y = Math.max(floor, floor + REEL_SKIM + (hd.y - floor) * rise);
     this.base.set(p.x, WATER_Y, p.z);
     return rem <= COLLECT_DIST;
   }
 
-  update(dt, { hand, items, reeling = false, time } = {}) {
+  update(dt, { hand, items, reeling = false, time, skip } = {}) {
     if (this.stage === 'done') return null;
+    this._skip = typeof skip === 'function' ? skip : null;
     dt = clamp(fin(dt) ? dt : 0, 0, MAX_DT);
     if (finVec(hand)) this._hand.set(hand.x, hand.y, hand.z);
     this._clock += dt;
@@ -235,20 +292,24 @@ export class HookCast {
     else if (this.stage === 'reeling' && !reeling) { // let go: float where it is
       this.stage = 'floating';
       this.base.set(this.position.x, WATER_Y, this.position.z);
+      this.onDeck = this._deckAt(this.position.x, this.position.z) !== null;
     }
 
     let arrived = false;
     const steps = Math.max(1, Math.ceil(dt / SUBSTEP - 1e-9)), h = dt / steps;
     if (dt > 0) {
       for (let i = 0; i < steps && !arrived; i++) {
-        if (this.stage === 'flying') this._stepFlight(h, list);
-        else if (this.stage === 'floating') this._stepFloat(h, list, t + h * (i + 1) - dt);
-        else if (this.stage === 'reeling') arrived = this._stepReel(h, list);
+        // Substep inputs go through fields: double args to these (non-inlined) calls get boxed.
+        this._h = h; this._t = t + h * (i + 1) - dt;
+        if (this.stage === 'flying') this._stepFlight(list);
+        else if (this.stage === 'floating') this._stepFloat(list);
+        else if (this.stage === 'reeling') arrived = this._stepReel(list);
       }
     } else if (this.stage === 'reeling') {
-      arrived = Math.hypot(this._hand.x - this.position.x, this._hand.z - this.position.z) <= COLLECT_DIST;
+      arrived = len2(this._hand.x - this.position.x, this._hand.z - this.position.z) <= COLLECT_DIST;
     }
 
+    this._skip = null; // don't retain the caller's closure between frames
     if (arrived) {
       this.stage = 'done';
       this._updateMetrics();
@@ -266,7 +327,7 @@ export class HookCast {
 
   _updateMetrics() {
     const h = this._hand;
-    this.distance = Math.hypot(this.position.x - h.x, this.position.z - h.z);
+    this.distance = len2(this.position.x - h.x, this.position.z - h.z);
     const has = this.caughtItems.length > 0;
     if (this.stage === 'flying') this.tension = this.tethered ? 1 : 0;
     else if (this.stage === 'reeling' || this.stage === 'done') this.tension = has ? 1 : 0.8;
@@ -282,7 +343,7 @@ export class HookCast {
     if (index < 0 || index >= this.caughtItems.length) return null;
     const p = this.position, h = this._hand;
     let bx = p.x - h.x, bz = p.z - h.z;
-    const l = Math.hypot(bx, bz);
+    const l = len2(bx, bz);
     if (l > 1e-6) { bx /= l; bz /= l; } else { bx = 0; bz = 1; }
     // index 0 sits right behind the hook; the rest spiral around it (golden angle).
     const back = 0.15 + (index ? 0.2 : 0);
@@ -294,14 +355,17 @@ export class HookCast {
   }
 
   /** Rope polyline hand -> hook. Sag proportional to slack. The returned array is reused. */
-  ropePoints(hand, segments = 16) {
+  ropePoints(hand, segments = 16, out) {
     const h = finVec(hand) ? hand : this._hand;
     const n = Math.max(1, Math.floor(fin(segments) ? segments : 16));
-    const pts = this._ropePts;
-    while (pts.length < n + 1) pts.push(new this.T.Vector3());
-    pts.length = n + 1;
+    const pts = Array.isArray(out) ? out : this._ropePts;
+    for (let i = 0; i <= n; i++) {
+      const q = pts[i];
+      if (!q || typeof q.set !== 'function') pts[i] = new this.T.Vector3();
+    }
+    if (pts.length !== n + 1) pts.length = n + 1;
     const p = this.position;
-    const span = Math.hypot(p.x - h.x, p.y - h.y, p.z - h.z);
+    const span = len3(p.x - h.x, p.y - h.y, p.z - h.z);
     const slack = this.stage === 'flying' ? (this.tethered ? 0 : 0.15) : 1 - this.tension;
     const sag = span * 0.12 * slack;
     const floorY = WATER_Y - MAX_SAG_BELOW;

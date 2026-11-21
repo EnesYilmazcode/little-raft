@@ -104,7 +104,7 @@ const CSS = `
 #inventory .sv-recipe .lr-sr-lock{position:absolute;right:-6px;bottom:-6px}
 #inventory .sv-recipe .lr-sr-needs{display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
 #inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
-#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Research Table';position:absolute;left:2px;top:-22px;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
+#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;top:-22px;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
 #inventory .lr-sr-more{display:block;width:100%;margin:0 0 8px;padding:6px 8px;border:0;border-radius:4px;background:#24170caa;box-shadow:inset 0 0 0 1px #ffbd6655;color:#ffcf9a;font:700 12px/1.2 ${FONT};text-align:left;letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .lr-sr-more:hover{box-shadow:inset 0 0 0 1px #ffe3a6}
@@ -273,7 +273,7 @@ export function createStorageUI(api) {
     panels.chest.hidden = panels.bag.hidden = mode !== 'crate';
     panels.study.hidden = panels.next.hidden = mode !== 'research';
     head.icon.innerHTML = iconSVG(mode === 'crate' ? 'crate' : 'research');
-    head.title.textContent = mode === 'crate' ? 'Crate' : 'Research Table';
+    head.title.textContent = mode === 'crate' ? 'Crate' : 'Tinker\u2019s Desk';
     head.banner.classList.remove('show'); prevKnown = null; prevSeen = null;
     if (mode !== 'research') { panels.next.hidden = true; delete dlg.dataset.done; }
     for (const el of [...chestEls, ...bagEls]) el._svSig = undefined;
@@ -351,9 +351,9 @@ export function createStorageUI(api) {
         return;
       }
       const miss = Object.keys(r.cost).filter(k => !seen.has(k)).map(k => itemName(k));
-      const text = miss.length ? 'Study ' + miss.join(' + ') : 'Study at a Research Table';
+      const text = miss.length ? 'Study ' + miss.join(' + ') : 'Study at a Tinker\u2019s Desk';
       if (!el.dataset.locked) { el.dataset.locked = '1'; el.dataset.srAria = el.getAttribute('aria-label') ?? ''; }
-      setAttr(el, 'title', 'Needs research: ' + (miss.join(', ') || 'visit a Research Table'));
+      setAttr(el, 'title', 'Needs research: ' + (miss.join(', ') || 'visit a Tinker\u2019s Desk'));
       setAttr(el, 'tabindex', '-1'); setAttr(el, 'aria-label', LOCKED_LABEL); lockedRows.push(el);
       setClass(el, 'lr-sr-first', !first); first ??= el;
       if (!badge && art) { badge = document.createElement('span'); badge.className = 'lr-sr-lock'; badge.innerHTML = LOCK; art.append(badge); }

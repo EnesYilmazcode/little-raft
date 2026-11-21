@@ -10,14 +10,14 @@ export const CONTENT_ITEMS = Object.freeze({
   sand:     item('sand',     'Sand',           'icon-scrap', true),
   stone:    item('stone',    'Stone',          'icon-scrap', true),
   seed:     item('seed',     'Palm Seed',      'icon-leaf',  true),
-  research: item('research', 'Research Table', 'icon-research', false),
+  research: item('research', 'Tinker\u2019s Desk', 'icon-research', false),
 });
 
 // Same shape as recipe() in inventory-state.js.
 const recipe = (id, name, count, cost) => Object.freeze({ id, name, output: Object.freeze({ kind: id, count }), cost: Object.freeze(cost) });
 
 export const CONTENT_RECIPES = Object.freeze({
-  research: recipe('research', 'Research Table', 1, { wood: 6, scrap: 2 }),
+  research: recipe('research', 'Tinker\u2019s Desk', 1, { wood: 6, scrap: 2 }),
 });
 
 // Placeable decor added by content modules (models come from content.decorModel()).

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Water Lab</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #cbd2c0; font: 13px/1.4 system-ui, sans-serif; }
+  canvas { display: block; }
+  #hud { position: fixed; left: 12px; top: 12px; padding: 8px 10px; background: rgba(20, 40, 44, .72); color: #eef; border-radius: 6px; }
+  #hud a { color: #9fe; margin-right: 8px; }
+  #hud b { color: #fff; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div>tier: <a href="?tier=a">A single pass</a><a href="?tier=b">B + prepass</a><a href="?tier=c">C + reflection</a></div>
+  <div>view: <a href="#" data-view="fp">first person</a><a href="#" data-view="over">overview</a><a href="#" data-view="sun">into sun</a> sea: <a href="#" data-amp="1">calm</a><a href="#" data-amp="2.6">rough</a></div>
+  <div id="stats"></div>
+</div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
