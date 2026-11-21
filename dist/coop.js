@@ -39,8 +39,15 @@ export function createCoop(ctx, saved = null) {
   const pings = createPings(T, ctx.scene);
   const rope = createRemoteRope(T, ctx.scene);
   const ghost = createRemoteGhost(T, ctx.scene);
-  const avatar = createRemoteAvatar(T, {color:'#70a7e4', name:'Brother'});
-  avatar.group.visible = false; ctx.scene.add(avatar.group);
+  // The remote body (name-tag canvas + draw-call bake, 100-400 ms on software GL) is built on the first peer hello,
+  // so a solo game never pays for it. Everything below treats `avatar` as optional until then.
+  let avatar = null;
+  function ensureAvatar() {
+    if (avatar) return avatar;
+    avatar = createRemoteAvatar(T, {color:'#70a7e4', name:peerName});
+    avatar.group.visible = false; ctx.scene.add(avatar.group);
+    return avatar;
+  }
   const buffer = new SnapshotBuffer();
   const enc = new DeltaEncoder(), dec = new DeltaDecoder();
   const hand = new T.Vector3(), sample = {}, kfAsked = new Set();
@@ -49,7 +56,7 @@ export function createCoop(ctx, saved = null) {
   let helloAt = -1e9, settled = false, lastSend = 0, lastSent = null, lastRecv = now(), lastItems = null, lastItemsAt = 0, itemKey = '';
   let lastHook = null, throwAt = -1, emote = null, lastPose = null, errors = 0, aboard = !!saved?.aboard; // aboard: guest had a live session
   let rejoin = saved?.rejoin ?? null;      // {since, attempt, next} while a guest is reconnecting
-  let peerName = saved?.peerName ?? 'Brother'; avatar.setName(peerName);
+  let peerName = saved?.peerName ?? 'Brother';
   const stats = {sent:0, recv:0, bytesOut:0, bytesIn:0, since:now()};
 
   const sendRaw = m => { const c = ctx.conn(); if (!c?.open) return; try { c.send(m); stats.sent++; stats.bytesOut += JSON.stringify(m).length; } catch {} };
@@ -100,7 +107,9 @@ export function createCoop(ctx, saved = null) {
   function onEvent(m) {
     if (m.k === 'hello') {
       peer = {v:m.v, id:String(m.id ?? '')};
-      peerName = String(m.name ?? 'Brother').slice(0, 16) || 'Brother'; avatar.setName(peerName);
+      const name = String(m.name ?? 'Brother').slice(0, 16) || 'Brother';
+      if (avatar && name !== peerName) avatar.setName(name);
+      peerName = name; ensureAvatar();
       if (!m.re) event('hello', {v:COOP_VERSION, id:coopId, name:readName(), re:1}); // answer every non-reply (a hot-swapped hub starts over)
     } else if (m.k === 'kf') enc.forceKeyframe(m.kk);
     else if (m.k === 'ping' && Array.isArray(m.p) && m.p.every(Number.isFinite)) {
@@ -140,7 +149,8 @@ export function createCoop(ctx, saved = null) {
   // ---------- remote rendering ----------
   function renderRemote(dt, t, time) {
     const s = peer && ctx.ready() ? buffer.sample(t, sample) : null;
-    avatar.group.visible = !!s;
+    if (s) ensureAvatar();
+    if (avatar) avatar.group.visible = !!s;
     if (s) ctx.friend.visible = false; // game.js' simple avatar stays the fallback for old clients
     if (!s) { rope.update(dt, hand, null, ctx.ocean, time); ghost.update(null, ctx.deckY(), time); return; }
     const L = s.latest ?? {};
@@ -230,7 +240,7 @@ export function createCoop(ctx, saved = null) {
 
   const debug = {
     get stats() { const s = (now() - stats.since) / 1000; return {...stats, outBps:stats.bytesOut / s, inBps:stats.bytesIn / s, interp:buffer.stats}; },
-    get remote() { const p = avatar.group.position, h = rope.hook; return {x:p.x, y:p.y, z:p.z, visible:avatar.group.visible, name:peerName,
+    get remote() { const p = avatar?.group.position ?? {x:0, y:0, z:0}, h = rope.hook; return {x:p.x, y:p.y, z:p.z, visible:!!avatar?.group.visible, name:peerName,
       hook:h?.visible ? {x:h.position.x, y:h.position.y, z:h.position.z, stage:lastHook, ropeVisible:!!rope.line?.visible} : null}; },
     get peer() { return peer ? {...peer} : null; }, get rejoin() { return rejoin ? {...rejoin} : null; },
   };
@@ -243,8 +253,8 @@ export function createCoop(ctx, saved = null) {
     capture:() => ({rejoin, peerName, aboard}),
     dispose() {
       ac.abort();
-      for (const x of [feed, pings, rope, ghost, avatar]) { try { x.dispose(); } catch {} }
-      avatar.group.removeFromParent();
+      for (const x of [feed, pings, rope, ghost, avatar]) { try { x?.dispose(); } catch {} }
+      avatar?.group.removeFromParent(); avatar = null;
       if (globalThis.coopDebug === debug) delete globalThis.coopDebug;
     },
   };
