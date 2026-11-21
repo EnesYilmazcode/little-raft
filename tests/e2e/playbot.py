@@ -55,18 +55,22 @@ PAGE_INIT = r"""
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   // Independent rAF probe: worst gap between animation frames since the last read.
   const pb = window.__playbot = {maxGap: 0, frames: 0, last: 0};
-  const f = t => { if (pb.last) pb.maxGap = Math.max(pb.maxGap, t - pb.last); pb.last = t; pb.frames++; requestAnimationFrame(f); };
+  const f = t => { if (pb.last) pb.maxGap = Math.max(pb.maxGap, t - pb.last); pb.last = t; pb.frames++; requestAnimationFrame(f);
+    if (t - pb.lastSample >= %(interval)d - 20) take(); };
   requestAnimationFrame(f);
   pb.read = () => { const r = {maxGap: pb.maxGap, frames: pb.frames}; pb.maxGap = 0; pb.frames = 0; return r; };
   pb.reset = () => { pb.maxGap = 0; pb.last = 0; };
   // In-page sampler: snapshots raftDebug.state every %(interval)d ms into a buffer that Python drains,
   // so the invariant cadence does not depend on (slow) Playwright round-trips.
-  pb.buf = []; pb.on = false;
-  setInterval(() => {
+  // Sampled from rAF (and a timer fallback) because timers starve behind slow software-GL frames.
+  pb.buf = []; pb.on = false; pb.lastSample = 0;
+  function take() {
     if (!pb.on || !window.raftDebug) return;
+    pb.lastSample = performance.now();
     try { pb.buf.push(pb.sample()); } catch (e) { pb.buf.push({err: String(e && e.stack || e), now: performance.now()}); }
     if (pb.buf.length > 4000) pb.buf.shift();
-  }, %(interval)d);
+  }
+  setInterval(() => { if (performance.now() - pb.lastSample >= %(interval)d) take(); }, %(interval)d);
   pb.drain = () => { const b = pb.buf; pb.buf = []; return {now: performance.now(), samples: b}; };
   pb.sample = () => {
   const s = raftDebug.state, od = document.querySelector('#options');
@@ -116,9 +120,33 @@ class TimeUp(Exception):
     """Raised inside an action once the session is past --duration (+ a short grace)."""
 
 
+class Timed:
+    """Proxy that adds wall time per Playwright call into `acc` (name -> [calls, seconds])."""
+
+    def __init__(self, obj, acc, prefix=''):
+        self._o, self._acc, self._p = obj, acc, prefix
+
+    def __getattr__(self, name):
+        v = getattr(self._o, name)
+        if name in ('keyboard', 'mouse'):
+            return Timed(v, self._acc, name + '.')
+        if not callable(v):
+            return v
+
+        def call(*a, **k):
+            t = time.monotonic()
+            try:
+                return v(*a, **k)
+            finally:
+                c = self._acc.setdefault(self._p + name, [0, 0.0])
+                c[0] += 1; c[1] += time.monotonic() - t
+        return call
+
+
 class Bot:
     def __init__(self, page, args, out):
-        self.page, self.args, self.out = page, args, out
+        self.io = {}
+        self.page, self.args, self.out = Timed(page, self.io), args, out
         self.rng = random.Random(args.seed)
         self.t0 = time.monotonic()
         self.log = []            # (elapsed, text)
@@ -367,6 +395,25 @@ class Bot:
     stopping = False
 
     # ---------- input helpers ----------
+    held = ()
+    mouse_held = False
+
+    def key_down(self, k):
+        self.held = set(self.held) | {k}
+        self.page.keyboard.down(k)
+
+    def key_up(self, k):
+        self.held = set(self.held) - {k}
+        self.page.keyboard.up(k)
+
+    def mouse_down(self):
+        self.mouse_held = True
+        self.page.mouse.down()
+
+    def mouse_up(self):
+        self.mouse_held = False
+        self.page.mouse.up()
+
     def state(self):
         t = time.monotonic()
         try:
@@ -443,26 +490,26 @@ class Bot:
             key = self.rng.choice(['KeyW', 'KeyA', 'KeyS', 'KeyD'])
             ms = self.rng.randint(400, 1600)
             self.act(f'walk {key} {ms}ms')
-        self.page.keyboard.down(key)
-        try:
-            if self.rng.random() < .25:
-                self.page.keyboard.down('ShiftLeft')
-            self.wait(ms)
-        finally:
-            self.page.keyboard.up(key); self.page.keyboard.up('ShiftLeft')
+        self.key_down(key)
+        if self.rng.random() < .25:
+            self.key_down('ShiftLeft')
+        self.wait(ms)
+        for k in list(self.held):
+            self.key_up(k)
 
     def a_jump(self):
         self.act('jump Space')
-        self.page.keyboard.down('Space'); self.wait(200); self.page.keyboard.up('Space'); self.wait(600)
+        self.key_down('Space'); self.wait(200); self.key_up('Space'); self.wait(600)
 
     def a_look(self):
         dx, dy = self.rng.uniform(-700, 700), self.rng.uniform(-250, 250)
         if self.rng.random() < .15:
             dy = self.rng.choice([-1, 1]) * 2000   # slam into the pitch limit
         self.act(f'look dx={dx:.0f} dy={dy:.0f}')
-        steps = 4
-        for _ in range(steps):
-            self.look(dx / steps, dy / steps); self.wait(120)
+        # a smooth sweep: 8 mousemoves spread over ~1 s inside the page (one round-trip)
+        self.page.evaluate("""([dx, dy]) => { for (let i = 0; i < 8; i++) setTimeout(() =>
+            document.dispatchEvent(new MouseEvent('mousemove', {movementX: dx / 8, movementY: dy / 8, bubbles: true})), i * 120); }""", [dx, dy])
+        self.wait(1000)
 
     def a_hotbar(self):
         keys = [f'Digit{self.rng.randint(1, 5)}' for _ in range(self.rng.randint(2, 5))]
@@ -491,7 +538,7 @@ class Bot:
         hold = self.rng.randint(350, 900)
         self.act(f'throw hook at {desc} hold={hold}ms')
         self.m['throws'] += 1
-        self.page.mouse.move(self.cx, self.cy); self.page.mouse.down(); self.wait(hold); self.page.mouse.up()
+        self.page.mouse.move(self.cx, self.cy); self.mouse_down(); self.wait(hold); self.mouse_up()
         # let it fly / land, then reel
         end = self.el() + self.args.hook_wait_s
         while self.el() < end:
@@ -501,11 +548,9 @@ class Bot:
             self.wait(400)
         if self.page.evaluate('raftDebug.state.hookStage') in ('floating', 'reeling'):
             self.act('reel (hold LMB)')
-            self.page.mouse.down()
-            try:
-                self.wait_idle_hook(self.args.hook_wait_s)
-            finally:
-                self.page.mouse.up()
+            self.mouse_down()
+            self.wait_idle_hook(self.args.hook_wait_s)
+            self.mouse_up()
         if not self.wait_idle_hook(4):
             self.act('hook still out after reel')
         got = self.state()['collected'] - coll0
@@ -635,9 +680,10 @@ class Bot:
                 break
             finally:
                 self.stopping = False
-                for k in ('KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'Space'):
-                    self.page.keyboard.up(k)
-                self.page.mouse.up()
+                for k in list(self.held):
+                    self.key_up(k)
+                if self.mouse_held:
+                    self.mouse_up()
         self.check()
         self.screenshot('end')
 
@@ -660,7 +706,7 @@ def main():
     ap.add_argument('--fish-wait-s', type=float, default=None, help='max wait for a bite (default min(15, duration/10))')
     ap.add_argument('--headed', action='store_true')
     args = ap.parse_args()
-    args.shot_interval = args.shot_interval or max(8.0, args.duration / 10)
+    args.shot_interval = args.shot_interval or max(12.0, args.duration / 10)
     # keep slow hook/fish waits proportional so a short run is not one long wait
     args.hook_wait_s = args.hook_wait_s or min(25.0, max(8.0, args.duration / 6))
     args.fish_wait_s = args.fish_wait_s or min(15.0, max(6.0, args.duration / 10))
@@ -744,6 +790,7 @@ def main():
                  console_warnings=bot.console_warnings, failure_counts=bot.fail_ids,
                  min_y=None if m['min_y'] is None else round(m['min_y'], 3), max_dist=round(m['max_dist'], 2),
                  avg_fps=round(m['raf_frames'] / max(bot.el(), 1e-6), 2),
+                 io={k: [c, round(t, 1)] for k, (c, t) in sorted(bot.io.items(), key=lambda kv: -kv[1][1])},
                  mean_sample_interval_s=round(bot.el() / max(bot.samples, 1), 2))
         result['metrics'] = m
     print(json.dumps(result))
