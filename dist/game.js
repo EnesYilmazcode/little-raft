@@ -19,7 +19,7 @@ import { floorTarget, decorCheck, normaliseDecor, createGhosts, FOOTPRINT, wheel
 import * as Farm from './farming.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
-import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
+import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT, placePrompt } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, playerInWay, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
@@ -409,8 +409,7 @@ export function mount(transfer = null) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (farmPlot(frameAim)) { const t = Farm.promptFor(farmPlot(frameAim).farm, heldKind()); html = t.startsWith('E  ') ? '<kbd>E</kbd>' + esc(t.slice(3)) : esc(t); } // farming
-      else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
-      else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
+      else if (hover) html = placePrompt(hover, heldKind(), {name:ITEM_INFO[heldKind()]?.name ?? heldKind(), cost:Object.entries(FLOOR_COST).map(([k, n]) => `${n} ${itemName(k)}`).join(', '), missing:heldKind() === 'hammer' ? missingText(localBag(), FLOOR_COST) : ''}); // what a click does, or why it can't
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
       else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
@@ -531,7 +530,7 @@ export function mount(transfer = null) {
   }
   // Hammer: {kind:'floor', x, z} grid cells. Placeable: {kind, x, z, rot} raft-local metres. ok = can place right now.
   // Runs every frame, so it fills one reused result (read it right away; debug state copies it).
-  // blocked: '' or a BLOCK_TEXT reason ('bound' | 'cap' | 'self' | 'brother') the player is told about (red ghost + prompt).
+  // blocked: '' or a BLOCK_TEXT reason ('bound' | 'cap' | 'overlap' | 'edge' | 'self' | 'brother') the player is told about (red ghost + prompt).
   const placed = {kind:'', x:0, z:0, rot:0, ok:false, blocked:''}, probe = {type:'', x:0, z:0, rot:0};
   const setPlaced = (kind, x, z, rot, ok, blocked = '') => { placed.kind = kind; placed.x = x; placed.z = z; placed.rot = rot; placed.ok = ok && !blocked; placed.blocked = blocked; return placed; };
   function placementFor(kind, p) {
@@ -544,9 +543,9 @@ export function mount(transfer = null) {
     }
     if (!DECOR_TYPES.includes(kind) || !nearDeck(p.x, p.z) || Math.hypot(p.x - physics.x, p.z - physics.z) > DECOR_REACH) return null;
     probe.type = kind; probe.x = Math.round(p.x * 1000) / 1000; probe.z = Math.round(p.z * 1000) / 1000; probe.rot = placeRot;
-    const ok = decorCheck(hasTile, world.decor, probe) === 'ok';
+    const res = decorCheck(hasTile, world.decor, probe), ok = res === 'ok';
     const inWay = ok ? playerInWay(decorBlockers(probe, BLOCK_RADIUS, 1), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS + .05) : -1; // never drop a prop on a player
-    return setPlaced(kind, probe.x, probe.z, placeRot, ok, inWay === 0 ? 'self' : inWay === 1 ? 'brother' : '');
+    return setPlaced(kind, probe.x, probe.z, placeRot, ok, inWay === 0 ? 'self' : inWay === 1 ? 'brother' : res === 'blocked' ? 'overlap' : res === 'air' ? 'edge' : '');
   }
   // Within a metre of the deck: just off the edge still shows a red ghost instead of nothing.
   function nearDeck(x, z) {
@@ -628,7 +627,8 @@ export function mount(transfer = null) {
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
         const d = normaliseDecor({type:a.recipe, x:a.x, z:a.z, rot:a.rot}, DECOR_TYPES, hasTile); // old guests send tile cells
-        if (!d || world.decor.length >= 400 || decorCheck(hasTile, world.decor, d) !== 'ok') return;
+        const res = d ? decorCheck(hasTile, world.decor, d) : 'air';
+        if (!d || world.decor.length >= 400 || res !== 'ok') { if (d && res !== 'ok') emit({kind:'notice', text:BLOCK_TEXT[res === 'blocked' ? 'overlap' : 'edge']}, actor); return; }
         if (far(d.x, d.z, DECOR_REACH)) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
         const inWay = playerInWay(decorBlockers(d, BLOCK_RADIUS, 1), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS); // host pose, guest pose
         if (inWay >= 0) { emit({kind:'notice', text:BLOCK_TEXT[(inWay === 0) === (actor === 'host') ? 'self' : 'brother']}, actor); return; }

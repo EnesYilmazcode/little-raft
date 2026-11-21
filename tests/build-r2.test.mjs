@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
 const { decorBlockers, playerInWay } = await import(new URL('coop-rules.js', base));
 const { PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base));
-const { BLOCK_TEXT } = await import(new URL('build-rules.js', base));
+const { BLOCK_TEXT, placePrompt } = await import(new URL('build-rules.js', base));
 const T = await import(new URL('vendor/three.module.js', base));
 const { createFarmView } = await import(new URL('farming-view.js', base));
 const { createGhosts, decorCheck, FOOTPRINT, wheelDelta } = await import(new URL('placement.js', base));
@@ -96,4 +96,16 @@ test('BUILD-4: Shift+wheel counts the horizontal scroll Chromium turns it into',
   assert.equal(wheelDelta({deltaY:0, deltaX:-2, shiftKey:true, deltaMode:1}), -66);
   assert.equal(wheelDelta({deltaY:0, deltaX:100, shiftKey:false, deltaMode:0}), 0, 'a plain sideways swipe does not change slot');
   assert.equal(wheelDelta({deltaY:50, deltaX:0, ctrlKey:true, deltaMode:0}), 50);
+});
+
+// ------------------------------------------------------------- UX-1
+test('UX-1: the edge prompt shows what a click builds, its cost, R rotate, and why a red ghost is refused', () => {
+  assert.equal(placePrompt({kind:'floor', ok:true, blocked:''}, 'hammer', {cost:'2 wood, 2 plastic'}), '<kbd>Click</kbd>Build floor · 2 wood, 2 plastic');
+  assert.equal(placePrompt({kind:'floor', ok:false, blocked:''}, 'hammer', {cost:'2 wood, 2 plastic', missing:'1 more wood'}), 'Floor needs 1 more wood');
+  assert.equal(placePrompt({kind:'floor', ok:false, blocked:'cap'}, 'hammer', {}), BLOCK_TEXT.cap);
+  assert.equal(placePrompt({kind:'crate', ok:true, blocked:''}, 'crate', {name:'Crate'}), '<kbd>Click</kbd>Place Crate · <kbd>R</kbd>Rotate');
+  assert.equal(placePrompt({kind:'crate', ok:false, blocked:'overlap'}, 'crate', {name:'Crate'}), 'Something is in the way · <kbd>R</kbd>Rotate');
+  assert.equal(placePrompt({kind:'crate', ok:false, blocked:'edge'}, 'crate', {name:'Crate'}), 'Needs floor underneath · <kbd>R</kbd>Rotate');
+  assert.equal(placePrompt({kind:'crate', ok:true, blocked:''}, 'crate', {name:'<b>'}), '<kbd>Click</kbd>Place &lt;b&gt; · <kbd>R</kbd>Rotate', 'names are escaped');
+  assert.equal(placePrompt(null, 'crate'), '');
 });
