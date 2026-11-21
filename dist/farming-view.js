@@ -12,13 +12,13 @@ export function createFarmView(T, { getModel = null } = {}) {
   const group = new T.Group(); group.name = 'farm';
   const std = (color, roughness = .85, extra = {}) => new T.MeshStandardMaterial({ color, roughness, ...extra });
   const M = {
-    pot: std('#db8764'), rim: std('#b86a4c'), dry: std('#b58e62', 1), wet: std('#4b3324', .35),
+    pot: std('#db8764'), rim: std('#b86a4c'), dry: std('#c09a6b', 1), wet: std('#3f2a1c', .55), puddle: std('#2c1f16', .12, { transparent: true, opacity: .55 }),
     trunk: std('#ad8153'), leaf: std('#72ae59', .8, { side: T.DoubleSide }), leaf2: std('#519b55', .8, { side: T.DoubleSide }),
   };
   const G = {
     pot: new T.CylinderGeometry(.38, .28, POT_H, 10), rim: new T.TorusGeometry(.37, .035, 6, 14),
     soil: new T.CylinderGeometry(.34, .34, .04, 12), stem: new T.CylinderGeometry(.06, .1, 1, 6),
-    leaf: new T.ConeGeometry(.28, 1.5, 4), puddle: new T.CircleGeometry(.3, 12),
+    leaf: new T.ConeGeometry(.28, 1.5, 4), puddle: new T.CircleGeometry(.16, 10),
   };
   const mesh = (g, m, parent, x = 0, y = 0, z = 0) => { const o = new T.Mesh(g, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
 
@@ -27,7 +27,8 @@ export function createFarmView(T, { getModel = null } = {}) {
     const g = new T.Group(), stem = mesh(G.stem, M.trunk, g, 0, height / 2, 0); stem.scale.set(leafScale + .3, height, leafScale + .3);
     for (let i = 0; i < leaves; i++) {
       const a = i * Math.PI * 2 / leaves, l = mesh(G.leaf, i % 2 ? M.leaf2 : M.leaf, g);
-      l.scale.setScalar(leafScale); l.rotation.set(0, a, 1.2 - (1 - leafScale) * .5, 'YXZ');
+      l.scale.set(leafScale, leafScale, leafScale * .35); // flattened cone: a frond, not a spike
+      l.rotation.set(1.25 - (1 - leafScale) * .6, a, 0, 'YXZ'); // leans outward along its fan angle
       l.position.set(Math.sin(a) * .5 * leafScale, height + .05 * leafScale, Math.cos(a) * .5 * leafScale);
     }
     return g;
@@ -57,8 +58,8 @@ export function createFarmView(T, { getModel = null } = {}) {
   function build(d) {
     const root = new T.Group(); root.position.set(d.x * 2, DECK_Y, d.z * 2);
     root.add(model('planter'));
-    const soil = mesh(G.soil, M.dry, root, 0, POT_H - .03, 0); soil.receiveShadow = true;
-    const puddle = mesh(G.puddle, M.wet, root, .02, POT_H - .005, -.03); puddle.rotation.x = -Math.PI / 2; puddle.visible = false;
+    const soil = mesh(G.soil, M.dry, root, 0, POT_H - .01, 0); // top just above the pot's closed lid soil.receiveShadow = true;
+    const puddle = mesh(G.puddle, M.puddle, root, .02, POT_H + .014, -.03); puddle.rotation.x = -Math.PI / 2; puddle.castShadow = false; puddle.visible = false;
     const p = { root, soil, puddle, plant: null, stage: null, sway: (d.x * 7 + d.z * 3) % 6 };
     group.add(root); return p;
   }
