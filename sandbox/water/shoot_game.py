@@ -79,15 +79,14 @@ with sync_playwright() as p:
     boot(page)
     page.wait_for_timeout(1500); shot(page, 'title')
     page.evaluate("document.querySelector('#solo').click()"); wait_js(page, 'raftDebug.state.running')
-    page.evaluate('raftDebug.content.daynight?.freeze?.(true)')
+    page.evaluate("raftDebug.content.daynight?.freeze?.(true); raftDebug.content.daynight?.setWeather?.('calm')")  # same light for cur and new
     page.wait_for_timeout(2500); shot(page, 'spawn')
-    page.mouse.move(640, 300); page.mouse.down()
-    for i in range(1, 11): page.mouse.move(640 + i * 12, 300 + i * 14)
-    page.mouse.up(); page.wait_for_timeout(1500); shot(page, 'down')
+    page.evaluate('raftDebug.aim(-0.42)'); page.wait_for_timeout(1500); shot(page, 'down')   # raft edge + items
     report['down'] = measure(page)
     report['renderInfo'] = page.evaluate('(()=>{const r=raftDebug.renderInfo;return r&&{calls:r.calls,triangles:r.triangles,geometries:r.geometries,textures:r.textures,programs:r.programs}})()')
     # Charge and throw the hook, then look at it floating (bobber contact foam).
-    page.mouse.down(); page.wait_for_timeout(900); page.mouse.up(); page.wait_for_timeout(3000)
+    page.evaluate('raftDebug.aim(-0.05)'); page.mouse.down(); page.wait_for_timeout(900); page.mouse.up(); page.wait_for_timeout(3000)
+    page.evaluate('raftDebug.aim(-0.3)'); page.wait_for_timeout(500)
     report['hook'] = page.evaluate('raftDebug.state.hook')
     shot(page, 'cast')
     # Day / night: the sun moves (shadow re-bake) and the palette changes.
@@ -110,10 +109,9 @@ with sync_playwright() as p:
     page2 = b.new_context(viewport={'width': 1280, 'height': 720}).new_page()
     boot(page2, save)
     page2.evaluate("document.querySelector('#solo').click()"); wait_js(page2, 'raftDebug.state.running')
+    page2.evaluate("raftDebug.content.daynight?.freeze?.(true); raftDebug.content.daynight?.setWeather?.('calm')")
     page2.wait_for_timeout(4000)
-    page2.mouse.move(640, 300); page2.mouse.down()
-    for i in range(1, 11): page2.mouse.move(640 - i * 10, 300 + i * 12)
-    page2.mouse.up(); page2.wait_for_timeout(1500); shot(page2, 'sail')
+    page2.evaluate('raftDebug.aim(-0.45, raftDebug.state.me.yaw + 1.7)'); page2.wait_for_timeout(1500); shot(page2, 'sail')
     report['sailing'] = page2.evaluate('(()=>{const s=raftDebug.state.sailing;return s&&{raised:s.raised,speed:s.speed,display:s.display,flow:s.flow}})()')
     b.close()
 srv.shutdown()
