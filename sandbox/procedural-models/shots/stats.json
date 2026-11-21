@@ -378,5 +378,305 @@
    "textures": 7,
    "programs": 15
   }
+ },
+ "compare4_0": {
+  "view": "compare4",
+  "renderer": "SwiftShader (relative timings only)",
+  "cells": {
+   "plank:cur": {
+    "tris": 244,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 5
+   },
+   "barrel:cur": {
+    "tris": 2404,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 5
+   },
+   "jug:cur": {
+    "tris": 973,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 5
+   },
+   "leaf:cur": {
+    "tris": 1280,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   },
+   "scrap:cur": {
+    "tris": 808,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "crate:cur": {
+    "tris": 10260,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "plank:cur ?art": {
+    "tris": 244,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 5
+   },
+   "barrel:cur ?art": {
+    "tris": 2404,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 5
+   },
+   "jug:cur ?art": {
+    "tris": 973,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 6
+   },
+   "leaf:cur ?art": {
+    "tris": 1280,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   },
+   "scrap:cur ?art": {
+    "tris": 808,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "crate:cur ?art": {
+    "tris": 10260,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "plank:models.js": {
+    "tris": 564,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 5
+   },
+   "barrel:models.js": {
+    "tris": 844,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 5
+   },
+   "jug:models.js": {
+    "tris": 464,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   },
+   "leaf:models.js": {
+    "tris": 720,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 5
+   },
+   "scrap:models.js": {
+    "tris": 396,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 5
+   },
+   "crate:models.js": {
+    "tris": 2712,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "plank:lowpoly": {
+    "tris": 260,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   },
+   "barrel:lowpoly": {
+    "tris": 624,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   },
+   "jug:lowpoly": {
+    "tris": 312,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   },
+   "leaf:lowpoly": {
+    "tris": 1224,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   },
+   "scrap:lowpoly": {
+    "tris": 296,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   },
+   "crate:lowpoly": {
+    "tris": 1712,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   }
+  }
+ },
+ "compare4_1": {
+  "view": "compare4",
+  "renderer": "SwiftShader (relative timings only)",
+  "cells": {
+   "sail:cur": {
+    "tris": 22464,
+    "meshes": 9,
+    "materials": 9,
+    "callsWithShadow": 19
+   },
+   "palm:cur": {
+    "tris": 8996,
+    "meshes": 11,
+    "materials": 11,
+    "callsWithShadow": 23
+   },
+   "lantern:cur": {
+    "tris": 6028,
+    "meshes": 8,
+    "materials": 8,
+    "callsWithShadow": 15
+   },
+   "deck:cur": {
+    "tris": 3428,
+    "meshes": 7,
+    "materials": 7,
+    "callsWithShadow": 15
+   },
+   "net:cur": {
+    "tris": 17660,
+    "meshes": 5,
+    "materials": 5,
+    "callsWithShadow": 11
+   },
+   "bench:cur": {
+    "tris": 5248,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "sail:cur ?art": {
+    "tris": 22464,
+    "meshes": 9,
+    "materials": 9,
+    "callsWithShadow": 19
+   },
+   "palm:cur ?art": {
+    "tris": 8996,
+    "meshes": 11,
+    "materials": 11,
+    "callsWithShadow": 23
+   },
+   "lantern:cur ?art": {
+    "tris": 6028,
+    "meshes": 8,
+    "materials": 8,
+    "callsWithShadow": 15
+   },
+   "deck:cur ?art": {
+    "tris": 3428,
+    "meshes": 7,
+    "materials": 7,
+    "callsWithShadow": 15
+   },
+   "net:cur ?art": {
+    "tris": 17660,
+    "meshes": 5,
+    "materials": 5,
+    "callsWithShadow": 11
+   },
+   "bench:cur ?art": {
+    "tris": 5248,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "sail:models.js": {
+    "tris": 737,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "palm:models.js": {
+    "tris": 4676,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "lantern:models.js": {
+    "tris": 1492,
+    "meshes": 5,
+    "materials": 5,
+    "callsWithShadow": 11
+   },
+   "deck:models.js": {
+    "tris": 2060,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "net:models.js": {
+    "tris": 2628,
+    "meshes": 3,
+    "materials": 3,
+    "callsWithShadow": 7
+   },
+   "bench:models.js": {
+    "tris": 1576,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 5
+   },
+   "sail:lowpoly": {
+    "tris": 1714,
+    "meshes": 3,
+    "materials": 2,
+    "callsWithShadow": 7
+   },
+   "palm:lowpoly": {
+    "tris": 2724,
+    "meshes": 5,
+    "materials": 3,
+    "callsWithShadow": 11
+   },
+   "lantern:lowpoly": {
+    "tris": 950,
+    "meshes": 2,
+    "materials": 2,
+    "callsWithShadow": 4
+   },
+   "deck:lowpoly": {
+    "tris": 1428,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   },
+   "net:lowpoly": {
+    "tris": 1452,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   },
+   "bench:lowpoly": {
+    "tris": 828,
+    "meshes": 1,
+    "materials": 1,
+    "callsWithShadow": 3
+   }
+  }
  }
 }

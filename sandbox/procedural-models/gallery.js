@@ -13,6 +13,8 @@ import { createCraft } from '../../dist/crafts.js';
 import { createFloor } from '../../dist/deck.js';
 import { createWoodMaterial } from '../../dist/wood.js';
 import * as LP from './lowpoly-props.js';
+import { getModel } from '../../dist/models.js';
+import * as ART from '../../dist/materials.js';
 
 const q = new URLSearchParams(location.search);
 const VIEW = q.get('view') || 'compare', PAGE = +(q.get('page') || 0);
@@ -30,6 +32,20 @@ function current(name, seed = 7) {
   if (name === 'deck') return createFloor(T, seed, mat);
   return createCraft(T, name);
 }
+// ?art lane: game mat() asks materials.js first (dist/game.js mat()), plus the two itemModel() art hooks.
+const artCache = new Map();
+const artMat = c => { if (!artCache.has(c)) artCache.set(c, ART.materialForColor(T, c) ?? mat(c)); return artCache.get(c); };
+function currentArt(name, seed = 7) {
+  if (name === 'plank') return createDebris(T, 'wood', artMat, { seed });
+  if (name === 'scrap') { const d = createDebris(T, 'scrap', artMat, { seed }); d.traverse(o => { if (o.isMesh && o.material.vertexColors) o.material = artMat('#8e9aa2'); }); return d; }
+  if (name === 'leaf' || name === 'barrel') return createDebris(T, name, artMat, { seed });
+  if (name === 'jug') { const j = createPlastic(T), b = j.getObjectByName('jugBody'); if (b) b.material = artMat('#f2f0e6'); return j; }
+  if (name === 'deck') return createFloor(T, seed, artMat);
+  return createCraft(T, name);
+}
+// dist/models.js (main's own low-poly kit; today it feeds hands.js + item-icons.js, not the world props)
+const MODELS_KIND = { jug: 'plastic', palm: 'palmPlanter', deck: 'foundation' };
+const modelsJs = name => getModel(MODELS_KIND[name] || name);
 const fresh = (name, seed = 7) => LP.createProp(T, name, { seed });
 const shade = g => { g.traverse(o => { if (o.isMesh && !o.userData.glass) { o.castShadow = true; o.receiveShadow = true; } }); return g; };
 
@@ -93,7 +109,20 @@ const stats = { view: VIEW, renderer: 'SwiftShader (relative timings only)' };
 const finish = () => { window.__stats = stats; window.__ready = true; console.log(JSON.stringify(stats)); };
 
 // ======================================================================= views
-if (VIEW === 'grid' || VIEW === 'compare') {
+if (VIEW === 'compare4') {
+  // ?view=compare4&page=0|1: rows = current dist (default) | current dist ?art | dist/models.js | lowpoly-props
+  const CW = 260, CH = 260, sets = [['cur', current], ['cur ?art', currentArt], ['models.js', modelsJs], ['lowpoly', fresh]];
+  renderer.setSize(CW * 6, CH * sets.length);
+  const scene = stage(), artScene = stage(); ART.applyLighting(artScene, null, { ...ART.LIGHTING, background: '#cbd2c0', skyDome: false });
+  stats.cells = {};
+  sets.forEach(([set, make], ri) => pageNames.forEach((n, ci) => {
+    const obj = make(n); if (!obj) return; shade(obj);
+    const s = geoStats(obj), r = shootCell(set === 'cur ?art' ? artScene : scene, obj, ci * CW, ri * CH, CW, CH, 35);
+    stats.cells[`${n}:${set}`] = { ...s, callsWithShadow: r.calls };
+    label(`${set} ${n}  ${s.tris}t ${s.meshes}m ${r.calls}c`, ci * CW + 4, ri * CH + 4);
+  }));
+  finish();
+} else if (VIEW === 'grid' || VIEW === 'compare') {
   const CW = 260, CH = 260, LH = 0;
   const rows = VIEW === 'grid' ? [[30, 'new'], [150, 'new'], [270, 'new']] : [[35, 'current'], [35, 'new']];
   renderer.setSize(CW * 6, CH * rows.length + LH);
