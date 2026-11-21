@@ -3,15 +3,15 @@
  "scenarios": {
   "stock dist": {
    "frames": 12,
-   "frameMs": 3890.72,
-   "frameP95": 5908.7,
-   "frameWorst": 5908.7,
-   "renderMs": 3889.41,
-   "submitMs": 8,
-   "submitMin": 3.8,
-   "logicMs": 1.32,
-   "logicP95": 6.7,
-   "rafGapMs": 4102.87,
+   "frameMs": 3349.45,
+   "frameP95": 5139.9,
+   "frameWorst": 5139.9,
+   "renderMs": 3348.62,
+   "submitMs": 8.5,
+   "submitMin": 4.2,
+   "logicMs": 0.83,
+   "logicP95": 2.1,
+   "rafGapMs": 3495.31,
    "calls": 542,
    "triangles": 258626,
    "geometries": 356,
@@ -22,14 +22,14 @@
     1280,
     720
    ],
-   "heapDeltaKB": 315,
+   "heapDeltaKB": 328,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 2.3,
+    "browser": 1.4,
     "utility": 0.5,
-    "renderer": 21.8,
-    "gpu-process": 1359.1,
-    "total": 1383.7
+    "renderer": 23.6,
+    "gpu-process": 1421.4,
+    "total": 1446.9
    },
    "census": {
     "meshes": 478,
@@ -96,32 +96,32 @@
   },
   "patched dist": {
    "frames": 12,
-   "frameMs": 2927.11,
-   "frameP95": 5277.1,
-   "frameWorst": 5277.1,
-   "renderMs": 2923.41,
-   "submitMs": 6.5,
-   "submitMin": 3.7,
-   "logicMs": 3.7,
-   "logicP95": 26.8,
-   "rafGapMs": 2946.85,
+   "frameMs": 1352.82,
+   "frameP95": 1951.8,
+   "frameWorst": 1951.8,
+   "renderMs": 1351.36,
+   "submitMs": 5,
+   "submitMin": 1.9,
+   "logicMs": 1.46,
+   "logicP95": 3.7,
+   "rafGapMs": 1418.13,
    "calls": 253,
    "triangles": 201542,
    "geometries": 255,
-   "textures": 15,
+   "textures": 8,
    "programs": 10,
    "pixelRatio": 1,
    "drawingBuffer": [
     1280,
     720
    ],
-   "heapDeltaKB": 143,
+   "heapDeltaKB": 128,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 1.4,
-    "renderer": 20.0,
-    "gpu-process": 1166.8,
-    "total": 1188.2
+    "browser": 0.9,
+    "renderer": 15.0,
+    "gpu-process": 889.1,
+    "total": 905.0
    },
    "census": {
     "meshes": 237,
@@ -129,7 +129,7 @@
     "verts": 495822,
     "materials": 111,
     "geometries": 230,
-    "textures": 14,
+    "textures": 7,
     "byOwner": {
      "camera(viewmodels)": {
       "objects": 1,
