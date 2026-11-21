@@ -105,6 +105,11 @@ export function attachProgression(ctx) {
     for (const key of [...stations.keys()]) if (!live.has(key)) { stations.delete(key); dirty = true; if (panel?.isOpen && panel.stationId === key) panel.close(); }
   }
   const stationSnaps = () => Object.fromEntries([...stations].map(([k, s]) => [k, s.snapshot()]));
+  // [undecor] pick up a placed station: refuse mid-cook, return input + output; idle fuel units are not items.
+  const stationOf = (d) => { if (!d || !COOKERS.has(d.type)) return null; const k = keyOf(d), s = stations.get(k); if (s) return s.stationId === d.type ? s : null; const p = pendingStations[k]; return p?.station === d.type ? new StationModel(d.type, p) : null; };
+  function beforeUndecor(d) { const s = stationOf(d); return s && (s.progress > 0 || (s.input && s.fuelUnits > 0)) ? "It's still cooking" : null; }
+  function undecorLoot(d) { const s = stationOf(d); if (!s) return null; const out = []; for (const x of [s.input, s.output]) if (x && x.count > 0) out.push([x.kind, x.count]); return out; }
+  function afterUndecor(d) { if (!d || !COOKERS.has(d.type)) return; const k = keyOf(d); if (stations.delete(k)) dirty = true; if (k in pendingStations) { delete pendingStations[k]; dirty = true; } if (panel?.isOpen && panel.stationId === k) panel.close(); }
 
   function save() {
     if (!isHost() || globalThis[OWNER] !== self) return;
@@ -379,7 +384,7 @@ export function attachProgression(ctx) {
   const stationPrompt = () => { const d = ctx.running() && ctx.aim ? stationNear(ctx.aim(), true) : null; return d ? { key: 'E', label: 'Use the ' + nameOf(d.type) } : null; };
   const disposeAll = () => { try { promptOff?.(); } catch {} dispose(); }; // content hook
 
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
+  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()), beforeUndecor, undecorLoot, afterUndecor }; // [undecor] beforeUndecor/undecorLoot/afterUndecor
 }
 
 export default attachProgression;

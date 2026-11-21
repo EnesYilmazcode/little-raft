@@ -632,4 +632,12 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M3 24 H45 V28 H3 Z" fill="#3b291b"/></g>
     <path d="M3 33 H45" stroke="${O}" stroke-width="1.2" stroke-opacity=".5"/>
     <g fill="#21160d"><ellipse cx="10" cy="26" rx="4" ry="1.3"/><ellipse cx="24" cy="26" rx="4" ry="1.3"/><ellipse cx="38" cy="26" rx="4" ry="1.3"/></g>`,
+  flagpole: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M13 6 C20 4 26 8 33 6 C36 5.4 38.5 5.6 40 6 V24 C38.5 23.6 36 23.4 33 24 C26 26 20 22 13 24 Z" fill="#f1c84d"/>
+    <path d="M26.5 10.5 C22 10.5 19.5 14 20 17.5 C20.5 20 23 21 26.5 21 C30 21 32.5 20 33 17.5 C33.5 14 31 10.5 26.5 10.5 Z" fill="#24456b" stroke-width="1.3"/>
+    <path d="M10.5 44 V5 H13.5 V44 Z" fill="#8a6a45"/>
+    <path d="M7 44 H17" fill="none"/>
+    <circle cx="12" cy="4" r="2.4" fill="#ffbd66"/></g>
+    <g fill="none" stroke="#f1c84d" stroke-width="1.1" stroke-linecap="round"><path d="M26.5 12 V20"/><path d="M23 13.5 L24.8 20"/><path d="M30 13.5 L28.2 20"/></g>
+    <path d="M16 9 C20 7.5 24 9 28 8.6" fill="none" stroke="#fff2cc" stroke-width="1.5" stroke-linecap="round"/>`, // [flags]
 });

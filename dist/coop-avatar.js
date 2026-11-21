@@ -188,7 +188,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
   setName(name);
 
   // ---------------------------------------------------------------- animation state
-  const A = { lLx: 0, lLz: 0, rLx: 0, laX: 0, laZ: 0.12, raX: 0, raZ: -0.12, head: 0, lean: 0, bob: 0, swim: 0, emote: 0 };
+  const A = { lLx: 0, lLz: 0, rLx: 0, laX: 0, laZ: 0.12, raX: 0, raZ: -0.12, head: 0, lean: 0, bob: 0, swim: 0, emote: 0, sit: 0 }; // [sit] sit: seated blend 0..1
   let phase = 0, emoteKind = 'wave', crank = 0;
   const camPos = new T.Vector3();
 
@@ -200,9 +200,10 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
     const pitch = clamp(s.pitch || 0, -1.3, 1.3);
     A.swim = damp(A.swim, s.swimming ? 1 : 0, 5, dt);
     const sw = A.swim, air = s.riding || (!s.swimming && s.grounded === false) ? 1 : 0; // [zipline] riding counts as air
+    A.sit = damp(A.sit || 0, s.seated ? 1 : 0, 10, dt); // [sit]
 
     // walk cycle: stride phase advances with ground speed, amplitude grows with speed
-    const amp = clamp(speed / 3.5, 0, 1) * (1 - sw) * (1 - air);
+    const amp = clamp(speed / 3.5, 0, 1) * (1 - sw) * (1 - air) * (1 - A.sit); // [sit] amp *= 1 - sit
     phase += dt * (2.2 + speed * 2.1);
     const sn = Math.sin(phase) * amp;
     let lL = sn * 0.7, rL = -sn * 0.7;
@@ -257,6 +258,11 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
       else { raX = lerp(raX, -0.25, w); raZ = lerp(raZ, -2.65 + Math.sin(time * 11) * 0.35, w); }
     }
 
+    // [sit] seated: thighs forward, hands resting on the knees (right arm left alone while reeling / charging)
+    if (A.sit > 0.001) {
+      lL = lerp(lL, -1.45, A.sit); rL = lerp(rL, -1.45, A.sit); laX = lerp(laX, -0.35, A.sit);
+      if (!s.reeling && !(s.charge > 0)) raX = lerp(raX, -0.35, A.sit);
+    }
     // apply with light damping (fast enough for the swing, kills pops on state changes)
     const k = 22;
     A.lLx = damp(A.lLx, lL, k, dt); A.rLx = damp(A.rLx, rL, k, dt);
@@ -267,7 +273,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
     P.leftArm.rotation.set(A.laX, 0, A.laZ); P.rightArm.rotation.set(A.raX, 0, A.raZ);
     P.head.rotation.x = A.head - A.lean * 0.6;
     body.rotation.x = A.lean;
-    const bob = Math.abs(Math.sin(phase)) * 0.045 * amp + sw * (Math.sin(time * 2.1) * 0.06 - 0.05);
+    const bob = (Math.abs(Math.sin(phase)) * 0.045 * amp + sw * (Math.sin(time * 2.1) * 0.06 - 0.05)) * (1 - A.sit); // [sit]
     body.position.y = damp(body.position.y, bob, 20, dt);
 
     // name tag: ~constant screen size, fades beyond 40 m
