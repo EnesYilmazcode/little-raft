@@ -85,3 +85,14 @@ test('HUD-6/UX-7: the header sits above the welcome overlay so the brand is read
   assert.equal(overlayZ, 5);
   assert.ok(headerZ > overlayZ, `header z ${headerZ} > overlay z ${overlayZ}`);
 });
+
+// ---------------------------------------------------------------- UX-2 bag jumps between crafting tabs
+
+test('UX-2: the bag keeps its top edge across crafting tabs (pinned top, fixed-height craft column)', () => {
+  const ui = src('survival-ui.js');
+  assert.match(ui, /#inventory\.sv-inv\{[^}]*margin:max\(16px,calc\(50vh - 300px\)\) auto auto;/, 'top edge pinned, not margin:auto');
+  const book = [...ui.matchAll(/^#inventory \.sv-craft\{flex:0 0 324px;[^}]*\}/gm)].at(-1)?.[0];
+  assert.ok(book, 'crafting-book column rule');
+  assert.match(book, /;height:min\(560px,calc\(94vh - 30px\)\)/, 'fixed height, so the panel height does not follow the tab');
+  assert.match(ui, /@media\(max-width:860px\),\(max-height:520px\)\{#inventory \.sv-craft\{[^}]*height:auto;max-height:none/, 'stacked layout resets the height');
+});
