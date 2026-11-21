@@ -119,3 +119,11 @@ test('SURV-2 r3: fc.reset clears every grill and rewrites the save; New game cal
   const ng = gameSrc.slice(gameSrc.indexOf('function newGame()'), gameSrc.indexOf('const hasSave'));
   assert.match(ng, /fc\?\.reset\(\)/);
 });
+
+test('SURV-3 r3: the floor under a grill cannot be removed (client and host share floorRemoveWhy)', () => {
+  const fn = gameSrc.slice(gameSrc.indexOf('function floorRemoveWhy('), gameSrc.indexOf('function removePiece('));
+  assert.match(fn, /fc\?\.hasGrill\(tx, tz\)\) return 'decor'/);
+  const h = fcMount(); h.action({ kind: 'fc:placeGrill', x: 2, z: 0 });
+  assert.equal(h.api.hasGrill(2, 0), true); assert.equal(h.api.hasGrill(1, 0), false);
+  h.api.dispose();
+});

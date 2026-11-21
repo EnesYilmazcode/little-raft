@@ -875,6 +875,7 @@ export function mount(transfer = null) {
   }
   function floorRemoveWhy(tx, tz) { // placement.js rules on metres, plus building-lane pieces standing on the tile
     if (Array.isArray(world.pieces) && world.pieces.some(q => q && q.i === tx && q.j === tz)) return 'decor';
+    if (fc?.hasGrill(tx, tz)) return 'decor'; // a grill would hover over the sea and be dropped on load
     return floorRemoveBlock(world.tiles, decorInMetres(), tx, tz);
   }
   function removePiece() {
