@@ -158,7 +158,7 @@ through the craft hook that already exists.
 |---|---|
 | `load(undefined, 'save')` and the world is **progressed** | **Grandfathered**: `learned` = every current recipe id, `seen` = every ingredient kind, `legacy: true`. Nothing the player could craft yesterday is locked today. |
 | `load(undefined, 'save')` and the world is **brand new** | The locked tree: `STARTER` only. |
-| `load(undefined, 'net')` (an old host without this module) | Everything is treated as learned and the data is not saved. The old host allows all crafts anyway. |
+| `load(undefined, 'net')` (an old host without this module) | Everything is treated as learned and the data is not saved. The old host allows all crafts anyway. The guest tracks `hostHasStorage = false`: E on a crate shows the notice "Your friend’s raft doesn’t have chests yet" (also used as the prompt) instead of a panel the host would ignore, and repeated `undefined` slices at 8 Hz are skipped, so nothing is rebuilt. |
 | `load(garbage, *)` | Every field is validated separately. A bad `learned` array on a save also falls back to the progressed or new rule above. The module never throws. |
 | Learned ids no longer in `RECIPES` | Kept and ignored, so a recipe that comes back is still learned. |
 | An old client opens a new save | The old `cleanWorld` drops `ext`. This is accepted because releases only move forward. |
@@ -184,8 +184,15 @@ path directly, so there is one code path. `action(a, actor, bag)` handles
 when it refuses the action. Every field is checked: integers in range, `x,z`
 as a key that has a crate (or a `research` decor for research), and the actor
 within reach. For reach, the host's position is the camera and the guest's
-is `ctx.other`. If the position is unknown, reach is not enforced. Reach is
-3.2 m to the tile centre.
+is `ctx.other`. If the host's position is unknown, reach is not enforced. A
+guest with no known pose yet (`ctx.other` is null) is refused with `reach`.
+Reach is 3.2 m to the tile centre. A `to` slot that holds a different kind is
+refused with "That slot already holds something else". A `put` or `putAll`
+that would grow the JSON slice past `MAX_SLICE_CHARS` (150k chars;
+`content.js` caps all of `ext` at 200k) is refused with a friendly notice.
+`take` is never size-checked, so a crowded world can always be emptied. A
+stale click (`expect` mismatch or an empty source slot) says "Someone moved
+that — try again" and bumps the view revision so the panel repaints at once.
 
 | kind | fields | effect |
 |---|---|---|
@@ -326,7 +333,8 @@ Everything above is implemented through the content registry, with one shared-fi
 - `dist/storage-research-ui.js`: the `<dialog id="lrStorage">` and the craft-list lock badges. It
   is loaded with a dynamic `import()` the first frame the game runs, so node never loads it.
 - `dist/storage-research-model.js`: the Research Table model.
-- `tests/storage-research.test.mjs`: 19 tests (section 9's unit plan, plus the model cache).
+- `tests/storage-research.test.mjs`: 23 tests (section 9's unit plan, the model cache, and the
+  review fixes below).
 - Shared-file edit: one line at the end of `dist/survival-ui.js`:
   `export { iconSVG, slotSig, paintSlot, itemName }; // content hook (storage-research)`.
   Nothing in `game.js`, `content.js` or `inventory-state.js` changed.
@@ -373,8 +381,28 @@ methods are no-ops, and the module's `dispose()` frees them for real.
   clicked. A recipe learned since the list was last open glows once. `craftLocked` still refuses
   on the host.
 
-**Debug** (`raftDebug.content.storage`): `openChest(x,z)`, `openResearch(x,z)`,
-`research(kind)`, `unlockAll()`, `lockAll()`, `fill(x,z,slots)`, `close()`, `state()`.
+**Debug** (`raftDebug.content.storage`): `openChest(x,z)` (a guest never places decor; it only
+opens an existing crate), `openResearch(x,z)`, `research(kind)`, `unlockAll()`, `lockAll()`,
+`fill(x,z,slots)`, `close()`, `rev()` (the local view revision), `state()`.
+
+**`legacy`** is not read by any rule. It records that an old save was grandfathered, survives
+save/load, and shows in `debug.state()` for QA.
+
+**Review fixes (Nov 2026)**
+- Imports: both modules import `inventory-state.js` and `survival-ui.js` with the same
+  `?build=v3-survival-ae77fa84ac2b` query as `game.js`, so each is evaluated once and shares the
+  engine's instance.
+- UI loading: if the dynamic import of the UI fails, `uiFailed` stops it retrying every frame.
+  `open()` releases pointer lock only once the UI exists. On the first (async) open, the panel is
+  skipped if another UI opened meanwhile or the crate/table is gone or out of reach.
+- `destroy()` marks the panel closed before closing it, removes every dialog listener (one
+  `AbortController`), so `onClosed` cannot request pointer lock during dispose, strips
+  `data-locked`, lock badges, needs text, the first/fresh classes, `title`, `tabindex` and the
+  aria-label override from the craft-list rows, removes `#lr-sr-style`, and clears the glow timers.
+- Locked craft-list rows get `aria-label="Locked — needs research"` (re-applied if survival-ui
+  repaints the row, and restored when the recipe is learned).
+- After a mouse click a slot button gives focus back to the panel, so Space or Enter cannot click
+  it again. Keyboard activation keeps focus as usual.
 
 **Screenshots** are in `docs/cloud/shots/content/`: `storage-world.png` (table and crate on the
 raft), `storage-chest.png`, `storage-research.png` and `storage-recipes-locked.png`.
@@ -390,8 +418,5 @@ the banner. Tab shows the locked rows, and `unlockAll()` clears them. No page er
   loads are idempotent, and the guest sees the `'all'` notices.
 - Reach for actions uses the player's feet position (`ctx.physics`) for the host and `ctx.other`
   for the guest. It is not the camera, as section 5 says, though the two match on x/z.
-- The UI module imports `survival-ui.js` without the `?build=` query, because content modules
-  are loaded without it. That gives a second, side-effect-free instance that is used only for
-  icon and slot painting.
 - Recipes that other fleets add later are locked for grandfathered saves until their ingredients
   are studied. This is by design (`learned` was "every recipe at the time").
