@@ -86,3 +86,58 @@ test('B3: R is consumed only for cell pieces (floor/stairs/roof); others fall th
   assert.equal(b.key('KeyR', true, true, false), false, 'foundation: R stays hook repair');
   b.dispose();
 });
+
+// ============================================================ B2: wheel open blocks hotbar + interact
+
+function key(type, code) { const e = new Event(type); Object.assign(e, { code, key: code, repeat: false }); win.dispatchEvent(e); }
+function wheel(deltaY) { const e = new Event('wheel'); Object.assign(e, { deltaY, deltaMode: 0 }); win.dispatchEvent(e); }
+const physics = { grounded: true, swimming: false, vx: 0, vz: 0, vy: 0 };
+
+function setupControls() {
+  let open = false;
+  const calls = [];
+  const rec = name => (...a) => calls.push([name, ...a]);
+  const c = createControls({ canvas: null, isBlocked: () => false, look: rec('look'), hotbarSize: 10, slot: () => 0,
+    selectSlot: rec('selectSlot'), interact: rec('interact'), inventory: rec('inventory'), repair: rec('repair'), pause: rec('pause'),
+    useDown: noop, useUp: noop, useCancel: noop, reelDown: noop, reelUp: noop, buildWheelOpen: () => open });
+  return { c, calls, tick: () => c.movement(1 / 60, true, physics), setOpen: v => { open = v; } };
+}
+
+test('B2: number keys, mouse wheel and E do nothing while the build wheel is open (and do not fire on close)', () => {
+  const s = setupControls();
+  s.setOpen(true);
+  key('keydown', 'Digit3'); s.tick(); key('keyup', 'Digit3');
+  wheel(120); s.tick();
+  key('keydown', 'KeyE'); s.tick(); key('keyup', 'KeyE'); s.tick();
+  assert.deepEqual(s.calls.filter(c => c[0] === 'selectSlot' || c[0] === 'interact'), [], 'nothing leaks while open');
+  s.setOpen(false); s.tick(); s.tick();
+  assert.deepEqual(s.calls.filter(c => c[0] === 'selectSlot' || c[0] === 'interact'), [], 'drained, not deferred');
+  // closed again: the same inputs work normally
+  key('keydown', 'Digit3'); s.tick(); key('keyup', 'Digit3');
+  key('keydown', 'KeyE'); s.tick(); key('keyup', 'KeyE'); s.tick();
+  assert.ok(s.calls.some(c => c[0] === 'selectSlot' && c[1] === 2), 'Digit3 -> slot index 2');
+  assert.ok(s.calls.some(c => c[0] === 'interact'));
+  s.c.dispose();
+});
+
+test('B2: WASD movement still works while the wheel is open (intended, Raft-like)', () => {
+  const s = setupControls();
+  s.setOpen(true);
+  key('keydown', 'KeyW'); for (let n = 0; n < 10; n++) s.tick();
+  const m = s.tick();
+  key('keyup', 'KeyW');
+  assert.ok(m.forward > 0, 'forward input passes through');
+  s.c.dispose();
+});
+
+test('B2: game.js wiring blocks legacy digits/E/wheel and passes buildWheelOpen to controls', () => {
+  const src = readFileSync(fileURLToPath(new URL('game.js', base)), 'utf8');
+  assert.match(src, /buildWheelOpen:\s*\(\)\s*=>\s*!!building\?\.menu\.isOpen/);
+  const wheelH = src.slice(src.indexOf("on(window, 'wheel'"), src.indexOf("on($('#resumeHint')"));
+  assert.match(wheelH, /if \(building\?\.menu\.isOpen\) return;/);
+  assert.ok(wheelH.indexOf('building?.menu.isOpen') < wheelH.indexOf('selectSlot'));
+  const kd = src.slice(src.indexOf('const m = /^(?:Digit|Numpad)'), src.indexOf("if (e.code === 'KeyR' && !e.repeat)"));
+  assert.match(kd, /selectSlot/);
+  assert.match(kd, /wheelOpen/);
+  assert.match(kd, /KeyE' && !e\.repeat && !wheelOpen/);
+});

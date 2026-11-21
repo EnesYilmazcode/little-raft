@@ -20,7 +20,8 @@ function storage() { try { return globalThis.localStorage ?? null; } catch { ret
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
 
 // g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
-//     inventory(), repair(), pause(), useDown(), useUp(), useCancel(), reelDown(), reelUp(), buildPieces?}
+//     inventory(), repair(), pause(), useDown(), useUp(), useCancel(), reelDown(), reelUp(), buildPieces?,
+//     buildWheelOpen?() (hammer build wheel open: hotbar and interact are swallowed, movement still works)}
 export function createControls(g) {
   const map = new ActionMap({storage:storage()});
   const feel = new MoveFeel({motionScale:1});
@@ -30,7 +31,7 @@ export function createControls(g) {
   const onAction = (id, phase) => {
     const pad = input.activeDevice === 'pad';
     if (phase === 'down') {
-      if (id === 'interact') call('interact');
+      if (id === 'interact') { if (!g.buildWheelOpen?.()) call('interact'); }
       else if (id === 'inventory') call('inventory');
       else if (id === 'pause' && pad) call('pause'); // Escape on the keyboard is owned by settings.js / pointer lock
       else if (id === 'rotate') { call('repair'); emit('little-raft-action', {id}); } // game's R = repair today
@@ -61,7 +62,8 @@ export function createControls(g) {
       radial.update(c[0], c[1]); return {forward:0, strafe:0, sprint:false, jump:false}; }
     if (dx || dy) call('look', dx, dy);
     const step = input.hotbarStep(), slot = input.hotbarSlot(), n = g.hotbarSize ?? 8;
-    if (slot >= 0 && slot < n) call('selectSlot', slot);
+    // build wheel open: drained and dropped (a slot swap would put the hammer away and lose the wheel's choice)
+    if (call('buildWheelOpen')) { /* swallow */ } else if (slot >= 0 && slot < n) call('selectSlot', slot);
     else if (step) call('selectSlot', (((call('slot') ?? 0) + step) % n + n) % n);
     // gamepad triggers: RT = use / charge-throw, LT = reel (mouse clicks stay with game.js)
     const t = input.triggers(), use = t.throw > .5, reel = t.reel > .5;
