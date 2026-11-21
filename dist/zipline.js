@@ -412,7 +412,7 @@ export function createZipline(ctx) {
       if (have < c.cost) return `Needs ${num(c.cost)} rope`;
       return `<kbd>E</kbd>Link line here (${num(c.cost)} rope)`;
     }
-    if (t) return countAt(st.l, t.x, t.z) ? '<kbd>E</kbd>Glide · <kbd>C</kbd>+<kbd>E</kbd>new line' : '<kbd>E</kbd>Start a glide line';
+    if (t) return countAt(st.l, t.x, t.z) ? '<kbd>E</kbd>Glide · <kbd>C</kbd>+<kbd>E</kbd> new line' : '<kbd>E</kbd>Start a glide line';
     if (!pending && lineTarget(aim) >= 0) return '<kbd>E</kbd>Hook on';
     return null;
   }
