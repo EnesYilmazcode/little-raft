@@ -236,8 +236,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
   const STEP = PATCH / SEGMENTS, ROW = SEGMENTS + 1;
   const heightAt = (x, z) => seafloorHeight(x, z, islands);
   const uniforms = { uTime: { value: 0 }, uCaustic: { value: 0 } };
-  const group = new T.Group();
-  group.name = 'Seafloor';
+  const group = Object.assign(new T.Group(), { name: 'Seafloor' });
   const std = (o, sway = false) => addCaustics(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, ...o }), uniforms, sway);
   const lin = (hex) => new T.Color(hex).toArray();   // linear rgb (vertex colours are linear)
   const SAND = lin(PAL.sand), LIGHT = lin(PAL.sandLight), DARK = lin(PAL.sandDark);
@@ -247,35 +246,23 @@ export function createSeafloor(T, { islands = [] } = {}) {
   const baseXZ = Float32Array.from(floorGeo.attributes.position.array);
   const heights = new Float32Array(ROW * ROW);
   floorGeo.setAttribute('color', new T.BufferAttribute(new Float32Array(baseXZ.length), 3));
-  const floor = new T.Mesh(floorGeo, std({}));
-  floor.name = 'SeafloorPatch';
-  group.add(floor);
+  group.add(Object.assign(new T.Mesh(floorGeo, std({})), { name: 'SeafloorPatch' }));
 
-  const inst = (geo, mat, cap, name) => {
-    const m = new T.InstancedMesh(geo, mat, cap);
-    m.name = name;
-    m.count = 0;
-    m.frustumCulled = false;   // instances span the whole patch around the camera
-    group.add(m);
-    return m;
-  };
+  // frustumCulled off: instances span the whole patch around the camera
+  const inst = (geo, mat, cap, name) => group.add(Object.assign(new T.InstancedMesh(geo, mat, cap), { name, count: 0, frustumCulled: false })).children.at(-1);
   const shade = new T.Color(PAL.rockShade), moss = new T.Color(PAL.moss);
   const rockGeo = lump(T, new T.IcosahedronGeometry(1, 0), 0.45, (c, f, x, y) =>
     (y > 0.35 && hash(f, 5, 8) < 0.7 ? c.copy(moss) : c.set(PAL.rock).lerp(shade, hash(f, 4, 8))));
   const rocks = inst(rockGeo, std({ flatShading: true }), CAP.rocks, 'SeafloorRocks');
   const weed = inst(seaweedGeometry(T), std({ side: T.DoubleSide, roughness: 0.8 }, true), CAP.weed, 'SeafloorWeed');
-  const white = new T.Color(1, 1, 1), kelpTint = new T.Color(PAL.kelp);
-  const wb = new T.Color(PAL.weed);
+  const white = new T.Color(1, 1, 1), kelpTint = new T.Color(PAL.kelp), wb = new T.Color(PAL.weed);
   kelpTint.setRGB(kelpTint.r / wb.r, kelpTint.g / wb.g, kelpTint.b / wb.b);   // instanceColor x base = kelp
 
   // node meshes (instanced) + one plain highlight copy per type with its own pulsing material
   const nodeMeshes = {}, hl = {};
   for (const type of NODE_TYPES) {
     nodeMeshes[type] = [];
-    hl[type] = new T.Group();
-    hl[type].visible = false;
-    hl[type].name = `SeafloorHighlight_${type}`;
-    group.add(hl[type]);
+    group.add(hl[type] = Object.assign(new T.Group(), { name: `SeafloorHighlight_${type}`, visible: false }));
     for (const part of nodeParts(T, type)) {
       const mk = () => std({ flatShading: true, emissive: new T.Color(part.glow).multiplyScalar(part.gi ?? 0.1), ...part.mat });
       nodeMeshes[type].push(inst(part.geo, mk(), CAP.node, `SeafloorNode_${type}`));
@@ -284,8 +271,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
   }
 
   const gathered = new Set();
-  let patchNodes = [], hlId = null, hlType = null;
-  let centreX = NaN, centreZ = NaN;
+  let patchNodes = [], hlId = null, hlType = null, centreX = NaN, centreZ = NaN;
   const m4 = new T.Matrix4(), q = new T.Quaternion(), v = new T.Vector3(), s = new T.Vector3(), up = new T.Vector3(0, 1, 0);
   const place = (mesh, x, y, z, yaw, sx, sy = sx, sz = sx) => {
     if (mesh.count >= mesh.instanceMatrix.count) return -1;

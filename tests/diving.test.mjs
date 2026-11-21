@@ -141,3 +141,25 @@ test('seafloor helpers', { skip: !existsSync(seafloorPath) && 'dist/seafloor.js 
     if (n) assert.deepEqual(nodeById(n.id, islands), n);
   }
 });
+
+test('seafloor builder: isGathered/highlight API and analytic normals', { skip: !existsSync(seafloorPath) && 'dist/seafloor.js missing' }, async () => {
+  const T = await import(new URL('vendor/three.module.js', base));
+  const { createSeafloor } = await import(new URL('seafloor.js', base));
+  const floor = createSeafloor(T, { islands: [{ x: 70, z: 0, r: 5 }] });
+  const cam = { position: { x: 20, y: -5, z: 10 } };
+  floor.update(0.016, cam, 1);
+  const n = floor.nodesNear(20, -10, 10, 30)[0];
+  assert.ok(n, 'a node near the camera');
+  const hl = () => floor.group.children.filter((o) => o.name.startsWith('SeafloorHighlight') && o.visible);
+  floor.highlight(n.id);
+  assert.equal(hl().length, 1);
+  assert.equal(hl()[0].name, `SeafloorHighlight_${n.type}`);
+  floor.highlight(null);
+  assert.equal(hl().length, 0);
+  assert.equal(floor.isGathered(n.id), false);
+  floor.setGathered(n.id);
+  assert.equal(floor.isGathered(n.id), true);
+  const nor = floor.group.getObjectByName('SeafloorPatch').geometry.attributes.normal;
+  for (let i = 0; i < nor.count; i += 7) assert.ok(Math.abs(Math.hypot(nor.getX(i), nor.getY(i), nor.getZ(i)) - 1) < 1e-4 && nor.getY(i) > 0);
+  floor.dispose();
+});
