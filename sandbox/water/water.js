@@ -20,7 +20,7 @@ const SPEED = 0.6;
 const BASE_Y = -0.24;
 const SDF_RES = 128;      // texels per side; the covered square fits the raft's bounding box + SDF_MAX margin
 const SDF_MAX = 8;        // distance encoded in [-2, SDF_MAX] metres
-const MAX_FLOATERS = 8;
+const MAX_FLOATERS = 16;
 
 const f5 = (v) => v.toFixed(5);
 const glslWaves = WAVES.map(([dx, dz, a, l, q]) => {

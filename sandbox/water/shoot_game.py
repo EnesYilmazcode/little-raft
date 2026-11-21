@@ -21,7 +21,7 @@ with sync_playwright() as p:
     page.on('console', lambda m: m.type == 'error' and report['errors'].append(m.text[:300]))
     page.goto(f'http://127.0.0.1:{port}/'); page.wait_for_function('!!window.raftDebug', timeout=60000)
     page.wait_for_timeout(1500); page.screenshot(path=str(out / f'{pre}-title.png'))
-    page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=60000)
+    page.locator('#solo').click(timeout=180000); page.wait_for_function('raftDebug.state.running', timeout=60000)
     page.wait_for_timeout(2500); page.screenshot(path=str(out / f'{pre}-spawn.png'))
     page.mouse.move(640, 300); page.mouse.down()
     for i in range(1, 11): page.mouse.move(640 + i * 12, 300 + i * 14)

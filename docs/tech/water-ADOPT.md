@@ -75,7 +75,7 @@ loop closes (after line 768) and before the function's closing brace, add:
     ocean.setFloaters?.(floaters, camera.position.x, camera.position.z);
 ```
 
-`setFloaters` keeps the 8 items nearest the camera, which costs about 0.02 to 0.1 ms with 30
+`setFloaters` keeps the 16 items nearest the camera, which costs about 0.02 to 0.1 ms with 30
 items. It runs on host and guest, because it uses the mesh positions that both already update.
 
 ## 4. Verify

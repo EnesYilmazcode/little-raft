@@ -68,7 +68,7 @@ Checks:
   - a fake deck shadow: the SDF sampled once more, offset toward the sun by the deck height
   - darker, foam-free water under the deck, so plank gaps show shaded water, not foam
 
-  Floating items are passed as up to 8 circles (`setFloaters`, nearest to the camera) and get
+  Floating items are passed as up to 16 circles (`setFloaters`, nearest to the camera) and get
   lace rings only. A solid collar was tried and dropped, because a circle never matches a
   plank or a palm leaf and showed as a white disc.
 - **Sun glint.** The old pow-260 lobe on nearly flat water made a large blown-out white patch
@@ -108,7 +108,7 @@ The real game (`shoot_game.py`, 40 frames at spawn, same loaded machine) gave 14
 the current ocean and 1741 to 1773 ms with tier A, about +20% for the whole frame. Draw calls,
 programs and geometries are unchanged. Tier A adds one 16 KB texture.
 
-JS per frame: `setFloaters` with 30 items and a nearest-8 sort takes about 0.015 to 0.1 ms.
+JS per frame: `setFloaters` with 30 items and a nearest-16 sort takes about 0.015 to 0.1 ms.
 `getHeight` is unchanged code. The SDF bake runs only on raft edits.
 
 ## Decision
@@ -141,7 +141,7 @@ Tiers B and C stay in `water.js` behind `#define`s for reference. They cost noth
   game frame. On a real GPU one full-screen pass of this size is trivial, but it is not free,
   and nothing here was measured on real hardware.
 - Floater foam uses circles (r = .35 for every item). Long planks get a round ring, and items
-  beyond the nearest 8 get no foam. Items more than about 30 m away fade out anyway.
+  beyond the nearest 16 get no foam (30 items spawn; 8 slots was visibly too few in the game shot). Items more than about 30 m away fade out anyway.
 - Contact foam only knows the raft tiles and the item circles. The hook bobber, swimmers and
   the islands' shores get none. That would need tier B or more circles. Adding the bobber as
   a 9th circle is a one-line follow-up.
