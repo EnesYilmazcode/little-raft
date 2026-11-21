@@ -106,7 +106,8 @@ export function createControls(g) {
         get element() { return tab?.element ?? null; },
         get capturing() { return !!tab?.capturing; },
         refresh() { tab?.refresh(); },
-        dispose() { gone = true; tab?.dispose?.(); tab = null; },
+        cancel() { tab?.cancel?.(); },
+        dispose() { gone = true; tabs.delete(handle); tab?.dispose?.(); tab = null; },
         ready: import('./controls-tab.js?build=v3-survival-ae77fa84ac2b').then(m => {
           if (gone) return null;
           tab = m.createControlsTab({map, input}); tab.mount(container); return tab;

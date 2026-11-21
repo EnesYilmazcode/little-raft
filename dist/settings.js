@@ -33,6 +33,9 @@ const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Aud
 export const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump / climb'], ['Shift', 'Sprint'], ['C', 'Crouch / dive down'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
   ['1 - 0 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact / open bag'], ['R', 'Rotate piece / repair hook'],
   ['Q or Right-click', 'Build wheel'], ['X', 'Remove piece'], ['Shift+wheel', 'Fine rotate'], ['J', 'Fish journal'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
+// KEYMAP rows the key-binding list (controls-tab.js, mounted through createSettings({mountControls})) shows live;
+// once it is mounted they are hidden here so a rebound key is never listed twice with two different keys.
+const BINDABLE = new Set(['W A S D', 'Space', 'Shift', 'C', 'Click', '1 - 0 / Wheel', 'Tab / I', 'E', 'R']);
 
 export function validateSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
@@ -106,6 +109,26 @@ const CSS = `
   font:600 12px/1 var(--ui-font);letter-spacing:1.2px;text-transform:uppercase;box-shadow:inset 0 0 0 1px rgba(201,164,107,.6)}
 #options .rs-wide:hover{background:rgba(17,35,50,.85);transform:none}
 #options :focus-visible{outline:2px solid var(--amber,#e9a640);outline-offset:2px}
+#options .rs-has-rebind .rs-keys [data-bindable]{display:none}
+#options .rs-panel:has(.rs-has-rebind:not([hidden])){max-height:calc(100vh - max(24px,calc(50vh - 236px)) - 24px)} /* tall Controls page: scroll inside the viewport */
+#options .rs-has-rebind .rs-keys::before{content:"Other keys";grid-column:1/-1;font:700 11px/1 var(--ui-font);letter-spacing:2px;text-transform:uppercase;color:var(--muted,#8f9aa0)}
+#options .rs-rebind:empty{display:none}
+#options .rs-rebind{margin-top:6px;padding-top:16px;border-top:1px solid rgba(201,164,107,.2)}
+#options .rs-rebind>h3{margin:0 0 12px;font:700 11px/1 var(--ui-font);letter-spacing:2px;text-transform:uppercase;color:var(--muted,#8f9aa0)}
+/* key-binding list (controls-tab.js) restyled from its wood theme to the menu's navy + bronze plate */
+#options .lrc{--lrc-edge:rgba(201,164,107,.55);--lrc-ink:var(--cream,#f1e7d0);--lrc-dim:var(--muted,#8f9aa0);--lrc-acc:var(--amber,#e9a640);font:13px/1.35 var(--ui-font,system-ui,sans-serif);gap:12px}
+#options .lrc-panel{padding:10px 0 4px;border:0;border-radius:0;background:none;box-shadow:none}
+#options .lrc-panel>h3{margin:0 0 8px;font:600 17px/1.2 var(--display-font,Georgia,serif);letter-spacing:0;color:var(--cream,#f1e7d0)}
+#options .lrc-row{border-top-color:rgba(201,164,107,.16)}
+#options .lrc button{font:600 12px/1 var(--ui-font);letter-spacing:0;text-transform:none;border-radius:4px;border:0;background:rgba(0,0,0,.35);box-shadow:inset 0 0 0 1px rgba(201,164,107,.45);color:var(--cream,#f1e7d0)}
+#options .lrc button:hover{background:rgba(17,35,50,.85);box-shadow:inset 0 0 0 1px var(--bronze-lt,#c9a46b)}
+#options .lrc .lrc-slot.lrc-wait{background:var(--amber,#e9a640);color:#22170a;box-shadow:none}
+#options .lrc-seg{border:0;border-radius:4px;box-shadow:inset 0 0 0 1px rgba(201,164,107,.45)}
+#options .lrc-seg button{box-shadow:none;background:transparent}
+#options .lrc-seg button[aria-pressed=true]{background:var(--amber,#e9a640);color:#22170a}
+#options .lrc-bar{top:-22px;border:0;border-radius:4px;background:var(--navy-1,#0c1a26);box-shadow:inset 0 0 0 1px rgba(201,164,107,.35),0 6px 14px rgba(0,0,0,.35)}
+#options .lrc-opt label,#options .lrc-opt>span,#options .lrc-check span{font-weight:600}
+#options .lrc-toast{border-color:var(--bronze-lt,#c9a46b);background:var(--navy-0,#070f17)}
 @media (max-width:760px){#options .rs-form{flex-direction:column;align-items:stretch;justify-content:center;gap:18px;overflow:auto;padding:24px 16px}
   #options .rs-menu{width:auto;padding:20px 0 20px 20px;border-radius:6px}#options .rs-foot{display:none}
   #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{max-height:none;margin-top:0}#options .rs-keys{grid-template-columns:auto 1fr}}
@@ -136,7 +159,7 @@ function control(key, s) {
 
 function markup() {
   const page = (tab) => KEYS.filter((k) => SPEC[k].tab === tab).map((k) => control(k, SPEC[k])).join('');
-  const keys = KEYMAP.map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join('');
+  const keys = KEYMAP.map(([k, v]) => { const b = BINDABLE.has(k) ? ' data-bindable' : ''; return `<kbd${b}>${k}</kbd><span${b}>${v}</span>`; }).join('');
   const tabs = TABS.map(([id, name]) => `<button type="button" role="tab" data-tab="${id}" aria-selected="false">${name}</button>`).join('');
   const pages = TABS.map(([id]) => `<div class="rs-page" role="tabpanel" data-page="${id}" hidden>` +
     (id === 'controls' ? `<div class="rs-keys">${keys}</div>` : '') + page(id) +
@@ -182,7 +205,9 @@ function readControls(form) {
   return raw;
 }
 
-export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
+// mountControls(container) -> {capturing, refresh(), cancel?(), dispose?()} (controls.js mountTab): the key-binding list,
+// mounted lazily into the Controls tab the first time it is shown.
+export function createSettings({ onChange, onResume, onPause, onQuit, mountControls } = {}) {
   ensureStyle();
   const { dialog, reused } = ensureDialog();
   const form = dialog.querySelector('[data-raft-settings]');
@@ -229,13 +254,33 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     call(onChange, { ...values });
   }
 
+  let rebind = null; // key-binding list handle, once mounted
+  const rebindCapturing = () => { try { return !!rebind?.capturing; } catch { return false; } };
+  const cancelRebind = () => { try { rebind?.cancel?.(); } catch (err) { console.error(err); } };
+  function mountRebind() {
+    if (typeof mountControls !== 'function' || !owns()) return;
+    if (rebind) { try { rebind.refresh?.(); } catch (err) { console.error(err); } return; }
+    const page = form.querySelector('[data-page="controls"]');
+    if (!page) return;
+    let box = page.querySelector('.rs-rebind');
+    if (!box) { box = document.createElement('div'); box.className = 'rs-rebind'; page.appendChild(box); }
+    box.replaceChildren(); // a hot swap left the old instance's list behind
+    try { rebind = mountControls(box) || null; } catch (err) { console.error(err); rebind = null; }
+    if (!rebind) return;
+    const head = document.createElement('h3'); head.textContent = 'Key bindings';
+    box.prepend(head);
+    page.classList.add('rs-has-rebind');
+  }
   function showTab(id) {
     for (const b of form.querySelectorAll('[data-tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === id));
     for (const p of form.querySelectorAll('[data-page]')) p.hidden = p.dataset.page !== id;
+    if (id === 'controls') mountRebind(); else cancelRebind();
   }
   const panelOpen = () => !panel.hidden;
   function setPanel(open) {
     panel.hidden = !open;
+    if (!open) cancelRebind();
+    else if (form.querySelector('[data-tab="controls"][aria-selected=true]')) mountRebind();
     const btn = form.querySelector('[data-act="settings"]');
     btn?.setAttribute('aria-expanded', String(open));
     if (open && dialog.contains(document.activeElement) && document.activeElement !== btn) btn?.focus({ preventScroll: true }); // one highlight, not two
@@ -285,6 +330,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   // Closes the menu. resume=false is used when handing over to another menu.
   function close(resume = true) {
     if (!owns()) return;
+    cancelRebind();
     if (dialog.open) dialog.close();
     if (resume) call(onResume);
   }
@@ -293,6 +339,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   function escape() {
     if (!owns()) return false;
     esc.keydown(performance.now(), { handled: true });
+    if (dialog.open && rebindCapturing()) { cancelRebind(); return true; } // Esc while a binding waits for a key: cancel only that (also the desktop raftEscape path)
     const inv = document.getElementById('inventory');
     if (inv?.open) { inv.dispatchEvent(new Event('cancel', { cancelable: true })); return true; } // survival UI closes and relocks
     if (dialog.open) { if (panelOpen()) { setPanel(false); form.querySelector('[data-act="settings"]')?.focus({ preventScroll: true }); } else close(true); return true; }
@@ -436,6 +483,8 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
       if (destroyed) return;
       destroyed = true;
       ac.abort();
+      try { rebind?.dispose?.(); } catch { /* ignore */ }
+      rebind = null;
       // #options, its <style> and window.raftEscape are shared: a newer instance may already own them.
       // If none has, hand raftEscape back to the instance we replaced (a failed hot-swap resumes that engine).
       restoreGlobal(window, 'raftEscape', previousEscape, raftEscape);
