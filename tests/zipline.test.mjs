@@ -278,8 +278,8 @@ test('coop: HELD keeps 0..20 and appends glidehandle at 21; riding is pose bit 8
   assert.equal(HELD[21], 'glidehandle'); // after [treasure] 17-18 and [spear-repair] 19-20
   const f = poseFlags({ swimming: false, grounded: false, reeling: false, riding: true });
   assert.equal(f & 8, 8); assert.equal(f & 7, 0);
-  assert.deepEqual(readFlags(f), { swimming: false, grounded: false, reeling: false, riding: true });
-  assert.deepEqual(readFlags(poseFlags({ swimming: true, grounded: true, reeling: true })), { swimming: true, grounded: true, reeling: true, riding: false });
+  assert.deepEqual(readFlags(f), { swimming: false, grounded: false, reeling: false, riding: true, seated: false });
+  assert.deepEqual(readFlags(poseFlags({ swimming: true, grounded: true, reeling: true })), { swimming: true, grounded: true, reeling: true, riding: false, seated: false });
   const old = g => ({ swimming: !!(g & 1), grounded: !!(g & 2), reeling: !!(g & 4) }); // an older peer's reader
   assert.deepEqual(old(poseFlags({ grounded: true, riding: true })), { swimming: false, grounded: true, reeling: false });
 });

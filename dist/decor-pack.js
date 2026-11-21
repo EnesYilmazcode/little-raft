@@ -187,6 +187,7 @@ export function createDecorPack(ctx) {
 
   return {
     name: 'decorpack',
+    afterUndecor(d) { if (!d) return; const k = keyOf(d.x, d.z); if (st.t[k] === undefined && st.rot[k] === undefined) return; delete st.t[k]; delete st.rot[k]; st.r++; dirty = true; }, // [undecor] sign text is lost (a clean board)
     serialize,
     load,
     update,

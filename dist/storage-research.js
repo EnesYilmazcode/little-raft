@@ -273,6 +273,7 @@ export function createStorage(ctx) {
   const decorAt = (x, z) => { const d = ctx.world?.decor; if (!Array.isArray(d)) return null; for (let i = 0; i < d.length; i++) if (d[i].x === x && d[i].z === z) return d[i].type; return null; };
   const posOf = actor => { if (actor === 'guest') return ctx.other ?? null; const p = ctx.physics; return p ? { x: p.x, z: p.z } : null; };
   const bump = () => { st.r++; ver++; };
+  const dropKey = k => { if (ctx.role === 'guest' || !st.chests[k]) return false; delete st.chests[k]; bump(); return true; }; // [undecor]
 
   // Nearest crate/research decor along the view ray (or the camera forward when no aim), within reach.
   function target(aim) {
@@ -381,7 +382,13 @@ export function createStorage(ctx) {
       return true;
     },
     // A foundation the shark tore off takes its crate's contents with it (game.js calls this on the host).
-    dropTile(x, z) { const k = keyOf(x, z); if (ctx.role === 'guest' || !st.chests[k]) return false; delete st.chests[k]; bump(); return true; },
+    dropTile(x, z) { return dropKey(keyOf(x, z)); }, // [undecor] shares the delete with afterUndecor
+    undecorLoot(d) { // [undecor] every chest slot comes back, tools keep their wear
+      if (d?.type !== 'crate') return null; const c = st.chests[keyOf(d.x, d.z)]; if (!c) return null;
+      const out = []; for (const s of c) if (s) out.push(s.durability !== undefined || s.id !== undefined ? [s.kind, s.count, { ...(s.durability !== undefined ? { durability: s.durability } : {}), ...(s.id !== undefined ? { id: s.id } : {}) }] : [s.kind, s.count]);
+      return out;
+    },
+    afterUndecor(d) { if (d?.type !== 'crate') return; const o = ui?.openInfo(); if (o && o.x === d.x && o.z === d.z) ui.close(); dropKey(keyOf(d.x, d.z)); }, // [undecor]
     craftLocked(recipe) {
       if (typeof recipe !== 'string' || !hasOwn(RECIPES, recipe)) return null;
       return isLearned(st, recipe) ? null : LOCK_REASON;
