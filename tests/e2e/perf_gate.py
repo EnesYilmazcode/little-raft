@@ -315,6 +315,42 @@ class InsufficientFrames(RuntimeError):
     pass
 
 
+class GameBootFailure(RuntimeError):
+    """The game threw while booting/starting: a game bug (exit 1), not infra."""
+    def __init__(self, failure):
+        super().__init__(failure['detail']); self.failure = failure
+
+
+def boot(page, url, report, repro):
+    """Load the page and start a solo game. Raises GameBootFailure (exit 1) when the game threw
+    uncaught errors on the way, otherwise RuntimeError with the step that failed (exit 2)."""
+    steps = [
+        ('load page', lambda: page.goto(url, timeout=120000)),
+        ('wait for window.raftDebug', lambda: page.wait_for_function('!!window.raftDebug && !!window.__perf', timeout=120000)),
+        ('click #solo', lambda: page.locator('#solo').click(timeout=60000)),
+        ('wait for raftDebug.state.running', lambda: page.wait_for_function('!!(window.raftDebug && raftDebug.state && raftDebug.state.running)', timeout=120000)),
+    ]
+    for name, fn in steps:
+        try:
+            fn()
+        except Exception as e:
+            msg = f'boot step "{name}" failed: {type(e).__name__}: {str(e).splitlines()[0][:200] if str(e) else ""}'
+            try: err = page.evaluate("(document.getElementById('loadError') || {}).textContent || ''")
+            except Exception: err = ''
+            if err: msg += f'; #loadError says: {err[:200]}'
+            # The live.js loader catches game.js errors and console.error()s them, so console errors
+            # count too. They (or #loadError) only blame the game when WebGL itself works here;
+            # no WebGL on the box is infra.
+            try: webgl = page.evaluate("(() => { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); })()")
+            except Exception: webgl = False
+            errs = report['errors'] + report['console']
+            if errs or err: msg += f"; {len(report['errors'])} uncaught page error(s), {len(report['console'])} console error(s), first: {(errs or [err])[0]}"
+            if webgl and (errs or err):
+                raise GameBootFailure({'id': 'boot', 'detail': msg + ' (WebGL works in this browser, so the game failed to start)', 'repro': repro})
+            if not webgl: msg += ' (WebGL unavailable in this browser)'
+            raise RuntimeError(msg + ' (no page errors: harness/timeout, or this build lacks the hook the gate drives)')
+
+
 def run(args, budget):
     sys.path.insert(0, str(HERE))
     from harness import StaticServer, launch_chromium
@@ -338,8 +374,7 @@ def run(args, budget):
             page.on('console', lambda m: m.type == 'error' and report['console'].append(m.text[:300]))
             cdp = ctx.new_cdp_session(page)
             cdp.send('Performance.enable'); cdp.send('HeapProfiler.enable')
-            page.goto(srv.url, timeout=60000); page.wait_for_function('!!window.raftDebug && !!window.__perf', timeout=60000)
-            page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=60000)
+            boot(page, srv.url, report, repro)
             page.wait_for_timeout(int(args.warmup * 1000))
             # On a very loaded box 6 s can be only a handful of frames; make sure first-frame
             # shader compiles and buffer uploads are done before the baseline heap/GL sample.
@@ -369,7 +404,7 @@ def run(args, budget):
             h1 = heap(page, cdp); h1['t'] = round(time.time() - t0, 1); samples.append(h1)
             page.evaluate('__perf.stop()')
             d = page.evaluate('__perf.dump()')
-            report['endState'] = page.evaluate("""(() => { const s = raftDebug.state; return {running: s.running, items: s.items, tiles: s.tiles, collected: s.collected, inventoryOpen: s.inventoryOpen, stock: s.stock}; })()""")
+            report['endState'] = page.evaluate("""(() => { const s = window.raftDebug?.state || {}; return {running: s.running, items: s.items, tiles: s.tiles, collected: s.collected, inventoryOpen: s.inventoryOpen, stock: s.stock}; })()""")
         finally:
             b.close()
 
@@ -451,20 +486,25 @@ def main():
             metrics['retry'] = {'reason': 'only load-sensitive budgets failed on attempt 1; attempt 2 is the result', 'attempt1': first}
             for f in fails:
                 if f['id'] in LOAD_SENSITIVE: f['detail'] += f" (reproduced on a second session; attempt 1: {first['longTasks']['hitches']} hitches over {first['longTasks']['hitchThresholdMs']} ms)"
+        metrics['wallS'] = round(time.time() - t_start, 1)
+        out['pass'] = not fails; out['failures'] = fails
+        if args.out:
+            od = Path(args.out); od.mkdir(parents=True, exist_ok=True)
+            f = od / 'perf_gate.json'
+            f.write_text(json.dumps({**out, 'metrics': metrics, 'budget': budget, 'errors': report['errors'], 'console': report['console']}, indent=1), 'utf-8')
+            out['artifacts'].append(str(f))
+        slim = {k: v for k, v in metrics.items() if k not in ('heap', 'drawBreakdown', 'longAnimationFrames', 'glLiveObjects')}
+        slim['heap'] = {k: v for k, v in metrics['heap'].items() if k != 'samples'}
+        out['metrics'] = slim
+    except GameBootFailure as e:  # the game itself broke before it could be measured
+        out['pass'] = False; out['failures'] = [e.failure]
+        out['metrics'] = {'wallS': round(time.time() - t_start, 1)}
+        print(json.dumps(out)); return 1
     except Exception as e:  # harness failure, not a budget failure
+        out['pass'] = False
         out['failures'] = [{'id': 'harness', 'detail': f'{type(e).__name__}: {str(e)[:500]}', 'repro': f'python3.13 tests/e2e/perf_gate.py --dist {args.dist}'}]
         out['metrics'] = {'wallS': round(time.time() - t_start, 1)}
         print(json.dumps(out)); return 2
-    metrics['wallS'] = round(time.time() - t_start, 1)
-    out['pass'] = not fails; out['failures'] = fails
-    if args.out:
-        od = Path(args.out); od.mkdir(parents=True, exist_ok=True)
-        f = od / 'perf_gate.json'
-        f.write_text(json.dumps({**out, 'metrics': metrics, 'budget': budget, 'errors': report['errors'], 'console': report['console']}, indent=1), 'utf-8')
-        out['artifacts'].append(str(f))
-    slim = {k: v for k, v in metrics.items() if k not in ('heap', 'drawBreakdown', 'longAnimationFrames', 'glLiveObjects')}
-    slim['heap'] = {k: v for k, v in metrics['heap'].items() if k != 'samples'}
-    out['metrics'] = slim
     print(json.dumps(out))
     return 0 if out['pass'] else 1
 
