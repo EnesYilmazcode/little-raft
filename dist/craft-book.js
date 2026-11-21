@@ -234,6 +234,42 @@ export function sourceOf(kind, recipes, nameOf = k => k) {
   return { tag: 'craft it', how: cost ? `Craft it from ${cost}.` : 'Craft it.', recipe: made.id };
 }
 
+// ---- pinned recipe tracker (HUD edge) ----
+export const PIN_KEY = 'little-raft-pinned-recipe';
+
+/** The pinned recipe id from storage, or null when unset, not in validIds, or storage throws. */
+export function loadPin(storage, validIds = null) {
+  let v = null;
+  try { v = storage?.getItem(PIN_KEY) ?? null; } catch { return null; }
+  if (typeof v !== 'string' || !v) return null;
+  if (validIds && !validIds.includes(v)) return null;
+  return v;
+}
+/** Store the pinned recipe id, or clear it with null. Returns false when storage refuses. */
+export function savePin(storage, id) {
+  try {
+    if (!storage) return false;
+    if (id) storage.setItem(PIN_KEY, String(id)); else storage.removeItem(PIN_KEY);
+    return true;
+  } catch { return false; }
+}
+
+/**
+ * What the HUD tracker shows for a normalised recipe: its owned/needed rows, state, how many
+ * crafts the materials cover, and how many ingredient lines are complete.
+ * `check` is an optional Bag.canCraft() result. Returns null without a recipe.
+ */
+export function trackerView(recipe, countOf, check = null) {
+  if (!recipe) return null;
+  const rows = ingredientRows(recipe.reqs, countOf);
+  const times = craftableTimes(rows);
+  return {
+    id: recipe.id, name: recipe.name, kind: recipe.out?.kind ?? recipe.id, rows,
+    state: recipeState(rows, check), times: Number.isFinite(times) ? times : 0,
+    met: rows.filter(r => r.enough).length, total: rows.length,
+  };
+}
+
 /** Craft button hint: how many a hold would make right now ('' when one or none). */
 export function holdHint(times, cap = HOLD.max) {
   const n = Math.min(Number.isFinite(times) ? Math.floor(times) : cap, cap);

@@ -74,6 +74,49 @@ test('sourceOf: gathered items say where they float, crafted ones link to their 
   assert.equal(CB.sourceOf('wood', null).recipe, null);
 });
 
+const memStore = () => {
+  const m = new Map();
+  return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), m };
+};
+
+test('pin storage: round-trips, clears, drops unknown ids and survives broken storage', () => {
+  const s = memStore();
+  assert.equal(CB.loadPin(s), null);
+  assert.equal(CB.savePin(s, 'fishingrod'), true);
+  assert.equal(s.m.get(CB.PIN_KEY), 'fishingrod');
+  assert.equal(CB.loadPin(s, Object.keys(RECIPES)), 'fishingrod');
+  assert.equal(CB.loadPin(s, ['rope']), null, 'a recipe that no longer exists is not pinned');
+  assert.equal(CB.savePin(s, null), true);
+  assert.equal(CB.loadPin(s), null);
+  const broken = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); }, removeItem() { throw new Error('denied'); } };
+  assert.equal(CB.loadPin(broken), null);
+  assert.equal(CB.savePin(broken, 'rope'), false);
+  assert.equal(CB.savePin(null, 'rope'), false);
+  assert.equal(CB.loadPin(undefined), null);
+});
+
+test('trackerView: owned/needed rows, progress and readiness for the pinned recipe', () => {
+  const rod = normRecipes().find(r => r.id === 'fishingrod');
+  const bag = bagWith({ wood: 9, rope: 2 });
+  const tv = CB.trackerView(rod, k => bag.count(k), bag.canCraft('fishingrod'));
+  assert.equal(tv.id, 'fishingrod');
+  assert.equal(tv.name, 'Fishing Rod');
+  assert.equal(tv.kind, 'fishingrod');
+  assert.equal(tv.state, 'missing');
+  assert.equal(tv.met, 1);
+  assert.equal(tv.total, 2);
+  assert.equal(tv.times, 0);
+  assert.deepEqual(tv.rows.map(r => CB.amountLabel(r)), ['9 / 6', '2 / 8']);
+  assert.deepEqual(tv.rows.map(r => r.enough), [true, false]);
+  const rich = bagWith({ wood: 20, rope: 17 });
+  const ok = CB.trackerView(rod, k => rich.count(k), rich.canCraft('fishingrod'));
+  assert.equal(ok.state, 'ready');
+  assert.equal(ok.times, 2);
+  assert.equal(ok.met, ok.total);
+  assert.equal(CB.trackerView(null, () => 0), null);
+  assert.equal(CB.trackerView({ id: 'free', name: 'Free', reqs: [] }, () => 0).times, 0, 'no ingredients is not infinite');
+});
+
 test('sourceOf: every item and recipe ingredient has a source the player can act on', () => {
   const recipes = normRecipes();
   for (const r of recipes) for (const q of r.reqs) {
