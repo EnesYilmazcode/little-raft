@@ -5,7 +5,7 @@
 // the queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
 // getModel; never disposed here) and fall back to the game's own procedural models.
 // Public API: getItemIcon(kind) (sync, data URL or null while rendering / without WebGL),
-// loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider.
+// loadItemIcon(kind) (Promise of the same), primeIcons (render now), warmIcons, onIconReady, setModelProvider.
 import * as T from './vendor/three.module.js';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
@@ -46,7 +46,9 @@ export const ICON_FATTEN = { hammer: 1.4, fishingrod: 2.2 };
 const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
 // Per-kind framing for models.js items: pose, view direction, crop of the projected bounds
 // ([x0, x1, y0, y1] as fractions) and exposure, so thin or dark items still read in a slot.
+// own: render from the game's own model instead of the provider (the hook in hand is hook.js's metal hook).
 const FRAME = {
+  hook: { own: true, pose: [0.15, -0.5, 0.85], view: [0.15, 0.2, 1], crop: [0, 0.88, 0.12, 1], exp: 2.1 },  // the dark steel J, as held
   hammer: { pose: [-0.75, 0, 0], view: [1, 0.3, 0.2], exp: 1.5 },           // head in profile
   lantern: { view: [0.35, 0.3, 1], crop: [0.5, 1, 0.48, 0.96], exp: 1.7 },  // the lamp, not the post
   fishingrod: { crop: [0, 0.7, 0, 0.7], exp: 1.5 },                          // grip, reel and float
@@ -146,7 +148,7 @@ function freeModel(root) {
  *  fallback lacks (cup, seed, water). own = true when the caller must free it. */
 export function resolveIconModel(kind) {
   let model = null;
-  if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
+  if (provider && !FRAME[kind]?.own) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
   if (model) return { model, own: false };
   try { model = buildFallbackModel(kind); } catch (e) { console.warn('item icon model failed', kind, e); }
   if (model) return { model, own: true };
@@ -154,6 +156,7 @@ export function resolveIconModel(kind) {
   return { model: model || null, own: false };   // getModel clones share cached geometry: never free
 }
 
+// Renders kind and returns a 2D canvas copy of the pixels (null when it cannot be drawn).
 function renderKind(kind) {
   if (!ensureGL()) return null;
   const { model, own } = resolveIconModel(kind);
@@ -161,7 +164,8 @@ function renderKind(kind) {
   const pivot = new T.Group();
   const fat = own ? ICON_FATTEN[kind] : 0;
   if (fat) { const g = new T.Group(); g.scale.set(fat, 1, fat); g.add(model); pivot.add(g); } else pivot.add(model);
-  const f = (!own && FRAME[kind]) || {};
+  const fr = FRAME[kind];
+  const f = (fr && !!fr.own === own) ? fr : {};
   const p = f.pose || (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
   pivot.updateMatrixWorld(true);
   _box.setFromObject(pivot, true);
@@ -245,6 +249,7 @@ function encode(kind, canvas) {
 const idle = typeof requestIdleCallback === 'function' ? cb => requestIdleCallback(cb, { timeout: 300 }) : cb => setTimeout(() => cb(null), 16);
 const SLICE_MS = 8;   // leave this much of a real idle period unused
 const BUDGET_MS = 5;  // drain budget for a timed-out callback (or no requestIdleCallback)
+const TITLE_BUDGET_MS = 40;
 
 function pump(deadline) {
   pumping = false;
@@ -252,7 +257,9 @@ function pump(deadline) {
   const t0 = performance.now();
   // At least one icon per callback; more while the idle period (or the timed-out budget) has room.
   const idleMs = deadline && !deadline.didTimeout ? deadline.timeRemaining() - SLICE_MS : 0;
-  const budget = Math.max(BUDGET_MS, idleMs);
+  // The title screen has no gameplay to protect: drain the warm-up there so it is done before play.
+  const title = globalThis.document?.getElementById('welcome');
+  const budget = Math.max(title && !title.hidden ? TITLE_BUDGET_MS : BUDGET_MS, idleMs);
   do {
     const q = urgent.size ? urgent : queued, it = q.values().next();
     if (it.done) break;
@@ -285,6 +292,15 @@ export function loadItemIcon(kind) {
 }
 /** Queue several kinds ahead of time (rendered in idle slices). */
 export function warmIcons(kinds) { for (const k of kinds) request(k, false); }
+/** Render kinds right now (e.g. the starting hotbar and common pickups at mount), ahead of the idle warm-up. */
+export function primeIcons(kinds) {
+  for (const k of kinds) {
+    if (!k || cache.has(k) || encoding.has(k) || failed) continue;
+    urgent.delete(k); queued.delete(k);
+    encode(k, renderKind(k));
+  }
+  if (gl && !urgent.size && !queued.size && !releaseTimer) releaseTimer = setTimeout(release, RELEASE_MS);
+}
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 /** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */

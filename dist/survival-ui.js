@@ -20,7 +20,7 @@ const SPRITE_URL = (() => {
 
 // Symbols that actually exist in icons.svg.
 const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier', 'rainbarrel', 'sprinkler', 'research',
-  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals
+  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion', 'fins', 'airjug', 'goggles', 'scraper', 'cookpot', 'bowl', 'meal', 'shell', 'wreath', 'float']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals
 // Item kind (normalised) -> sprite symbol.
 const SPRITE_FOR = {
   hook: 'hook', plastichook: 'hook', grapplinghook: 'hook',
@@ -34,6 +34,7 @@ const SPRITE_FOR = {
   lantern: 'lantern', compass: 'compass', repair: 'repair', palm: 'palm',
   antenna: 'antenna', receiver: 'compass',
   puffegg: 'egg', feather: 'feather', nestbox: 'nest', cushion: 'cushion',
+  shell: 'shell', shellwreath: 'wreath', glassfloat: 'float', // trader.js
 };
 // Hand-drawn fallbacks for kinds without a sprite (same palette as icons.svg).
 const CUSTOM = {
@@ -138,7 +139,8 @@ function iconSVG(kind) {
   // Placeholder (borrowed) sprite + a dedicated inline drawing -> prefer the drawing.
   const custom = meta?.placeholder && CUSTOM[n];
   // A borrowed sprite would show the wrong item (water as a barrel), so wait on a blank tile instead.
-  if (meta?.placeholder && !custom) return '<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="24" cy="24" r="8" fill="#ffffff12"/></svg>';
+  // Neutral tile (rounded box + initials) so the slot never looks empty while the 3D icon renders.
+  if (meta?.placeholder && !custom) return `<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><rect x="9" y="9" width="30" height="30" rx="6" fill="#3e2a1714" stroke="#3e2a1766" stroke-width="1.5"/><text x="24" y="29" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="700" fill="#3e2a17b0">${esc(itemName(kind).replace(/\s+/g, '').slice(0, 2))}</text></svg>`;
   let id = custom ? null : meta?.icon;
   if (typeof id === 'string') id = id.replace(/^icon-/, ''); else id = null;
   if (!custom && (!id || !SPRITES.has(id))) id = SPRITE_FOR[n];

@@ -98,7 +98,7 @@ export function createTreasure(ctx) {
     if (typeof document === 'undefined' || !document.body) return;
     if (!hud) {
       hud = document.createElement('div'); hud.id = 'treasureHud'; hud.setAttribute('role', 'status');
-      hud.style.cssText = 'position:fixed;left:50%;top:12%;transform:translateX(-50%);padding:4px 12px;border-radius:8px;background:rgba(8,22,36,.6);color:#f6ecd6;font:700 15px/1.3 system-ui,sans-serif;pointer-events:none;z-index:30;white-space:nowrap;display:flex;gap:8px;align-items:center';
+      hud.style.cssText = 'position:fixed;left:16px;top:16px;padding:4px 12px;border-radius:8px;background:rgba(8,22,36,.6);color:#f6ecd6;font:700 15px/1.3 system-ui,sans-serif;pointer-events:none;z-index:30;white-space:nowrap;display:flex;gap:8px;align-items:center';
       hud.innerHTML = '<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8" fill="none" stroke="rgba(246,236,214,.25)" stroke-width="3"/>'
         + `<circle cx="11" cy="11" r="8" fill="none" stroke="#ffbd66" stroke-width="3" stroke-linecap="round" stroke-dasharray="0 ${RING.toFixed(2)}" transform="rotate(-90 11 11)"/>`
         + '<circle cx="11" cy="11" r="2.8" fill="#ffbd66" style="transform-origin:11px 11px"/></svg><span></span>';

@@ -54,7 +54,7 @@ export const HOLD = Object.freeze({
 export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
 
 // Left-fist (placeable) models are capped to a small carried size so they never fill the lower left.
-export const HELD_LEFT_MAX = 0.075;
+export const HELD_LEFT_MAX = 0.11;
 const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
   planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
   drum: 0.24, pipes: 0.2, bells: 0.26 }; // [instruments]
