@@ -419,3 +419,39 @@ test('host prune keeps rods while the world is briefly missing', () => {
   assert.equal(m.debug.slice().rods['0,1'], undefined);
   m.dispose();
 });
+
+test('sea bolts land beyond the deck of a big raft; underwater shows no bolt and only a soft glow', () => {
+  resetLive();
+  const ctx = dnCtx();
+  for (let x = -12; x <= 12; x++) ctx.world.tiles.push([x, 3]);
+  const dn = createDayNight(ctx), m = createStorm(ctx);
+  dn.update(1 / 60); m.update(1 / 60);
+  const deck = Math.hypot(12 * 2 + 1, 3 * 2 + 1);
+  for (const a of [0, Math.PI / 2, Math.PI, 4]) {
+    ctx.elapsed += 2;
+    assert.equal(m.debug.strike({ a, r: 20 }), true);
+    const e = m.debug.state().bolt.end;
+    assert.ok(Math.hypot(e[0], e[2]) > deck + 19, `bolt end ${Math.hypot(e[0], e[2])} vs deck ${deck}`);
+  }
+  // diving: camera under the surface
+  ctx.camera.position.y = -3;
+  ctx.elapsed += 2; m.update(1 / 60);
+  assert.equal(m.debug.strike({ a: 1, r: 40 }), true);
+  let peak = 0;
+  for (let i = 0; i < 40; i++) { m.update(1 / 60); ctx.elapsed += 1 / 60; peak = Math.max(peak, STORM_LIVE.flash); assert.equal(m.debug.state().bolt.visible, false); }
+  assert.ok(peak > 0 && peak <= 0.25, `underwater flash ${peak}`);
+  dn.dispose(); m.dispose();
+});
+
+test('prompt cache follows the decor type on the same tile', () => {
+  resetLive();
+  const ctx = stubCtx();
+  ctx.camera.position.set(0, 1.7, 0.5);
+  const m = createStorm(ctx);
+  ctx.world.decor.push({ type: 'stormrod', x: 0, z: 1 });
+  const aim = { dir: new T.Vector3(0, -0.6, 1).normalize() };
+  assert.match(m.prompt(aim) ?? '', /Lightning Rod/);
+  ctx.world.decor[0].type = 'stormglass';
+  assert.match(m.prompt(aim) ?? '', /Storm Glass/);
+  m.dispose();
+});

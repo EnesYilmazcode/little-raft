@@ -137,7 +137,7 @@ export function createStorm(ctx, { peek } = {}) {
   let cache = null, cacheSt = null, cacheR = -1, netR = -1;
   let M = null, rodModel = null, lampModel = null, glassModel = null, bolt = null, boltScene = null;
   let time = 0, scanClock = 0, pruneClock = 0, foreClock = 1, childCount = -1, dirty = true, shownR = -1, shownSt = null;
-  let amp = 1, lampI = -1, crystalS = 0.3, decorSig = NaN;
+  let amp = 1, lampI = -1, crystalS = 0.3, decorSig = NaN, raftR = 0; // raftR: deck radius around the raft origin (m)
   const drv = makeDriver();
   const SP = { a: 0, r: 0 };
   const FC = { index: -1, start: 0, inSec: Infinity };
@@ -190,6 +190,20 @@ export function createStorm(ctx, { peek } = {}) {
     if (Array.isArray(d)) for (let i = 0; i < d.length; i++) if (d[i].type === 'stormrod' && Number.isInteger(d[i].x) && Number.isInteger(d[i].z)) rodKeys.push(keyOf(d[i].x, d[i].z));
     rodKeys.sort();
   }
+  // Farthest deck corner from the raft origin: sea bolts land r metres beyond it, so even a big raft is never hit.
+  function deckRadius() {
+    const t = ctx.world?.tiles; if (!Array.isArray(t)) return 0;
+    let m = 0;
+    for (let i = 0; i < t.length; i++) { const a = t[i]; if (!a) continue; const x = Math.abs(a[0] * 2) + 1, z = Math.abs(a[1] * 2) + 1, d = x * x + z * z; if (d > m) m = d; }
+    return m > 0 ? Math.sqrt(m) : 0;
+  }
+  // Camera below the surface (diving): no bolt through the water ceiling, only a dim glow from above.
+  function underwater() {
+    const cam = ctx.camera, oc = ctx.ocean;
+    if (!cam || !oc || typeof oc.getHeight !== 'function') return false;
+    const h = oc.getHeight(cam.position.x, cam.position.z);
+    return Number.isFinite(h) && cam.position.y < h - 0.05;
+  }
   function rescanModels() {
     nRod = nLamp = nGlass = 0;
     const raft = ctx.raft;
@@ -218,7 +232,7 @@ export function createStorm(ctx, { peek } = {}) {
     flashT0 = t0; flashR = rodKey ? 3 : r; flashOn = true;
     thunderAt = t0 + thunderDelay(r, !!rodKey); thunderS = rodKey ? 1 : thunderStrength(r);
     const mode = flashMode();
-    if (mode !== 'full' || !T || !ctx.scene) { if (bolt) bolt.mesh.visible = false; return; }
+    if (mode !== 'full' || !T || !ctx.scene || underwater()) { if (bolt) bolt.mesh.visible = false; return; }
     if (!bolt) bolt = buildBolt(T);
     if (boltScene !== ctx.scene) { if (boltScene) boltScene.remove(bolt.mesh); boltScene = ctx.scene; boltScene.add(bolt.mesh); }
     const raft = ctx.raft;
@@ -230,7 +244,8 @@ export function createStorm(ctx, { peek } = {}) {
     }
     if (!found) {
       if (raft) raft.getWorldPosition(vC); else vC.set(0, 0, 0);
-      vB.set(vC.x + Math.cos(a) * r, 0, vC.z + Math.sin(a) * r);
+      const rr = r + raftR; // r is measured from the deck edge, never onto the raft
+      vB.set(vC.x + Math.cos(a) * rr, 0, vC.z + Math.sin(a) * rr);
     }
     const ja = 2 * Math.PI * hash01(seed, id, 30), jr = 4 + 10 * hash01(seed, id, 31);
     vA.set(vB.x + Math.cos(ja) * jr, STRIKE.TOP, vB.z + Math.sin(ja) * jr);
@@ -256,10 +271,11 @@ export function createStorm(ctx, { peek } = {}) {
     const mode = flashMode();
     const t = Number.isFinite(poseT) ? poseT : now() - flashT0;
     if (flashOn) {
-      const f = flashAt(t, mode) * flashScale(flashR);
+      const deep = underwater();
+      const f = flashAt(t, deep && mode === 'full' ? 'soft' : mode) * flashScale(flashR); // underwater: one soft glow, never brighter
       L.flash = f > 0 ? Math.min(1, f) : 0;
       if (bolt && bolt.mesh.visible) {
-        if (t >= 0.3 || mode !== 'full') bolt.mesh.visible = false;
+        if (t >= 0.3 || mode !== 'full' || deep) bolt.mesh.visible = false;
         else bolt.mesh.material.opacity = Math.max(0.2, flashAt(t, 'full'));
       }
       if (t > 0.7) { flashOn = false; L.flash = 0; if (bolt) bolt.mesh.visible = false; }
@@ -288,6 +304,7 @@ export function createStorm(ctx, { peek } = {}) {
     if (dirty || (raft && raft.children.length !== childCount) || scanClock >= 0.5) {
       const sig = decorSignature();
       if (sig !== decorSig) { decorSig = sig; rebuildRodKeys(); }
+      raftR = deckRadius();
       if (dirty || (raft && raft.children.length !== childCount)) { rescanModels(); childCount = raft ? raft.children.length : -1; shownR = -1; }
       scanClock = 0; dirty = false;
     }
@@ -367,13 +384,13 @@ export function createStorm(ctx, { peek } = {}) {
   // Info-only prompts start with an empty <kbd>: content.promptParts makes them a muted row in #lrPrompt, and
   // prompts.js does not echo them into the event feed every time the player looks at the rod.
   const INFO = '<kbd></kbd>';
-  let pKey = null, pR = -1, pB = -1, pSt = null, pOut = null;
+  let pKey = null, pType = null, pR = -1, pB = -1, pSt = null, pOut = null;
   function prompt(aim) {
     const d = target(aim); if (!d) return null;
     const key = keyOf(d.x, d.z);
     const stormNow = L.ready && L.level > 0.05;
     const bucket = d.type === 'stormglass' ? (stormNow ? -1 : FC.index < 0 ? -2 : Math.max(1, Math.round(FC.inSec / 60))) : (L.ready && L.level > 0.05 ? 1 : 0);
-    if (pOut !== null && key === pKey && st.r === pR && st === pSt && bucket === pB) return pOut;
+    if (pOut !== null && key === pKey && d.type === pType && st.r === pR && st === pSt && bucket === pB) return pOut;
     let html;
     if (d.type === 'stormglass') {
       html = 'Storm Glass · ' + (bucket === -1 ? 'Storm now!' : bucket === -2 ? 'Fair skies for a good while' : `A storm in about ${bucket} min`);
@@ -383,7 +400,7 @@ export function createStorm(ctx, { peek } = {}) {
       if (n > 0) html = '<kbd>E</kbd>' + esc(`Collect ${n} Storm Shard${n === 1 ? '' : 's'}`);
       else html = INFO + esc(bucket ? 'Lightning Rod · waiting for a strike' : 'Lightning Rod · catches lightning in storms');
     }
-    pOut = html; pKey = key; pR = st.r; pSt = st; pB = bucket;
+    pOut = html; pKey = key; pType = d.type; pR = st.r; pSt = st; pB = bucket;
     return pOut;
   }
 
