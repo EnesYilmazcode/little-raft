@@ -42,7 +42,8 @@ export function createInput({
   let activeIndex = -1;
   const api = { activeDevice: 'kbm' };
 
-  const settings = () => ({ ...SETTINGS_DEFAULTS, ...(map.settings || {}) });
+  // ActionMap keeps a complete, validated settings object (defaults filled in _apply / setSetting): read it live
+  const settings = () => map.settings || SETTINGS_DEFAULTS;
   const sens = () => { const s = typeof sensitivity === 'function' ? sensitivity() : sensitivity; return Number.isFinite(s) ? s : 1; };
   const locked = () => !element || doc?.pointerLockElement === element;
   const tap = code => taps.set(code, (taps.get(code) || 0) + 1);
@@ -156,17 +157,25 @@ export function createInput({
   }
 
   // ---------- frame ----------
+  // Per-frame paths read the map's live binding lists (no copies) and avoid closures / temp arrays.
+  const NO_LOOK = [0, 0];
+  const EMPTY = [];
+  const bindingOf = id => map.bindings?.[id] ?? map.bindingsFor(id);
+  const listOn = list => { if (list) for (let i = 0; i < list.length; i++) { const c = list[i]; if (c != null && (held.has(c) || padHeld.has(c))) return true; } return false; };
+  const listTaps = list => { let n = 0; if (list) for (let i = 0; i < list.length; i++) { const c = list[i]; if (c != null) n += taps.get(c) || 0; } return n; };
+  const keyHeld = list => { if (list) for (let i = 0; i < list.length; i++) if (list[i] != null && held.has(list[i])) return true; return false; };
+  // left-stick axis codes are excluded: the analog stick already covers them
+  const padDigital = list => { if (list) for (let i = 0; i < list.length; i++) { const c = list[i]; if (c != null && padHeld.has(c) && !/^PadAxis[01]/.test(c)) return true; } return false; };
+  const d = (id, blocked) => { if (blocked) return 0; const b = bindingOf(id) || EMPTY; return keyHeld(b.keys) || padDigital(b.pad) ? 1 : 0; };
   function update(dt = 0) {
     const s = settings(), blocked = isBlocked();
     if (blocked) clear();
-    const padLook = !blocked && connected.size ? pollPad(dt, s) : [0, 0];
-    const isOn = c => held.has(c) || padHeld.has(c);
-    const tapsOf = list => list.reduce((n, c) => n + (taps.get(c) || 0), 0);
+    const padLook = !blocked && connected.size ? pollPad(dt, s) : NO_LOOK;
     let stepNow = 0;
-    for (const id of ids) {
-      const b = map.bindingsFor(id) || {}, codes = [...(b.keys || []), ...(b.pad || [])];
-      const st = state.get(id), was = st.down, n = blocked ? 0 : tapsOf(codes);
-      st.down = !blocked && codes.some(isOn);
+    for (let a = 0; a < ids.length; a++) {
+      const id = ids[a], b = bindingOf(id) || EMPTY;
+      const st = state.get(id), was = st.down, n = blocked ? 0 : listTaps(b.keys) + listTaps(b.pad);
+      st.down = !blocked && (listOn(b.keys) || listOn(b.pad));
       st.pressed = !was && (st.down || n > 0);
       st.released = (was && !st.down) || (!was && !st.down && n > 0); // a sub-frame tap is pressed+released
       if (id === 'hotbarNext') stepNow += Math.max(st.pressed ? 1 : 0, n);
@@ -175,24 +184,24 @@ export function createInput({
     taps.clear();
     step += stepNow;
     for (let i = 0; i < HOTBAR_IDS.length; i++) if (state.get(HOTBAR_IDS[i])?.pressed) slot = i;
-    if (onAction) for (const id of ids) {
-      const st = state.get(id);
+    if (onAction) for (let a = 0; a < ids.length; a++) {
+      const id = ids[a], st = state.get(id);
       try { if (st.pressed) onAction(id, 'down'); if (st.released) onAction(id, 'up'); } catch (e) { console.error('onAction', id, e); }
     }
     // movement: digital keys/buttons + shaped left stick, clamped to the unit circle
-    // left-stick axis codes are excluded here: the analog stick below already covers them
-    const d = id => blocked ? 0 : (map.bindingsFor(id)?.keys || []).some(c => held.has(c)) ||
-      (map.bindingsFor(id)?.pad || []).some(c => padHeld.has(c) && !/^PadAxis[01]/.test(c)) ? 1 : 0;
-    let f = d('moveForward') - d('moveBack') - (leftStick[1] || 0), r = d('moveRight') - d('moveLeft') + (leftStick[0] || 0);
+    let f = d('moveForward', blocked) - d('moveBack', blocked) - (leftStick[1] || 0), r = d('moveRight', blocked) - d('moveLeft', blocked) + (leftStick[0] || 0);
     const m = len(f, r); if (m > 1) { f /= m; r /= m; }
-    moveVec = { forward: f, strafe: r };
+    moveVec.forward = f; moveVec.strafe = r;        // move() hands out copies, so mutate in place
     if (s.sprintMode === 'toggle') { if (state.get('sprint').pressed) sprintOn = !sprintOn; if (m < 0.1) sprintOn = false; }
     if (s.crouchMode === 'toggle' && state.get('crouch').pressed) crouchOn = !crouchOn;
     // look: mouse (smoothed, sensitivity, invertY) + right stick (already radians)
-    const [sx, sy] = smoothLook(smooth, mouseX, mouseY, s.mouseSmoothing || 0);
+    let sx = mouseX, sy = mouseY;
+    if (s.mouseSmoothing > 0) [sx, sy] = smoothLook(smooth, mouseX, mouseY, s.mouseSmoothing);
+    else { smooth.x = sx; smooth.y = sy; }           // smoothLook's exact passthrough, inlined
     mouseX = mouseY = 0;
     const k = MOUSE_LOOK * sens();
-    look = { dx: look.dx + sx * k + padLook[0], dy: look.dy + sy * k * (s.invertY ? -1 : 1) + padLook[1] };
+    // `look` is handed out by lookDelta() (and then replaced), so it is updated in place only while still ours
+    look.dx += sx * k + padLook[0]; look.dy += sy * k * (s.invertY ? -1 : 1) + padLook[1];
   }
 
   Object.defineProperty(api, 'activePad', { get: () => activeIndex, enumerable: true });
