@@ -41,7 +41,7 @@ export function createHook(T) {
   ].map(p => new T.Vector3(p[0], p[1], p[2]));
   const curve = new T.CatmullRomCurve3(pts, false, 'centripetal');
   const R = 0.022;
-  add(new T.TubeGeometry(curve, 64, R, 8, false), steel);
+  add(new T.TubeGeometry(curve, 56, R, 6, false), steel);
 
   // ---------- 2. tapered point (aimed along curve end tangent) ----------
   const up = new T.Vector3(0, 1, 0);
@@ -115,7 +115,7 @@ export function createHook(T) {
     }
   }
   const wrapTop = -0.17, wrapBot = -0.33;
-  add(new T.TubeGeometry(new Helix(wrapBot, wrapTop, 0.048, 9), 180, 0.0075, 6, false), rope);
+  add(new T.TubeGeometry(new Helix(wrapBot, wrapTop, 0.048, 9), 120, 0.0075, 5, false), rope);
 
   // ---------- 12-13. tied rope bands at wrap ends ----------
   const band = new T.TorusGeometry(0.05, 0.009, 6, 20);
@@ -156,9 +156,15 @@ export function createHook(T) {
   const center = box.getCenter(new T.Vector3());
   inner.position.sub(center);
   const size = box.getSize(new T.Vector3());
-  // Static parts never move relative to each other: one draw call per material (6), merged after the
-  // re-center so the bounds/grip math above sees the original parts.
-  mergeChildMeshes(T, inner);
+  // Static parts never move relative to each other: merged after the re-center so the bounds/grip math
+  // above sees the original parts. The three steels and the two ropes each share one vertex-coloured
+  // material (their colours baked per vertex), so the hook is 3 draws: metal, wood, rope. Wood keeps its
+  // own material because held-items' finishMaterials gives only the ropes (roughness >= .95) a texture.
+  const metal = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: 0.7, roughness: 0.32 });
+  const cord = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: 0.0, roughness: 0.95 });
+  const group = new Map([[steel, metal], [darkSteel, metal], [rivetMat, metal], [rope, cord], [ropeDark, cord]]);
+  mergeChildMeshes(T, inner, { material: (m) => group.get(m.material), colorize: true });
+  for (const m of [steel, darkSteel, rivetMat, rope, ropeDark]) m.dispose();
   root.userData.size = { x: size.x, y: size.y, z: size.z };
   root.userData.orientation = 'handle -Y, hook point +Y, hook bend leans toward -Z (front), bend opens to -X';
   return root;
