@@ -31,7 +31,7 @@ const CSS = `
   filter:drop-shadow(0 0 2px rgba(9,107,130,.9))}
 .diveRing.flash{display:block}
 .diveRing.flash circle{stroke:#bff3ea;stroke-dashoffset:0}
-.diveRingLabel{position:fixed;left:50%;top:calc(50% + 30px);transform:translateX(-50%);z-index:3;pointer-events:none;display:none;
+.diveRingLabel{position:fixed;left:50%;top:calc(50% + 54px);transform:translateX(-50%);z-index:3;pointer-events:none;display:none;
   padding:4px 11px;border-radius:12px;background:rgba(9,20,30,.62);color:#fff3cf;white-space:nowrap;
   font:600 12px/1.2 var(--ui-font,'Segoe UI',system-ui,sans-serif);box-shadow:0 0 0 1px rgba(201,164,107,.3)}
 @media(max-width:760px){.diveO2{bottom:110px}.diveO2Pill{width:180px}}
@@ -84,7 +84,7 @@ export function createDivingUI(doc = document) {
     const x = ok ? `${r.left + r.width / 2}px` : '50%', y = ok ? `${r.top + r.height / 2}px` : '50%';
     ring.style.left = label.style.left = x;
     ring.style.top = y;
-    label.style.top = `calc(${y} + 30px)`;
+    label.style.top = `calc(${y} + 54px)`; // below #lrPrompt (aim + 26 px), which shows "Swim to the raft edge" while diving
   }
   const onResize = () => { if (last.label) place(); };
   win?.addEventListener('resize', onResize);

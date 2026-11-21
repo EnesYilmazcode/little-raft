@@ -54,7 +54,11 @@ export function buildKiteGeometry(T, p) {
 /** Shared resources for the world kites: per-pattern geometry and tail material, one sail and one string material. */
 export function createKiteKit(T) {
   const geos = PATTERNS.map((_, i) => buildKiteGeometry(T, i));
-  const sail = new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide, emissive: '#2e2a26' }); // a touch of glow: a back-lit sail never goes black
+  // Light through the cloth: the emissive term is tinted by the pattern's vertex colour (a flat brown emissive read olive
+  // on a back-lit sail at dusk), so a kite seen against the sky keeps its colours instead of going dark.
+  const sail = new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide, emissive: '#8c8c8c' });
+  sail.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= diffuseColor.rgb;'); };
+  sail.customProgramCacheKey = () => 'kiteSailGlow';
   const string = new T.LineBasicMaterial({ color: '#3b3126', transparent: true, opacity: 0.85 });
   const tails = PATTERNS.map(P => new T.LineBasicMaterial({ color: P.tail }));
   const line = n => {

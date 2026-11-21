@@ -5,7 +5,7 @@ import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { MAX_SLOTS, HULL_HALF } from './shipwreck-core.js?build=v3-survival-ae77fa84ac2b';
 
 const TAU = Math.PI * 2;
-const WOOD = [0x5d4630, 0x6b5137, 0x52402c, 0x75583a];
+const WOOD = [0x86694a, 0x957552, 0x7a5f43, 0x9e7e56]; // weathered planks: lighter than deck wood so the hull reads in deep-water light
 const MOSS = 0x4f5c3a, IRON = 0x3d3f42, BRASS = 0xa8873c, SAND = 0xb9a57c, ROCK = 0x6d716f, GOLD = 0xe0b84a;
 
 export function createShipwreckModel(T) {
@@ -121,7 +121,7 @@ export function createShipwreckModel(T) {
 
   // ---------- materials ----------
   // Vertex colours times a cool, dim tint so the wreck sits in the same deep-water light as the floor.
-  const mat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, color: 0x8fb9c4 });
+  const mat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, color: 0xa9c9d1 });
   const chestMat = mat.clone();
   const uTime = { value: 0 };
   const kelpMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, color: 0x9fc9c0 });

@@ -177,10 +177,10 @@ export function createDolphin(ctx, opts = {}) {
     const hg = heartGeometry(T);
     hearts = [0, 1, 2].map(i => { const h = new T.Mesh(hg, heartMat); h.name = 'dolphinHeart' + i; h.visible = false; h.renderOrder = 3; ctx.scene.add(h); return h; });
     if (typeof document !== 'undefined') {
-      tagCanvas = document.createElement('canvas'); tagCanvas.width = 256; tagCanvas.height = 64;
+      tagCanvas = document.createElement('canvas'); tagCanvas.width = 512; tagCanvas.height = 128;
       tagTex = new T.CanvasTexture(tagCanvas); if (T.SRGBColorSpace) tagTex.colorSpace = T.SRGBColorSpace;
-      tag = new T.Sprite(new T.SpriteMaterial({ map: tagTex, depthTest: true, transparent: true }));
-      tag.name = 'dolphinTag'; tag.scale.set(1.6, 0.4, 1); tag.visible = false; tag.renderOrder = 4;
+      tag = new T.Sprite(new T.SpriteMaterial({ map: tagTex, depthTest: true, transparent: true, fog: false, toneMapped: false })); // fog/tone mapping washed the pill out
+      tag.name = 'dolphinTag'; tag.scale.set(2.2, 0.55, 1); tag.visible = false; tag.renderOrder = 4;
       ctx.scene.add(tag);
     }
     built = true;
@@ -189,13 +189,13 @@ export function createDolphin(ctx, opts = {}) {
     tagName = name;
     if (!tagCanvas) return;
     const g = tagCanvas.getContext('2d'); if (!g) return;
-    g.clearRect(0, 0, 256, 64);
-    g.font = 'bold 28px system-ui, sans-serif';
-    const w = Math.min(248, Math.max(80, g.measureText(name).width + 36)), x0 = (256 - w) / 2;
-    g.fillStyle = '#ffffffcc'; g.beginPath();
-    if (g.roundRect) g.roundRect(x0, 8, w, 48, 24); else g.rect(x0, 8, w, 48);
-    g.fill();
-    g.fillStyle = '#1d3440'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(name, 128, 33, 232);
+    g.clearRect(0, 0, 512, 128);
+    g.font = 'bold 60px system-ui, sans-serif';
+    const w = Math.min(500, Math.max(160, g.measureText(name).width + 72)), x0 = (512 - w) / 2;
+    g.fillStyle = 'rgba(9,20,30,0.72)'; g.strokeStyle = 'rgba(201,164,107,0.85)'; g.lineWidth = 5; g.beginPath(); // dark HUD pill, readable on sky and sea
+    if (g.roundRect) g.roundRect(x0, 14, w, 100, 50); else g.rect(x0, 14, w, 100);
+    g.fill(); g.stroke();
+    g.fillStyle = '#fff3cf'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(name, 256, 67, 456);
     tagTex.needsUpdate = true;
   }
   function render(dt) {
