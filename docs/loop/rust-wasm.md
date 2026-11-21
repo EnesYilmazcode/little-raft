@@ -34,3 +34,9 @@ New CPU-side candidates arrived with the diving, sailing and wildlife lanes:
 JS self time per function is still under 0.2 ms/frame. Frame time is dominated by draw calls and fill rate,
 so there is no WASM again this round. Prototype a WASM port only if a lane adds a per-frame simulation of more than 1 ms
 (e.g. many-body buoyancy, boids, runtime mesh generation every frame).
+
+## Round 3 (integration line, claude/loop-perf-202611210720)
+
+Total JS self time is about 0.6-0.7 ms/frame after warm-up, and no single function exceeds 0.1 ms. The ported
+ocean and physics code is allocation-free and bit-identical. Nothing comes close to the 1 ms/frame bar, so there is
+no WASM.
