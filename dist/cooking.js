@@ -370,6 +370,7 @@ export function createSmoke(T, { max = 48 } = {}) {
   });
   const points = new T.Points(geo, mat);
   points.name = 'smoke'; points.frustumCulled = false;
+  points.visible = false; // hidden (no draw call) while no puff is alive; emit() shows it, update() hides it again
   const _v2 = new T.Vector2();
   points.onBeforeRender = (renderer, scene, camera) => {
     renderer.getDrawingBufferSize(_v2);
@@ -385,13 +386,15 @@ export function createSmoke(T, { max = 48 } = {}) {
       age[i] = 0; life[i] = 3.0 + rnd() * 1.0; s0[i] = 0.12 + rnd() * 0.08; shade[i] = dark ? 0.85 : 0.05 * rnd();
     }
     geo.attributes.aShade.needsUpdate = true;
+    if (n > 0) points.visible = true;
   };
   const update = (dt, wind = NO_WIND) => {
     dt = fin(dt, 0);
     const wx = fin(wind && wind.x, 0), wz = fin(wind && wind.z, 0);
+    let alive = 0;
     for (let i = 0; i < N; i++) {
       if (age[i] >= life[i]) { alpha[i] = 0; continue; }
-      age[i] += dt;
+      age[i] += dt; alive++;
       const t = Math.min(1, age[i] / life[i]), j = i * 3;
       vel[j + 1] *= 1 - 0.25 * dt;
       pos[j] += (vel[j] + wx * (0.25 + t)) * dt;
@@ -400,6 +403,8 @@ export function createSmoke(T, { max = 48 } = {}) {
       size[i] = s0[i] * (1 + 2.6 * t);
       alpha[i] = t >= 1 ? 0 : Math.min(1, t * 8) * (1 - t) * (1 - t) * (shade[i] > 0.5 ? 0.75 : 0.55);
     }
+    if (!alive && !points.visible) return; // idle: nothing to draw or upload
+    points.visible = alive > 0;
     aPos.needsUpdate = aSize.needsUpdate = aAlpha.needsUpdate = true;
   };
   return { points, emit, update, dispose() { geo.dispose(); mat.dispose(); } };
