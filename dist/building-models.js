@@ -243,18 +243,96 @@ function buildRoof(K, T) {
   for (const x of [-0.7, 0, 0.7]) K.add(ring(0.075, 0.009, 8), ROPE, 0.05, [0, Math.PI / 2, 0], [x, 1.03, 0.96]);
 }
 
+// Two-turn rope lashing hugging a vertical post (square ring turned 45 degrees to sit on the post faces).
+function lash(K, x, y, z, R = 0.068) {
+  for (let w = 0; w < 2; w++) K.add(ring(R, 0.009), ROPE, 0.05, [Math.PI / 2 + K.jit(0.08), K.jit(0.06), Math.PI / 4], [x, y + (w - 0.5) * 0.022, z]);
+}
+
+// Railing (edge): three posts, top and mid rails, rope lashings at every post-rail joint. See-through.
+const RAIL_POSTS = [-0.92, 0, 0.92];
+function buildRailing(K) {
+  const H = 0.95;
+  for (const x of RAIL_POSTS) {
+    K.box(0.09, H - 0.02, 0.09, x, (H - 0.02) / 2, 0, POST, [0, K.jit(0.04), 0]);
+    K.box(0.12, 0.025, 0.12, x, H - 0.0125, 0, BEAM, [0, K.jit(0.12), 0]); // cap
+  }
+  for (const y of [0.90, 0.50]) K.box(1.94, 0.07, 0.06, K.jit(0.01), y + K.jit(0.012), 0, K.pick(PLANKS), [0, K.jit(0.008), K.jit(0.01)]);
+  for (const x of RAIL_POSTS) for (const y of [0.90, 0.50]) lash(K, x, y, 0);
+}
+
+// Hatch (cell, top at y=0 like a floor): a rim frame and two leaves hinged on the edges parallel to local +z
+// (x = +-0.985). Open: each leaf stands up on its hinge edge (outside face out), about 1 m tall.
+function buildHatch(K, T, open) {
+  const FR = 0.12, LT = 0.045;
+  for (const s of [-1, 1]) {
+    K.box(2 - 0.004, 0.075, FR, 0, -0.0825, s * (1 - FR / 2), BEAM, [0, 0, K.jit(0.01)]);          // rim along x
+    K.box(FR, 0.075, 2 - 2 * FR - 0.004, s * (1 - FR / 2), -0.0825, 0, BEAM, [0, 0, K.jit(0.01)]);  // rim along z
+  }
+  for (const h of [-1, 1]) {
+    // Leaf-local: a = inward distance from the hinge (0..0.975), n = height offset (top 0), z along the hinge.
+    const at = (a, n, z) => open ? [h * (0.985 + n), a, z] : [h * (0.985 - a), n, z];
+    const lb = (sa, sn, sz, a, n, z, hex, rz = 0) => { const q = at(a, n, z); return K.box(open ? sn : sa, open ? sa : sn, sz, q[0], q[1], q[2], hex, rz ? [0, 0, rz] : null); };
+    columns(K, 0.005, 0.99, 4).forEach(([a, b], k) => {
+      const t = -(k % 2 ? 0.003 : 0);
+      lb(b - a + 0.01, LT, 1.9 - K.rng() * 0.01, (a + b) / 2, t - LT / 2, K.jit(0.004), K.pick(PLANKS));
+      for (const z of [-0.6, 0.6]) { const q = at((a + b) / 2 + K.jit(0.05), t + 0.004, z); K.box(open ? 0.01 : 0.022, open ? 0.022 : 0.01, 0.022, q[0], q[1], q[2], NAIL, null, {vary: 0.02}); }
+    });
+    for (const z of [-0.6, 0.6]) lb(0.9, 0.03, 0.1, 0.49, -LT - 0.015, z + K.jit(0.03), BATTEN);   // under-battens
+    const q = at(0.9, 0.012, 0.18 * h); // rope pull loop by the seam
+    K.add(ring(0.05, 0.009, 8), ROPE, 0.04, open ? [0, Math.PI / 2, 0] : [Math.PI / 2, 0, 0], q);
+  }
+}
+
+// Ladder (cell, local +z = DIR[r]): two rails at z = 0.91, six round rungs, rope lashings, foot blocks.
+function buildLadder(K, T) {
+  for (const s of [-1, 1]) {
+    K.box(0.07, LEVEL_H, 0.09, s * 0.42, LEVEL_H / 2, 0.91, POST, [0, 0, s * 0.004]);
+    K.box(0.12, 0.06, 0.14, s * 0.42, 0.03, 0.91, BEAM, [0, K.jit(0.1), 0]); // foot block
+  }
+  for (let k = 0; k < 6; k++) {
+    const y = 0.30 + 0.33 * k, g = new T.CylinderGeometry(0.025, 0.025, 0.84, 6, 1);
+    const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 0.5, uv.getY(i) * 2);
+    K.add(g, BATTEN, 0.06, [0, K.jit(0.04), Math.PI / 2 + K.jit(0.02)], [0, y, 0.91]);
+    for (const s of [-1, 1]) K.add(ring(0.05, 0.008), ROPE, 0.05, [0, Math.PI / 2, Math.PI / 4 + K.jit(0.1)], [s * 0.42, y, 0.91]);
+  }
+}
+
+// Gate (edge): railing-style end posts with rail stubs and a 1.2 m braced leaf hinged at x = -0.6.
+// Open: the leaf turns 90 degrees about the hinge stile towards local +z.
+function buildGate(K, T, open) {
+  const H = 0.95, LH = 0.88;
+  for (const s of [-1, 1]) {
+    K.box(0.09, H - 0.02, 0.09, s * 0.92, (H - 0.02) / 2, 0, POST, [0, K.jit(0.04), 0]);
+    K.box(0.12, 0.025, 0.12, s * 0.92, H - 0.0125, 0, BEAM, [0, K.jit(0.12), 0]);
+    for (const y of [0.90, 0.50]) { K.box(0.4, 0.07, 0.06, s * 0.8, y, 0, K.pick(PLANKS), [0, 0, K.jit(0.01)]); lash(K, s * 0.92, y, 0); }
+  }
+  // Leaf-local: a from the hinge (0..1.2) along +x when closed, c across (z), y up.
+  const at = (a, y, c) => open ? [-0.6 - c, y, a] : [-0.6 + a, y, c];
+  const lb = (sx, sy, sz, a, y, c, hex, rz = 0) => { const q = at(a, y, c); return K.box(sx, sy, sz, q[0], q[1], q[2], hex, [0, open ? -Math.PI / 2 : 0, rz]); };
+  for (const a of [0.04, 1.16]) lb(0.06, LH, 0.05, a, 0.04 + LH / 2, 0, POST);                // stiles
+  for (const y of [0.16, 0.84]) lb(1.06, 0.07, 0.045, 0.6, y, 0, K.pick(PLANKS));             // bottom / top rails
+  for (const a of [0.33, 0.6, 0.87]) lb(0.16, 0.62, 0.03, a + K.jit(0.02), 0.5, -0.03, K.pick(PLANKS), K.jit(0.02)); // slats
+  lb(0.05, 1.18, 0.028, 0.6, 0.5, 0.035, BATTEN, -Math.atan2(1.02, 0.62));                    // diagonal brace
+  const q = at(1.22, 0.7, 0); // rope-loop latch over the far post
+  K.add(ring(0.045, 0.009, 8), ROPE, 0.04, [0, open ? 0 : Math.PI / 2, 0], q);
+}
+
 let ring; // rope ring factory, bound to T per build
 const BUILDERS = {wall: buildWall, halfwall: buildHalfwall, window: buildWindow, door: buildDoor,
-  pillar: buildPillar, floor: buildFloor, stairs: buildStairs, roof: buildRoof};
+  pillar: buildPillar, floor: buildFloor, stairs: buildStairs, roof: buildRoof,
+  railing: buildRailing, hatch: buildHatch, ladder: buildLadder, gate: buildGate};
 export const PIECE_TYPES = Object.freeze(Object.keys(BUILDERS));
 
-export function createPieceGeometry(T, type) {
-  const build = BUILDERS[type];
+// open: the open variant of a stateful piece (hatch, gate); ignored by the others. Same seed both ways.
+export function createPieceGeometry(T, type, open = false) {
+  const build = Object.hasOwn(BUILDERS, type) ? BUILDERS[type] : null;
   if (!build) throw new Error('unknown building piece: ' + type);
   const K = kit(T, type);
   ring = (R, tube, seg = 4) => new T.TorusGeometry(R, tube, 4, seg); // 4 segments = square ring hugging a post
-  build(K, T);
-  return K.merge();
+  build(K, T, !!open);
+  const g = K.merge();
+  if (open) g.userData.open = true;
+  return g;
 }
 
 export function createPieceMaterial(T) {
@@ -269,6 +347,9 @@ const BOUNDS = {
   window: [-1.075, 0, -0.12, 1.075, 2.2, 0.12], door: [-1.075, 0, -0.1, 1.075, 2.2, 0.9],
   pillar: [-0.145, 0, -0.145, 0.145, 2.2, 0.145], floor: [-1, -0.13, -1, 1, 0.008, 1],
   stairs: [-0.95, 0, -1, 0.95, 2.2, 1], roof: [-1.0, -0.16, -1.18, 1.0, 1.12, 1.05],
+  railing: [-1, 0, -0.08, 1, 0.97, 0.08], gate: [-1, 0, -0.08, 1, 0.97, 0.08],
+  hatch: [-1, -0.13, -1, 1, 0.01, 1], ladder: [-0.5, 0, 0.82, 0.5, 2.2, 1.0],
+  hatchOpen: [-1, -0.13, -1, 1, 1.0, 1], gateOpen: [-1, 0, -0.08, 1, 0.97, 1.25], // open variants (createPieceGeometry(T, t, true))
 };
 export function pieceBounds(type) {
   const b = BOUNDS[type]; return b ? {minX: b[0], minY: b[1], minZ: b[2], maxX: b[3], maxY: b[4], maxZ: b[5]} : null;

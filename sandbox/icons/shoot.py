@@ -1,77 +1,64 @@
-"""Headless check for sandbox/icons. Usage: python sandbox/icons/shoot.py
-Serves the repo root, bakes the icon atlas in Chromium (SwiftShader) at DPR 1 and 2, screenshots the
-icon sheet and the REAL dist/survival-ui.js (patched copy via adopt_patch.py) with the inventory open,
-writes PNGs to sandbox/icons/shots/ and prints a JSON report."""
-import sys, json, threading, functools, http.server, socketserver
+"""Main vs fleet vs merged item icons, side by side. Usage: python sandbox/icons/shoot.py [variants...]  (DEFS=1: log shader defines)
+Builds a temp tree (copy of dist/ + sandbox/icons/): dist/item-icons.main.js = main's renderer unchanged,
+dist/item-icons.js = sandbox/icons/item-icons.js (merged). Each variant runs cold in a fresh browser, then
+warm (reload in the same context, so a persistent cache would hit). Writes shots/compare-sheet.png and
+shots/compare.json and prints the numbers."""
+import sys, json, shutil, tempfile, threading, functools, http.server, socketserver
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-from adopt_patch import patched_survival_ui  # noqa: E402
+HERE = Path(__file__).resolve().parent; ROOT = HERE.parents[1]
+CHROME = '/opt/pw-browsers/chromium-1243/chrome-linux64/chrome'
+ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
+VARIANTS = sys.argv[1:] or ['main', 'fleet', 'merged']
 
-root = HERE.parents[1]
-shots = HERE / 'shots'; shots.mkdir(exist_ok=True)
-(HERE / '_patched').mkdir(exist_ok=True)
-(HERE / '_patched' / 'survival-ui.js').write_text(patched_survival_ui(sandbox_copy=True))
+tmp = Path(tempfile.mkdtemp(prefix='icons-cmp-'))
+shutil.copytree(ROOT / 'dist', tmp / 'dist')
+shutil.copytree(HERE, tmp / 'sandbox' / 'icons', ignore=shutil.ignore_patterns('shots', '_patched', '__pycache__'))
+(tmp / 'dist' / 'item-icons.main.js').write_text((ROOT / 'dist' / 'item-icons.js').read_text())
+if (HERE / 'item-icons.js').exists():
+    (tmp / 'dist' / 'item-icons.js').write_text((HERE / 'item-icons.js').read_text())
+    (tmp / 'dist' / 'item-icon-models.js').write_text((HERE / 'item-icon-models.js').read_text())
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store'); super().end_headers()
-srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), functools.partial(Quiet, directory=str(root)))
+srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), functools.partial(Quiet, directory=str(tmp)))
 threading.Thread(target=srv.serve_forever, daemon=True).start()
-base = f'http://127.0.0.1:{srv.server_address[1]}/sandbox/icons/index.html'
+base = f'http://127.0.0.1:{srv.server_address[1]}/sandbox/icons/'
+DEFS = bool(__import__('os').environ.get('DEFS'))
+KEYS = ('defsOut', 'totalMs', 'worstFrameMs', 'avgFrameMs', 'framesOver100', 'links', 'contexts', 'rendered', 'urlBytes', 'gameInfo', 'ls', 'syncHitMs', 'readyAtMs')
 
-report = {'runs': {}, 'shots': [], 'pageErrors': []}
-def run(p, b, name, query, dpr, vw=1280, vh=900, full=True, elements=()):
-    if ONLY and name not in ONLY: return None
-    ctx = b.new_context(viewport={'width': vw, 'height': vh}, device_scale_factor=dpr)
-    page = ctx.new_page()
-    page.on('pageerror', lambda e: report['pageErrors'].append(f'{name}: {e}'))
-    page.on('console', lambda m: m.type in ('error', 'warning') and report['pageErrors'].append(f'{name}: {m.text[:300]}'))
-    page.goto(base + query)
-    page.wait_for_function('window.__iconReport && window.__iconReport.done', timeout=240000)
-    page.wait_for_timeout(200)
-    out = shots / f'{name}.png'; page.screenshot(path=str(out), full_page=full); report['shots'].append(str(out))
-    for sel, suffix in elements:
-        o = shots / f'{name}-{suffix}.png'; page.locator(sel).screenshot(path=str(o)); report['shots'].append(str(o))
-    rep = page.evaluate('window.__iconReport'); ctx.close()
-    report['runs'][name] = rep
-    print('done', name, file=sys.stderr, flush=True)
-    return rep
-ONLY = set(sys.argv[1:])
-
+out = {}
 with sync_playwright() as p:
-    b = p.chromium.launch(executable_path='/opt/pw-browsers/chromium-1243/chrome-linux64/chrome', headless=True,
-                          args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
-    run(p, b, 'sheet-1x', '?mode=sheet', 1)
-    run(p, b, 'sheet-2x', '?mode=sheet', 2, elements=[('#native', 'native'), ('#s58', 'hotbar58'), ('#s18', 'chip18'), ('#compare', 'compare')])
-    run(p, b, 'ui-inventory-1x', '?mode=ui', 1, vw=1280, vh=720, full=False)
-    run(p, b, 'ui-inventory-2x', '?mode=ui', 2, vw=1280, vh=720, full=False, elements=[('#inventory .sv-wrap', 'panel')])
-    run(p, b, 'ui-hotbar-2x', '?mode=ui&open=0', 2, vw=1280, vh=720, full=False, elements=[('.tools', 'bar')])
-    run(p, b, 'ui-inventory-svg-1x', '?mode=ui&svg=1', 1, vw=1280, vh=720, full=False)
-    run(p, b, 'ui-inventory-late-2x', '?mode=ui&late=1', 2, vw=1280, vh=720, full=False, elements=[('#inventory .sv-wrap', 'panel')])
+    for v in VARIANTS:
+        b = p.chromium.launch(executable_path=CHROME, headless=True, args=ARGS)
+        ctx = b.new_context(viewport={'width': 640, 'height': 400})
+        pg = ctx.new_page()
+        errs = []
+        pg.on('pageerror', lambda e: errs.append(str(e)[:300]))
+        pg.on('console', lambda m: m.type in ('error', 'warning') and errs.append(m.text[:200]))
+        runs = []
+        for i in range(2):
+            pg.goto(base + f'compare.html?v={v}&cache=1' + ('&defs=1' if DEFS else ''))
+            pg.wait_for_function('window.__cmp && window.__cmp.done', timeout=600000, polling=500)
+            runs.append(pg.evaluate('window.__cmp'))
+        b.close()
+        cold, warm = runs
+        out[v] = {'urls': cold['urls'], 'kinds': cold['kinds'], 'errors': errs + cold['errors'] + warm['errors'],
+                  'cold': {k: cold.get(k) for k in KEYS}, 'warm': {k: warm.get(k) for k in KEYS}}
+        print(v, json.dumps({'cold': out[v]['cold'], 'warm': out[v]['warm'], 'errors': out[v]['errors'][:5]}), flush=True)
+    b = p.chromium.launch(executable_path=CHROME, headless=True, args=ARGS)
+    pg = b.new_page(viewport={'width': 1500, 'height': 900}, device_scale_factor=2)
+    pg.goto(base + 'sheet.html'); pg.wait_for_function('window.sheetReady')
+    kinds = next(iter(out.values()))['kinds']
+    pg.evaluate('d => window.drawSheet(d)', {'kinds': kinds, 'variants': {v: out[v]['urls'] for v in VARIANTS}})
+    pg.wait_for_timeout(500)
+    (HERE / 'shots').mkdir(exist_ok=True)
+    name = 'compare-sheet' + ('' if len(sys.argv) < 2 else '-' + '-'.join(VARIANTS))
+    pg.screenshot(path=str(HERE / 'shots' / f'{name}.png'), full_page=True)
     b.close()
 srv.shutdown()
-
-summary = {}
-for k in ('sheet-1x', 'sheet-2x'):
-    r = report['runs'].get(k, {})
-    s = r.get('stats') or {}
-    summary[k] = {
-        'bakeTotalMs': s.get('totalMs'), 'setupMs': s.get('setupMs'), 'drawMs': s.get('drawMs'), 'readbackMs': s.get('readbackMs'),
-        'encodeMs': s.get('encodeMs'), 'perTileMs': [t['ms'] for t in s.get('tiles', [])],
-        'bakeRender': s.get('bakeRender'), 'programsCompiled': s.get('programsCompiled'), 'programKeys': s.get('programKeys'),
-        'bakeOpts': r.get('bakeOpts'), 'atlasPx': s.get('atlasPx'), 'transientVRAMBytes': s.get('transientVRAMBytes'),
-        'dataUrlBytes': s.get('dataUrlBytes'), 'atlasDataUrlBytes': s.get('atlasDataUrlBytes'),
-        'cacheHitMs': r.get('cacheHitMs'), 'cacheHit': r.get('cacheHit'),
-        'frames': r.get('frames'), 'rendererInfoBefore': r.get('infoBeforeBake'), 'rendererInfoAfter': r.get('infoAfterBake'),
-        'errors': r.get('errors'),
-    }
-for k, r in report['runs'].items():
-    if r.get('errors'): summary.setdefault('errors', {})[k] = r['errors']
-summary['lateSwap'] = (report['runs'].get('ui-inventory-late-2x') or {}).get('lateSwap')
-summary['pageErrors'] = report['pageErrors']
-summary['shots'] = report['shots']
-print(json.dumps(summary, indent=1))
+(HERE / 'shots' / f'{name}.json').write_text(json.dumps({v: {k: out[v][k] for k in ('cold', 'warm', 'errors')} for v in out}, indent=1))
+shutil.rmtree(tmp, ignore_errors=True)

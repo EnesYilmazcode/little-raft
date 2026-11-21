@@ -29927,7 +29927,7 @@ class WebGLRenderer {
 						const materialProperties = properties.get( material );
 						const program = materialProperties.currentProgram;
 
-						if ( program.isReady() ) {
+						if ( program === undefined || program.isReady() ) { // little-raft: a material disposed while compiling has no program (upstream guards this later)
 
 							// remove any programs that report they're ready to use from the list
 							materials.delete( material );

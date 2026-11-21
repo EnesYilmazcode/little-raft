@@ -1,41 +1,122 @@
-# Audio review (harsh judge)
+# Audio review (harsh judge, round 3: retarget to main)
 
-Reviewed `origin/fleet-tech/audio` at b3ec854. I checked everything myself: I re-ran `shoot.py`, read the PNGs and analysed the WAVs with numpy, re-measured costs, ran `adopt.py --check`, matched every ADOPT line reference against `dist/game.js`, and ran a real hot-swap test (adopt on a scratch copy of dist/, boot solo, then republish twice with the `publish_local.py` rewrite and call `raftLive.check()`).
+Reviewed `origin/retarget/audio` at 0a1b5e4 against the current `origin/main` `dist/` (144c94a, build `v3-survival-ae77fa84ac2b`, `dist/game.js` 1780 lines, `dist/audio.js` 550 lines). I trusted nothing from the authors and re-measured all of it myself. The box was heavily loaded the whole time (load average 22–43 on 4 cores), so every timing is relative only.
+
+What I ran:
+- `adopt.py --check`, twice;
+- `shoot.py` (55 cases) into my own directory, then read the spectrograms;
+- an export-surface diff of both modules in node, and a grep of every `dist/` caller;
+- my own in-game hot-swap test, patched and unpatched: 1 failed swap then 4 good ones driven by `live.js`'s poll, with a FinalizationRegistry over every AudioNode, forced GC through CDP, and the limiter's connect targets logged;
+- an in-game level comparison, main engine against the new engine;
+- `node --test tests/*.test.mjs`, patched and unpatched.
+
+My scripts are in the session scratchpad under `judge-audio3/` (`surface.mjs`, `swaps.py`, `levels.py`).
 
 ## Scores
 
-| axis | score |
-|---|---|
-| LOOKS (sound quality, as evidenced) | 7 |
-| COST | 6 |
-| ADOPT-CORRECTNESS | 5 |
-| OVERALL (at most lowest + 2) | **5** |
+| axis | round 1 | round 2 | round 3 (retarget) |
+|---|---|---|---|
+| LOOKS (sound quality, as evidenced) | 7 | 8 | 8 |
+| COST | 6 | 8 | 8 |
+| ADOPT-CORRECTNESS | 5 | 7 | 8 |
+| OVERALL (at most lowest + 2) | 5 | 7 | **8** |
 
-## What holds up
+## History in short
 
-- `shoot.py` covers 34 cases. `warnings {}`, errors `[]`, max peak −3.4 dBFS, every |DC| < 6e-4, no clipping. All one-shots decay to 0 (tails reach −∞ or below −60 dB). The first and last samples of every one-shot are 0. I looked for clicks with a second-difference detector: every spike is a deliberate transient onset (0.5–3 ms rise, no steps). The mix spike at 6.6 s is the hammer.
-- Spectrograms read as described. Catch: noise sweep, then plucks, then an octave chime ringing to about 1 s. Hammer: broadband crack plus a 165 Hz body. Gull: a harmonic stack with an irregular kyow/ha contour. Reel: evenly spaced ratchet near 3 kHz. Creak-calm: a clear block with 640 Hz / 1.2 kHz lines over the bed. I saw no aliasing hash: the PeriodicWave and the ratchet are band-limited.
-- All ADOPT line numbers (17, 199, 400, 530, 618, 640, 661, 690, 770, 779, 784, 792, 804, 827, 857, 928, 1139, 1171, 1183) and old strings match the current `dist/game.js` exactly. `charge`, `pos`, `T`, `camera` and `options` are in scope where they are used.
-- `adopt.py --check` printed ok: `audio-worklet.js?build=v3-survival-ae77fa84ac2b`, 1 worklet, 1 context, no page errors.
-- Hot swap (my test, two consecutive updates): **1 AudioContext total**, state running. The worklet loaded as `?build=hot2` and then `?build=hot3`. 3 worklet nodes for 3 builds, so the ambience is not duplicated. No errors. `publish_local.py`'s regex does stamp the `'./audio-worklet.js'` literal.
-- Offline render cost matches the doc: ambience 28–68 ms per audio second, stress-24 82 ms/s.
+- **Round 1: OVERALL 5.** A hot update cut the ocean to silence for about 2 s. A catch at the hook's distance was quieter than a pickup. There was a 33 ms `resume()` hitch, a gull p95 of 13 ms, and `adopt.py` checked neither `?build=` nor a swap. All five were fixed.
+- **Round 2: OVERALL 7.** New defect: a failed hot update silenced the ocean until reload. ADOPT targeted the fleet snapshot and did not apply to main. Nice-to-haves: hand the ocean back, add a version field, seed the renders.
 
-## Problems found
+Round 3 retargets the engine onto main's `dist/audio.js` API and fixes all of the round-2 items.
 
-1. **The hot update cuts the ocean to silence (the doc claims the opposite).** `live.js` does capture → mount → dispose synchronously in one task. `destroy()` (`sandbox/audio/audio.js:783-798`) hard-stops voices (`killVoice` at 778 calls `src.stop()` with no ramp) and disconnects the master/limiter at once. The new engine has not loaded its worklet yet (`addModule` is async), and then it fades in from 0 over 2.5 s (line 195). Measured in the realtime context at the swap: about −37 dB RMS, then digital silence (−120) for a few blocks, then −55 to −60 dB for about 1.8 s, and back to about −36 dB after roughly 2 s. That is a click plus a 2 s hole on every published update. `audio-ADOPT.md:109` ("keep playing through the swap … old and new overlap briefly") is false.
-2. **The ADOPT call sites break the loudness hierarchy in the game.** `catch` (`game.js:792`), the hook-landing `splash` and `bite` are given `pos` = the hook position. That position is usually 8–30 m away (hook range is up to 32 m), with `refDistance` 2 m and the inverse model (`audio.js:47`, `296`), so gain is 2/d. A catch at 16 m is about −18 dB and low-passed to about 6 kHz: roughly −34 LUFS, quieter than `pickup` (−29) and level with the UI `error`. The "catch is the loudest one-shot" result is only true for the non-spatial test case.
-3. **There is an undocumented main-thread hitch on first gesture and inside every hot-update mount.** `resume()` → `buildGraph()` makes 11 s of noise (`audio.js:121`) plus the reverb IR on the main thread. Measured synchronous `resume()` cost was 15, 20, 20, 25, 33, 52, 72 and 202 ms (median 33 ms). In the ADOPT design it runs inside `mount()` during the hot swap (step 2, `sfx.resume()`), so the swap stalls the frame too.
-4. **The `play()` cost claim is understated for the gull.** The doc's `audio.md:88` gives 0.1–0.5 ms median and p95 ≤ 4 ms. My `shoot.py` run measured gull at median 1.3 ms and p95 13.3 ms (about 140 automation events per long call), and catch at p95 3.6 ms. The engine schedules gulls itself every 9–30 s on the main thread, so this is a periodic frame spike.
-5. `adopt.py --check`'s `ok` (`adopt.py:137`) never checks that the worklet URL carries `?build=`, and never exercises a hot swap. The two things most likely to regress are untested.
-6. Minor doc errors. `audio.md:23` says "8 call sites" but lists 7, and 7 is the true count. `audio.md:117` says the far gull's harmonics above 5 kHz are "gone", but `gull-far.png` still shows them at 8–10 kHz (a 12 dB/oct low-pass only dulls them).
-7. Sound nit: `ambience-rough` has a ~12 dB spectral valley at 500–700 Hz, between the bed low-pass (≤420 Hz) and the wind band (~0.9–1.3 kHz). Rough seas read as two separate layers, rumble plus hiss.
+## Verified
 
-## Required fixes (OVERALL < 7)
+**Strict superset of `dist/audio.js`** (both modules imported in node):
+- The exports are a superset: `SHARED_VERSION` is added.
+- `EVENTS[0..19]` are identical and in the same order. 15 more follow, including `sizzle stoke clank ingot sail anchor dive surface`.
+- `ALIASES` and `BUSES` are deep-equal.
+- The instance has every member of main's (`context music resume setVolume setBus getBus setMusic play tick destroy`), plus 6 extras.
+- These behave the same as main's: `setBus` clamping (2 → 1, −1 → 0, unknown name → `null`), `getBus` defaults (master 0.5, music 0.7, unknown → `null`), `play` returning `false` without a context, `tick` returning `undefined`, `setMusic`/`music`, and `resume()` returning `Promise<false>` without a constructor.
 
-1. `sandbox/audio/audio.js` `destroy()` (783-798) and `killVoice()` (778): ramp `graph.master` to 0 over about 60–100 ms, then stop and disconnect (use `setTimeout`, or a ConstantSource `onended` on the shared context). In `startAmbience()` (195), skip the 2.5 s fade (use about 0.3 s) when the context is already running at creation, so a hot swap crossfades instead of leaving a hole. Then fix the claim at `docs/tech/audio-ADOPT.md:109`.
-2. `sandbox/audio/audio.js:47` `REF_DISTANCE`: give `catch` (about 12–15 m), `splash` and `bite` (about 8 m) larger reference distances. Alternatively, in ADOPT step 4 at `game.js:792`, play `catch` without `pos`. Add a render case for a catch and a splash at 16 m and put the result in the level table.
-3. `sandbox/audio/audio.js:121` (`buildGraph`): cache the noise buffers and IR per context (a module-level `WeakMap<BaseAudioContext, …>`) so a hot mount doesn't regenerate them. Shorten them or build them lazily. Document the first-gesture cost in `audio.md`.
-4. Gull scheduling cost (`gullSeries`, `audio.js:408-455`): cut the automation events per call (for example, drop the per-call formant ramps or share one ramp set), or pre-build the call off the critical path. Re-measure and correct `audio.md:88`.
-5. `sandbox/audio/adopt.py:137`: require `'?build=' in module URL`, and add a hot-swap step (republish with a new token, `raftLive.check()`, then assert 1 context, the new `?build=` module, and the ambience level not dropping below a threshold across the swap).
+**Callers.** I grepped all of `dist/*.js`. Only `game.js` touches the engine: lines 3, 258–261, 551, 750, 772, 919, 931, 969, 991, 1059–1062, 1184, 1196–1198, 1222, 1343–1345, 1618, 1690, 1725 and 1752. The only `e.sound` string anywhere is `'repair'`. Every call is covered by the identical signatures.
 
-Nice-to-haves: fill the 500–700 Hz hole in rough seas (widen the bed low-pass, or add a low wash band). Fix the two doc errata. When sound is toggled off, `suspend()` the context or stop the worklet so the always-on DSP doesn't cost CPU.
+**Main bug: real, and fixed.**
+- Static check: `let diving` is at `game.js:320`. On a hot mount, `sfx.resume()` at 261 runs `buildGraph()` synchronously, so `output()` hits the TDZ. Main's `audio.js:87` swallows the error and connects the limiter to `ctx.destination` for good.
+- Measured, unpatched: after the good swaps the limiter's connect targets are `['dest','dest','dest']`, so the limiter never reaches diving's low-pass again.
+- Measured, patched: every engine ends on `BiquadFilterNode:20000` (diving's filter), and `stats().routed` is true after each of 5 swaps.
+
+**adopt.py --check.**
+- **Run 1 failed on 1 of 18 checks.** `worklet_built` was false because the ocean was not up yet 5 s after the gesture (load average 43). The rest passed: the failed mount dipped 5.1 dB with a minimum of −43.8 dB, and the good swap dipped 4.0 dB with a minimum of −45.2 dB.
+- **Run 2 passed all 18.** The failed mount dipped 2.2 dB (minimum −42.6), and the good swap dipped 7.2 dB (minimum −43.0, control 1.7).
+- So the engine is fine and the boot check is timing-fragile.
+
+**My own swap test (patched).**
+- 1 failed swap, then 4 good ones.
+- `live.js` kept the old build on the injected error.
+- Throughout: 1 engine context, 1 worklet node, 1 module load, and every context `running`.
+- The ocean median stayed −36 to −38 dB, and the 3 s minimum after each step was −40.8 to −43.7 dB. The only stretch under −60 dB is the first 2 s fade-in at boot.
+- Live AudioNodes after forced GC were 26, 47, 29, 49, 31, 32. The two high readings are one-shot voices still in flight. Unpatched stayed at 27. There is no leak I can attribute to the engine.
+- Heap grows about 17 MB per swap in both patched and unpatched, so that growth is the game's.
+
+**ADOPT step 3 anchors.**
+- All 4 old strings match `dist/game.js` exactly once (279, 1222, 1225, 754), and so do the 5 required anchors.
+- What the edits rely on is in scope:
+  - `world.sailing` has `raised`, `anchored` and `windStr`.
+  - Station keys are `x,z` (`progression-hooks.js:25`).
+  - `COOKERS` are only `grill` and `smelter`.
+  - Tiles are 2 m.
+  - The camera is a direct child of the scene (`game.js:377`).
+  - `fc:cook` goes through `game.js` `action()`.
+
+**Tests.**
+- Unpatched: 532 of 533 pass.
+- Patched (`RAFT_DIST`): 532 of 533 pass.
+- The failure is the same in both: the atlas build-time assertion, caused by load. Both audio API tests in `survival.test.mjs` pass on the new engine.
+
+**shoot.py.**
+- 55 cases, no errors and no clipping. Max peak −2.8 dBFS. Every |DC| < 8e-4. The only warning is the `music` bed, which keeps playing.
+- The loudness numbers match the doc table exactly, because the renders are now seeded.
+- `play()` median is 0.1–1.6 ms. The worst p95 is anchor at 12.8 ms with 56 nodes.
+- `tick()` costs 10–15 µs per frame, against 1.8 µs for main's engine. Both are negligible.
+
+**Spectrograms read.**
+- `sizzle`: a contact burst, then a 2–10 kHz hiss fading by about 1.5 s. The crackle ticks are sparse and faint.
+- `stoke`: a knock, then a low whumpf with a body to about 0.4 s and four late crackles.
+- `clank`: a broadband knock with 110 Hz and 600 Hz rings and gravel ticks.
+- `ingot`: two clinks with clean inharmonic lines at about 1.7, 4 and 9 kHz. The first rings to about 0.6 s.
+- `sail`: a low flap thud, then canvas noise at 0.2–0.4 s.
+- `anchor`: six accelerating chain clicks with 2.4 kHz pings, a broadband splash at 0.45 s, then bubbles.
+- `dive`: a dark plunge whose top closes from about 3 kHz, then rising bubble chirps at 300–900 Hz.
+- `surface`: a bright shed, then drips and a breath.
+- `underwater`: the top end goes dark from 3 to 6.5 s, and the dive and surface cues sit on the edges. Hammer transients still show faint lines up to 10 kHz, which is documented. In the game, diving's 600 Hz filter covers them.
+- `sail-luff`: two flaps with a flutter loop between them, low in level. The loop's spectrum is broader than the doc's "400–900 Hz band": a Q 0.8 band-pass on pink noise shows energy up to 10 kHz.
+- `catch`, `hammer` and `mix-ducking` are unchanged from round 2 and still read well. The catch chime is the brightest line in the mix.
+
+## Findings (none blocking)
+
+1. **The ADOPT claims "drop-in" but does not disclose an audible mix change.** In the game, at the same settings and with the same recorder, main's engine gives a bed median of **−61.3 dB**, and the new engine gives **−43.1 dB** (+18 dB). One-shot 100 ms peaks:
+
+   | event | main engine (dB) | new engine (dB) | change |
+   |---|---|---|---|
+   | catch | −28.2 | −22.2 | +6 |
+   | splash | −30.6 | −23.8 | +7 |
+   | ui | −47.3 | −36.8 | +10.5 |
+   | deny | −44.0 | −37.0 | +7 |
+   | collect | −36.9 | −36.7 | 0 |
+
+   The sea goes from barely audible to clearly present, which is arguably better. But it changes what main's players hear on update day, and the ADOPT should say so.
+2. **`adopt.py` boot check is flaky.** It reads `stats().worklet` after a fixed 5 s. Under load the worklet module load takes longer, and run 1 failed on that alone.
+3. **The one-time transition from main's engine is undocumented.** On the first live update after adoption, main's `destroy()` (`dist/audio.js:521`) hard-stops its ocean with no fade. The new engine finds no shared ocean and has to `addModule` the worklet first. Open tabs get one click and a short hole, once.
+4. **`tick()` re-targets the luff on every frame.** While the sail is up, `setLuff` makes 3 `setTargetAtTime` calls every frame (`audio.js:1117-1119`), even when the wind has not changed. `applyOcean` gates on a change of more than 0.02; the luff should too.
+5. `stats().nodes` is a cumulative creation counter (566 after all voices ended in the realtime smoke test), not a count of live nodes. Rename it or decrement it in `finishVoice`.
+6. `actionSound` plays before the action is validated. A guest who is not yet connected, or a rejected insert, still gets `sizzle`/`clank`.
+7. On a good swap, the old `diving.dispose()` disconnects its low-pass in the same task. One-shot tails still on the old engine are cut without the 80 ms fade. This is minor, since the ocean has already moved.
+8. Edge case in `game.js`, not the engine: if `mount()` throws before its `try` (`game.js:1741`), `dispose()` never runs. The new engine then keeps the ocean on a master the live build's volume slider does not control.
+
+## Nice-to-haves (OVERALL ≥ 7)
+
+1. Add an "In-game levels vs current main" table to `audio-ADOPT.md` (finding 1). Also say how to match main if wanted, for example `setBus('ambience', ~0.1)`.
+2. `adopt.py`: replace the fixed 5 s wait with `wait_for_function('raftDebug.audio.stats().worklet', timeout=30000)`.
+3. Document the one-time main → new transition (finding 3). Or have the new engine fade in over `AMB_FADE_IN` when it finds no shared record (the old engine is main's).
+4. Gate the `setLuff` re-targets on a wind change, as `applyOcean` does. Rename `stats().nodes` to `nodesCreated`.
+5. Sound: denser, louder crackle in `sizzle` (it reads as a steady hiss). A steeper or second band-pass on the luff loop to match the doc. A longer chain run on `anchor`, whose six clicks take 0.4 s.
+6. Play the station sounds from the host's `applyAction` result, or after `action()` returns true.
