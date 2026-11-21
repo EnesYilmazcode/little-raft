@@ -444,3 +444,12 @@ test('stale clicks get a soft "someone moved that" notice and a repaint; a diffe
   assert.equal(emits[0].e.text, 'That slot already holds something else');
   assert.deepEqual(bags.host.slots[9], { kind: 'scrap', count: 1 });
 });
+
+test('the Research Table has its own icon symbol in icons.svg', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { ITEM_INFO } = await import(new URL('inventory-state.js', base));
+  const svg = await readFile(new URL('icons.svg', base), 'utf8');
+  assert.equal(ITEM_INFO.research.icon, 'icon-research');
+  assert.ok(svg.includes('<symbol id="icon-research"'));
+  assert.notEqual(ITEM_INFO.research.icon, ITEM_INFO.bench?.icon ?? 'icon-repair');
+});
