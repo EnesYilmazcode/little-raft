@@ -1,152 +1,140 @@
 // Held scrap hook model (first-person). ES module.
 // Usage: import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b'; const g = createHook(THREE);
 import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
-// Group is re-centered on its bounding box: ~0.70 wide (X), ~0.84 tall (Y), ~0.40 deep (Z).
-// Handle at bottom (-Y), curved hook with point at top (+Y), hook bend leans toward -Z (front).
+// A driftwood stick with a cut plastic-bottle sleeve as the grip and a blocky orange plastic claw head
+// lashed on top with black strapping. Group is re-centred on its bounding box.
+// Handle at bottom (-Y) on the axis x=.2, z=0 (grip centre y≈-.272 before re-centring), claw head at the
+// top (+Y); the claws reach toward -X and curl down, like the old hook's bend.
 export function createHook(T) {
   const root = new T.Group();
   root.name = 'scrapHook';
   const inner = new T.Group();
   root.add(inner);
 
-  // ---------- materials ----------
-  const steel = new T.MeshStandardMaterial({ color: 0x8ca8ac, metalness: 0.7, roughness: 0.3 });
-  const darkSteel = new T.MeshStandardMaterial({ color: 0x5f7376, metalness: 0.75, roughness: 0.45 });
-  const rivetMat = new T.MeshStandardMaterial({ color: 0xa9b8b4, metalness: 0.8, roughness: 0.35 });
-  const wood = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: 0.0, roughness: 0.9 });
-  const rope = new T.MeshStandardMaterial({ color: 0xb89a64, metalness: 0.0, roughness: 0.95 });
-  const ropeDark = new T.MeshStandardMaterial({ color: 0x8f7447, metalness: 0.0, roughness: 1.0 });
+  // ---------- materials (all matte plastic / wood, no metal) ----------
+  const wood = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: 0, roughness: 0.9 });
+  const sleeve = new T.MeshStandardMaterial({ color: 0xe8e6dc, vertexColors: true, metalness: 0, roughness: 0.62 });
+  const orange = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: 0, roughness: 0.66 });
+  const black = new T.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0, roughness: 0.8 });
 
   const HX = 0.2; // handle axis X
+  const UP = new T.Vector3(0, 1, 0);
+  const V = (x, y, z) => new T.Vector3(x, y, z);
   const add = (geo, mat, x = 0, y = 0, z = 0) => {
     const m = new T.Mesh(geo, mat);
     m.position.set(x, y, z);
     inner.add(m);
     return m;
   };
+  const tint = (geo, fn) => {                        // per-vertex colour from position
+    const pos = geo.attributes.position, cols = new Float32Array(pos.count * 3), c = new T.Color();
+    for (let i = 0; i < pos.count; i++) { fn(c, pos.getX(i), pos.getY(i), pos.getZ(i)); c.toArray(cols, i * 3); }
+    geo.setAttribute('color', new T.BufferAttribute(cols, 3));
+    return geo;
+  };
+  // Square-section tapered block from a to b (blocky moulded plastic look).
+  const block = (mat, a, b, r0, r1, twist = Math.PI / 4) => {
+    const d = b.clone().sub(a), L = d.length();
+    const g = new T.CylinderGeometry(r1, r0, L, 4, 1);
+    g.rotateY(twist);
+    const m = add(g, mat);
+    m.position.copy(a).addScaledVector(d, 0.5);
+    m.quaternion.setFromUnitVectors(UP, d.normalize());
+    return m;
+  };
 
-  // ---------- 1. curved steel hook ----------
-  const pts = [
-    [HX, -0.08, 0.0],
-    [HX, 0.12, -0.01],
-    [0.17, 0.27, -0.05],
-    [0.06, 0.38, -0.12],
-    [-0.1, 0.40, -0.2],
-    [-0.25, 0.34, -0.26],
-    [-0.34, 0.20, -0.28],
-    [-0.33, 0.06, -0.25],
-    [-0.24, 0.00, -0.2],
-    [-0.15, 0.04, -0.16],
-    [-0.11, 0.11, -0.13],
-  ].map(p => new T.Vector3(p[0], p[1], p[2]));
-  const curve = new T.CatmullRomCurve3(pts, false, 'centripetal');
-  const R = 0.022;
-  add(new T.TubeGeometry(curve, 64, R, 8, false), steel);
-
-  // ---------- 2. tapered point (aimed along curve end tangent) ----------
-  const up = new T.Vector3(0, 1, 0);
-  const endP = curve.getPoint(1);
-  const endT = curve.getTangent(1).normalize();
-  const tipLen = 0.075;
-  const tip = add(new T.ConeGeometry(R, tipLen, 12), steel);
-  tip.quaternion.setFromUnitVectors(up, endT);
-  tip.position.copy(endP).addScaledVector(endT, tipLen / 2);
-
-  // ---------- 3. barb (small back-swept spur near the point) ----------
-  const barbP = curve.getPoint(0.97);
-  const barbT = curve.getTangent(0.97).normalize();
-  // outward = away from the hook bend center
-  const bendCenter = new T.Vector3(-0.18, 0.2, -0.2);
-  const outward = barbP.clone().sub(bendCenter);
-  outward.addScaledVector(barbT, -outward.dot(barbT)).normalize();
-  const barbDir = barbT.clone().multiplyScalar(-0.75).addScaledVector(outward, 0.66).normalize();
-  const barbLen = 0.05;
-  const barb = add(new T.ConeGeometry(0.011, barbLen, 8), steel);
-  barb.quaternion.setFromUnitVectors(up, barbDir);
-  barb.position.copy(barbP).addScaledVector(outward, R * 0.6).addScaledVector(barbDir, barbLen / 2 - 0.01);
-
-  // ---------- 4. steel ferrule/collar where hook enters handle ----------
-  const ferruleY = -0.09;
-  add(new T.CylinderGeometry(0.05, 0.053, 0.075, 16), darkSteel, HX, ferruleY, 0);
-
-  // ---------- 5-8. rivets on ferrule (4 around) ----------
-  const rivetGeo = new T.SphereGeometry(0.011, 8, 6);
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    add(rivetGeo, rivetMat, HX + Math.cos(a) * 0.052, ferruleY + (i % 2 ? 0.015 : -0.015), Math.sin(a) * 0.052);
-  }
-
-  // ---------- 9. weathered wooden handle (vertex-colored, slightly irregular) ----------
-  const handleTop = -0.125, handleBot = -0.39;
-  const hLen = handleTop - handleBot;
-  const hGeo = new T.CylinderGeometry(0.042, 0.046, hLen, 14, 10);
+  // ---------- 1. wooden dowel shaft (slightly crooked, grain streaks) ----------
+  const shaftBot = -0.43, shaftTop = 0.2, sLen = shaftTop - shaftBot;
+  const shaftGeo = new T.CylinderGeometry(0.031, 0.034, sLen, 10, 12);
   {
-    const pos = hGeo.attributes.position;
-    const cols = [];
-    const base = new T.Color(0x8a6a45), grey = new T.Color(0x9b9282), dark = new T.Color(0x5c4329);
-    const c = new T.Color();
+    const pos = shaftGeo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ang = Math.atan2(z, x);
+      const bump = 1 + 0.06 * Math.sin(ang * 3 + y * 21) + 0.03 * Math.sin(ang * 7 - y * 47);
+      pos.setXYZ(i, x * bump + 0.006 * Math.sin(y * 6), y, z * bump);
+    }
+    shaftGeo.computeVertexNormals();
+    const base = new T.Color(0x8c6e4a), dark = new T.Color(0x5e4630), pale = new T.Color(0xa58a66);
+    tint(shaftGeo, (c, x, y, z) => {
       const ang = Math.atan2(z, x);
-      // gentle dents / uneven whittled surface
-      const bump = 1 + 0.035 * Math.sin(ang * 5 + y * 30) + 0.02 * Math.sin(ang * 11 - y * 55);
-      pos.setX(i, x * bump);
-      pos.setZ(i, z * bump);
-      // grain streaks + sun-greyed weathering
-      const grain = 0.5 + 0.5 * Math.sin(ang * 9 + Math.sin(y * 40) * 1.5);
-      const weather = 0.5 + 0.5 * Math.sin(y * 17 + ang * 2);
-      c.copy(base).lerp(dark, grain * 0.45).lerp(grey, weather * 0.35);
-      cols.push(c.r, c.g, c.b);
-    }
-    hGeo.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
-    hGeo.computeVertexNormals();
+      const grain = 0.5 + 0.5 * Math.sin(ang * 8 + Math.sin(y * 37) * 1.6);
+      c.copy(base).lerp(dark, grain * 0.4).lerp(pale, (0.5 + 0.5 * Math.sin(y * 13 + ang)) * 0.3);
+    });
   }
-  add(hGeo, wood, HX, (handleTop + handleBot) / 2, 0);
+  add(shaftGeo, wood, HX, (shaftTop + shaftBot) / 2, 0);
 
-  // ---------- 10. pommel end cap ----------
-  add(new T.CylinderGeometry(0.044, 0.04, 0.025, 14), darkSteel, HX, handleBot - 0.0125, 0);
-
-  // ---------- 11. rope wrap (helix grip) ----------
-  class Helix extends T.Curve {
-    constructor(y0, y1, r, turns) { super(); this.y0 = y0; this.y1 = y1; this.r = r; this.turns = turns; }
-    getPoint(t, out = new T.Vector3()) {
-      const a = t * this.turns * Math.PI * 2;
-      return out.set(HX + Math.cos(a) * this.r, this.y0 + (this.y1 - this.y0) * t, Math.sin(a) * this.r);
+  // ---------- 2. cut plastic-bottle sleeve over the grip (the fist closes round this) ----------
+  const prof = [
+    [0.03, -0.392], [0.040, -0.389], [0.045, -0.379], [0.047, -0.36], [0.0455, -0.33], [0.0475, -0.30], [0.0455, -0.27],
+    [0.0475, -0.24], [0.0455, -0.21], [0.047, -0.19], [0.043, -0.168], [0.037, -0.15], [0.034, -0.138], [0.034, -0.12], [0.031, -0.116],
+  ].map(([r, y]) => new T.Vector2(r, y));
+  const sGeo = new T.LatheGeometry(prof, 18);
+  {
+    const pos = sGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {                     // crumpled thin plastic: soft dents
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ang = Math.atan2(z, x);
+      const dent = 1 + 0.035 * Math.sin(ang * 5 + y * 40) * Math.sin(y * 23 + 1.3) - 0.02 * Math.max(0, Math.cos(ang - 2.1)) * Math.sin(y * 31);
+      pos.setX(i, x * dent); pos.setZ(i, z * dent);
     }
+    sGeo.computeVertexNormals();
+    const w = new T.Color(1, 1, 1), grime = new T.Color(0xc9c3ae);
+    tint(sGeo, (c, x, y, z) => c.copy(w).lerp(grime, 0.25 + 0.25 * Math.sin(Math.atan2(z, x) * 3 + y * 19)));
   }
-  const wrapTop = -0.17, wrapBot = -0.33;
-  add(new T.TubeGeometry(new Helix(wrapBot, wrapTop, 0.048, 9), 180, 0.0075, 6, false), rope);
+  add(sGeo, sleeve, HX, 0, 0);
+  // black tape bands holding the sleeve on
+  const tape = new T.TorusGeometry(0.035, 0.0075, 6, 18);
+  add(tape, black, HX, -0.125, 0).rotation.x = Math.PI / 2;
+  add(new T.TorusGeometry(0.042, 0.0085, 6, 18), black, HX, -0.392, 0).rotation.x = Math.PI / 2;
 
-  // ---------- 12-13. tied rope bands at wrap ends ----------
-  const band = new T.TorusGeometry(0.05, 0.009, 6, 20);
-  add(band, ropeDark, HX, wrapTop + 0.008, 0).rotation.x = Math.PI / 2;
-  add(band, ropeDark, HX, wrapBot - 0.008, 0).rotation.x = Math.PI / 2;
+  // ---------- 3. black bracket + lashing under the head ----------
+  for (const y of [0.085, 0.135]) {
+    const t = add(new T.TorusGeometry(0.036, 0.012, 6, 16), black, HX, y, 0);
+    t.rotation.set(Math.PI / 2, 0, 0); t.rotation.y = (y - 0.1) * 2;
+  }
+  add(new T.BoxGeometry(0.1, 0.045, 0.11), black, HX - 0.01, 0.18, 0);              // bracket plate under the head
+  block(black, V(HX + 0.045, 0.09, 0), V(HX + 0.04, 0.2, 0), 0.012, 0.012);         // strap up the back
 
-  // ---------- 14. knot on top band ----------
-  add(new T.SphereGeometry(0.016, 8, 6), ropeDark, HX + 0.052, wrapTop + 0.006, 0.0);
-
-  // ---------- 15. dangling cord from knot ----------
-  const cordCurve = new T.CatmullRomCurve3([
-    new T.Vector3(HX + 0.055, wrapTop + 0.004, 0.0),
-    new T.Vector3(HX + 0.08, wrapTop - 0.04, 0.01),
-    new T.Vector3(HX + 0.1, wrapTop - 0.1, 0.02),
-    new T.Vector3(HX + 0.12, -0.27, 0.025),
-  ]);
-  add(new T.TubeGeometry(cordCurve, 24, 0.006, 6, false), rope);
-
-  // ---------- 16. small coil of spare cord hanging from it ----------
-  const coil = add(new T.TorusGeometry(0.04, 0.01, 6, 20), rope, HX + 0.13, -0.305, 0.03);
-  coil.rotation.set(0.25, Math.PI / 2 - 0.3, 0.15);
-  // ---------- 17. wrap binding on the coil ----------
-  const bind = add(new T.TorusGeometry(0.013, 0.006, 6, 12), ropeDark, HX + 0.125, -0.268, 0.028);
-  bind.rotation.set(Math.PI / 2, 0, 0.2);
-
-  // ---------- 18. small steel lashing collar on shank (scrap repair look) ----------
-  const lash = add(new T.TorusGeometry(R + 0.006, 0.006, 6, 16), darkSteel, HX, 0.05, -0.006);
-  lash.rotation.x = Math.PI / 2;
-
-  // Built as 18 parts (hook, tip, barb, ferrule, 4 rivets, handle, pommel, wrap, 2 bands, knot, cord, coil, bind, lash),
-  // merged below into one mesh per material.
+  // ---------- 4. orange plastic claw head ----------
+  const or = new T.Color(0xd8642a), orDark = new T.Color(0xa9471c), orLight = new T.Color(0xe8834a);
+  const headParts = [];
+  const hub = add(new T.BoxGeometry(0.12, 0.08, 0.12), orange, HX - 0.01, 0.24, 0);
+  headParts.push(hub);
+  const cap = add(new T.BoxGeometry(0.085, 0.03, 0.09), orange, HX - 0.01, 0.29, 0);
+  headParts.push(cap);
+  // lashing strap over the hub
+  add(new T.BoxGeometry(0.125, 0.03, 0.124), black, HX - 0.01, 0.222, 0);
+  // three slim moulded tines fanned round -X: out from the head, down, then hooked back up (a J barb)
+  const tineD = [[0.035, 0.245], [0.088, 0.252], [0.135, 0.228], [0.155, 0.172], [0.147, 0.124], [0.12, 0.103], [0.1, 0.122]];
+  for (const [th, s] of [[-1.05, 0.9], [0, 1.0], [1.05, 0.9]]) {
+    const dx = -Math.cos(th), dz = Math.sin(th);
+    const curve = new T.CatmullRomCurve3(tineD.map(([d, y]) => V(HX - 0.01 + dx * d * s, y, dz * d * s)), false, 'centripetal');
+    const TS = 12, RS = 5, g = new T.TubeGeometry(curve, TS, 1, RS, false);
+    const pos = g.attributes.position, c = new T.Vector3(), v = new T.Vector3();
+    for (let i = 0; i <= TS; i++) {                       // taper: thick root, sharp tip
+      const u = i / TS, r = 0.0055 + 0.025 * Math.pow(1 - u, 1.3);
+      curve.getPointAt(u, c);
+      for (let j = 0; j <= RS; j++) {
+        const k = i * (RS + 1) + j;
+        v.fromBufferAttribute(pos, k).sub(c).multiplyScalar(r).add(c);
+        pos.setXYZ(k, v.x, v.y, v.z);
+      }
+    }
+    g.computeVertexNormals();
+    headParts.push(add(g, orange));
+  }
+  // short back spur so the head reads as a grapple, not a hammer
+  headParts.push(block(orange, V(HX + 0.03, 0.25, 0), V(HX + 0.09, 0.215, 0), 0.024, 0.012));
+  // moulded-plastic tint: darker underside, lighter top, slight mottling
+  for (const m of headParts) {
+    m.updateMatrix();
+    const mx = m.matrix;
+    tint(m.geometry, (c, x, y, z) => {
+      const w = V(x, y, z).applyMatrix4(mx);
+      const t = Math.max(0, Math.min(1, (w.y - 0.08) / 0.22));
+      c.copy(orDark).lerp(or, Math.min(1, t * 1.6)).lerp(orLight, Math.max(0, t - 0.75) * 1.6);
+      c.multiplyScalar(0.95 + 0.06 * Math.sin(w.x * 60 + w.z * 45));
+    });
+  }
 
   inner.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
 
@@ -156,10 +144,10 @@ export function createHook(T) {
   const center = box.getCenter(new T.Vector3());
   inner.position.sub(center);
   const size = box.getSize(new T.Vector3());
-  // Static parts never move relative to each other: one draw call per material (6), merged after the
-  // re-center so the bounds/grip math above sees the original parts.
+  // Static parts: one draw call per material (4), merged after the re-centre so the bounds/grip math
+  // above sees the original parts.
   mergeChildMeshes(T, inner);
   root.userData.size = { x: size.x, y: size.y, z: size.z };
-  root.userData.orientation = 'handle -Y, hook point +Y, hook bend leans toward -Z (front), bend opens to -X';
+  root.userData.orientation = 'handle -Y, claw head +Y, claws reach toward -X and curl down';
   return root;
 }

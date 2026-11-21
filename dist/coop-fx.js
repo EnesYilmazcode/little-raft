@@ -103,27 +103,24 @@ export function createPings(T, scene) {
 // ---------------------------------------------------------------- remote rope + hook
 const SEGS = 16, FLAT_Y = 0.05;   // FLAT_Y = hook-physics WATER_Y
 
-// Low-poly third-person stand-in for hook.js's scrap hook (286 tris / 6 meshes instead of 8.8k / 18):
-// same frame and proportions (wooden handle down -Y with rope wrap + dangling rope eye, iron shank
-// curving up and over toward -Z, cone point), re-centred on its bounding box like createHook.
+// Low-poly third-person stand-in for hook.js's scrap hook (~240 tris / 6 meshes): same frame and
+// proportions (wooden stick down -Y with a white bottle-sleeve grip, blocky orange plastic head on top,
+// three slim tines reaching toward -X and hooking down), re-centred on its bounding box like createHook.
 function createFlyingHook(T, tint) {
   const root = new T.Group(), inner = new T.Group(); root.add(inner);
-  const M = (c, metalness, roughness) => new T.MeshStandardMaterial({ color: new T.Color(c).lerp(tint, 0.3), metalness, roughness });
-  const steel = M(0x8ca8ac, 0.7, 0.3), iron = M(0x5f7376, 0.75, 0.45), wood = M(0x8a6a45, 0, 0.9), rope = M(0xb89a64, 0, 0.95);
+  const M = (c, roughness) => new T.MeshStandardMaterial({ color: new T.Color(c).lerp(tint, 0.3), metalness: 0, roughness });
+  const orange = M(0xd8642a, 0.66), wood = M(0x8c6e4a, 0.9), sleeve = M(0xe8e6dc, 0.62);
   const add = (g, m, x = 0, y = 0, z = 0) => { const o = new T.Mesh(g, m); o.position.set(x, y, z); o.castShadow = false; inner.add(o); return o; };
-  const HX = 0.2, R = 0.022;
-  const curve = new T.CatmullRomCurve3([[HX, -0.08, 0], [HX, 0.12, -0.01], [0.17, 0.27, -0.05], [0.06, 0.38, -0.12], [-0.1, 0.4, -0.2],
-    [-0.25, 0.34, -0.26], [-0.34, 0.2, -0.28], [-0.33, 0.06, -0.25], [-0.24, 0, -0.2], [-0.15, 0.04, -0.16], [-0.11, 0.11, -0.13]]
-    .map(p => new T.Vector3(p[0], p[1], p[2])), false, 'centripetal');
-  add(new T.TubeGeometry(curve, 18, R, 5, false), steel);                       // 180 tris
-  const end = curve.getPoint(1), dir = curve.getTangent(1).normalize();
-  const tip = add(new T.ConeGeometry(R, 0.075, 5), steel);                      // 10
-  tip.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), dir); tip.position.copy(end).addScaledVector(dir, 0.0375);
-  add(new T.CylinderGeometry(0.05, 0.053, 0.075, 5), iron, HX, -0.09, 0);       // ferrule, 20
-  add(new T.CylinderGeometry(0.042, 0.046, 0.265, 5), wood, HX, -0.2575, 0);   // handle, 20
-  add(new T.CylinderGeometry(0.05, 0.05, 0.16, 5), rope, HX, -0.25, 0);         // rope wrap, 20
-  const eye = add(new T.TorusGeometry(0.04, 0.01, 3, 6), rope, HX + 0.13, -0.305, 0.03); // rope eye, 36
-  eye.rotation.set(0.2, 0.3, 0.5);
+  const HX = 0.2;
+  add(new T.CylinderGeometry(0.031, 0.034, 0.6, 6), wood, HX, -0.13, 0);          // stick, 24
+  add(new T.CylinderGeometry(0.047, 0.047, 0.27, 6), sleeve, HX, -0.255, 0);       // bottle grip, 24
+  add(new T.BoxGeometry(0.12, 0.12, 0.12), orange, HX - 0.01, 0.23, 0);            // claw head, 12
+  const D = [[0.035, 0.245], [0.088, 0.252], [0.135, 0.228], [0.155, 0.172], [0.147, 0.124], [0.12, 0.103], [0.1, 0.122]];
+  for (const th of [-1.05, 0, 1.05]) {                                            // tines, 3 x 60
+    const dx = -Math.cos(th), dz = Math.sin(th), s = th ? 0.9 : 1;
+    const curve = new T.CatmullRomCurve3(D.map(([d, y]) => new T.Vector3(HX - 0.01 + dx * d * s, y, dz * d * s)), false, 'centripetal');
+    add(new T.TubeGeometry(curve, 6, 0.017, 5, false), orange);
+  }
   const box = new T.Box3().setFromObject(inner), c = new T.Vector3();
   inner.position.sub(box.getCenter(c));
   return root;
