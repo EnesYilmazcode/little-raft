@@ -154,12 +154,20 @@ function stumpGeometry(T) {
   const wood = new T.Color('#e8cf9a'), ring = new T.Color('#c9a66b');
   parts.push(paint(T, top, (x, y, z, c) => { const r = Math.hypot(x, z) / R1; c.copy(r > .55 && r < .75 ? ring : wood); }));
   for (let i = 0; i < 2; i++) { // two dry fronds lying in the sand
-    const g = new T.PlaneGeometry(.9, .26, 6, 1), gp = g.attributes.position;
-    for (let j = 0; j < gp.count; j++) { const t = (gp.getX(j) + .45) / .9; gp.setY(j, gp.getY(j) * Math.sin(Math.PI * Math.min(1, t * .9 + .1)) * (j % 2 ? .55 : 1)); } // leaf taper, ragged edge
+    // 3 rows (edge, midrib, edge) so the frond gets a dark rib and folded, lighter leaflet edges: a flat
+    // single-tone plane read as a shadow smear on the sand.
+    const N = 8, g = new T.PlaneGeometry(.9, .26, N, 2), gp = g.attributes.position, rib = [], along = [];
+    for (let j = 0; j < gp.count; j++) {
+      const col = j % (N + 1), row = Math.floor(j / (N + 1)), t = (gp.getX(j) + .45) / .9;
+      gp.setY(j, gp.getY(j) * Math.sin(Math.PI * Math.min(1, t * .9 + .1)) * (col % 2 ? .55 : 1)); // leaf taper, ragged edge
+      gp.setZ(j, row === 1 ? 0 : .035 * (1 - t)); // edges fold up off the rib
+      rib.push(row === 1); along.push(t);
+    }
     g.rotateX(-Math.PI / 2); g.translate(.62, .12, 0); g.rotateY(i * 2.4 + .7); // lifted clear of the sand (palms sit 0.1 m low)
     g.deleteAttribute('uv'); g.computeVertexNormals();
-    const st = new T.Color('#9c8a40'), tip = new T.Color('#c9b25a');
-    parts.push(paint(T, g, (x, y, z, c) => { c.copy(st).lerp(tip, Math.min(1, Math.hypot(x, z) / 1.1)); }));
+    const ribC = new T.Color('#5e4a22'), st = new T.Color('#a08c3e'), tip = new T.Color('#d8c06a');
+    let k = 0;
+    parts.push(paint(T, g, (x, y, z, c) => { const t = along[k], r = rib[k++]; if (r) c.copy(ribC).lerp(st, t * .5); else c.copy(st).lerp(tip, t); }));
   }
   return merge(T, parts);
 }

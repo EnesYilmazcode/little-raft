@@ -20,7 +20,8 @@ export function createAxe(T) {
   };
 
   const L = 0.62, r = 0.02;
-  const wood = mat(0xa87a4c, 0.88), lash = mat(0xcdb27a, 0.95), stone = mat(0x8f9aa0, 0.7, 0.05, true);
+  const wood = mat(0xa87a4c, 0.88), lash = mat(0xcdb27a, 0.95), stone = mat(0xffffff, 0.75, 0.02, true);
+  stone.vertexColors = true; // per-facet tones, see the head below
   stone.side = T.DoubleSide; // hand-wound wedge: flat shading lights it from screen derivatives either way
 
   // Handle: tapered driftwood with a gentle bend and a knob at the butt.
@@ -51,6 +52,14 @@ export function createAxe(T) {
   const p = new Float32Array(f.length * 9);
   f.forEach((t, i) => t.forEach((k, j) => { p[i * 9 + j * 3] = v[k][0]; p[i * 9 + j * 3 + 1] = v[k][1]; p[i * 9 + j * 3 + 2] = v[k][2]; }));
   head.setAttribute('position', new T.BufferAttribute(p, 3)); head.computeVertexNormals();
+  // Knapped-flint look: each facet a slightly different grey-brown, the worked cutting edge paler. One flat
+  // grey read as a steel cleaver.
+  const col = new Float32Array(p.length), base = new T.Color(0x8a8e88), edgeC = new T.Color(0xc4c8bf), c = new T.Color();
+  f.forEach((t, i) => {
+    const k = 0.84 + ((i * 7919) % 13) / 13 * 0.3;
+    t.forEach((vi, j) => { c.copy(base).multiplyScalar(k); if (v[vi][2] < -0.15) c.lerp(edgeC, 0.75); col.set([c.r, c.g, c.b], i * 9 + j * 3); });
+  });
+  head.setAttribute('color', new T.BufferAttribute(col, 3));
   add(head, stone, 0, headY, 0);
 
   // Rope lashing: two crossed bands over the head and one round the handle under it.

@@ -703,9 +703,10 @@ export function mount(transfer = null) {
     if (eating) { EATING_TIP.label = FOOD[k].food > 0 ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
     eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
   }
+  const PURIFIER_STATUS = /^(Purifying|Purifier:|Fire is full)/;
   function promptTip() { // watering hints only when actionable or while holding a cup (never hides the hook's "Throw")
     if (eatTip) return eatTip;
-    const p = waterAim?.prompt; return p && (p.startsWith('<kbd>') || CUP_KINDS.includes(selectedKind())) ? tipFor(p) : null;
+    const p = waterAim?.prompt; return p && (p.startsWith('<kbd>') || CUP_KINDS.includes(selectedKind()) || PURIFIER_STATUS.test(p)) ? tipFor(p) : null; // purifier status: a muted prompt (prompts.js keeps it out of the feed)
   }
   let contextHtml = null, contentPromptOff = null; // content hook: contextHtml also feeds main's #lrPrompt via raftPrompts
   function updateContext(dialog) {

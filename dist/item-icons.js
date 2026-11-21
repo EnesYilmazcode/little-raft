@@ -45,6 +45,7 @@ const FRAME = {
   lantern: { view: [0.35, 0.3, 1], crop: [0.5, 1, 0.48, 0.96], exp: 1.7 },  // the lamp, not the post
   fishingrod: { crop: [0, 0.7, 0, 0.7], exp: 1.5 },                          // grip, reel and float
   net: { view: [0.3, 0.45, 1], exp: 1.6 },
+  coconut: { view: [0.3, 1, 0.55], exp: 1.55 },                             // from above, so the three eyes read (else a brown rock)
 };
 
 // ---------- fallback models ----------

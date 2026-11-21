@@ -37,7 +37,7 @@ export const HOLD = Object.freeze({
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
   spear:      { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 }, // [spear-repair] point forward, a ready jab
   metalspear: { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 },
-  paddle:     { hand: 'right', pose: 'grip', rx: -1.45, ry: 0, rz: 0.6, arm: [-0.02, 0.03, 0] }, // [paddle] blade reaches forward and down past the edge
+  paddle:     { hand: 'right', pose: 'grip', rx: -1.3, ry: 0, rz: 1.3, arm: [-0.02, 0.03, 0] }, // [paddle] shaft across the view, blade out front-left (the stroke dips it)
   axe:        { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.05, 0], tilt: 0.5 }, // [axe] held like the hammer, blade leaning forward
   brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
@@ -57,7 +57,7 @@ export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate :
 // Left-fist (placeable) models are capped to a small carried size so they never fill the lower left.
 export const HELD_LEFT_MAX = 0.075;
 const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
-  planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
+  planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11, coconut: 0.11, // coconut: a palm-sized nut, not a melon
   drum: 0.24, pipes: 0.2, bells: 0.26 }; // [instruments]
 
 function fit(T, model, maxDim, gripFn) {
@@ -251,6 +251,7 @@ export function buildItemModel(T, kind, factory = null) {
     const spear = kind === 'spear' || kind === 'metalspear'; // [spear-repair] spear-repair-hooks.js slides userData.model along +Y to jab
     const m = kind === 'hammer' ? createHammer(T) : kind === 'paddle' ? createPaddle(T) : kind === 'brush' ? createBrush(T) : spear ? createSpear(T, { metal: kind === 'metalspear' }) : createFishingTool(T), s = kind === 'fishingrod' ? 0.55 : kind === 'hammer' ? 0.42 : kind === 'paddle' ? 0.55 : spear ? 0.62 : 0.6; // compact hammer
     m.scale.setScalar(s); if (kind === 'hammer') finishMaterials(T, m);
+    if (kind === 'paddle') m.rotation.y = -0.9; // [paddle] turn the blade face toward the camera (else it reads edge-on)
     root = new T.Group(); root.add(m);
     const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size || { x: 0.1, y: 0.8, z: 0.1 };
     root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
