@@ -9,7 +9,7 @@
 // userData.strikeNormal Vector3: outward normal of the striking face (0,0,-1)
 // userData.clawTip      Vector3: tip of the claw, in root space
 // userData.firstPerson  suggested camera-space pose for a right-hand hold (tune in game)
-// Meshes: handle, wedge, head, face, collar, rivets, rope wrap, rope ties = 8.
+// Meshes: handle, head, face, collar (+ wedge), rivets, rope wrap, rope ties = 7.
 export function createHammer(T) {
   const root = new T.Group();
   root.name = 'buildHammer';
@@ -103,7 +103,7 @@ export function createHammer(T) {
   // ================= 1. worn wooden handle =================
   {
     const ys = [0, 0.0008, 0.003, 0.006, 0.01];
-    for (let y = 0.016; y < TOP - 0.004; y += 0.006) ys.push(y);
+    for (let y = 0.016; y < TOP - 0.004; y += 0.012) ys.push(y);
     const pts = [];
     const capR = 0.01;
     for (const y of ys) {
@@ -175,12 +175,9 @@ export function createHammer(T) {
     add(geo, timber, 'handle');
   }
 
-  // ================= 2. steel wedge in handle top =================
-  {
-    const geo = new T.BoxGeometry(0.0034, 0.004, 0.024);
-    geo.translate(0, TOP, 0);
-    add(geo, collarSteel, 'wedge');
-  }
+  // ================= 2. steel wedge in handle top (merged into the collar mesh below) =================
+  const wedgeGeo = new T.BoxGeometry(0.0034, 0.004, 0.024);
+  wedgeGeo.translate(0, TOP, 0);
 
   // ================= 3. forged head body + split claw =================
   const extrudeX = (shape, depth, bev, bevT, curveSeg) => {
@@ -288,7 +285,7 @@ export function createHammer(T) {
     const geo = new T.CylinderGeometry(rz * 1.02, rz, COLLAR_H, 18, 1);
     geo.scale(OVAL, 1, 1);
     geo.translate(0, COLLAR_Y, 0);
-    add(geo, collarSteel, 'collar');
+    add(merge([geo, wedgeGeo]), collarSteel, 'collar');
 
     // ================= 6. rivets (merged) =================
     const parts = [];
