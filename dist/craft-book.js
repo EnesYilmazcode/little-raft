@@ -347,13 +347,13 @@ export function savePin(storage, id) {
  * crafts the materials cover, and how many ingredient lines are complete.
  * `check` is an optional Bag.canCraft() result. Returns null without a recipe.
  */
-export function trackerView(recipe, countOf, check = null) {
+export function trackerView(recipe, countOf, check = null, gate = null) {
   if (!recipe) return null;
   const rows = ingredientRows(recipe.reqs, countOf);
-  const times = craftableTimes(rows);
+  const times = craftableTimes(rows), state = recipeState(rows, check, gate);
   return {
     id: recipe.id, name: recipe.name, kind: recipe.out?.kind ?? recipe.id, rows,
-    state: recipeState(rows, check), times: Number.isFinite(times) ? times : 0,
+    state, reason: state === 'gated' ? String(gate.reason || '') : '', times: Number.isFinite(times) ? times : 0,
     met: rows.filter(r => r.enough).length, total: rows.length,
   };
 }

@@ -315,6 +315,7 @@ const CSS = `
 #craftTracker .ct-name{display:block;font:700 14px/1.15 ${FONT};color:#f8f3e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #craftTracker .ct-state{display:block;margin-top:2px;font:700 10px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#f4efe280}
 #craftTracker.ct-ready .ct-state{color:#a9e48a}
+#craftTracker.ct-gated .ct-state{color:#ffcf9a;letter-spacing:0;text-transform:none;font-size:12px;line-height:1.2;white-space:normal}
 #craftTracker.ct-ready{box-shadow:inset 0 0 0 1px #8fd36a88,0 0 12px #8fd36a33,0 6px 18px #0006}
 #craftTracker ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 #craftTracker li{display:grid;grid-template-columns:20px 1fr auto;gap:7px;align-items:center;padding:2px 6px 2px 3px;border-radius:4px;background:#ffffff0a;box-shadow:inset 2px 0 0 #e06a4a}
@@ -700,15 +701,18 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const t = ensureTracker();
     const r = pinId && !isOpen ? recipes.find(x => x.id === pinId) : null;
     if (!r) { if (!t.hidden) t.hidden = true; trackSig = null; return; }
-    const key = sig + '|' + pinId;
+    const g = gate(r.id); // same gate as the book row, so a locked recipe never reads Ready here
+    const key = sig + '|' + pinId + '|' + (g?.locked ? g.reason || 'locked' : '');
     if (key === trackSig) return;
     trackSig = key;
     let check = null;
     if (typeof bag.canCraft === 'function') { try { check = bag.canCraft(r.id); } catch {} }
-    const tv = trackerView(r, k => countOf(bag, k), check);
+    const tv = trackerView(r, k => countOf(bag, k), check, g);
     const ready = tv.state === 'ready';
     t.classList.toggle('ct-ready', ready);
-    const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
+    t.classList.toggle('ct-gated', tv.state === 'gated');
+    const state = tv.state === 'gated' ? 'Locked: ' + (tv.reason || 'not learned yet')
+      : ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
     t.innerHTML = `<div class="ct-head"><span class="ct-art" aria-hidden="true">${art(tv.kind)}</span><span><b class="ct-name">${esc(tv.name)}</b><small class="ct-state">${esc(state)}</small></span></div>`
       + `<ul>${tv.rows.map(x => `<li class="${x.enough ? 'ct-ok' : ''}" aria-label="${esc(itemName(x.kind))}: have ${x.have}, need ${x.need}">${art(x.kind)}<span>${esc(itemName(x.kind))}</span><b>${esc(amountLabel(x))}</b></li>`).join('')}</ul>`
       + (ready ? '<div class="ct-foot">Open your bag with <kbd>Tab</kbd> to craft</div>' : '');

@@ -20,3 +20,15 @@ test('CRAFT-1: a Tinker’s Desk recipe is gated with what to study, and the gat
   assert.equal(CB.recipeState(rows, null, g), 'gated', 'enough plastic, still locked');
   assert.equal(CB.recipeState(rows, null, null), 'ready');
 });
+
+test('CRAFT-2: the pinned tracker shares the book state, so a gated recipe never reads ready', () => {
+  const bolt = { id: 'bolt', name: 'Bolt', out: { kind: 'bolt', count: 1 }, reqs: [{ kind: 'metalingot', count: 1 }, { kind: 'scrap', count: 1 }] };
+  const count = () => 2, lock = { locked: true, reason: 'Research Metal Ingot at a Research Table' };
+  const open = CB.trackerView(bolt, count, null);
+  assert.equal(open.state, 'ready');
+  assert.equal(open.reason, '');
+  const tv = CB.trackerView(bolt, count, null, lock);
+  assert.equal(tv.state, 'gated');
+  assert.equal(tv.reason, lock.reason);
+  assert.equal(tv.met, 2, 'materials still shown');
+});
