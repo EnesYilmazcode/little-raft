@@ -50,6 +50,7 @@ export function createHands(T, hookModel) {
   const clothV = mat(0xffffff, 0.95, { vertexColors: true });
   const ropeV = mat(0xffffff, 0.95, { vertexColors: true });
   const mergeInto = new Map([[skin, skinV], [skinPalm, skinV], [crease, skinV], [sleeveMat, clothV], [cuffMat, clothV], [ropeMat, ropeV], [ropeDarkMat, ropeV]]);
+  const metalV = mat(0xffffff, 0.35, { metalness: 0.72, vertexColors: true }); // the held scrap hook's steel parts
 
   const finish = (m) => { m.castShadow = false; m.receiveShadow = false; m.frustumCulled = false; return m; };
   const G = (g) => { geos.push(g); return g; };
@@ -155,6 +156,14 @@ export function createHands(T, hookModel) {
   if (inner && hookModel.userData && hookModel.userData.size) handleLocal.set(0.2 + inner.position.x, -0.27 + inner.position.y, inner.position.z);
   const toolOffset = handleLocal.clone().multiplyScalar(-TOOL_SCALE);
   const savedFlags = [];
+  // The scrap hook arrives as one mesh per material (6). Its parts never move relative to each other, so steel parts
+  // merge into one vertex-coloured metal mesh and wood/rope into one rope-rough mesh: 2 draws while held.
+  const hookInner = hookModel && hookModel.name === 'scrapHook' ? hookModel.children[0] : null;
+  if (hookInner) {
+    const old = hookInner.children.filter((c) => c.isMesh);
+    const made = mergeChildMeshes(T, hookInner, { material: (c) => (c.material.metalness > 0.5 ? metalV : ropeV), colorize: true });
+    if (made.length) for (const c of old) { if (c.parent) continue; c.geometry.dispose(); c.material.dispose(); }
+  }
   if (hookModel) {
     toolHolder.add(hookModel);
     hookModel.traverse((o) => { if (o.isMesh) { savedFlags.push([o, o.castShadow, o.frustumCulled]); o.castShadow = false; o.frustumCulled = false; } });
