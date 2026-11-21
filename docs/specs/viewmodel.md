@@ -1,0 +1,190 @@
+# Viewmodel spec: first-person held items and hands
+
+Scope: how Raft (Redbeet Interactive) frames the first-person held item and hand, studied for framing and feel only. It covers screen position, size, crop, grip, arm and sleeve visibility, apparent size against screen height, idle sway, swing poses and the empty pointing hand used for placeables. This spec does not propose copying Raft's item models, textures or hand art. Little Raft keeps its own procedural meshes (`dist/hands.js`, `dist/hook.js`, `dist/hammer.js`, `dist/fishing-tool.js`).
+
+Method: I opened every image below with the Read tool. Boxes were read off native-resolution views and 5% / 10% grid overlays made with Pillow (`scratchpad/viewmodel/tools/grid.py`, plus the contact sheets `sheet1.jpg` and `sheet2.jpg`). Precision is about ±1% on native views and ±2% on the grid sheets, which are marked (g). All boxes are `x left–right, y top–bottom` in % of the frame, with the origin at the top left. The crosshair sits at (50, 50) in every frame. Hex colours are the median of a 7x7 patch.
+
+Little Raft numbers come from projecting the real meshes rather than estimating them. `scratchpad/viewmodel/tools/project.mjs` imports `dist/hands.js`, `hook.js`, `hammer.js` and `fishing-tool.js` with the vendored three.js. It builds the three viewmodels exactly as `dist/game.js` `buildViewmodels()` does (`holdable` included), then projects every vertex through a 16:9 PerspectiveCamera.
+
+## Images examined
+
+Ranked selection from `references/raft/viewmodel/SELECTED.md`:
+- Hook: `stills/steam/store_11.jpg` (1280x720), `stills/press/2018-06-11-raft-update-1-02-02.jpg` (1270x712, FOV slider 50), `stills/steam/community_097.jpg` (looking down), `inventory-crafting/yt/68lj91mBrDI_0009.jpg` (inventory open), `stills/steam/community_119.jpg` (scrap hook)
+- Hammer: `building/yt/M4AhtY9BB1I_0142.jpg` (960x540), plus `_0118`, `_0148` and `_0154`; `building/yt/iVT88Yq-PU0_0004.jpg`, plus `_0020`, `_0028`, `_0032`, `_0040` and `_0044`; `stills/steam/store_16.jpg`
+- Hammer swing: `building/yt/YSMrrtHtpIc_0315.jpg` (960x540), `building/yt/2rqSgyWX6N0_0330.jpg` (960x600)
+- Rod: `inventory-crafting/yt/qdWZgcjkYNI_0410.jpg`, `stills/steam/community_084.jpg`
+- Other tools: `stills/steam/store_02.jpg` (machete), `stills/steam/store_06.jpg` (spear), `stills/steam/store_22.jpg` (axe, lifted), `stills/steam/community_087.jpg` (spear while swimming)
+- Consumables and items: `stills/steam/community_086.jpg` (cup, 1280x800), `stills/steam/community_115.jpg` (bottle), `farming/yt/Dle8DwL05lw_0450.jpg` (beet)
+- Pointing hand: `building/yt/9vVu3idmeV4_0736.jpg`, `inventory-crafting/yt/qVVltzNBaGw_0250.jpg`, `stills/steam/community_032.jpg` (sleeve)
+
+That is 31 frames. Code read: `dist/hands.js`, `dist/game.js` (lines 183-345 and 700-740), `dist/hammer.js` (grip constants), `dist/settings.js` (FOV range). I also read the branches `origin/wip/fleet/viewmodel` and `origin/wip/tech/viewmodel` with `git show` and `git diff` only.
+
+## Observations (Raft)
+
+**C1. Every one-handed tool anchors at one lower-right spot.** The fist centre sits at x 81–84%, y 88–93% in all tool frames:
+- hook in `store_11`: hand x 75.9–91, y 83–100
+- rod in `qdWZgcjkYNI_0410`: x 75.2–88.5, y 85.6–100
+- machete in `store_02`: x 75.6–89.8, y 85–100
+- bottle in `community_115`: x 73.8–93, y 87.5–100
+- hammer in `M4AhtY9BB1I_0142`: x 85–100, y 82–100
+
+That is n=9 frames, and the hammer fist is the outlier at about 3% further right. The hand is always cut by the bottom edge, and the wrist and forearm run off-screen below.
+
+**C2. The item sits entirely above the fist and is cut by the bottom edge only through the hand.** On the Plastic Hook in `store_11` the item spans x 76.3–91.4, y 24.7–83.0 (15.1% wide, 58% of screen height), and the hand covers y 83–100. The whole viewmodel, hand included, is 15.5% wide and 75% tall. The tip of the head is nowhere near the top edge, with a 24.7% gap.
+
+**C3. The framing is stable across frames, FOV setting and pitch.** Hook top and left edges across four frames:
+
+| Frame | Top | Left |
+|---|---|---|
+| `store_11` | 24.7% | 75.9% |
+| `2018-06-11-...-1-02-02` (FOV slider 50) | 26.4% | 78.7% |
+| `community_097` (camera pitched far down at the sea) | 25.5% | 76.2% |
+| `68lj91mBrDI_0009` (inventory open) (g) | 24% | 77% |
+
+The spread is 2.4% vertically and 2.8% horizontally. The viewmodel does not tilt with pitch. The FOV of the other three frames is unknown, so "independent of the FOV slider" is likely but UNSURE.
+
+**C4. The hammer is the largest viewmodel and is cropped by the right edge.**
+- `M4AhtY9BB1I_0142`: head x 80.1–100 (cut), y 19–64. That is 45% of screen height for the head alone, and the whole viewmodel spans y 19–100. The wrapped handle runs diagonally from (88, 67) to the fist at (93, 92).
+- `iVT88Yq-PU0_0004`: head x 79.7–100 (cut), y 19.4–65.7.
+- `store_16` (g): head x 88–100, y 25–68, so at idle only about 12% of the head width shows.
+
+**C5. The rod is a thin, near-vertical line.**
+- `qdWZgcjkYNI_0410`: rod x 77–82, y 0 (cut by the top edge) to 87, leaning less than 3° from vertical. The line leaves off the top of the screen.
+- `community_084` (g): rod x 79–82, y 0–90.
+
+The rod never crosses the crosshair half of the screen.
+
+**C6. Bladed and long tools follow the same recipe.**
+- Machete in `store_02`: blade x 74.4–83, y 0 (cut top) to 78, fist at the bottom right.
+- Spear in `store_06`: x 60.3–82.8, y 67–100, a diagonal at about 42° from horizontal (tip at 60.5, 67.4; shaft exits near 81, 100). No hand is visible.
+- Spear while swimming in `community_087` (g): spear on the same diagonal, and the left hand appears at x 0–25, y 85–100 doing a swim stroke.
+
+**C7. Small items sit lower and smaller.**
+
+| Item | Frame | Box | Height |
+|---|---|---|---|
+| Cup | `community_086` (16:10) | x 74.6–86, y 80.4–100 (hand to x 97.7) | 19.6% |
+| Bottle | `community_115` | x 73.8–83, y 56–100 | 44% |
+| Beet | `Dle8DwL05lw_0450` (g) | x 71–82, y 67–100 | 33% |
+
+Compare 58–81% for the tools (C2, C4).
+
+**C8. Only the right hand shows by default.** None of the 18 single-tool or consumable frames shows a left hand. It appears only for swimming (`community_087`) and, per SELECTED.md, for the bow, zipline, notebook and piano (not opened here). The left side of the lower screen stays clear for the stat bars, at x 1–16%, y 83–97 in `store_11`.
+
+**C9. The arm shows mostly hand and wrist, with a sleeve only when the outfit has one.** In the tool frames the visible arm is the hand plus 0–5% of wrist, about 15–18% of screen height (`store_11`, `qdWZgcjkYNI_0410`, `store_02`). On the pointing pose the forearm is long, and in `community_032` a striped sleeve covers it from y 72% down to the corner. `community_119` shows a pale cuff at the wrist (g, about 85, 98). Skin samples:
+- `community_097` (1040, 650): #c4805c
+- `community_115` (1080, 690): #d6997c
+- `9vVu3idmeV4_0736` (600, 420), in shade: #8c5b4c
+
+**C10. Placeables are held as an empty pointing hand, with no item in the hand.** The fingertip lands just below and right of the crosshair:
+
+| Frame | Fingertip | Arm box |
+|---|---|---|
+| `9vVu3idmeV4_0736` | (52.8, 63.0) | x 52.6–89.6, y 63–100 |
+| `qVVltzNBaGw_0250` | (52.9, 65.7) | x 52.9–83, y 65.7–100 |
+| `community_032` | (54.9, 65.0) | x 54.9–92, y 65–100 |
+
+Median offset from the crosshair: +2.9% x, +15% y. The arm enters from the bottom-right corner along a diagonal of about 30–35°. The coloured ghost (green valid, red/pink invalid, per `M4AhtY9BB1I_0148`) carries the preview, and the hand never holds a miniature.
+
+**C11. Swing poses lift the hammer head to the screen centre.**
+- `YSMrrtHtpIc_0315`: head x 43.2–61.5, y 25.4–53.7. The head covers the crosshair. The fist rises to x 51–58, y 70–91.
+- `2rqSgyWX6N0_0330` (960x600): head x 51.4–71.7, y 36.3–62.5, fist x 59–70, y 82–92.
+
+Against idle (C4), the head moves about 30% of screen width to the left and stays the same size or larger. It does not foreshorten.
+- Axe lifted in `store_22`: blade x 86–100, y 0–26, cut by the top and right edges, so the lift goes up and off-screen.
+
+Swing duration cannot be measured because the frames are 6–15 s apart. From memory, unverified: a hammer hit takes about 0.4–0.5 s, and the hook charge pulls the hook back and to the right before a forward throw.
+
+**C12. Idle drift is small.** I tracked the hammer head left and top edges across idle or near-idle frames of one session:
+- `M4AhtY9BB1I_0118`, `_0142`, `_0148`, `_0154` (n=4): left 78.8–82.3%, top 19–22%
+- `iVT88Yq-PU0_0020`–`_0044` (n=5, all with the build menu open): left 77–80%, top 21–23% (g)
+
+These ranges include any walk or look motion, so idle sway amplitude is at most about ±1.5% of the screen. From memory, unverified: there is a slow breathing bob and a slight lag on mouse look.
+
+**C13. The viewmodel stays drawn under the UI.** The hook stays visible with the inventory and crafting open (`68lj91mBrDI_0009`) and the hammer with the build menu open (`M4AhtY9BB1I_0148`, `iVT88Yq-PU0_0028`–`_0044`).
+
+## Little Raft today
+
+The numbers below are projected from the real meshes (`project.mjs`) in the idle pose (`update({dt:0,time:0})`) at 16:9.
+
+**L1. The viewmodel is parented to the world camera and inherits the FOV slider.** `game.js:333-342` parents it, `game.js:714` sets the FOV, and the slider spans 60–95, default 75 (`settings.js:10`). Hook height on screen:
+
+| FOV | Hook height | Hook box |
+|---|---|---|
+| 60 | 48.8% | x 59.0–78.8, y 45.8–94.6 |
+| 75 | 36.8% | x 56.8–71.7, y 46.8–83.6 |
+| 95 | 25.8% | x 54.8–65.2, y 47.8–73.6 |
+
+The viewmodel shrinks by 47% across the slider range, and the arms stretch toward the corners. The tech branch confirms the same finding.
+
+**L2. The right fist sits too central and too high.** Base position (0.38, -0.32, -0.80) (`hands.js:131`) projects to (67.4, 76.1) at FOV 75 and to (73.1, 84.6) at FOV 60. Raft's fist sits at about (82, 90) (C1). At FOV 75 the hook's top reaches only 46.8% against Raft's 25%, its centre x is 64% against 84%, and its height is 37% against 58%.
+
+**L3. The left arm and rope coil always show, for every tool.** The left arm sits at (-0.34, -0.35, -0.70) (`hands.js:132`). The left arm plus coil projects to x 0–37.5, y 77.4–100 at FOV 75 for the hook, hammer and rod alike: all three are built with `createHands` (`game.js:328-332`), and the left arm is never hidden. That puts a second hand over the stat-bar corner, which Raft keeps clear (C8).
+
+**L4. The hammer is too small and too central.** It is held through `holdable(..., {ry:PI/2, rz:.2, scale:.6})` (`game.js:330`). At FOV 75 it spans x 65.7–75.8, y 47.0–85.8: 10% wide and 39% tall, with nothing cropped. Raft's hammer head alone is 20% or more wide and 45% tall, and the right edge crops it (C4).
+
+**L5. The rod is laid diagonally across the screen.** It is held with `{rx:-.15, rz:.6, scale:.55}` (`game.js:332`). At FOV 75 it spans x 38.3–100, y 0.5–100, sweeping over the crosshair half of the view. Raft's rod is a vertical sliver at x 77–82 (C5).
+
+**L6. Placeables and resources show no hands at all.** Only `hook`, `hammer` and `fishingrod` set a group visible (`game.js:726-728`). Selecting a sail, palm, lantern, net, bench or crate (`DECOR_TYPES`, `game.js:27`), a resource or an empty slot leaves the screen without a viewmodel.
+
+**L7. The hammer swing reuses the hook throw curve.** `swing = 1` (`game.js:634`) decays at 3/s (`game.js:723`), so it lasts 0.33 s. `hands.js:221-250` then pushes the arm forward and down and pitches it -0.75 rad. Projected at `casting .7`, the hammer shrinks to x 51.6–63, y 55.4–73 (18% tall, foreshortened away from the eye). Raft's raised hammer is the same size or larger and sits higher, at y 25–63 (C11).
+
+**L8. Hand bob runs on its own clock.**
+- Hands: fixed stride of 0.85 Hz (`hands.js:230`), with the bob term `cos(2*ph)` at 1.7 Hz and amplitude 0.012 m, which is about 1.0% of screen height at FOV 75.
+- Camera: bob `sin(walkPhase)` (`game.js:717`), with `walkPhase += dt*9*min(1.6, speed/2.6)` (`game.js:689`), about 1.43 Hz at normal walk.
+
+The two drift in and out of phase.
+
+**L9. Idle breathing is fine but there is no look lag.** Breathing runs at 0.22 Hz (4.5 s), y amplitude 0.0045 m (about 0.37% of screen) and 0.010 rad pitch (`hands.js:228, 244, 246`), well inside Raft's ±1.5% (C12). Nothing in `main` reacts to yaw or pitch speed.
+
+**L10. The viewmodel stays drawn with the inventory open, which matches Raft (C13).** `running` stays true and only `uiBlocked()` gates input (`game.js:231`). The hands have `receiveShadow=false` and sit in the transparent queue (`game.js:341`).
+
+**L11. The skin and sleeve colours are already in range.** Skin is #c89068 (`hands.js:36`), inside the sampled range #c4805c–#d6997c (C9). The sleeve is #52705e and the cuff #3e5648, and at idle they mostly fall off-screen (right arm box x 65–100, y 70.8–100 at FOV 75).
+
+**Branch `origin/wip/fleet/viewmodel`.** One `createHands(T)` with `setHeld(kind)`, `setPose('grip'|'point'|'open')`, `ropeAnchor()` and `state`, and a new `dist/held-items.js` (a `HOLD` table and `buildItemModel` for every inventory kind).
+- It adds look lag on a `lagRoot` (yaw and pitch rate × 0.012, cap 0.07 rad × motion, smoothing k=9).
+- It adds a swap animation: 0.13 s down, 0.26 s up with easeOutBack.
+- It shows the left arm only for the hook or left-hand items.
+- Its point pose uses `R.pointPos = (0.27, -0.27, -0.60)`, which projects the wrist to about (66.5, 79) at FOV 75.
+- It puts decorations as models on the left fist. Raft shows an empty pointing hand instead (C10).
+- It keeps the hook throw curve for every strike (scaled by 0.55 for non-hooks).
+- It includes `tests/viewmodel.test.mjs`.
+
+**Branch `origin/wip/tech/viewmodel`.** `docs/tech/viewmodel.md` and `sandbox/viewmodel/` compare four render modes and recommend candidate C: a single pass with its own projection matrix (vmFOV 62) through `onBeforeCompile`, the rig scaled ×0.3 toward the eye, depth squashed to the front 2%, and real `receiveShadow`. It also adds `Spring3` sway, bob and recoil springs (sway k90/c12, bob k160/c18, recoil k220/c16, scaled by `cameraMotion`) and a `vmToWorld` helper for the rope anchor. It does not touch framing or poses.
+
+## Ranked change list
+
+**#1 Fixed viewmodel FOV.** In `dist/game.js` `buildViewmodels()` and the resize handler, adopt tech-branch candidate C (fallback B) with `vmFov` around 60. Route `handPos` through `vmToWorld`. The goal is identical framing at every FOV slider value; today the hook is 48.8% tall at FOV 60 and 25.8% at FOV 95. Impact H, effort M.
+
+**#2 Re-anchor the right fist at the lower right, about (82, 90) on screen.** In `dist/hands.js:131`, at vmFov 60 the base position becomes about (0.51, -0.37, -0.80), against (0.38, -0.32, -0.80) today. Raise `TOOL_SCALE` (0.55, `hands.js:15`) or move the hook's grip toward the bottom of its handle so the hook spans about x 76–91, y 25–83. Today it spans x 56.8–71.7, y 46.8–83.6. Add a projection test (like `project.mjs`) that asserts these boxes ±3%. Impact H, effort S.
+
+**#3 One hand by default.** In `dist/hands.js` `update()`, hide or dip the left arm and coil for the hammer, rod, placeables and items. For the hook, keep the coil below the frame at idle and raise it only while charging, while the hook is out, or while reeling. The fleet branch's `usesLeft` is a start, but it still shows the coil at hook idle. This frees the stat-bar corner, which is covered at x 0–37.5, y 77–100 today. Impact H, effort S.
+
+**#4 Make the hammer big and let the right edge crop it.** In `dist/game.js:330`, change `holdable` scale from 0.6 to about 0.9–1.0 and move it right so the head spans about x 80–100+ and y 19–64 (head about 45% of screen height), with the handle diagonal into the fist at about (93, 92). Today the hammer is 10% wide and 39% tall at x 65.7–75.8. Impact H, effort S.
+
+**#5 Empty pointing hand for decorations and placeables.** In `dist/hands.js`, add a `point` pose using the fleet branch's finger sets, but put no model in the hand. Aim the fingertip at about (53, 64), which is +3% x and +15% y from the crosshair, with the forearm running to the bottom right (box about x 53–90, y 63–100). Show it whenever `DECOR_TYPES.includes(kind)` (`game.js:726-728`). The existing ghost (`game.js:809-812`) stays the only preview. Impact H, effort M.
+
+**#6 Upright rod.** In `dist/game.js:332`, change `rz` from 0.6 to about 0.05–0.1 and `rx` from -0.15 to about -0.05, so the rod reads as a vertical sliver at about x 77–82 that runs off the top edge. Today it spans x 38–100. Impact M, effort S.
+
+**#7 Hammer strike pose separate from the hook throw.** In `dist/hands.js`, add a `strike` param or `kind`. Lift the head up and left so it covers about x 45–65, y 25–55 near the crosshair, at the same or larger size, then chop down. Suggested timing, from memory: 0.12 s raise, 0.12 s hit, 0.2 s recover. In `game.js:723`, decay `swing` over about 0.45 s for the hammer. Impact M, effort M.
+
+**#8 Drive the hand walk bob from the camera's `walkPhase`.** Pass `walkPhase` into `hands.update()` (`game.js:729-733`) and use it in place of the fixed 0.85 Hz `ph` (`hands.js:230`), so hand and camera bob share one rhythm. Keep the amplitude at 1% of screen or less. Impact M, effort S.
+
+**#9 Look-lag sway.** In `dist/hands.js`, take the fleet branch's `lagRoot` (yaw and pitch rate × 0.012, cap 0.07 rad × motion) or the tech branch's `Spring3` sway (k90/c12). Keep total idle and lag excursion within about ±1.5% of the screen at the default `cameraMotion` 0.35 (C12). Impact M, effort S.
+
+**#10 Lower and raise on hotbar swap.** Use the fleet branch's 0.13 s down and 0.26 s up with easeOutBack in `dist/hands.js`, and switch the model while it is below the frame. Impact M, effort S.
+
+**#11 Hold small items lower and smaller.** For resources, fish and later cups or food, use `dist/held-items.js` from the fleet branch with a lower anchor so the item and hand box is about x 72–92, y 56–100 (at most 45% of screen height), against 58–81% for tools (C7). Impact L, effort M.
+
+**#12 Light the hands with the world.** Candidate C gives sail and roof shadows on the hands, and it removes the transparent-queue hack (`game.js:341`) and the internal `state.buffers.depth.setMask` call (`game.js:338`). Impact L, effort S once #1 lands.
+
+**#13 Keep the viewmodel drawn under the inventory and build UI.** This already happens (L10). Add a regression assertion in the test from #2. Impact L, effort S.
+
+## Open questions and UNSURE items
+
+- **U1.** Is Raft's viewmodel truly independent of the FOV slider? Only one frame has a known FOV (50, in `2018-06-11-...-1-02-02`), and its framing matches the other three hook frames within 3% (C3). That is consistent with a fixed viewmodel FOV, but not proof.
+- **U2.** Swing and throw timings and the look-lag amount are from memory, because the yt frames are 6 s or more apart. A short clip sampled at 10 fps or more would settle C11 and C12.
+- **U3.** `store_06` (spear) shows no hand. The hand may be just below the frame, or the shaft may be held further back. I did not use this framing in the change list.
+- **U4.** The vmFov 60 base-position numbers in #2 assume a 16:9 view. Ultrawide views push the fist further from the item, so anchor in NDC and derive the position from the aspect at runtime.
+- **U5.** With the item fully above the fist (#2), the hook's current grip point (`handleLocal`, `hands.js:144`) leaves about 20% of the hook below the fist. The hook model may need a grip nearer its bottom end. A first try that only offset and scaled the hook (`project_try.mjs`) still cropped its bottom and left the top at 47%.
+- **U6.** I opened only the left-hand swim frame from the two-hand set. The bow, zipline, notebook and piano frames in SELECTED.md were not reviewed.
