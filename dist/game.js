@@ -43,6 +43,8 @@ const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); 
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
+import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js'; // [vitals] hunger, thirst, health
+import { createVitalsUI } from './vitals-ui.js'; // [vitals] HUD bars, damage vignette, faint overlay
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 
@@ -108,7 +110,8 @@ export function mount(transfer = null) {
   let seed = 20240917; const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 
   // ---------- Bags ----------
-  const snapBag = s => { if (!s || typeof s !== 'object') return null; try { return new Bag(migrateSnapshot(s) ?? s); } catch { return null; } }; // [progression-hook]
+  const engineStack = k => (Object.prototype.hasOwnProperty.call(ITEM_INFO, k) ? ITEM_INFO[k].maxStack : 0); // keeps cups/purifier (outside items.js) across reloads
+  const snapBag = s => { if (!s || typeof s !== 'object') return null; try { return new Bag(migrateSnapshot(s, engineStack) ?? s); } catch { return null; } }; // [progression-hook]
   const validSnapshot = s => snapBag(s)?.snapshot() ?? null;
   const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
@@ -178,7 +181,7 @@ export function mount(transfer = null) {
     const progress = cleanProgress(v);
     return {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
       hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory), signal:cleanSignal(v.signal), ext:cleanExt(v.ext), pieces:cleanPieces(v.pieces, tiles), sailing:cleanSailing(v.sailing), // content + building-pieces + sailing hooks
-      notes:progress.notes, achievements:progress.achievements,
+      notes:progress.notes, achievements:progress.achievements, vitals:v.vitals ? cleanVitals(v.vitals) : null, // [vitals] old saves: null -> start full
       ...cleanWatering(v, decor, {seedMissing:true})};
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
@@ -227,6 +230,11 @@ export function mount(transfer = null) {
   const storedRev = () => { try { return saveRevision(localStorage.getItem(SAVE)); } catch { return 0; } };
   let saveRev = isInt(X?.saveRev) ? X.saveRev : storedRev();
   let saveBlocked = !!X?.saveBlocked;
+  // [vitals] The local player's own hunger/thirst/health. Solo/host persist it in world.vitals; a guest keeps
+  // its own in memory (and in its own save once back home). Never sent over the network.
+  const vitals = newVitals(X?.vitals ?? world.vitals);
+  let vitalsUI = null, eating = null, fainted = Number.isFinite(X?.fainted) ? X.fainted : -1, exertion = 1; // eating {item, slot, t}; fainted: seconds into the faint, -1 = awake
+  const vitalsOpts = {mult:1};
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
   let scene = null, camera = null, renderer = null, quality = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
@@ -359,6 +367,7 @@ export function mount(transfer = null) {
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
     esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(),
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
+    hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
   };
   function init() {
     const assetBuild = new URL(import.meta.url).searchParams.get('build') || 'dev'; document.querySelectorAll('use[href*="icons.svg"]').forEach(el => el.setAttribute('href', 'icons.svg?build=' + assetBuild + '#' + el.getAttribute('href').split('#')[1]));
@@ -389,6 +398,7 @@ export function mount(transfer = null) {
     for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; bakeGroup(g); scene.add(g); clouds.push(g); aboveWater.push(g); scenery.push([g, 0]); } // content + sailing: clouds
     setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
+    try { vitalsUI = createVitalsUI(); } catch (e) { console.warn('vitals HUD unavailable', e); vitalsUI = null; } // [vitals]
     building = createBuilding(T, scene); // building-pieces lane hook
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
@@ -559,6 +569,61 @@ export function mount(transfer = null) {
     toastTimer = cancelTimer(toastTimer); toastTimer = later(() => { toastTimer = 0; el.classList.remove('show'); }, 2600);
   }
   function beep(f = 500) { if (!sound || !(options?.volume > 0)) return; try { audio ??= new AudioContext(); audio.resume(); const o = audio.createOscillator(), g = audio.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f, audio.currentTime); o.frequency.exponentialRampToValueAtTime(f * 1.4, audio.currentTime + .12); g.gain.setValueAtTime(.12 * options.volume, audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .22); o.connect(g).connect(diving ? diving.audioOut(audio) : audio.destination); /* diving lane hook: muffled underwater */ o.start(); o.stop(audio.currentTime + .23); } catch {} }
+  // ---------- [vitals] hunger, thirst, health ----------
+  function gulp(munch) { beep(munch ? 240 : 330); later(() => beep(munch ? 200 : 280), 130); }
+  // Game-internal damage hook for other systems (sharks, falls…). Hurts the LOCAL player only; on a host, a hit on the
+  // guest must be sent to the guest (e.g. as an effect) and applied there with its own hurtPlayer. Returns HP lost.
+  function hurtPlayer(n, cause = 'hit') {
+    if (!running || fainted >= 0) return 0;
+    const lost = damageVitals(vitals, Number(n), String(cause ?? 'hit'));
+    if (lost > 0) vitalsUI?.flash();
+    return lost;
+  }
+  const eatKind = () => { const k = localBag().slots[localBag().selectedIndex]?.kind ?? null; return isEdible(k) ? k : null; };
+  function startEat(kind) {
+    if (eating || fainted >= 0) return;
+    if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
+    eating = {item:kind, slot:localBag().selectedIndex, t:0}; beep(420);
+  }
+  function updateVitals(dt, dialog) {
+    if (!running) { eating = null; return; }
+    if (fainted >= 0) { // passed out: a short dark beat, then wake up on the raft
+      fainted += dt; vitalsUI?.faint(true);
+      if (fainted >= 2.6) {
+        fainted = -1; const c = cleanVitals(RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
+        const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28;
+        vitalsUI?.faint(false); notice('You wake up on the raft, hungry and thirsty', 3200);
+      }
+      return;
+    }
+    if (eating) {
+      const bag = localBag();
+      if (bag.selectedIndex !== eating.slot || bag.slots[eating.slot]?.kind !== eating.item) eating = null; // switched slot or item gone
+      else if ((eating.t += dt) >= EAT_SECONDS) { const item = eating.item; eating = null; action({kind:'eat', item}); }
+    }
+    if (role === 'solo' && dialog && dialogOpen()) return; // the solo pause menu stops the clock
+    vitalsOpts.mult = exertion; tickVitals(vitals, dt, vitalsOpts);
+    if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; clearInput(); }
+  }
+  // Crosshair prompts (dist/prompts.js provider): eat/drink, else the cup/purifier/planter prompt (game.js markup).
+  const tipCache = new Map(), eatTips = new Map(), EATING_TIP = {key:'', label:'…', muted:true};
+  let eatTip = null, promptOff = null;
+  function tipFor(html) {
+    let t = tipCache.get(html); if (t) return t;
+    const m = /^<kbd>([^<]*)<\/kbd>(.*)$/.exec(html), txt = s => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    t = m ? {key:m[1] === 'Click' ? 'LMB' : m[1], label:txt(m[2])} : {label:txt(html), muted:true};
+    if (tipCache.size > 200) tipCache.clear(); tipCache.set(html, t); return t;
+  }
+  function updateEatTip(dialog) {
+    const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && !waterAim?.click ? eatKind() : null;
+    if (!k) { eatTip = null; return; }
+    if (eating) { EATING_TIP.label = FOOD[k].food > 0 ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
+    eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
+  }
+  function promptTip() { // watering hints only when actionable or while holding a cup (never hides the hook's "Throw")
+    if (eatTip) return eatTip;
+    const p = waterAim?.prompt; return p && (p.startsWith('<kbd>') || CUP_KINDS.includes(selectedKind())) ? tipFor(p) : null;
+  }
   let contextHtml = null;
   function updateContext(dialog) {
     let html = '';
@@ -567,6 +632,7 @@ export function mount(transfer = null) {
       else if (performance.now() < noticeUntil) html = esc(noticeText);
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
+      else if (eatTip) html = '<kbd>Click</kbd>' + esc(eatTip.label); // [vitals] kbd markup: a prompt, not a feed notice
       else if (waterAim?.prompt) html = waterAim.prompt;
       else if ((contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook
       else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
@@ -771,6 +837,7 @@ export function mount(transfer = null) {
   function effect(e) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
+    if (e.kind === 'ate') { if (fainted < 0 && consumeVitals(vitals, e.item)) gulp(FOOD[e.item].food > 0); return; } // [vitals]
     if (prog?.effect(e)) return; // [progression-hook]
     if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
     if (e.kind === 'note' || e.kind === 'achievement') logbookUI?.celebrate?.(e);
@@ -911,6 +978,12 @@ export function mount(transfer = null) {
       bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!'}, actor);
       award({kind:'repair'}); return;
     }
+    if (a.kind === 'eat') { // [vitals] host removes the item (and gives the cup back); the eater applies the bars on 'ate'
+      const k = a.item; if (!isEdible(k) || bag.count(k) < 1) return;
+      const s = new Bag(bag.snapshot()); if (!s.remove(k, 1)) return;
+      const back = FOOD[k].returns; if (back && s.add(back, 1) > 0) { emit({kind:'full', text:'No room for the empty cup'}, actor); return; }
+      commit(bag, s); emit({kind:'ate', item:k}, actor); return;
+    }
     if (content?.action(a, actor, bag)) return; // content hook: module actions (chest, research, gather…)
     if (WATER_ACTIONS.includes(a.kind)) { applyWatering(a, actor, bag); return; }
     // 'wear' (legacy clients wore the hook on every throw) is ignored: wear now happens only on a successful catch.
@@ -951,9 +1024,14 @@ export function mount(transfer = null) {
 
   // Left click uses the selected bag item. The hook uses charge/throw/reel below.
   function useSelected(aim) {
-    if (!running || hook || fishWait) return;
+    if (!running || hook || fishWait || eating || fainted >= 0) return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
+    if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
+      const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
+      if (w?.click) { swing = 1; action(w.click); } else startEat(kind);
+      return;
+    }
     if (kind === 'hammer' && building && building.piece !== 'foundation') { // building-pieces lane hook
       if (building.removing) return;
       const a = building.use(); if (a) { swing = 1; action(a); } else notice('Point at a green spot'); return;
@@ -1004,6 +1082,7 @@ export function mount(transfer = null) {
   function syncWorldInventories() { // only for the world this client owns (solo / host)
     world.hostInventory = hostBag.snapshot(); world.guestInventory = guestBag.snapshot();
     world.stock = legacyStock(hostBag); world.hookHealth = hookDurability(hostBag);
+    world.vitals = saveVitals(vitals); // [vitals]
     if (content) world.ext = content.serialize(); // content hook
   }
   function blockSave() {
@@ -1037,6 +1116,7 @@ export function mount(transfer = null) {
     building?.postStep(physics, deckY()); // building-pieces lane hook
     content?.afterMove(physics, dt); // content hook: e.g. stand on island sand
     const speed = Math.hypot(physics.vx, physics.vz);
+    exertion = dive || physics.swimming || (speed > 1 && (ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'))) ? SPRINT_MULT : 1; // [vitals]
     walking = physics.grounded && speed > .4; if (walking) walkPhase += dt * 9 * Math.min(1.6, speed / 2.6);
     if (ev?.splashed) beep(180);
     if (![physics.x, physics.y, physics.z].every(Number.isFinite)) { const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
@@ -1071,6 +1151,7 @@ export function mount(transfer = null) {
       const bob = cf ? cf.y : walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0;
       camera.position.set(physics.x + (cf?.x ?? 0), physics.y + bob, physics.z + (cf?.z ?? 0));
       camera.rotation.set(pitch, yaw, (physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0) + (cf?.roll ?? 0), 'YXZ');
+      if (eating) { const k = Math.sin(Math.min(1, eating.t / EAT_SECONDS) * Math.PI); camera.rotation.x -= k * .09; camera.position.y -= k * .035; } // [vitals] hand-to-mouth nod
     } else { // gentle cinematic view for the welcome screen
       const focus = TITLE_FOCUS, d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
       camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
@@ -1197,12 +1278,15 @@ export function mount(transfer = null) {
     checkPeerStale(now);
     ocean.update(elapsed, camera);
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
-    movePlayer(dt, running && !dialog);
+    movePlayer(dt, running && !dialog && fainted < 0);
     updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim(aimScratch) : null;
     pickTarget = pickupFrom(frameAim);
     waterAim = pickTarget ? null : wateringTarget(frameAim);
+    updateVitals(dt, dialog); updateEatTip(dialog); // [vitals]
+    if (vitalsUI) { vitalsUI.update(vitals, running && !disposed && fainted < 0); }
+    if (!promptOff && window.raftPrompts?.provide) { try { promptOff = window.raftPrompts.provide({id:'game-context', priority:0, prompt:promptTip}); } catch { promptOff = () => {}; } } // [vitals] eat/drink + watering prompts
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     content?.update(dt); // content hook
     if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
@@ -1615,6 +1699,14 @@ export function mount(transfer = null) {
       };
     },
     get content() { return content?.debug ?? {}; }, // content hook: per-module QA helpers
+    // [vitals] test/QA helpers. hurt(n, cause) is the same hook other systems use in-game (contentCtx.hurtPlayer).
+    get vitals() { return {hp:vitals.hp, food:vitals.food, water:vitals.water, starving:vitals.starving, fainted:fainted >= 0, eating:eating ? eating.item : null, exertion}; },
+    hurt(n, cause = 'debug') { return hurtPlayer(n, cause); },
+    setVitals(o) {
+      if (!o || typeof o !== 'object') return null;
+      for (const k of ['hp', 'food', 'water']) if (Number.isFinite(o[k])) vitals[k] = clamp(o[k], 0, 100);
+      return {hp:vitals.hp, food:vitals.food, water:vitals.water};
+    },
     project,
     aimAtNode(r = 6) { // diving lane hook: test helper, look at the nearest seafloor node
       const n = diving?.seafloor?.nodesNear?.(physics.x, physics.y, physics.z, r)?.sort((a, b) => Math.hypot(a.x - physics.x, a.y - physics.y, a.z - physics.z) - Math.hypot(b.x - physics.x, b.y - physics.y, b.z - physics.z))[0];
@@ -1657,6 +1749,7 @@ export function mount(transfer = null) {
     return {
       version:3, world, bags:{host:hostBag.snapshot(), guest:guestBag.snapshot(), remote:remoteBag ? remoteBag.snapshot() : null},
       physics:physics.capture(), me:{x:physics.x, y:physics.y, z:physics.z}, other:other ? {...other} : null, yaw, pitch, running, elapsed, walkPhase,
+      vitals:saveVitals(vitals), fainted, // [vitals]
       hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
       dive:diving?.capture?.() ?? null, // diving lane hook
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
@@ -1701,6 +1794,7 @@ export function mount(transfer = null) {
     for (const id of ['signalReadout', 'signalMarker']) { const el = document.getElementById(id); if (el) el.hidden = true; }
     try { logbookUI?.destroy?.(); } catch {}
     try { prog?.dispose(); } catch {} // [progression-hook]
+    try { vitalsUI?.dispose(); } catch {} vitalsUI = null; try { promptOff?.(); } catch {} promptOff = null; // [vitals]
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
