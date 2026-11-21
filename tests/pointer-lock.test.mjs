@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
-const { classifyLockError, lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, createEscGate } = await import(new URL('lock-rules.js', base));
+const { classifyLockError, lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, createEscGate, createLockTracker, exitLock, pageLock, lockLossAction, shouldDeferredRelock, shouldFocusRelock, escapeCooldownRetry } = await import(new URL('lock-rules.js', base));
 
 const dom = name => ({ name, message: name });
 
@@ -109,4 +109,91 @@ test('repeats of an unhandled press do not mark it handled', () => {
   g.keydown(40, { repeat: true });
   g.lockLost(700);
   assert.equal(g.keyupOpensPause(800), true);
+});
+
+test('CUR2-1: lock tracker tells page exits from browser-taken locks, and early drops', () => {
+  const t = createLockTracker();
+  t.gained(0);
+  assert.equal(t.selfCaused(5000), false); // nothing marked: the browser took it
+  assert.equal(t.early(5000), false);
+  t.pageExit(6000);
+  assert.equal(t.selfCaused(6010), true); // inventory / pause menu released it
+  assert.equal(t.selfCaused(7500), false); // stale mark
+  t.gained(8000);
+  assert.equal(t.selfCaused(8010), false); // a new lock clears the mark
+  assert.equal(t.early(8010), true); // granted, then dropped
+  assert.equal(t.early(9600), false);
+});
+
+test('CUR2-1: exitLock marks the shared tracker before releasing, only when locked', () => {
+  let exited = 0;
+  const doc = { pointerLockElement: {}, exitPointerLock() { exited++; } };
+  pageLock.gained(0);
+  assert.equal(exitLock(doc, 100000), true);
+  assert.equal(exited, 1);
+  assert.equal(pageLock.selfCaused(100050), true);
+  pageLock.gained(100100);
+  assert.equal(exitLock({ pointerLockElement: null, exitPointerLock() { exited++; } }, 200000), false);
+  assert.equal(exited, 1);
+  assert.equal(pageLock.selfCaused(200010), false);
+});
+
+test('CUR2-1: a lock loss the page did not cause pauses when focused, never when blurred', () => {
+  const base = { running: true, locked: false, blocked: false, focused: true };
+  assert.equal(lockLossAction(base), 'pause');
+  assert.equal(lockLossAction({ ...base, focused: false }), 'away'); // alt-tab
+  assert.equal(lockLossAction({ ...base, hidden: true }), 'away');
+  assert.equal(lockLossAction({ ...base, blocked: true }), 'none'); // pause menu already up
+  assert.equal(lockLossAction({ ...base, locked: true }), 'none');
+  assert.equal(lockLossAction({ ...base, running: false }), 'none');
+});
+
+test('CUR2-2: a fresh lock dropped by the browser is retried once, then pauses', () => {
+  const base = { running: true, locked: false, blocked: false, focused: true, early: true };
+  assert.equal(lockLossAction(base), 'retry');
+  assert.equal(lockLossAction({ ...base, retried: true }), 'pause');
+  assert.equal(lockLossAction({ ...base, focused: false }), 'away');
+});
+
+test('CUR2-2: the deferred Escape relock runs only while playing, focused, unblocked and Esc released', () => {
+  const ok = { running: true, blocked: false, locked: false, escHeld: false, focused: true };
+  assert.equal(shouldDeferredRelock(ok), true);
+  for (const k of ['blocked', 'locked', 'escHeld']) assert.equal(shouldDeferredRelock({ ...ok, [k]: true }), false, k);
+  for (const k of ['running', 'focused']) assert.equal(shouldDeferredRelock({ ...ok, [k]: false }), false, k);
+});
+
+test('CUR2-4: focus return relocks only if play was locked when focus left and nothing is open', () => {
+  const ok = { lockedAtBlur: true, running: true, blocked: false, locked: false };
+  assert.equal(shouldFocusRelock(ok), true);
+  assert.equal(shouldFocusRelock({ ...ok, lockedAtBlur: false }), false); // was in a menu, or already free
+  assert.equal(shouldFocusRelock({ ...ok, blocked: true }), false);
+  assert.equal(shouldFocusRelock({ ...ok, running: false }), false);
+  assert.equal(shouldFocusRelock({ ...ok, locked: true }), false);
+});
+
+test('CUR2-3: a refusal inside the Escape cooldown retries once when it ends', () => {
+  assert.equal(escapeCooldownRetry({ now: 1400, escapeUnlockAt: 1000 }), 900);
+  assert.equal(escapeCooldownRetry({ now: 1400, escapeUnlockAt: 1000, retried: true }), -1);
+  assert.equal(escapeCooldownRetry({ now: 2400, escapeUnlockAt: 1000 }), -1); // past the cooldown
+  assert.equal(escapeCooldownRetry({ now: 1400, escapeUnlockAt: -Infinity }), -1);
+});
+
+test('every page exitPointerLock goes through exitLock', async () => {
+  const { readFile } = await import('node:fs/promises');
+  for (const f of ['game.js', 'settings.js', 'survival-ui.js', 'fishing-cooking.js', 'logbook-ui.js', 'progression-hooks.js', 'smelter-ui.js']) {
+    const src = await readFile(new URL(f, base), 'utf8');
+    assert.doesNotMatch(src, /\.exitPointerLock\s*\(|exitPointerLock\?\.\(/, f);
+  }
+});
+
+test('desktop shell: the Escape relock leaves the key task, and the shell hooks exist', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const game = await readFile(new URL('game.js', base), 'utf8');
+  // raft-master's escReleasePlan: a browser keyup defers the relock past the key task; the shell's released() stays synchronous
+  assert.match(game, /function escReleased\(fromShell = false\)[\s\S]{0,300}setTimeout\(guard\(requestLock\), 0\)/);
+  for (const hook of ['escapedLock:', 'focusRelock:', 'relock:']) assert.ok(game.includes(hook), hook);
+  const main = await readFile(new URL('../desktop/main.cjs', import.meta.url), 'utf8');
+  assert.match(main, /raftShell\.escapedLock\(\)',true\)/);
+  assert.match(main, /raftShell\.focusRelock\(\)',true\)/);
+  assert.match(main, /keyUp'&&!escClaimed\)refreshPanel/);
 });

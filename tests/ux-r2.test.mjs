@@ -70,7 +70,7 @@ test('UX-6: first-run hints continue loot -> rope -> hammer -> first floor and c
   assert.deepEqual(req(rp), { leaf: 2 });
   assert.deepEqual(req(hm), { wood: 4, rope: 2 });
   // A fresh player walks the chain.
-  const done = new Set(['throw', 'loot', 'bag', 'slots']);
+  const done = new Set(['look', 'walk', 'throw', 'loot', 'bag', 'slots']);
   const step = (ctx, st) => { for (const id of H.hintsFromState(st)) done.add(id); return H.nextHint(done, ctx)?.id ?? null; };
   assert.equal(step({ hasLeaf: false }, {}), null, 'waits for palm leaves');
   assert.equal(step({ hasLeaf: true }, {}), 'rope');
@@ -80,7 +80,7 @@ test('UX-6: first-run hints continue loot -> rope -> hammer -> first floor and c
   assert.equal(step({ heldKind: 'hammer' }, { hasHammer: true, built: true }), null);
   assert.ok(done.has('build'));
   // A returning player who already owns a hammer (and used up the rope) is never stuck on 'rope'.
-  const old = new Set(['throw', 'loot', 'bag', 'slots']);
+  const old = new Set(['look', 'walk', 'throw', 'loot', 'bag', 'slots']);
   for (const id of H.hintsFromState({ hasRope: false, hasHammer: true })) old.add(id);
   assert.equal(H.nextHint(old, { heldKind: 'hammer', hasLeaf: false })?.id, 'build');
   for (const id of H.hintsFromState({ hasHammer: true, built: true })) old.add(id);

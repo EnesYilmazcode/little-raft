@@ -2,6 +2,8 @@
 // sound on/off preference, drag-look scaling and the first-run hint chain.
 // No DOM access here so the logic can be tested in node.
 
+import { HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+
 export const NOTICE_MS = 2800, NOTICE_MAX = 3;
 
 // A short stack of notices. Repeating a line refreshes it instead of stacking a copy.
@@ -34,12 +36,21 @@ export function dragLookScale(base, sensitivity) {
   return base * (Number.isFinite(sensitivity) && sensitivity > 0 ? sensitivity : 1);
 }
 
+// Shared wording for keys and prompts. Settings, the help guide and the hints all use these strings
+// (tests/ux-layout.test.mjs checks the sources), and the bag footer in survival-ui.js says "E, I or Esc closes".
+export const BAG_OPEN_KEYS = 'Tab, I or E', BAG_CLOSE_KEYS = 'Tab, E, I or Esc';
+export const REEL_PROMPT = 'Hold click to reel in';
+
 // First-run hints, shown one at a time and only until the player has done each thing once.
+// Look and walk come first, then throwing, then the bag and the hotbar.
 export const HINT_KEY = 'little-raft-hints';
+export const LOOK_DONE_RAD = 1.2, WALK_DONE_S = 1; // about a second of looking around / walking
 export const HINTS = Object.freeze([
+  {id:'look', text:'Move the mouse to look around', when:() => true},
+  {id:'walk', text:'Press W A S D to walk', when:() => true},
   {id:'throw', text:'Hold click to charge, release to throw at floating supplies', when:c => c.heldKind === 'hook' && !c.castOut},
-  {id:'bag', text:'Press Tab or E to open your bag and craft', when:c => c.hasLoot},
-  {id:'slots', text:'Press 1–9 or 0 to choose what you hold', when:() => true},
+  {id:'bag', text:`Press ${BAG_OPEN_KEYS} to open your bag and craft`, when:c => c.hasLoot},
+  {id:'slots', text:`Press 1–${Math.min(HOTBAR_SIZE, 9)}${HOTBAR_SIZE >= 10 ? ' or 0' : ''} (or scroll) to choose what you hold`, when:() => true},
   // Loot -> rope -> hammer -> first floor. Each is also marked done from bag/world state (hintsFromState),
   // so a player who already has rope or a hammer, or has built, never gets stuck on an earlier step.
   {id:'rope', text:'Open your bag (Tab) → Materials → craft Rope from palm leaves', when:c => c.hasLeaf},
@@ -54,8 +65,12 @@ export function hintsFromState(c) {
   if (c?.built) out.push('build');
   return out;
 }
+// A save from before the look/walk hints already threw a hook: it has nothing left to learn there.
 export function loadHints(storage) {
-  try { const v = JSON.parse(storage?.getItem(HINT_KEY) ?? '[]'); return new Set(Array.isArray(v) ? v.filter(x => typeof x === 'string') : []); } catch { return new Set(); }
+  let done;
+  try { const v = JSON.parse(storage?.getItem(HINT_KEY) ?? '[]'); done = new Set(Array.isArray(v) ? v.filter(x => typeof x === 'string') : []); } catch { done = new Set(); }
+  if (done.has('throw')) { done.add('look'); done.add('walk'); }
+  return done;
 }
 export function saveHints(storage, done) {
   try { storage?.setItem(HINT_KEY, JSON.stringify([...done])); return true; } catch { return false; }

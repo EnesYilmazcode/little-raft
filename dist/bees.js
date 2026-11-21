@@ -112,6 +112,28 @@ export function createBees(ctx) {
   const oldHost = () => ctx.role === 'guest' && !hostHasBees;
   const decor = () => (Array.isArray(ctx.world?.decor) ? ctx.world.decor : []);
 
+  let lastAim = null, unprovide = null;
+  const tip = { key: '', label: '', muted: false };
+  // What aiming at a hive says: {key:'E'|null, label}. Labels are static text plus numbers (no user input).
+  function status(aim) {
+    const t = target(aim); if (!t) return null;
+    if (oldHost()) return { key: null, label: OLD_HOST };
+    const info = hiveInfo(st, decor(), t.x, t.z); if (!info) return null;
+    if (info.c > 0) return { key: 'E', label: `Collect honeycomb (${info.c})${info.c >= COMB_MAX ? ' · full' : ''}` };
+    if (info.flowers === 0) return { key: null, label: 'Beehive: bees need a flower box nearby' };
+    return { key: null, label: `Bees are busy… ${Math.floor(info.t / COMB_WORK * 100)}%` };
+  }
+  function crosshairPrompt(c) { // dist/prompts.js provider: the muted status line beside the crosshair
+    const s0 = c?.state; if (!s0 || !s0.running || s0.pickup || s0.swimming) return null;
+    const s = status(lastAim); if (!s || s.key) return null; // actionable lines come through #contextPrompt
+    tip.key = ''; tip.label = s.label; tip.muted = true;
+    return tip;
+  }
+  function providePrompt() { // prompts.js may load after us: retried from update() until it exists
+    if (unprovide || typeof window === 'undefined') return;
+    try { const p = window.raftPrompts; if (p?.provide) unprovide = p.provide({ id: 'bees', priority: 1, prompt: crosshairPrompt }); } catch {}
+  }
+
   // Nearest beehive along the view ray (or the camera forward when no aim), within reach.
   function target(aim) {
     const w = ctx.world, p = ctx.physics, cam = ctx.camera; if (!w || !p || !cam || !Array.isArray(w.decor)) return null;
@@ -186,10 +208,13 @@ export function createBees(ctx) {
 
   return {
     name: 'bees',
+    beforeUndecor(d) { return d?.type === 'beehive' && (st.h[tileKey(d.x, d.z)]?.c ?? 0) > 0 ? 'Collect the honey first' : null; }, // [undecor]
+    afterUndecor(d) { if (d?.type !== 'beehive') return; const k = tileKey(d.x, d.z); if (st.h[k]) { delete st.h[k]; st.r++; } }, // [undecor]
     load,
     serialize,
     update(dt) {
       if (T) paint();
+      if (!unprovide) providePrompt();
       if (!ctx.running || ctx.role === 'guest') return;
       clock += dt > 0 ? dt : 0;
       if (clock >= 1) {
@@ -198,13 +223,12 @@ export function createBees(ctx) {
         if (r.full.length) ctx.emit?.({ kind: 'notice', text: 'A beehive is full of honeycomb' }, 'all');
       }
     },
+    // #contextPrompt lines without <kbd> are fed to the bottom-left notice feed (prompts.js), so the changing
+    // "busy n%" status goes to the crosshair prompt provider instead; only the actionable line stays here.
     prompt(aim) {
-      const t = target(aim); if (!t) return null;
-      if (oldHost()) return OLD_HOST;
-      const info = hiveInfo(st, decor(), t.x, t.z); if (!info) return null;
-      if (info.c > 0) return `<kbd>E</kbd>Collect honeycomb (${info.c})${info.c >= COMB_MAX ? ' · full' : ''}`;
-      if (info.flowers === 0) return 'Beehive: bees need a flower box nearby';
-      return `Bees are busy… ${Math.floor(info.t / COMB_WORK * 100)}%`;
+      lastAim = aim;
+      const s = status(aim);
+      return s && s.key ? `<kbd>E</kbd>${s.label}` : null;
     },
     interact(aim) {
       const t = target(aim); if (!t) return false;
@@ -235,6 +259,7 @@ export function createBees(ctx) {
       state: () => JSON.parse(JSON.stringify(st)),
       hives: () => decor().filter(d => d && d.type === 'beehive').map(d => ({ x: d.x, z: d.z, key: tileKey(d.x, d.z), ...hiveInfo(st, decor(), d.x, d.z) })),
       target: aim => target(aim),
+      status: aim => status(aim), // {key, label} the player sees at the crosshair
       /** Host QA: put a beehive / flowerbox / candle on a free raft tile. */
       place(type, x, z) {
         const w = ctx.world;
@@ -250,6 +275,6 @@ export function createBees(ctx) {
         return true;
       },
     },
-    dispose() { hives.length = 0; },
+    dispose() { hives.length = 0; try { unprovide?.(); } catch {} unprovide = null; },
   };
 }

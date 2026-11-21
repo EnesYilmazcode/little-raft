@@ -285,7 +285,8 @@ test('research: recipes join the tree from their cost alone (learnedFrom)', () =
   assert.deepEqual(learnedFrom(['wood', 'leaf']), ['bench', 'palm']);
   assert.deepEqual(learnedFrom(['wood', 'rope']), ['bench', 'fishingrod']); // net also needs nails since the progression rebalance
   assert.deepEqual(learnedFrom(['wood', 'rope', 'nail']), ['bench', 'fishingrod', 'net']);
-  assert.deepEqual(learnedFrom(['wood', 'rope', 'leaf']), ['bench', 'fishingrod', 'palm', 'sail']);
+  assert.deepEqual(learnedFrom(['wood', 'rope', 'leaf']), ['bench', 'fishingrod', 'palm']);
+  assert.ok(learnedFrom(['wood', 'leaf', 'scrap']).includes('sail')); // Raft sail: 10 planks + 20 leaves + 3 scrap
   assert.deepEqual(learnedFrom(['leaf'], ['lantern']), ['lantern']);
 });
 
@@ -475,6 +476,7 @@ test('setOwnedElsewhere: recipes owned by the progression catalogue are never lo
     assert.ok(locked.length > 0);
     for (const id of locked) assert.ok(!ITEMS[id], `${id} is a catalogue recipe`);
     assert.equal(SR.isLearned(st, 'sail'), true);
-    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), ['bed', 'bowl', 'brush', 'fern', 'hammock', 'pennant', 'rug', 'sign', 'wheel']); // content recipes (sleep, paint, engine, decor pack, cookpot bowl) are the table's own
+    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), ['bowl', 'brush', 'bucket', 'fern', 'flagpole', 'goatpen', 'hammock', 'pennant', 'rug', 'sign', 'wheel']); // content recipes (paint, engine, decor pack, cookpot bowl, flags, goats) are the table's own
+    assert.ok(SR.learnedFrom(['wood', 'leaf', 'plastic', 'nail']).includes('bed')); // [bed] Simple Bed needs plastic and nails
   } finally { SR.setOwnedElsewhere(id => !TABLE_TREE.has(id)); }
 });

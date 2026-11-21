@@ -116,6 +116,19 @@ test('the right hand grips the line while the hook is out and pulls hand over ha
   h.dispose();
 });
 
+test('the left (rope coil) hand stays tucked away while the hook is idle and rises to wind up', () => {
+  const h = createHands(T);
+  const left = h.group.getObjectByName('leftArm');
+  const step = (n, p = {}) => { for (let i = 0; i < n; i++) h.update({ dt: 1 / 30, ...p }); };
+  h.setHeld('hook'); step(30);
+  assert.equal(left.visible, false, 'idle hook: only the right hand shows');
+  step(10, { charge: 0.8 }); assert.equal(left.visible, true, 'winding up brings the coil hand in');
+  step(30, { hasHookOut: true }); assert.equal(left.visible, true, 'hook out keeps it');
+  step(60); assert.equal(left.visible, false, 'back to idle tucks it away again');
+  h.setHeld('crate'); step(30); assert.equal(left.visible, true, 'left-hand items still show it');
+  h.dispose();
+});
+
 test('seeds rest in the hand and point only on request; cups use the shared model', () => {
   const h = createHands(T);
   const step = (n = 30) => { for (let i = 0; i < n; i++) h.update({ dt: 1 / 30 }); };
@@ -148,5 +161,19 @@ test('both fists hold the line while reeling', () => {
   assert.equal(h.state.leftHand, 'fist'); assert.ok(h.state.ropeW > 0.9);
   const L = h.group.getObjectByName('leftArm');
   assert.ok(L.visible && L.position.x > 0.1 && L.position.y > -0.33, `left fist up on the line: ${L.position.x.toFixed(2)},${L.position.y.toFixed(2)}`);
+  h.dispose();
+});
+
+test('[zipline] the Glide Handle sits in the right fist by one half of its bar and riding raises the fist', () => {
+  const m = buildItemModel(T, 'glidehandle');
+  assert.ok(m.userData.grip[0] < -0.03, 'grip off the stem, on one half of the bar');
+  const h = createHands(T), fist = new T.Vector3();
+  const step = (n, p = {}) => { for (let i = 0; i < n; i++) h.update({ dt: 1 / 60, time: i / 60, motion: 0, ...p }); };
+  const handY = () => { h.group.updateMatrixWorld(true); return h.group.getObjectByName('toolHolder').getWorldPosition(fist).y; };
+  h.setHeld('glidehandle'); step(60);
+  assert.equal(h.state.held, 'glidehandle'); assert.equal(h.state.rightHand, 'grip');
+  const rest = handY();
+  step(60, { riding: true }); assert.ok(handY() > rest + 0.15, 'fist up on the line');
+  step(60); assert.ok(Math.abs(handY() - rest) < 0.01, 'and back down');
   h.dispose();
 });

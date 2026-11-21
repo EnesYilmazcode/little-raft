@@ -46,6 +46,7 @@ test('feed helpers: formatting, notice detection, dedupe', () => {
   assert.ok(!P.isNotice('', false));
   assert.ok(!P.isNotice('Hold click to reel it in', false));
   assert.ok(!P.isNotice('Floor needs 1 wood', false)); // hover prompt, not a notice
+  assert.ok(!P.isNotice('Purifying… 0:53 (fuel 1:58)', false)); // ticking hover status, not a notice per second
   assert.ok(!P.shouldPost({text:'a', at:1000}, 'a', 1500));
   assert.ok(P.shouldPost({text:'a', at:1000}, 'a', 1700));
   assert.ok(P.shouldPost({text:'a', at:1000}, 'b', 1100));
@@ -103,4 +104,35 @@ test('costText / missingText', () => {
   assert.equal(P.missingText({wood:2, plastic:0}, {wood:2, plastic:2}), '2 plastic');
   assert.equal(P.missingText({wood:'x'}, {wood:2}), '2 wood');
   assert.equal(P.missingText({wood:3, plastic:3}, {wood:2, plastic:2}), '');
+});
+
+test('promptFromHtml: game.js / content-module prompt strings become prompt rows', () => {
+  assert.deepEqual(P.promptFromHtml('<kbd>E</kbd>Collect honeycomb (2)'), {key:'E', label:'Collect honeycomb (2)'});
+  assert.deepEqual(P.promptFromHtml('<kbd>E</kbd> Take grilled cod &amp; chips'), {key:'E', label:'Take grilled cod & chips'});
+  assert.deepEqual(P.promptFromHtml('<kbd>Click</kbd>Water the planter'), {key:'LMB', label:'Water the planter'});
+  assert.deepEqual(P.promptFromHtml('Rain barrel: 4/4 cups · hold a cup'), {label:'Rain barrel: 4/4 cups · hold a cup', muted:true});
+  assert.deepEqual(P.promptFromHtml('Bees are busy… 40%'), {label:'Bees are busy… 40%', muted:true});
+  assert.equal(P.promptFromHtml(''), null);
+  assert.equal(P.promptFromHtml(null), null);
+  assert.equal(P.promptFromHtml('<kbd>E</kbd>'), null);
+  assert.deepEqual(P.normalizePrompt(P.promptFromHtml('<kbd>E</kbd>Fill cup (4/4)')), [{key:'E', label:'Fill cup (4/4)', hold:false, muted:false}]);
+});
+
+test('statePrompt: place mode keeps the placement row and stacks the aim prompt under it', () => {
+  const base = {running:true, role:'host', networkReady:true, hookStage:'idle', me:{pitch:-0.2}, stock:{}, tool:'place'};
+  const s = o => P.normalizePrompt(P.statePrompt({...base, ...o}));
+  // Holding a crate near a placed crate: storage's proximity "E Open crate" must not hide the placement hint.
+  const aimOff = s({heldKind:'crate', build:{hover:null}, aimPrompt:'<kbd>E</kbd>Open crate'});
+  assert.equal(aimOff.length, 2);
+  assert.deepEqual(aimOff[0], {key:'', label:'Aim at the raft floor', hold:false, muted:true});
+  assert.deepEqual(aimOff[1], {key:'E', label:'Open crate', hold:false, muted:false});
+  const onFloor = s({heldKind:'bench', build:{hover:{x:1, z:0}}, aimPrompt:'<kbd>E</kbd>Open crate'});
+  assert.equal(onFloor[0].label, 'Place bench'); assert.equal(onFloor[0].key, 'LMB'); assert.equal(onFloor[1].label, 'Open crate');
+  assert.deepEqual(s({heldKind:'crate', build:{hover:null}}), [{key:'', label:'Aim at the raft floor', hold:false, muted:true}]);
+  // Placeables outside the built-in name table still get guidance.
+  assert.equal(s({heldKind:'rainbarrel', build:{hover:{x:0, z:0}}})[0].label, 'Place rainbarrel');
+  // The placement row wins over a priority-0 provider only because game.js mutes game-aim in place mode;
+  // pickPrompt still lets a higher-priority provider through.
+  const won = P.pickPrompt([{prompts:P.statePrompt({...base, heldKind:'crate', build:{hover:null}, aimPrompt:'<kbd>E</kbd>Open crate'}), priority:0}]);
+  assert.equal(won[0].label, 'Aim at the raft floor');
 });

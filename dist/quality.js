@@ -1,5 +1,5 @@
 // Little Raft adaptive quality. Pure ES module: nothing happens on import, no clock reads.
-// createQuality({renderer, sun, dpr, preset, onChange}) -> { tick(ms), setCap(preset), reset(opts), level, levels, describe() }
+// createQuality({renderer, shadowMap, sun, dpr, preset, onChange}) -> { tick(ms), setCap(preset), reset(opts), level, levels, describe() }
 // Driven only by the frame times passed to tick(); time is the sum of accepted samples.
 
 export const PRESETS = Object.freeze({
@@ -21,22 +21,42 @@ export const QUALITY_CONSTANTS = Object.freeze({
   COOLDOWN_MS: 5000,      // no change of any kind this soon after a change
   REVERT_MS: 5000,        // a step-down within this long after the post-up cooldown ends counts as a revert
   SHADOW_FULL: 1024,
-  SHADOW_LOW: 512,
 });
 
 const C = QUALITY_CONSTANTS;
 
-// Ladder from best to worst; `null` pixel ratio means "the preset's own value".
+// Ladder from best to worst; `null` pixel ratio means "the preset's own value" (each step is also
+// clamped to the preset cap and the device ratio). No smaller shadow map step: the shadow pass is a
+// handful of cheap draws, so shrinking the map saved nothing; the cost is the PCF taps per lit pixel,
+// which only pixel ratio or switching shadows off reduce (game.js pre-compiles the shadowless programs).
 const LADDER = [
   { pixelRatio: null, shadows: true, shadowMapSize: C.SHADOW_FULL },
   { pixelRatio: 1.15, shadows: true, shadowMapSize: C.SHADOW_FULL },
   { pixelRatio: 1.0, shadows: true, shadowMapSize: C.SHADOW_FULL },
-  { pixelRatio: 1.0, shadows: true, shadowMapSize: C.SHADOW_LOW },
-  { pixelRatio: 0.85, shadows: true, shadowMapSize: C.SHADOW_LOW },
-  { pixelRatio: 0.85, shadows: false, shadowMapSize: C.SHADOW_LOW },
+  { pixelRatio: 0.85, shadows: true, shadowMapSize: C.SHADOW_FULL },
+  { pixelRatio: 0.85, shadows: false, shadowMapSize: C.SHADOW_FULL },
+  { pixelRatio: 0.7, shadows: false, shadowMapSize: C.SHADOW_FULL },
 ];
 
 const round = (v) => Math.round(v * 1000) / 1000;
+
+/**
+ * Turn the sun's shadows on or off without changing any shader program key. sun.castShadow stays true
+ * (flipping it changes numDirLightShadows, so every lit material would need a second program); "off"
+ * stops the shadow pass (shadowMap.autoUpdate=false: WebGLShadowMap.render returns early, 0 draws) and sets
+ * shadow.intensity=0 so the stale map reads as fully lit. "On" restores both and asks for one redraw.
+ */
+export function setShadows(shadowMap, sun, on) {
+  if (sun) {
+    sun.castShadow = true;
+    if (sun.shadow) sun.shadow.intensity = on ? 1 : 0;
+  }
+  if (shadowMap) {
+    if (on && !shadowMap.autoUpdate) shadowMap.needsUpdate = true;
+    if (!on) shadowMap.needsUpdate = false;
+    shadowMap.autoUpdate = !!on;
+  }
+}
 
 /** Build the level list for a preset cap and device pixel ratio. Never exceeds the cap. */
 export function buildLevels(preset = 'medium', dpr = 1) {
@@ -55,7 +75,7 @@ export function buildLevels(preset = 'medium', dpr = 1) {
   return Object.freeze(out);
 }
 
-export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio ?? 1, preset = 'medium', onChange } = {}) {
+export function createQuality({ renderer, shadowMap = renderer?.shadowMap, sun, dpr = globalThis.devicePixelRatio ?? 1, preset = 'medium', onChange } = {}) {
   let cap = PRESETS[preset] ? preset : 'medium';
   let levels = buildLevels(cap, dpr);
   let level = 0;
@@ -80,11 +100,9 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
           shadow.map = null;
           shadow.mapSize.set(l.shadowMapSize, l.shadowMapSize);
         }
-        sun.castShadow = true;
-      } else {
-        sun.castShadow = false;
       }
     }
+    if (sun || shadowMap) setShadows(shadowMap, sun, l.shadows);
     if (notify) onChange?.(info(reason));
   }
 

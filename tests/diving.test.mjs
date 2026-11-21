@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
-const { DIVE, DiveBody, stepOxygen } = await import(new URL('diving.js', base));
+const { DIVE, DiveBody, stepOxygen, DrownMeter } = await import(new URL('diving.js', base));
 
 const ENV = { waterY: -0.24, floorY: -11, tiles: [], deckY: 0.2 };
 const run = (body, secs, input, env = ENV) => {
@@ -130,6 +130,48 @@ test('stepOxygen: drains over OXY_SECONDS, refills faster, clamps', () => {
   assert.equal(stepOxygen(NaN, NaN, true).oxygen, 1);
 });
 
+test('parity: Raft breath is 33 s, halved when starving; refill is gradual', () => {
+  assert.equal(DIVE.OXY_SECONDS, 33);
+  assert.equal(DIVE.DROWN_HP, 3.5);
+  let o = 1, t = 0;
+  while (o > 0 && t < 100) { o = stepOxygen(o, 0.1, true).oxygen; t += 0.1; }
+  assert.ok(Math.abs(t - 33) < 0.2, `full breath ${t}`);
+  o = 1; t = 0;
+  while (o > 0 && t < 100) { o = stepOxygen(o, 0.1, true, DIVE.OXY_SECONDS * DIVE.STARVED_BREATH).oxygen; t += 0.1; }
+  assert.ok(Math.abs(t - 16.5) < 0.2, `starved breath ${t}`);
+  const r = stepOxygen(0, 1, false, DIVE.OXY_SECONDS * DIVE.STARVED_BREATH); // refill never depends on hunger
+  assert.ok(r.oxygen > 0.1 && r.oxygen < 0.5, `1 s of refill ${r.oxygen}`);
+  assert.equal(stepOxygen(1, 1, true, NaN).oxygen, 1 - 1 / 33, 'bad breath falls back to 1');
+  const b = new DiveBody({ x: 10, y: -5, z: 0 }); // DiveBody reads env.breath and stacks it with the gear multiplier
+  for (let i = 0; i < 60; i++) b.step(1 / 60, {}, { ...ENV, breath: DIVE.STARVED_BREATH });
+  assert.ok(Math.abs(b.oxygen - (1 - 1 / 16.5)) < 1e-6, `starved body ${b.oxygen}`);
+  const c = new DiveBody({ x: 10, y: -5, z: 0 });
+  for (let i = 0; i < 60; i++) c.step(1 / 60, {}, { ...ENV, breath: 'x' });
+  assert.ok(Math.abs(c.oxygen - (1 - 1 / 33)) < 1e-6, `junk breath ${c.oxygen}`);
+});
+
+test('parity: out of air the diver drowns at DROWN_HP/s until surfacing', () => {
+  const b = new DiveBody({ x: 10, y: -8, z: 0, oxygen: 0.0001 });
+  let hp = 0, steps = 0, ev;
+  do { ev = b.step(1 / 60, { down: true }, ENV); hp += ev.drown; steps++; } while (!ev.surfaced && steps < 1200);
+  assert.ok(ev.surfaced, 'auto-rise still surfaces');
+  assert.equal(ev.drown, 0, 'no drowning on the surfacing step');
+  const secs = (steps - 1) / 60;
+  assert.ok(Math.abs(hp - secs * DIVE.DROWN_HP) < DIVE.DROWN_HP / 30, `hp ${hp} over ${secs}s`);
+  const full = new DiveBody({ x: 10, y: -5, z: 0 });
+  assert.equal(full.step(1 / 60, {}, ENV).drown, 0, 'no damage with air left');
+});
+
+test('parity: DrownMeter pays out in DROWN_TICK chunks and resets', () => {
+  const m = new DrownMeter(), dt = 1 / 60;
+  let paid = 0, hits = 0;
+  for (let i = 0; i < 120; i++) { const hp = m.add(DIVE.DROWN_HP * dt); if (hp) { paid += hp; hits++; } }
+  assert.equal(hits, Math.round(2 / DIVE.DROWN_TICK), 'about two hits a second');
+  assert.ok(Math.abs(paid - 2 * DIVE.DROWN_HP) < 1e-6, `paid ${paid}`);
+  m.add(1); m.add(0); assert.equal(m.acc, 0, 'surfacing clears the partial chunk');
+  assert.equal(m.add(NaN), 0);
+});
+
 const seafloorPath = fileURLToPath(new URL('seafloor.js', base));
 test('seafloor helpers', { skip: !existsSync(seafloorPath) && 'dist/seafloor.js missing' }, async () => {
   const { FLOOR, seafloorHeight, nodeById, nodeAt } = await import(new URL('seafloor.js', base));
@@ -164,6 +206,12 @@ test('seafloor builder: isGathered/highlight API and analytic normals', { skip: 
   floor.highlight(n.id);
   assert.equal(hl().length, 1);
   assert.equal(hl()[0].name, `SeafloorHighlight_${n.type}`);
+  floor.setDecor(false); // above water: only the floor patch draws
+  assert.equal(hl().length, 0);
+  assert.deepEqual(floor.group.children.filter((o) => o.visible).map((o) => o.name), ['SeafloorPatch']);
+  floor.setDecor(true);
+  assert.equal(hl().length, 1);
+  assert.ok(floor.group.getObjectByName('SeafloorRocks').visible && floor.group.getObjectByName('SeafloorWeed').visible);
   floor.highlight(null);
   assert.equal(hl().length, 0);
   assert.equal(floor.isGathered(n.id), false);

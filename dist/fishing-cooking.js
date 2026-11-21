@@ -8,6 +8,7 @@
 // Save: localStorage 'little-raft-fc-v1' {v:1, journal, grills}. Grills are the player's own (host world); while a
 // guest, own grills are stashed and the host's broadcast grills are shown instead.
 // Debug: window.raftFC = { state, session, journal, grills, forceBite(id), forceCatch(id) }.
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { FishingSession, createFishingV2 } from './fishing-v2.js?build=v3-survival-ae77fa84ac2b';
 import { Journal, createJournalPanel, BASKET_MAX } from './fish-journal.js?build=v3-survival-ae77fa84ac2b';
 import { SPECIES, speciesById, dishName } from './fish-species.js?build=v3-survival-ae77fa84ac2b';
@@ -29,7 +30,8 @@ color:#fffdf4;background:#0d2a3a99;padding:5px 9px;border-radius:10px;text-shado
 #fcToast div{font:600 14px/1.3 system-ui,sans-serif;color:#1a3245;background:#f1e7d0f0;border:1px solid #c9a46b;border-radius:10px;
 padding:7px 14px;box-shadow:0 4px 14px #0005;animation:fcIn .25s ease-out;transition:opacity .4s}
 #fcToast div.soft{background:#d7e8f2f0;border-color:#8fb4c9}#fcToast div.out{opacity:0}
-@keyframes fcIn{from{transform:translateY(-14px);opacity:0}}`;
+@keyframes fcIn{from{transform:translateY(-14px);opacity:0}}
+@media(max-width:900px){#fcChip{bottom:auto;top:12px}}`;
 
 function cleanFish(f) {
   const sp = f && speciesById(f.species);
@@ -161,7 +163,8 @@ export function createFishingCooking(T, host) {
       let slot = Number.isInteger(a.slot) ? a.slot : st.slots.findIndex((s) => s && s.state !== 'raw');
       if (!st.slots[slot] || st.slots[slot].state === 'raw') return;
       const item = st.take(slot); syncFish(g); markChanged();
-      give(actor, item); return say(`Took ${dishName(item.species, item.state)}`);
+      give(actor, item); if (item.state === 'cooked') host.observe?.({ kind: 'cook', item: 'fish' }, actor); // [tasks]
+      return say(`Took ${dishName(item.species, item.state)}`);
     }
   }
 
@@ -215,14 +218,14 @@ export function createFishingCooking(T, host) {
     const show = host.running();
     if (Math.abs(elapsed - chipAt) >= 0.5) { // speciesSeen() allocates: poll it at 2 Hz, not per frame
       chipAt = elapsed; const n = journal.speciesSeen().length;
-      if (n !== chipN) { chipN = n; chip.textContent = `🎣 ${n}/${SPECIES.length} · J journal`; }
+      if (n !== chipN) { chipN = n; chip.textContent = `🎣 Fish ${n}/${SPECIES.length} · J`; }
     }
     if (chip.hidden === show) chip.hidden = !show;
   }
   function toggleJournal() {
     if (!HAS_DOC) return;
     panel ??= createJournalPanel({ getJournal: () => journal, onClose: () => { try { host.resume?.(); } catch {} } });
-    if (!panel.isOpen) try { document.exitPointerLock?.(); } catch {} // free the cursor so the tabs can be clicked
+    if (!panel.isOpen) exitLock(document); // free the cursor so the tabs can be clicked (marked page-initiated, lock-rules.js)
     panel.toggle();
   }
   function placeGrillAtAim() {
@@ -280,7 +283,7 @@ export function createFishingCooking(T, host) {
     if (session) { if (session.stage === 'charging') session.cancel(); else session.holding = false; }
     return was;
   }
-  let held = null, heldT = 0;
+  let held = null, heldT = 0, heldUntil = 0; // heldUntil: wall-clock deadline, so the caught fish leaves on time when game dt is clamped on slow frames
   function dropHeld() { if (!held) return; held.parent?.remove(held); held.userData.dispose?.(); held = null; }
   function onCatch(c) {
     const sp = speciesById(c?.species); if (!sp) return;
@@ -301,7 +304,7 @@ export function createFishingCooking(T, host) {
       held.scale.setScalar(Math.min(1, 0.36 / (held.userData.length || c.cm / 100)));
       held.position.set(-0.1, -0.17, -0.6); held.rotation.set(0.15, 0.3, 0.45); // held up left of centre, clear of the rod
       held.traverse((o) => { o.renderOrder = 999; o.castShadow = false; }); // viewmodel: no shadow pass
-      camera.add(held); heldT = 2.2;
+      camera.add(held); heldT = 2.2; heldUntil = performance.now() + 2200;
     }
     dirty = true;
   }
@@ -335,7 +338,7 @@ export function createFishingCooking(T, host) {
     st.slots.forEach((f) => {
       if (!f) return;
       const ct = cookTime(f);
-      const s = f.state === 'burnt' ? 'charred' : f.state === 'cooked' ? (f.t > ct + 12 ? 'burning!' : 'ready!') : `cooking ${Math.max(1, Math.ceil(ct - f.t))}s`;
+      const s = f.state === 'burnt' ? 'charred' : f.state === 'cooked' ? (f.t > ct + COOK_TUNING.burnAfter - 15 ? 'burning!' : 'ready!') : `cooking ${Math.max(1, Math.ceil(ct - f.t))}s`;
       if (!status || s === 'burning!' || s === 'ready!') status = s;
     });
     const tail = status ? ` · ${status}` : '';
@@ -350,7 +353,7 @@ export function createFishingCooking(T, host) {
       const f = journal.basket[ri]; nextAct = { kind: 'fc:cook', id: st.id, basket: ri };
       return `<kbd>E</kbd> Grill ${esc(speciesById(f.species).name)} (${f.cm.toFixed(1)} cm)${tail}`;
     }
-    if (st.fuel < FUEL_CAP - COOK_TUNING.fuelPerWood * 0.5 && wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (wood) · ${Math.round(st.fuel)}s left${tail}`; }
+    if (st.fuel < FUEL_CAP - COOK_TUNING.fuelPerWood * 0.5 && wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add plank · ${Math.round(st.fuel)}s left${tail}`; }
     if (status) return `Grill${tail}`;
     if (free >= 0 && ri < 0) return 'Catch a fish to cook here';
     return st.fuel >= FUEL_CAP - COOK_TUNING.fuelPerWood ? 'Fire is roaring (full)' : `Grill · fire ${Math.round(st.fuel)}s`;
@@ -388,7 +391,7 @@ export function createFishingCooking(T, host) {
     const out = !!session && session.stage !== 'idle' && session.stage !== 'charging';
     const ud = host.rodModel?.userData;
     if (out && ud) { if (ud.float) ud.float.visible = false; if (ud.leader) ud.leader.visible = false; }
-    if (held) { heldT -= dt; wiggle(held, time, 1.2); if (heldT <= 0) dropHeld(); }
+    if (held) { heldT -= dt; wiggle(held, time, 1.2); if (heldT <= 0 || performance.now() >= heldUntil) dropHeld(); }
     // grills
     const sim = !isGuest(role), cookDt = host.running() ? dt : 0; // title screen / paused: food and fuel hold, fire still flickers
     for (const g of grills.values()) {
@@ -411,7 +414,7 @@ export function createFishingCooking(T, host) {
       g.model.userData.update?.(dt, time);
       if (burning) {
         let dark = false, cooking = false;
-        for (const f of st.slots) if (f) { cooking = true; if (f.state === 'burnt' || (f.state === 'cooked' && f.t > cookTime(f) + 12)) dark = true; }
+        for (const f of st.slots) if (f) { cooking = true; if (f.state === 'burnt' || (f.state === 'cooked' && f.t > cookTime(f) + COOK_TUNING.burnAfter - 15)) dark = true; }
         g.smokeT += dt * (dark ? 6 : cooking ? 3 : 1);
         if (g.smokeT >= 1) {
           g.smokeT -= Math.floor(g.smokeT);
@@ -467,6 +470,19 @@ export function createFishingCooking(T, host) {
     get prompt() { return prompt; },
     hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
     dropTile(x, z) { const g = grillAt(x, z); if (!g || isGuest(host.role())) return false; removeGrill(g); markChanged(); return true; }, // shark lane: a destroyed foundation takes its grill with it
+    recordTrapCatch(list) { // [fishtrap] fish from a fish trap land in the collector's own journal (cleaned by recordCatch)
+      if (!Array.isArray(list)) return;
+      let fullOnce = false;
+      for (const c of list.slice(0, 3)) {
+        const sp = speciesById(c?.species); if (!sp) continue;
+        const prev = journal.entry(sp.id), res = journal.recordCatch({ species: c.species, cm: c.cm, stars: c.stars });
+        if (res.isNew) toast(`New species! ${sp.name} added to your journal`);
+        else if (res.isRecord && prev) toast(`New record! ${sp.name} ${journal.entry(sp.id).bestCm.toFixed(1)} cm (was ${prev.bestCm.toFixed(1)})`);
+        if (res.basketed === false && !fullOnce) { fullOnce = true; toast('Basket full. Cook a few on a grill.', true); }
+      }
+      dirty = true;
+    },
+    reset() { syncRole(); clearGrills(); if (stash) stash = []; markChanged(); save(); }, // New game: no grills, the journal stays
     get rodReeling() { return !!session && session.stage === 'reeling' && session.holding; },
     capture() { save(); return { v: 1, journal: journal.snapshot(), grills: isGuest(lastRole) ? (stash || []) : snapshots() }; },
     // test/QA helpers

@@ -1,5 +1,6 @@
 // Little Raft cooking-station panel (smelter, grill, ...). Pure view: reads the StationModel and
 // the Bag, and routes every change through the callbacks. Styled to match survival-ui.js.
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SPRITE_URL = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
@@ -50,11 +51,12 @@ const CSS = `
 @keyframes st-fl{from{transform:scale(1,1)}to{transform:scale(.92,1.09)}}
 #stationPanel .st-hint{margin:0;padding:7px 9px;border-radius:3px;background:#24170caa;font:600 13px/1.3 ${FONT};color:#d9c9a6;text-align:center}
 #stationPanel .st-hint.st-warn{color:#ffcf9a;box-shadow:inset 0 0 0 1px #ffbd6655}
+#stationPanel.st-nofuel .st-fire,#stationPanel.st-nofuel .st-fuelsub,#stationPanel.st-nofuel [data-role=fuel]{display:none}
 @media(max-width:620px){#stationPanel .st-body{flex-direction:column}#stationPanel .st-bag{width:auto;max-height:160px}#stationPanel .st-main{width:auto}}
 @media(prefers-reduced-motion:reduce){#stationPanel .st-on .st-flame{animation:none}}`;
 const FLAME = `<svg class="st-flame" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 4C27 13 37 18 37 30A13 13 0 0 1 11 30C11 22 16 19 18 12C20 17 22 18 23 19C25 14 25 9 24 4Z" fill="#e0603a" stroke="#153e49" stroke-width="2" stroke-linejoin="round"/><path d="M24 22C26 27 31 29 31 34A7 7 0 0 1 17 34C17 30 20 29 21 25C22 27 23 27 24 22Z" fill="#ffd27a"/></svg>`;
 
-export function createStationPanel({ getStation, getBag, items = {}, fuelValue = {}, onInsert, onFuel, onTake, onTakeInput, onOpen, onClose } = {}) {
+export function createStationPanel({ getStation, getBag, items = {}, fuelValue = {}, copy = {}, onInsert, onFuel, onTake, onTakeInput, onOpen, onClose } = {}) {
   const safe = (fn, ...a) => { try { return fn?.(...a); } catch (e) { console.error(e); } };
   const name = k => items[k]?.name || String(k ?? '').replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   const plural = k => name(k).toLowerCase().replace(/([^s])$/, '$1s');
@@ -74,8 +76,8 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
   dlg.innerHTML = `<div class="st-wrap" tabindex="-1">
     <div class="st-head"><h2></h2><button type="button" class="st-x" aria-label="Close">×</button></div>
     <div class="st-body">
-      <section class="st-bag" aria-label="Your items"><p class="st-sub">To cook</p><div class="st-chips" data-role="input"></div>
-        <p class="st-sub">Fuel</p><div class="st-chips" data-role="fuel"></div></section>
+      <section class="st-bag" aria-label="Your items"><p class="st-sub st-insub">To cook</p><div class="st-chips" data-role="input"></div>
+        <p class="st-sub st-fuelsub">Fuel</p><div class="st-chips" data-role="fuel"></div></section>
       <section class="st-main"><div class="st-row">
         <div class="st-col"><span class="st-lbl">In</span><div class="st-slot" data-slot="input"></div><button type="button" class="st-btn st-ghost" data-act="back">Take back</button></div>
         <div class="st-mid"><div class="st-col st-fire">${FLAME}<div class="st-bar st-fuel" title="Fuel"><i></i></div></div>
@@ -84,11 +86,11 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
       </div><p class="st-hint" aria-live="polite"></p></section>
     </div></div>`;
   const $ = s => dlg.querySelector(s);
-  const el = { title: $('h2'), inChips: $('[data-role=input]'), fuelChips: $('[data-role=fuel]'), inSlot: $('[data-slot=input]'), outSlot: $('[data-slot=output]'),
+  const el = { title: $('h2'), inSub: $('.st-insub'), inChips: $('[data-role=input]'), fuelChips: $('[data-role=fuel]'), inSlot: $('[data-slot=input]'), outSlot: $('[data-slot=output]'),
     back: $('[data-act=back]'), take: $('[data-act=take]'), fire: $('.st-fire'), fuel: $('.st-fuel>i'), prog: $('.st-prog>i'), cap: $('.st-cap'), hint: $('.st-hint') };
   const last = {};
   const set = (key, v, fn) => { if (last[key] !== v) { last[key] = v; fn(v); } };
-  let isOpen = false, sid = null;
+  let isOpen = false, sid = null, lastType = null;
   const ac = new AbortController(), opt = { signal: ac.signal };
 
   const station = () => { try { return getStation?.(sid) || null; } catch (e) { console.error(e); return null; } };
@@ -104,14 +106,16 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
   function update() {
     if (!isOpen) return;
     const st = station();
-    if (!st) { set('hint', 'Nothing here to cook with.', v => { el.hint.textContent = v; }); return; }
+    if (!st) { set('hint', (copy && copy[lastType]?.nothing) ?? 'Nothing here to cook with.', v => { el.hint.textContent = v; }); return; }
+    const c = (copy && copy[st.stationId]) || {}, noFuel = st.usesFuel === false;
+    set('copy', `${st.stationId}|${noFuel}`, () => { el.inSub.textContent = c.input ?? 'To cook'; dlg.classList.toggle('st-nofuel', noFuel); });
     const have = counts(), kinds = Object.keys(have);
     const fuelN = Number(st.fuelUnits ?? st.fuel) || 0, cap = Number(st.fuelCap) || 10;
     const inputs = kinds.filter(k => safe(() => st.recipeFor(k)));
     const fuels = kinds.filter(k => Number(fuelValue[k]) > 0);
     const inSig = inputs.map(k => `${k}:${have[k]}:${safe(() => st.accepts(k)) ? 1 : 0}`).join(',');
     const fuelSig = fuels.map(k => `${k}:${have[k]}:${fuelN + Number(fuelValue[k]) <= cap + 1e-9 ? 1 : 0}`).join(',');
-    set('inChips', inSig, () => { el.inChips.innerHTML = inputs.map(k => chipHTML('input', k, have[k], safe(() => st.accepts(k)))).join('') || '<p class="st-none">Nothing in your bag cooks here yet.</p>'; });
+    set('inChips', inSig, () => { el.inChips.innerHTML = inputs.map(k => chipHTML('input', k, have[k], safe(() => st.accepts(k)))).join('') || `<p class="st-none">${esc(c.none ?? 'Nothing in your bag cooks here yet.')}</p>`; });
     set('fuelChips', fuelSig, () => { el.fuelChips.innerHTML = fuels.map(k => chipHTML('fuel', k, have[k], fuelN + Number(fuelValue[k]) <= cap + 1e-9)).join('') || '<p class="st-none">No fuel in your bag. Planks burn well.</p>'; });
     const inp = st.input, out = st.output;
     set('in', inp ? `${inp.kind}:${inp.count}` : '', () => { el.inSlot.innerHTML = slotHTML(inp); el.back.disabled = !inp; });
@@ -127,22 +131,23 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
     const blocked = r && out && (out.kind !== r.kind || out.count + (r.count || 1) > (Number(items[out.kind]?.stack) || 1));
     const fuelKind = fuels[0] || Object.keys(fuelValue)[0];
     const hint = blocked ? [`Take your ${plural(out.kind)} out to keep going.`, 1]
-      : r && !cooking && r.fuel > 0 && fuelN <= 1e-9 ? [`Add ${fuelKind ? 'a ' + name(fuelKind).toLowerCase() : 'some fuel'} to keep the fire going.`, 1]
-      : cooking ? [`Cooking ${name(r.kind).toLowerCase()}…${inp.count > 1 ? ` ${inp.count} queued.` : ''}`, 0]
+      : r && !cooking && !noFuel && r.fuel > 0 && fuelN <= 1e-9 ? [`Add ${fuelKind ? 'a ' + name(fuelKind).toLowerCase() : 'some fuel'} to keep the fire going.`, 1]
+      : cooking ? [`${c.busy ?? 'Cooking'} ${name(r.kind).toLowerCase()}…${inp.count > 1 ? ` ${inp.count} queued.` : ''}`, 0]
       : out ? [`Your ${name(out.kind).toLowerCase()} is ready. Take it!`, 0]
-      : ['Pick something from your bag to cook, then add fuel.', 0];
+      : [c.idle ?? 'Pick something from your bag to cook, then add fuel.', 0];
     set('hint', hint.join('|'), () => { el.hint.textContent = hint[0]; el.hint.classList.toggle('st-warn', !!hint[1]); });
   }
 
   function open(stationId) {
     if (stationId != null) sid = stationId;
     const st = station();
+    if (st?.stationId) lastType = st.stationId;
     el.title.textContent = name(st?.stationId ?? sid ?? 'station');
     for (const k in last) delete last[k];
     if (!isOpen) {
       isOpen = true;
       safe(onOpen, sid);
-      if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+      exitLock(document); // marked page-initiated (lock-rules.js), so the game does not pause on it
       if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
       try { $('.st-wrap').focus({ preventScroll: true }); } catch {}
     }

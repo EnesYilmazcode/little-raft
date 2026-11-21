@@ -28,6 +28,7 @@ function kit(T, type) {
   const rng = makeRng('piece:' + type), parts = [];
   const m4 = new T.Matrix4(), eu = new T.Euler(), col = new T.Color();
   const pick = list => list[Math.floor(rng() * list.length)];
+  const K = {under: 1}; // extra multiplier on downward faces (the hatch sets it: its underside is seen in the platform's shade)
   const jit = s => (rng() - 0.5) * s;
   // Push any geometry, tinted with hex colour (optionally varied by +-vary).
   function add(g, hex, vary = 0.08, rot, pos) {
@@ -40,8 +41,8 @@ function kit(T, type) {
     for (let i = 0, v = 0; i < c.length; i += 3, v++) {
       // Downward faces only ever see the hemisphere's sea-teal ground light, which turns timber
       // ceilings green; warm them so floor/roof undersides read as shaded wood.
-      const k = Math.max(0, -ny.getY(v));
-      c[i] = col.r * (1 + k * (UNDER[0] - 1)); c[i + 1] = col.g * (1 + k * (UNDER[1] - 1)); c[i + 2] = col.b * (1 + k * (UNDER[2] - 1));
+      const k = Math.max(0, -ny.getY(v)), u = 1 + k * (K.under - 1);
+      c[i] = col.r * (1 + k * (UNDER[0] - 1)) * u; c[i + 1] = col.g * (1 + k * (UNDER[1] - 1)) * u; c[i + 2] = col.b * (1 + k * (UNDER[2] - 1)) * u;
     }
     n.setAttribute('color', new T.BufferAttribute(c, 3));
     parts.push(n);
@@ -73,7 +74,7 @@ function kit(T, type) {
     out.userData.type = type; out.userData.triangles = count / 3;
     return out;
   }
-  return {rng, jit, pick, add, box, merge};
+  return Object.assign(K, {rng, jit, pick, add, box, merge});
 }
 
 // Split [a,b] into n plank intervals with irregular widths and small gaps.
@@ -244,26 +245,41 @@ function buildRoof(K, T) {
 }
 
 // Two-turn rope lashing hugging a vertical post (square ring turned 45 degrees to sit on the post faces).
-function lash(K, x, y, z, R = 0.068) {
-  for (let w = 0; w < 2; w++) K.add(ring(R, 0.009), ROPE, 0.05, [Math.PI / 2 + K.jit(0.08), K.jit(0.06), Math.PI / 4], [x, y + (w - 0.5) * 0.022, z]);
+// fixed: unjittered and untinted, so the lashings of two edges sharing a corner post coincide exactly.
+function lash(K, x, y, z, R = 0.068, fixed = false) {
+  for (let w = 0; w < 2; w++) K.add(ring(R, 0.009), ROPE, fixed ? 0 : 0.05,
+    [Math.PI / 2 + (fixed ? 0 : K.jit(0.08)), fixed ? 0 : K.jit(0.06), Math.PI / 4], [x, y + (w - 0.5) * 0.022, z]);
 }
 
-// Railing (edge): three posts, top and mid rails, rope lashings at every post-rail joint. See-through.
-const RAIL_POSTS = [-0.92, 0, 0.92];
-function buildRailing(K) {
-  const H = 0.95;
-  for (const x of RAIL_POSTS) {
-    K.box(0.09, H - 0.02, 0.09, x, (H - 0.02) / 2, 0, POST, [0, K.jit(0.04), 0]);
-    K.box(0.12, 0.025, 0.12, x, H - 0.0125, 0, BEAM, [0, K.jit(0.12), 0]); // cap
+// Railing / gate end posts sit exactly on the edge's end points (x = +-1), unjittered and untinted, so the
+// posts of neighbouring railings/gates (in line or round a corner) coincide and read as one shared post.
+// Slightly non-square so a perpendicular edge's copy never shares a side face; the cap uv is flattened to a
+// single texel so the two coplanar cap tops of a corner (rotated 90 degrees apart) can't flicker.
+const RAIL_H = 0.95;
+function railEndPosts(K) {
+  for (const s of [-1, 1]) {
+    K.box(0.095, RAIL_H - 0.02, 0.085, s, (RAIL_H - 0.02) / 2, 0, POST, null, {fixed: true});
+    const cap = K.box(0.125, 0.025, 0.12, s, RAIL_H - 0.0125, 0, BEAM, null, {fixed: true});
+    cap.attributes.uv.array.fill(0.5);
+    for (const y of [0.90, 0.50]) lash(K, s, y, 0, 0.068, true);
   }
+}
+
+// Railing (edge): a shared end post at each end plus a middle post, top and mid rails, rope lashings. See-through.
+function buildRailing(K) {
+  const H = RAIL_H;
+  railEndPosts(K);
+  K.box(0.09, H - 0.02, 0.09, 0, (H - 0.02) / 2, 0, POST, [0, K.jit(0.04), 0]);
+  K.box(0.12, 0.025, 0.12, 0, H - 0.0125, 0, BEAM, [0, K.jit(0.12), 0]); // cap
   for (const y of [0.90, 0.50]) K.box(1.94, 0.07, 0.06, K.jit(0.01), y + K.jit(0.012), 0, K.pick(PLANKS), [0, K.jit(0.008), K.jit(0.01)]);
-  for (const x of RAIL_POSTS) for (const y of [0.90, 0.50]) lash(K, x, y, 0);
+  for (const y of [0.90, 0.50]) lash(K, 0, y, 0);
 }
 
 // Hatch (cell, top at y=0 like a floor): a rim frame and two leaves hinged on the edges parallel to local +z
 // (x = +-0.985). Open: each leaf stands up on its hinge edge (outside face out), about 1 m tall.
 function buildHatch(K, T, open) {
   const FR = 0.12, LT = 0.045;
+  K.under = 3.4; // seen from below only in the platform's shade (lit mostly by the dim ground light): keep it reading as planks
   for (const s of [-1, 1]) {
     K.box(2 - 0.004, 0.075, FR, 0, -0.0825, s * (1 - FR / 2), BEAM, [0, 0, K.jit(0.01)]);          // rim along x
     K.box(FR, 0.075, 2 - 2 * FR - 0.004, s * (1 - FR / 2), -0.0825, 0, BEAM, [0, 0, K.jit(0.01)]);  // rim along z
@@ -272,7 +288,7 @@ function buildHatch(K, T, open) {
     // Leaf-local: a = inward distance from the hinge (0..0.975), n = height offset (top 0), z along the hinge.
     const at = (a, n, z) => open ? [h * (0.985 + n), a, z] : [h * (0.985 - a), n, z];
     const lb = (sa, sn, sz, a, n, z, hex, rz = 0) => { const q = at(a, n, z); return K.box(open ? sn : sa, open ? sa : sn, sz, q[0], q[1], q[2], hex, rz ? [0, 0, rz] : null); };
-    columns(K, 0.005, 0.975, 4).forEach(([a, b], k) => {
+    columns(K, 0.005, 0.99, 4).forEach(([a, b], k) => {
       const t = -(k % 2 ? 0.003 : 0);
       lb(b - a + 0.01, LT, 1.9 - K.rng() * 0.01, (a + b) / 2, t - LT / 2, K.jit(0.004), K.pick(PLANKS));
       for (const z of [-0.6, 0.6]) { const q = at((a + b) / 2 + K.jit(0.05), t + 0.004, z); K.box(open ? 0.01 : 0.022, open ? 0.022 : 0.01, 0.022, q[0], q[1], q[2], NAIL, null, {vary: 0.02}); }
@@ -297,15 +313,12 @@ function buildLadder(K, T) {
   }
 }
 
-// Gate (edge): railing-style end posts with rail stubs and a 1.2 m braced leaf hinged at x = -0.6.
+// Gate (edge): the railing's shared end posts with rail stubs and a 1.2 m braced leaf hinged at x = -0.6.
 // Open: the leaf turns 90 degrees about the hinge stile towards local +z.
 function buildGate(K, T, open) {
-  const H = 0.95, LH = 0.88;
-  for (const s of [-1, 1]) {
-    K.box(0.09, H - 0.02, 0.09, s * 0.92, (H - 0.02) / 2, 0, POST, [0, K.jit(0.04), 0]);
-    K.box(0.12, 0.025, 0.12, s * 0.92, H - 0.0125, 0, BEAM, [0, K.jit(0.12), 0]);
-    for (const y of [0.90, 0.50]) { K.box(0.4, 0.07, 0.06, s * 0.8, y, 0, K.pick(PLANKS), [0, 0, K.jit(0.01)]); lash(K, s * 0.92, y, 0); }
-  }
+  const LH = 0.88;
+  railEndPosts(K); // shared with railings, so a gate in a railing run doesn't double its posts
+  for (const s of [-1, 1]) for (const y of [0.90, 0.50]) K.box(0.38, 0.07, 0.06, s * 0.79, y, 0, K.pick(PLANKS), [0, 0, K.jit(0.01)]); // rail stubs
   // Leaf-local: a from the hinge (0..1.2) along +x when closed, c across (z), y up.
   const at = (a, y, c) => open ? [-0.6 - c, y, a] : [-0.6 + a, y, c];
   const lb = (sx, sy, sz, a, y, c, hex, rz = 0) => { const q = at(a, y, c); return K.box(sx, sy, sz, q[0], q[1], q[2], hex, [0, open ? -Math.PI / 2 : 0, rz]); };
@@ -347,9 +360,9 @@ const BOUNDS = {
   window: [-1.075, 0, -0.12, 1.075, 2.2, 0.12], door: [-1.075, 0, -0.1, 1.075, 2.2, 0.9],
   pillar: [-0.145, 0, -0.145, 0.145, 2.2, 0.145], floor: [-1, -0.13, -1, 1, 0.008, 1],
   stairs: [-0.95, 0, -1, 0.95, 2.2, 1], roof: [-1.0, -0.16, -1.18, 1.0, 1.12, 1.05],
-  railing: [-1, 0, -0.08, 1, 0.97, 0.08], gate: [-1, 0, -0.08, 1, 0.97, 0.08],
+  railing: [-1.07, 0, -0.08, 1.07, 0.97, 0.08], gate: [-1.07, 0, -0.08, 1.07, 0.97, 0.08],
   hatch: [-1, -0.13, -1, 1, 0.01, 1], ladder: [-0.5, 0, 0.82, 0.5, 2.2, 1.0],
-  hatchOpen: [-1, -0.13, -1, 1, 1.0, 1], gateOpen: [-1, 0, -0.08, 1, 0.97, 1.25], // open variants (createPieceGeometry(T, t, true))
+  hatchOpen: [-1, -0.13, -1, 1, 1.0, 1], gateOpen: [-1.07, 0, -0.08, 1.07, 0.97, 1.25], // open variants (createPieceGeometry(T, t, true))
 };
 export function pieceBounds(type) {
   const b = BOUNDS[type]; return b ? {minX: b[0], minY: b[1], minZ: b[2], maxX: b[3], maxY: b[4], maxZ: b[5]} : null;
