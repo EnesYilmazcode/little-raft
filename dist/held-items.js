@@ -15,13 +15,14 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createSpear } from './spear-model.js'; // [spear-repair]
+import { createAxe } from './axe-model.js'; // [axe]
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
 export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds']);
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
-const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'brush', 'spear', 'metalspear'];
+const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'brush', 'spear', 'metalspear', 'axe'];
 const HOOK_SCALE = 0.4;                     // compact: the held hook stays in the lower-right corner
 // Right-hand kinds that still prefer the shared models.js mesh (so the held cup matches its icon and the world).
 const FACTORY_FIRST = ['cup', 'water'];
@@ -35,6 +36,7 @@ export const HOLD = Object.freeze({
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
   spear:      { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 }, // [spear-repair] point forward, a ready jab
   metalspear: { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 },
+  axe:        { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.05, 0], tilt: 0.5 }, // [axe] held like the hammer, blade leaning forward
   brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
   leaf:       { hand: 'right', pose: 'grip', rx: -0.35, ry: 0.4, rz: 0.35 },
@@ -235,6 +237,14 @@ export function buildItemModel(T, kind, factory = null) {
     root = new T.Group(); root.add(m);
     root.userData.size = { x: m.userData.size.x * k, y: m.userData.size.y * k, z: m.userData.size.z * k };
     root.userData.grip = [gp.x, gp.y, gp.z];
+  } else if (kind === 'axe') { // [axe]
+    const m = createAxe(T), s = 0.62;
+    m.scale.setScalar(s);
+    root = new T.Group(); root.add(m);
+    const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size;
+    root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
+    root.userData.grip = [gp.x, gp.y, gp.z];
+    root.userData.model = m;
   } else if (kind === 'hammer' || kind === 'fishingrod' || kind === 'brush' || kind === 'spear' || kind === 'metalspear') {
     const spear = kind === 'spear' || kind === 'metalspear'; // [spear-repair] spear-repair-hooks.js slides userData.model along +Y to jab
     const m = kind === 'hammer' ? createHammer(T) : kind === 'brush' ? createBrush(T) : spear ? createSpear(T, { metal: kind === 'metalspear' }) : createFishingTool(T), s = kind === 'fishingrod' ? 0.55 : kind === 'hammer' ? 0.42 : spear ? 0.62 : 0.6; // compact hammer
