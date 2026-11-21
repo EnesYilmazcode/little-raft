@@ -103,7 +103,7 @@ void main() {
       float u = (t - FUSE) / RISE, lag = aRnd.x * .3, uu = max(u - lag, 0.);
       float y = h * (1. - (1. - uu) * (1. - uu));
       p = pad + vec3((aRnd.y - .5) * .12 * lag, y + .05, (aRnd.z - .5) * .12 * lag);
-      a = (1. - aRnd.x) * (1. - aRnd.x) * step(lag, u); size = .09 * (1. - .6 * aRnd.x);
+      a = (1. - aRnd.x) * (1. - aRnd.x) * step(lag, u); size = .3 * (1. - .6 * aRnd.x);
       vCol = vec3(1., .78, .45);
     } else { hide(); return; }
   } else {
@@ -129,7 +129,7 @@ void main() {
     vec3 col = ci >= 5 ? uColors[int(min(aRnd.z * 5., 4.))] : uColors[ci];
     if (shape == 2) col = mix(col, vec3(1., .81, .48), .6);
     vCol = mix(vec3(1., .97, .9), col, smoothstep(0., .15, ba)); // white-hot at the pop
-    size = (shape == 2 ? .5 : .6) * (.8 + .4 * aRnd.w);
+    size = (shape == 2 ? .75 : .9) * (.8 + .4 * aRnd.w);
   }
   vec4 mv = modelViewMatrix * vec4(p, 1.);
   gl_Position = projectionMatrix * mv;

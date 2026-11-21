@@ -118,3 +118,15 @@ game.js gets exactly two edited lines (the effect hook and contentCtx). `award` 
 9. game.js source check (string test, like the hook tests): the `content?.effect?.(e)` line appears before `notice(e.text` inside `function effect`.
 10. Logbook: `evaluate(world, [], {kind:'firework'})` includes `firework1`, and an old progress list containing `firework1` survives `cleanProgress`. Audio: EVENTS includes whistle, pop and crackle (the survival test covers playback).
 - QA: `raftDebug.content.fireworks.launch(0, 0, 2, 4.0)` freezes a willow burst for screenshots. Check `renderInfo()` (daynight debug) draw calls rise by at most 1 plus the flight meshes. Check a night and a day screenshot, and a co-op e2e where the guest lights one and both see it.
+
+## Build notes (deviations from the spec)
+- **Pad height:** `launch` uses the raft-space tile top `ctx.deckY() - raft.position.y + .02` before `raft.localToWorld`. Passing `deckY()` (a world height) straight into `localToWorld` would count the raft height twice.
+- **Burst size:** the shader uses drag `1.4` instead of `2.5` in `dir*speed*(1-exp(-k*a))/k`. With 2.5 a sphere was only about 3 m across and read as a smudge at 30 m. Spark sizes (.9 m sphere/ring, .75 m willow, .3 m rise tail, .03 m fuse) and a small white-hot core in the fragment shader were tuned from headless screenshots. The gravity term follows the spec (`-1.2*a*a`, x3 for willow).
+- **Flight mesh:** one merged, vertex-coloured `MeshBasicMaterial` mesh per slot (one draw call each). The wire stand stays behind. The decor rocket (`craft_skyrocket`) is likewise one baked flat-shaded mesh inside the Group.
+- **Draw calls when idle:** `points.visible` is false while no slot is live, so idle cost is 0. The pool and flights are created visible (flights parked at y = -1000) so the start-up `warmShaders` compile includes them, and the first `update` hides them.
+- **Sound gain** is recomputed from the local player's current distance at each stage (fizz, whistle, pop, crackle), not only once at launch.
+- **Gate clock:** `effect` feeds `windowGate` with `performance.now()`. Frame `dt` is clamped to .25 s.
+- **Extra debug helpers:** `flash()` (peaks, peakAt, owed), `budget()`, `px()` (point-size uniforms) and `target(aim)`.
+- **tests/logbook.test.mjs** now expects 16 achievements, with `firework1` before `homestead`. `raftDebug.logbook.totals.achievements` in game.js is still a hard-coded 15. I left it alone because the spec allows only two game.js edits.
+- **Smoke test** used Python Playwright (the Node package is not installed). It loaded a save with rockets, set night, lit a real rocket with E (`n` went to 1 and `firework1` was awarded), then froze sphere, ring and willow bursts. No page errors.
+- **Not done:** the two-browser co-op e2e (the guest lights a rocket and both peers see it). That path is covered only by unit tests: emit `'all'`, the `effect` hook and `sound:'none'`.
