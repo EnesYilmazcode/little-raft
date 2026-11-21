@@ -159,6 +159,17 @@ test('no new lights: update at night with local + partner lanterns builds no Lig
   assert.equal(DAYNIGHT_CARRY.want, false, 'dispose resets the carry registry');
 });
 
+test('want: solo without a lantern stays off; a partner joining attaches the pool at once', () => {
+  night(true, 0.8); resetCarry();
+  const w = world({ bag: bagWith([{ kind: 'wood', count: 1 }]) });
+  try {
+    for (let i = 0; i < 5; i++) w.nl.update(0.3);
+    assert.equal(DAYNIGHT_CARRY.want, false, 'no lantern, no partner');
+    w.ctx.other = { x: 50, y: 1.8, z: 0, held: null }; w.nl.update(0.01);
+    assert.equal(DAYNIGHT_CARRY.want, true, 'join (even far away, empty-handed) attaches the pool');
+  } finally { w.dispose(); }
+});
+
 test('daynight pool: a carried lantern takes slot 0 at night; light count only follows the graphics setting', () => {
   resetCarry();
   const scene = new T.Scene(), raft = new T.Group(); scene.add(raft);

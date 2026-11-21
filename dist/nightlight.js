@@ -114,12 +114,14 @@ export function createNightlight(ctx) {
     }
     // Attach the pool once a lantern is owned: checked every second and at once when the bag changes (a slow
     // first frame after crafting must not leave the pool off until the lantern is equipped at night).
+    // A partner may carry a lantern we cannot see in our bag, so attach on join too: the one-off shader link
+    // then lands in the join hitch, not the moment they first equip it at night.
     wantClock += dt;
     if (!DAYNIGHT_CARRY.want) {
       const b = bag(), v = b ? b.version : -1;
-      if (wantClock >= 1 || v !== bagVer) {
+      if (wantClock >= 1 || v !== bagVer || !!o) {
         wantClock = 0; bagVer = v;
-        if ((b && b.count('handlantern') > 0) || par.on) DAYNIGHT_CARRY.want = true;
+        if ((b && b.count('handlantern') > 0) || !!o) DAYNIGHT_CARRY.want = true;
       }
     }
     if (glow) glow.emissiveIntensity = 0.6 + 2.0 * nf;
@@ -183,7 +185,7 @@ export function createNightlight(ctx) {
   function decorModel(type) { return type === 'fireflyjar' && T ? createFireflyJar(T) : null; }
 
   function dispose() {
-    if (swarm) { swarm.removeFromParent(); swarm.geometry.dispose(); swarm.material.dispose(); }
+    if (swarm) { swarm.removeFromParent(); swarm.geometry.dispose(); swarm.material.map?.dispose(); swarm.material.dispose(); } // shared dot texture: three re-uploads it if used again
     DAYNIGHT_CARRY.want = false; DAYNIGHT_CARRY.local.on = false; DAYNIGHT_CARRY.partner.on = false;
     jars.length = 0;
   }

@@ -158,7 +158,8 @@ Built as specified, except where noted.
   - Catching swaps jar -> fireflyjar. The prompt reads "E Catch fireflies" at night and the hint by day.
   - Co-op loopback: the guest sees the host's lantern (`partner.on`, `poolCarry` 1).
 - **Limits**:
-  - A guest (or host) who owns no lantern and has no placed lantern/candle/jar attaches the pool the first time the
-    partner equips a lantern. That is a one-time shader relink.
+  - A player who owns no lantern and has no placed lantern/candle/jar attaches the pool when a partner joins (review
+    fix: was the first time the partner equipped a lantern at night). The one-time shader relink lands in the join
+    hitch; co-op sessions then always carry the pool lights.
   - On `low` the carried lantern takes the only pool slot, so placed lanterns and jars keep only their emissive glow.
   - The first-person grip pose is the generic tool grip (fingers half open around the thin loop).
