@@ -10,6 +10,7 @@ import { buildBed } from './sleep-model.js';
 export const SLEEP_START = .66, SLEEP_END = .02;
 export const HOLD = 1, FADE = 1.2, BLACK = .4, REACH = 3.2;
 const FADE_REDUCED = .5, GUEST_FADE_MAX = 5, EYE_OFFSET = 1.6, MAX_SKIPS = 1e9;
+const ROLES = Object.freeze(['host', 'guest']);
 
 export const TEXT = Object.freeze({
   sleep: '<kbd>E</kbd>Sleep',
@@ -141,7 +142,7 @@ export function createSleep(ctx, opts = {}) {
   const keyOf = () => (slice.in.host ? 1 : 0) + (slice.in.guest ? 2 : 0) + (ctx.other ? 4 : 0);
   function hostStep(dt) {
     if (!ctx.other && slice.in.guest) slice.in.guest = null;
-    for (const r of ['host', 'guest']) { const b = slice.in[r]; if (b && decorAt(b[0], b[1]) !== 'bed') slice.in[r] = null; }
+    for (const r of ROLES) { const b = slice.in[r]; if (b && decorAt(b[0], b[1]) !== 'bed') slice.in[r] = null; }
     const all = allInBed(slice.in, !!ctx.other), key = keyOf();
     if ((seq === 'hold' || seq === 'out') && (!all || key !== seqKey)) seq = 'idle'; // someone got up or left: fade back in
     if (seq === 'idle') {
@@ -195,14 +196,19 @@ export function createSleep(ctx, opts = {}) {
     if (!veil) {
       if (o <= 0 || typeof document === 'undefined' || !document.body) return;
       veil = document.createElement('div'); veil.id = 'sleepVeil';
-      veil.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:25';
+      veil.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:31';
       document.body.appendChild(veil);
     }
     veilOpacity = o; veil.style.opacity = String(Math.round(o * 1000) / 1000);
   }
 
+  // A new world (own save restored, or a different raft joined): drop the lying pin without standUp(), whose
+  // bed tile belongs to the old world and would teleport the player (often into the sea).
+  function forgetLying() { lying = false; upSent = false; otherWasIn = false; }
+
   function load(data, from) {
     if (from === 'net') {
+      if (!netSeen && !netUndef) forgetLying(); // first state from a host
       if (data === undefined) { if (!netUndef) { netUndef = true; hostHas = false; slice = defaultSleep(); } return; }
       const h = data && data.in && data.in.host, g = data && data.in && data.in.guest;
       const hx = Array.isArray(h) ? h[0] : NaN, hz = Array.isArray(h) ? h[1] : NaN, gx = Array.isArray(g) ? g[0] : NaN, gz = Array.isArray(g) ? g[1] : NaN;
@@ -218,7 +224,7 @@ export function createSleep(ctx, opts = {}) {
     const c = cleanSleep(data);
     slice = defaultSleep(); slice.skips = c.skips;
     seq = 'idle'; t = 0; fadeT = 0; netSeen = false; netUndef = false; hostHas = true; nFade = -1; nSkips = -1;
-    lastSkips = slice.skips; guestFadeHeld = 0;
+    lastSkips = slice.skips; guestFadeHeld = 0; forgetLying();
   }
 
   const send = a => ctx.action(a);
@@ -246,7 +252,11 @@ export function createSleep(ctx, opts = {}) {
   let unprovide = null, lastAim = null; // lastAim: game.js passes its frame aim to prompt() every frame
   function provide() {
     const P = globalThis.raftPrompts; if (unprovide || typeof P?.provide !== 'function') return;
-    unprovide = P.provide({ id: 'sleep', priority: 1, prompt: () => (ctx.running === false ? null : PROVIDED[promptKey(lastAim)] ?? null) });
+    unprovide = P.provide({ id: 'sleep', priority: 1, prompt: pc => {
+      const s = pc?.state; // yield to the built-in pickup / waiting prompts (priority 0): pickups win E in game.js
+      if (ctx.running === false || s?.pickup || (s?.role === 'guest' && !s.networkReady)) return null;
+      return PROVIDED[promptKey(lastAim)] ?? null;
+    } });
   }
 
   return {

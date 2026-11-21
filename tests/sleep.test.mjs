@@ -315,3 +315,47 @@ test('prompts.js provider: plain labels for the visible key prompt, removed on d
     mod.dispose(); assert.equal(removed, 1);
   } finally { delete globalThis.raftPrompts; }
 });
+
+// ---------------------------------------------------------------- review fixes
+test('review: a new world (restore, or the first state from a host) drops the lying pin without a teleport', () => {
+  const g = makeSleep({ role: 'guest' });
+  g.mod.load({ v: 1, in: { host: null, guest: [1, 0] }, fade: 0, skips: 0 }, 'net'); g.mod.update(1 / 60);
+  assert.equal(g.mod.debug.state().lying, true);
+  g.mod.load(undefined, 'restore'); // host left: own raft restored with its saved physics
+  g.ctx.physics.x = 7; g.ctx.physics.z = -3; g.ctx.role = 'solo';
+  g.mod.update(1 / 60);
+  assert.equal(g.mod.debug.state().lying, false);
+  assert.deepEqual([g.ctx.physics.x, g.ctx.physics.z], [7, -3], 'no standUp at the old raft\'s bed');
+  // a solo host lying joins another raft: the first net state must not stand them up at the old bed
+  const s = makeSleep();
+  s.mod.debug.lie(1, 0); s.mod.update(1 / 60); assert.equal(s.mod.debug.state().lying, true);
+  s.ctx.role = 'guest'; s.mod.load({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 0 }, 'net');
+  s.ctx.physics.x = 5; s.ctx.physics.z = 5; s.mod.update(1 / 60);
+  assert.equal(s.mod.debug.state().lying, false);
+  assert.deepEqual([s.ctx.physics.x, s.ctx.physics.z], [5, 5]);
+});
+
+test('review: daynight still skips a lie-down made just before the sleep window closed', () => {
+  const m = createDayNight(stubDayNightCtx());
+  m.debug.setPhase(.021); m.update(0); // lay down at .019, hold + fade took ~2 s
+  const before = m.serialize().clock;
+  m.action({ kind: 'daynight.skipTo', phase: MORNING }, 'host');
+  near(phaseAt(m.serialize().clock), .1, 1e-6); assert.ok(m.serialize().clock > before);
+  m.debug.setPhase(.05); m.update(0);
+  const c = m.serialize().clock; m.action({ kind: 'daynight.skipTo', phase: MORNING }, 'host');
+  assert.equal(m.serialize().clock, c, 'daytime-ish phases stay refused');
+  m.dispose();
+});
+
+test('review: the sleep provider yields to the pickup and waiting-for-host prompts', () => {
+  let provider = null;
+  globalThis.raftPrompts = { provide: o => { provider = o; return () => {}; } };
+  try {
+    const { mod } = makeSleep();
+    mod.debug.lie(1, 0); mod.update(1 / 60);
+    assert.ok(provider.prompt({ state: { role: 'solo' } }));
+    assert.equal(provider.prompt({ state: { role: 'solo', pickup: { type: 'wood' } } }), null);
+    assert.equal(provider.prompt({ state: { role: 'guest', networkReady: false } }), null);
+    mod.dispose();
+  } finally { delete globalThis.raftPrompts; }
+});

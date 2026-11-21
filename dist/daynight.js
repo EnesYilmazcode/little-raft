@@ -29,7 +29,9 @@ export function skipClock(clock, toPhase) {
 
 // Live read-only mirror for other content modules (sleep.js). Written by update(), no allocation.
 export const DAYNIGHT_LIVE = { phase: MORNING, optOut: false, ready: false };
-const sleepable = p => p >= 0.66 || p < 0.02; // keep in sync with sleep.js SLEEP_START / SLEEP_END
+// sleep.js SLEEP_START / SLEEP_END plus slack: a lie-down at .019 reaches the skip ~2 s later (after the hold and
+// fade). Still well before MORNING (.10), so a second skip right after one stays refused.
+const sleepable = p => p >= 0.66 || p < 0.04;
 
 export function phaseAt(clock) {
   if (!Number.isFinite(clock) || clock < 0) return 0;
