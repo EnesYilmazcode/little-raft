@@ -20,7 +20,7 @@ Instead the raft has a *virtual* velocity and everything else moves relative to 
 - Paddle (lean): `paddle(dirAngle)` adds an impulse of 0.6 m/s along dirAngle to vx/vz (clamped total |v| ≤ 2.6),
   max once per 0.6 s per player; ignored when anchored.
 - Two accumulated offsets (both in metres, float64):
-  - `wx, wz` — raft travel relative to the WATER. Advances by `(vx, vz)` when free, by `-CURRENT` when anchored.
+  - `wx, wz` — raft travel relative to the WATER. Advances by `(vx, vz)` when free, 0 when anchored (the water rests with an anchored raft, so debris stops drifting past).
     Used for ocean waves (`ocean.uniforms.uFlow`) and for extra debris/swimmer drift.
   - `gx, gz` — raft travel relative to the SEABED (islands). Advances by `(vx, vz) + CURRENT` when free, 0 when anchored.
 - Relative flow applied to floating debris on top of its existing baseline drift: `-(dwx, dwz)/dt`

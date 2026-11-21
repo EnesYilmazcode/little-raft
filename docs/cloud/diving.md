@@ -1,8 +1,8 @@
 # Diving lane: diving and underwater
 
-A friendly, lean take on Raft-style diving with our own art. Oxygen never hurts
-you: when it runs out you float back up, and if you are under the raft you
-drift out to open water first.
+A lean take on Raft-style diving with our own art. When oxygen runs out you
+float back up, and if you are under the raft you drift out to open water first.
+You also drown (3.5 HP/s of health) until you reach the surface.
 
 Branch: `claude/raft-diving`. Interface spec: [diving-spec.md](diving-spec.md).
 
@@ -16,11 +16,16 @@ Branch: `claude/raft-diving`. Interface spec: [diving-spec.md](diving-spec.md).
 | Swim faster | **Shift** |
 | Gather the seafloor resource under the crosshair | **hold E**: 1.0 s, or 1.4 s for metal ore |
 
-- **Oxygen:** 45 s underwater. Raft's base is 33 s; ours is friendlier. It refills
-  about 6x faster at the surface. The bar sits bottom-centre, just above the
+- **Oxygen:** 33 s underwater, like Raft (16.5 s while hunger or thirst is empty).
+  It refills gradually, about 6x faster, at the surface. The bar sits bottom-centre, just above the
   hotbar. It only shows underwater or while refilling, and fades out once full.
   Below 25 % it pulses amber, not red. At 0 the diver rises at 3 m/s and the
-  caption "Out of breath, floating up" appears. No damage.
+  caption "Out of breath, floating up" appears, and you take 3.5 HP/s of drowning
+  damage (game.js `hurtPlayer(hp, 'drown')` on the vitals bars, paid in 0.5 s chunks
+  so the hurt vignette pulses) until you surface. The Breath Jug multiplies the base
+  33 s (to 55 s); the starving half stacks on top. There are no game modes yet, so
+  drowning always applies. Passing out underwater ends the dive on respawn with
+  full lungs (`diving.reset()`).
 - **Seafloor:** a procedural patch about 10–13 m deep under the raft. It rises
   smoothly toward the decorative islands, up to -0.9 m within r+40 m of each one.
   It has sand with vertex-colour patches, rocks with moss tops and swaying kelp

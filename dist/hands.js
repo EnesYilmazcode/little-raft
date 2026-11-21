@@ -8,7 +8,8 @@
 //     left hand when the right holds a tool such as the hammer). Blends in, no lower/raise.
 //     'throw': forces the wind-up (full charge) pose.
 //   hands.setModelFactory(fn | null);              // swap the model source later; rebuilds cached models
-//   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch, fov });
+//   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch, fov, paddle });
+//     paddle: 1 -> 0 over one paddle stroke (dist/paddle.js): the right arm reaches forward and down, then pulls back.
 //   hands.ropeAnchor().getWorldPosition(v);        // rope start: rod tip, right fist while the hook is out, else left hand
 //   hands.itemModel('fishingrod')                  // the held model (rod userData: float, leader, tipNode)
 //
@@ -178,7 +179,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const P = (aDeg, R, y) => V(R * Math.cos(aDeg * DEG), y, -R * Math.sin(aDeg * DEG));
     const palm = [
       ellipsoid(parent, skin, V(0.016 * k, -0.004, 0.047 * k), 0.030 * k, 0.050, 0.040 * k, -0.22),
-      ellipsoid(parent, skinPalm, V(-0.010 * k, 0.024, 0.050 * k), 0.020 * k, 0.022, 0.028 * k, 0.3),
+      ellipsoid(parent, skinPalm, V(-0.002 * k, 0.022, 0.054 * k), 0.015 * k, 0.019, 0.026 * k, 0.3),   // thenar: kept flat so the thumb root does not balloon
     ];
     const defs = [
       { y: 0.029, r: 0.0098, a1: 72, a2: 150, len: 0.083, spread: 0.010 },  // index
@@ -190,12 +191,12 @@ export function createHands(T, { modelFactory = null } = {}) {
       const R = gripR + f.r * 1.02;
       const mcp = P(-12, R + 0.003, f.y);
       const curl = new T.Group(), ext = new T.Group(), tight = new T.Group();
-      const pip = P(f.a1, R, f.y), tip = P(f.a2, R * 0.97, f.y + (i === 0 ? 0.001 : 0));
+      const pip = P(f.a1 + 12, R, f.y), tip = P(f.a2 + 36, R * 0.97, f.y + (i === 0 ? 0.001 : 0));
       // slightly slimmer than the finger spacing, so a thin shadow line separates the fingers
       seg(curl, skin, mcp, pip, f.r * 0.97, f.r * 0.90);
       seg(curl, skinTip, pip, tip, f.r * 0.90, f.r * 0.74);
       if (i < 3) {
-        const c = P(f.a1 + 3, R + f.r * 0.9, f.y);
+        const c = P(f.a1 + 15, R + f.r * 0.8, f.y);
         seg(curl, crease, c.clone().setY(f.y - 0.0052), c.clone().setY(f.y + 0.0052), 0.0013, 0.0013, 6);
       }
       // tight curl into the palm (empty fist, used beside a pointing index)
@@ -214,9 +215,13 @@ export function createHands(T, { modelFactory = null } = {}) {
       return { curl, ext, tight };
     });
     const thumbCurl = new T.Group(), thumbExt = new T.Group(), thumbTuck = new T.Group();
-    const t0 = V(0.0, 0.032, 0.055 * k), t1 = V(-0.036 * k, 0.047, 0.028 * k), t2 = V(-0.047 * k, 0.045, -0.008 * k);
-    seg(thumbCurl, skin, t0, t1, 0.0135, 0.0118);
-    seg(thumbCurl, skinTip, t1, t2, 0.0118, 0.0094);
+    const t0 = V(0.0, 0.032, 0.055 * k);
+    // grip thumb: lies snug along the grip, wrapping over the index finger rather than bulging off it
+    const Rt = gripR + 0.0088;
+    const tA = P(238, Rt + 0.004, 0.034), tB = P(200, Rt, 0.040), tC = P(162, Rt * 0.98, 0.042);
+    seg(thumbCurl, skin, t0, tA, 0.0128, 0.0108);
+    seg(thumbCurl, skin, tA, tB, 0.0104, 0.0094);
+    seg(thumbCurl, skinTip, tB, tC, 0.0094, 0.0078);
     const u1 = V(-0.026 * k, 0.062, 0.030 * k), u2 = V(-0.040 * k, 0.083, 0.004 * k);
     seg(thumbExt, skin, t0, u1, 0.0135, 0.0118);
     seg(thumbExt, skinTip, u1, u2, 0.0118, 0.0094);
@@ -280,7 +285,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     return { pose, frame, wrist, hand, H, qBase, toLocal, basePos: basePos.clone(), r, u, f };
   }
 
-  const R = buildArm({ name: 'rightArm', basePos: V(0.40, -0.35, -0.74), u: V(0.27, 0.95, -0.15), F: V(0.35, -0.50, 1.0), gripR: 0.032, mirror: false });
+  const R = buildArm({ name: 'rightArm', basePos: V(0.40, -0.35, -0.74), u: V(0.27, 0.95, -0.15), F: V(0.35, -0.50, 1.0), gripR: 0.025, mirror: false });
   const L = buildArm({ name: 'leftArm', basePos: V(-0.37, -0.36, -0.74), u: V(0.85, 0.30, 0.10), F: V(-0.40, -0.50, 1.0), gripR: 0.028, mirror: true });
   lagRoot.add(R.pose, L.pose);
   // Pointing frames: hand half-prone, index aimed just below the crosshair. The left one is the mirror
@@ -430,6 +435,8 @@ export function createHands(T, { modelFactory = null } = {}) {
     const t = params.time ?? st.t;
     const charge0 = clamp01(params.charge || 0);
     const casting = clamp01(params.casting || 0);
+    const pq = clamp01(params.paddle || 0) > 0 ? 1 - clamp01(params.paddle) : 1; // paddle stroke phase 0 -> 1
+    const pDip = Math.sin(Math.PI * pq), pSweep = pDip * (2 * pq - 1);       // dip in, then sweep back (-z = forward)
     const reeling = !!params.reeling, walking = !!params.walking;
     const amp = clamp01(params.motion ?? 0.35) / 0.35;
 
@@ -521,7 +528,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down;
     const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW - (hold.tilt || 0) * nW;
     const rwz = -0.15 * ce + 0.12 * a;
-    applyArm(R, rpx + arm[0] * nW - 0.10 * zW, rpy + arm[1] * nW + 0.44 * zW, rpz + arm[2] * nW - 0.06 * zW, rrx + 0.75 * zW, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR)); // [zipline] zW raises the fist
+    applyArm(R, rpx + arm[0] * nW - 0.04 * pDip - 0.10 * zW, rpy + arm[1] * nW - 0.035 * pDip + 0.44 * zW, rpz + arm[2] * nW + 0.09 * pSweep - 0.06 * zW, rrx - 0.12 * pDip + 0.75 * zW, rry, rrz + 0.12 * pDip, rwx + 0.22 * pSweep, 0, rwz, smooth(0, 1, st.ptR)); // [paddle] dip + sweep; [zipline] zW raises the fist
     // [zipline] on the line the handle swings round so its wheel stem points up at the rope (and the strap shows)
     const gh = st.shown === 'glidehandle' ? mounts.get('glidehandle') : null;
     if (gh) {

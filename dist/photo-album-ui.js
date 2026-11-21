@@ -3,6 +3,7 @@
 //   store: a photo-store.js store or a promise of one. open({pick:true, frameKey, onPick}) is the frame's pick mode:
 //   choosing a thumb calls detail.onPick(id) (or the onPick option) with the photo id, "Empty frame" with null.
 // Opens with KeyP (only while playing and no other dialog is open), or the 'littleraft:open-album' event.
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PHOTO_CAP } from './photo-store.js?build=v3-survival-ae77fa84ac2b';
 
 const INST_KEY = '__littleRaftPhotoAlbumUI';
@@ -139,7 +140,7 @@ export function createPhotoAlbumUI({ store, onPause, onResume, onPick } = {}) {
     if (!isOpen) {
       isOpen = true;
       safe(onPause);
-      if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+      exitLock(document);
       if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     }
     storeP.then(() => { if (isOpen) render().then(() => { try { (grid.querySelector('.pa-thumb') || $('.pa-close')).focus({ preventScroll: true }); } catch {} }); });

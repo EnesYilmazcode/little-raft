@@ -71,7 +71,7 @@ export function buildFrameModel(T) {
   // A-stand: two front legs and one back prop, so it stands on any tile
   for (const s of [-1, 1]) { const l = add(g, new T.Mesh(new T.BoxGeometry(0.035, 0.44, 0.035), dark), 'frameLeg', s * 0.17, 0.2, 0.01); l.rotation.z = s * 0.08; }
   const prop = add(g, new T.Mesh(new T.BoxGeometry(0.03, 0.46, 0.03), dark), 'frameProp', 0, 0.21, -0.12); prop.rotation.x = -0.45;
-  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = o.name !== 'photoPlane'; } });
+  g.traverse(o => { if (o.isMesh) { o.castShadow = o.name === 'frameBack' || o.name === 'frameLeg' || o.name === 'frameProp'; o.receiveShadow = o.name !== 'photoPlane'; } }); // the back plate's shadow covers the bars and photo
   g.userData.placeholder = tex;
   return g;
 }

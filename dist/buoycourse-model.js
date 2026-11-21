@@ -20,6 +20,14 @@ function fitText(g, text, px, max, weight = 700) {
   g.font = `${weight} ${s}px "Trebuchet MS", system-ui, sans-serif`;
   while (s > 10 && g.measureText(text).width > max) { s -= 2; g.font = `${weight} ${s}px "Trebuchet MS", system-ui, sans-serif`; }
 }
+// One size for every row: a long name ends in an ellipsis instead of shrinking smaller than its neighbours.
+function clipText(g, text, max, font) {
+  g.font = font;
+  if (g.measureText(text).width <= max) return text;
+  let t = text;
+  while (t.length > 4 && g.measureText(t + '\u2026').width > max) t = t.slice(0, -1);
+  return t.trimEnd() + '\u2026';
+}
 function plank(g, w, h) {
   g.globalAlpha = 1; g.fillStyle = '#2f5f6e'; g.fillRect(0, 0, w, h);
   g.fillStyle = '#ffffff'; g.globalAlpha = .07;
@@ -102,7 +110,7 @@ export function buildCourseModels(T) {
       for (let i = 0; i < 3; i++) {
         const r = Array.isArray(list) ? list[i] : null, y = y0 + 28 + i * 25;
         g.fillStyle = i === 0 && r ? '#ffd04a' : '#f4efe4';
-        g.textAlign = 'left'; fitText(g, `${i + 1}. ${r ? r[0] : '-'}`, 20, 150, 600); g.fillText(`${i + 1}. ${r ? r[0] : '-'}`, 22, y);
+        g.textAlign = 'left'; g.fillText(clipText(g, `${i + 1}. ${r ? r[0] : '-'}`, 150, '600 20px "Trebuchet MS", system-ui, sans-serif'), 22, y);
         g.textAlign = 'right'; g.font = '600 20px "Trebuchet MS", system-ui, sans-serif'; g.fillText(r ? r[1] : '', w - 16, y);
       }
     };

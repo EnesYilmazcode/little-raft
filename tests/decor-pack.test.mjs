@@ -92,7 +92,7 @@ test('update animates the pennant flag; the loop is allocation-free by structure
   ctx.elapsed = 1.3; mod.update(.016);
   const b = mod.debug.anim().find(x => x.type === 'pennant').ry;
   assert.notEqual(a, b);
-  assert.ok(Math.abs(a - 1) < .6, 'flag yaw follows the wind');
+  assert.ok(Math.abs(a - (1 - Math.PI / 2)) < .6, 'flag cloth (local +X) points downwind: yaw = windDir - PI/2');
   const src = readFileSync(fileURLToPath(new URL('decor-pack.js', base)), 'utf8');
   const body = src.slice(src.indexOf('function update()'), src.indexOf('if (dirty) rescan();'));
   assert.ok(body.length > 100);

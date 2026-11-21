@@ -25,6 +25,7 @@ const SPEC = {
   renderScale: { tab: 'graphics', label: 'Render scale', type: 'range', min: 0.5, max: 1, step: 0.05, def: PRESETS.medium.renderScale, fmt: pct }, // matches the default 'medium' preset
   shadows: { tab: 'graphics', label: 'Shadows', type: 'toggle', def: true },
   sound: { tab: 'audio', label: 'Sound', type: 'toggle', def: true }, // mirrors #soundButton / little-raft-sound (game.js)
+  stormFlash: { tab: 'graphics', label: 'Lightning flashes', type: 'select', options: ['full', 'soft', 'off'], def: 'full' },
   volume: { tab: 'audio', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.5, fmt: pct },
   effects: { tab: 'audio', label: 'Effects', type: 'range', min: 0, max: 1, step: 0.05, def: 1, fmt: pct },
   ambience: { tab: 'audio', label: 'Ocean ambience', type: 'range', min: 0, max: 1, step: 0.05, def: 0.7, fmt: pct },
@@ -90,10 +91,11 @@ const CSS = `
 #options .rs-title [data-act=resume],#options .rs-title [data-act=quit]{display:none}
 #options .rs-menu .rs-quit{margin-top:20px;border-top:1px solid #ffffff17;padding-top:18px;font-size:clamp(15px,1.4vw,17px);color:var(--muted,#f4efe280)}
 #options .rs-menu .rs-quit::before{top:20px}
-/* The panel is attached to the rail: same height, no floating frame, its own visible scrollbar when it must scroll. */
-#options .rs-panel{flex:0 1 600px;min-width:0;height:100%;box-sizing:border-box;overflow:auto;overscroll-behavior:contain;
-  padding:clamp(24px,calc(50vh - 200px),170px) clamp(20px,3vw,36px) 28px;background:linear-gradient(180deg,#1a2226e6,#0e1417ee);
-  box-shadow:inset -1px 0 0 #ffffff17,18px 0 50px rgba(0,0,0,.3);scrollbar-width:thin;scrollbar-color:#ffffff52 transparent;scrollbar-gutter:stable}
+/* The panel hangs off the rail as a framed card: capped height, its own visible scrollbar, and a closed bottom edge,
+   so the last control is never cut off by the bottom of the screen. */
+#options .rs-panel{flex:0 1 600px;min-width:0;align-self:center;height:auto;max-height:calc(100% - 48px);box-sizing:border-box;overflow:auto;overscroll-behavior:contain;
+  padding:24px clamp(20px,3vw,36px) 24px;border-radius:0 10px 10px 0;background:linear-gradient(180deg,#1a2226f0,#0e1417f4);
+  box-shadow:inset 0 0 0 1px #ffffff1f,18px 0 50px rgba(0,0,0,.3);scrollbar-width:thin;scrollbar-color:#ffffff52 transparent;scrollbar-gutter:stable}
 #options .rs-tabs{display:flex;gap:4px;margin:0 0 18px}
 #options .rs-tabs button{flex:1;cursor:pointer;margin:0;padding:9px 10px;border:0;border-radius:6px;background:#ffffff0b;box-shadow:inset 0 0 0 1px #ffffff12;color:var(--cream-dim,#f4efe2b3);
   font:700 13px/1 var(--ui-font);letter-spacing:.2px;text-transform:none}
@@ -124,7 +126,7 @@ const CSS = `
   font:700 13px/1 var(--ui-font);letter-spacing:0;text-transform:none;box-shadow:inset 0 0 0 1px #ffffff2e}
 #options .rs-wide:hover{background:#ffffff17;transform:none}
 /* How to play, in the same attached panel; it starts higher so the whole guide fits at 620px tall */
-#options .rs-panel.rs-help{padding-top:clamp(20px,calc(50vh - 290px),170px)}
+#options .rs-panel.rs-help{padding-top:24px}
 #options .rs-help .eyebrow{margin-bottom:10px}
 #options .rs-help h2{margin:0 0 6px;font:800 26px/1.15 var(--display-font,var(--ui-font));color:var(--cream-hi,#fff6e0)}
 #options .rs-help .guide{list-style:none;padding:0;margin:14px 0 12px;display:grid;gap:8px}
@@ -137,7 +139,7 @@ const CSS = `
 #options :focus-visible{outline:2px solid var(--cream-hi,#fff6e0);outline-offset:2px}
 @media (max-width:760px){#options .rs-form{flex-direction:column;align-items:stretch;justify-content:flex-start;overflow:auto;padding:0}
   #options .rs-menu{width:auto;padding:20px 0 16px 20px}#options .rs-foot{display:none}
-  #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{flex:none;height:auto;overflow:visible;padding:20px 16px}#options .rs-keys{grid-template-columns:auto 1fr}}
+  #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{flex:none;align-self:stretch;height:auto;max-height:none;overflow:visible;border-radius:0;padding:20px 16px}#options .rs-keys{grid-template-columns:auto 1fr}}
 /* Waiting to relock after a menu closed without a gesture (browser Esc): no cursor, no hint beside the crosshair. */
 body.relock:not(.drag-look) #world{cursor:none}
 body.relock:not(.drag-look) #resumeHint{display:none!important}
@@ -452,7 +454,12 @@ export function createSettings({ onChange, onResume, onPause, onQuit, initial } 
       Promise.resolve(req).catch(() => {}).finally(syncFullscreen);
       return;
     }
-    if (act === 'logbook') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook')); return; }
+    if (act === 'logbook') {
+      close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook'));
+      const lb = document.getElementById('logbook'); // like Crew/Help: closing it comes back to this menu
+      if (lb instanceof HTMLDialogElement && lb.open) { returnToPause = lb; lb.dataset.fromPause = '1'; }
+      return;
+    }
     if (act === 'look') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-look')); return; }
     if (act === 'album') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-album')); return; } // [camera]
     if (act === 'crew') {

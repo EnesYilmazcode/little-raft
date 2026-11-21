@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
 const { Bag, SLOT_COUNT } = await import(new URL('inventory-state.js', base));
-const { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, NET_RANGE } = await import(new URL('coop-rules.js', base));
+const { lootFits, createGuestHeld, cleanHeldTokens, decorBlockers } = await import(new URL('coop-rules.js', base));
 const { PlayerPhysics, PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base));
 
 const LOOT = {wood:{wood:2}, leaf:{leaf:1}};
@@ -26,29 +26,6 @@ test('lootFits: false when any loot piece does not fit, and the bag is untouched
   assert.equal(lootFits(bag, LOOT.wood), false);
   assert.equal(lootFits(bag, LOOT.leaf), true);
   assert.equal(JSON.stringify(bag.snapshot()), before);
-});
-
-test('pickNetItem: skips a nearer-in-order supply that does not fit and takes one that does', () => {
-  const bag = fullBagWithLeafRoom(), net = {x:0, z:-1};
-  const items = [
-    {id:0, token:'plank', type:'wood', x:0.5, z:-3},
-    {id:1, token:'leaf', type:'leaf', x:-0.5, z:-4},
-  ];
-  const it = pickNetItem(items, net, {fits:i => lootFits(bag, LOOT[i.type])});
-  assert.equal(it?.token, 'leaf');
-});
-
-test('pickNetItem: respects range, held and pending', () => {
-  const net = {x:0, z:0};
-  const items = [
-    {id:0, token:'far', x:NET_RANGE + .1, z:0},
-    {id:1, token:'held', x:1, z:0},
-    {id:2, token:'pend', x:1, z:0},
-    {id:3, token:'ok', x:0, z:1},
-  ];
-  const it = pickNetItem(items, net, {held:new Set(['held']), isPending:i => i.token === 'pend'});
-  assert.equal(it.token, 'ok');
-  assert.equal(pickNetItem(items.slice(0, 3), net, {held:new Set(['held']), isPending:i => i.token === 'pend'}), null);
 });
 
 // ------------------------------------------------------------- CRA-4
@@ -70,18 +47,14 @@ test('guest held tokens expire when the guest stops reporting', () => {
   assert.deepEqual(g.tokens(1400), []);
 });
 
-test('a net does not take a supply on the guest hook', () => {
-  const g = createGuestHeld(); g.note(['hooked'], 0);
-  const items = [{id:0, token:'hooked', x:0, z:1}];
-  assert.equal(pickNetItem(items, {x:0, z:0}, {held:new Set(g.tokens(10))}), null);
-});
-
-test('game.js sends held tokens on move and feeds them to nets and drift', () => {
+test('game.js sends held tokens on move and keeps held items out of drift and nets', () => {
   const src = readFileSync(new URL('game.js', base), 'utf8');
   assert.match(src, /type:'move', me:pose\(\), held:/);
   assert.match(src, /guestHeld\.note\(cleanHeldTokens\(data\.held\)/);
   assert.match(src, /function updateItems\(dt\) \{\s*const heldTokens = allHeldTokens\(\)/);
-  assert.match(src, /pickNetItem\(world\.items, net, \{held:heldTokens/);
+  // a held item skips the drift step, and the net catch test lives inside that step
+  assert.match(src, /if \(heldTokens\.has\(it\.token\)\) continue;[^\n]*\n\s*const x0 = it\.x, z0 = it\.z;/);
+  assert.match(src, /catchNet\(world\.nets, it\.type, x0, z0, it\.x, it\.z\)/);
 });
 
 // ------------------------------------------------------------- CRA-5

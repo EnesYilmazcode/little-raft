@@ -146,3 +146,20 @@ sequence + lying + opacity). Steps, each a screenshot:
 - `getUpSpot` treats any decor except `net` as blocking (game.js `BLOCK_RADIUS` is not importable).
 - Extra QA helper `raftDebug.content.sleep.stand(x,z)` moves the local player (metres, raft frame).
 - Lie refusal for a tile without a bed: "Find a bed to lie down"; out of reach: "Step a little closer".
+
+## Simple Bed (Raft parity, ported from the work3 bed lane)
+The cozy "no penalties" rule above no longer holds: the bed now ties into the vitals bars (`dist/vitals.js`).
+- Item `bed` is now "Simple Bed": 10 leaf, 6 wood, 4 plastic, 3 nails. Same kind, so beds in old saves stay.
+  The Tinker's Desk teaches it once wood, leaf, plastic and nails have been seen.
+- A slept night (the host's skip while you are in bed) gives `SLEEP_FX` = +40 health, -20 food, -20 water,
+  through `ctx.adjustVitals` (game.js -> `vitals.adjust`, which never drops health below 1). Each player applies
+  their own on the `skips` bump while lying, so a guest gets it from the host's state. Getting up early gives nothing.
+- Slice gains `home:{host:[x,z]|null, guest:[x,z]|null}`: the bed you last lay down in, or last placed
+  (game.js build -> `content.placed(type, x, z, actor)`). Saves keep `home`, unlike `in`. The host clears a home
+  whose bed is gone (picked up, or the shark tore its tile off); the owner sees "Your bed is gone. You will wake on the raft".
+- Passing out (hp 0) while in bed sends `sleep.up`. On waking, game.js asks `content.respawnSpot(out)`: beside
+  the home bed (`getUpSpot`) with `BED_RESPAWN` = 25 health, 50 food, 50 water; with no home bed it falls back
+  to the raft centre with vitals `RESPAWN` (100/75/75). The faint overlay says where you will wake.
+- No lying down from the water: `target()` skips swimmers and the host refuses a swimming pose ("Climb aboard first").
+- The co-op wait prompt reads "Waiting for your brother · 1/2 sleeping".
+- Raft-master has no game modes, so there is no no-needs mode to skip the sleep effect in.

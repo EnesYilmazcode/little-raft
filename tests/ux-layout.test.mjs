@@ -83,9 +83,9 @@ test('UX2-2: How to play opens in the pause panel slot, not a separate centred d
   assert.match(s, /data-panel="help"/);
   assert.match(s, /act === 'settings' \|\| act === 'help'\) \{ setPanel\(/);
   assert.doesNotMatch(s, /act === 'help' \|\| act === 'crew'/);
-  // the panel is attached to the rail: full height, no floating frame
+  // the panel hangs off the rail: capped height with its own scroll, so nothing runs off the bottom
   const panel = ruleFor(s, '#options .rs-panel')[0]; // base rule (the phone layout stacks it)
-  assert.match(panel, /height:100%/);
+  assert.match(panel, /max-height:calc\(100% - 48px\)/);
   assert.match(panel, /overflow:auto/);
   assert.doesNotMatch(panel, /margin-top:max/);
 });

@@ -44,6 +44,19 @@ function buildPurifier(T) {
     emberGeo.push(new T.IcosahedronGeometry(.035, 0).translate(Math.cos(a) * r, .135, Math.sin(a) * r));
   }
   add(mergeGeo(T, emberGeo), std(0x5a2a14, .7, 0, {emissive:0xff7a2a, emissiveIntensity:.8}), 'emberHeap', 0, 0, 0, false, embers).receiveShadow = true;
+  // Fuel: up to 3 little planks in the tray (one per 50 s of fire) and a flame that shows only while lit.
+  const logs = new T.Group(); logs.name = 'fuelLogs'; g.add(logs);
+  const logMat = std(0x7a5a36, .9);
+  for (let i = 0; i < 3; i++) {
+    const m = new T.Mesh(new T.BoxGeometry(.26, .03, .045), logMat);
+    m.position.set(0, .135 + i * .03, (i - 1) * .05); m.rotation.y = i * 1.05; m.castShadow = m.receiveShadow = true; logs.add(m);
+  }
+  const flame = new T.Group(); flame.name = 'flame'; flame.position.set(0, .15, 0); g.add(flame);
+  const flameMats = [new T.MeshBasicMaterial({color:0xff8a2a, transparent:true, opacity:.85, depthWrite:false}), new T.MeshBasicMaterial({color:0xffd060, transparent:true, opacity:.9, depthWrite:false})];
+  for (let i = 0; i < 2; i++) {
+    const m = new T.Mesh(new T.ConeGeometry(i ? .055 : .1, i ? .16 : .24, 10, 1, true), flameMats[i]);
+    m.name = 'flame' + i; m.position.y = i ? .08 : .12; m.castShadow = m.receiveShadow = false; flame.add(m);
+  }
   add(new T.CylinderGeometry(.2, .17, .22, 24, 1, true), std(0xb87333, .4, .6, {side:T.DoubleSide}), 'pot', 0, .55, 0);
   const pw = add(new T.CircleGeometry(.185, 24), std(0x5f8fa0, .2), 'potWater', 0, .62, 0, false); pw.rotation.x = -Math.PI / 2; pw.receiveShadow = true;
   const curve = new T.QuadraticBezierCurve3(new T.Vector3(.14, .66, 0), new T.Vector3(.32, .78, 0), new T.Vector3(.42, .42, 0));
@@ -84,29 +97,35 @@ function mergeGeo(T, list) {
   return out;
 }
 
+/** entry: a world.purifiers entry ({t, ready, fuel, cup}) or null. Lit = a cup is boiling and fuel > 0. */
 export function paintPurifier(g, entry, elapsed) {
-  const ud = g.userData, sig = entry ? (entry.ready ? 'r' : 'b') : 'e';
+  const ud = g.userData, cup = !!entry && entry.cup !== 0, fuel = entry && entry.fuel > 0 ? entry.fuel : 0;
+  const lit = cup && !entry.ready && fuel > 0, logCount = Math.min(3, Math.ceil(fuel / 50));
+  const state = !cup ? 0 : entry.ready ? 1 : lit ? 2 : 3, sig = state * 4 + logCount; // 0 empty, 1 ready, 2 boiling, 3 paused (no fuel)
   if (!ud.parts) {
     const get = n => g.getObjectByName(n);
-    ud.parts = {embers:get('embers'), potWater:get('potWater'), cup:get('cup'), cupWater:get('cupWater'), steam:[0, 1, 2].map(i => get('steam' + i))};
+    ud.parts = {embers:get('embers'), potWater:get('potWater'), cup:get('cup'), cupWater:get('cupWater'), steam:[0, 1, 2].map(i => get('steam' + i)), logs:get('fuelLogs'), flame:get('flame')};
   }
   const p = ud.parts;
   if (ud.sig !== sig) {
     ud.sig = sig;
-    const busy = sig === 'b';
-    p.embers.visible = busy;
-    p.potWater.visible = sig !== 'e';
-    p.cup.visible = sig !== 'e';
-    p.cupWater.visible = sig === 'r';
-    for (const s of p.steam) s.visible = busy;
+    p.embers.visible = lit;
+    if (p.flame) p.flame.visible = lit;
+    if (p.logs) for (let i = 0; i < p.logs.children.length; i++) p.logs.children[i].visible = i < logCount;
+    p.potWater.visible = cup;
+    p.cup.visible = cup;
+    p.cupWater.visible = state === 1;
+    for (const s of p.steam) s.visible = lit;
   }
-  if (sig !== 'b') return;
-  p.embers.children.forEach((m, i) => { m.material.emissiveIntensity = .8 + .4 * Math.sin(elapsed * 9 + i); });
-  p.steam.forEach((s, i) => {
-    const ph = (((elapsed * .45 + i / 3) % 1) + 1) % 1;
+  if (!lit) return;
+  const em = p.embers.children;
+  for (let i = 0; i < em.length; i++) em[i].material.emissiveIntensity = .8 + .4 * Math.sin(elapsed * 9 + i);
+  if (p.flame) { const f = p.flame; f.scale.set(1, .85 + .25 * Math.sin(elapsed * 13) + .1 * Math.sin(elapsed * 31), 1); f.rotation.y = elapsed * 1.7; }
+  for (let i = 0; i < p.steam.length; i++) {
+    const s = p.steam[i], ph = (((elapsed * .45 + i / 3) % 1) + 1) % 1;
     s.position.set(Math.sin(ph * 6 + i) * .04, .7 + ph * .5, 0);
     s.material.opacity = .45 * (1 - ph);
-  });
+  }
 }
 
 const PLANT_PARTS = ['trunk', 'crown', 'coconuts', 'fronds', 'frondRibs'];

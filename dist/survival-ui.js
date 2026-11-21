@@ -12,6 +12,8 @@ const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
 const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
 const INST_KEY = '__littleRaftSurvivalUI';
+/** Fired on document whenever the local bag's contents or selection change (item-tooltips.js listens). */
+export const BAG_EVENT = 'littleraft:bagchange';
 
 // Same sprite URL as the page's own <use> elements (plain on first load, re-pointed by game.js after a hot swap),
 // so icons.svg is fetched once. Read lazily: game.js init() runs after this module is evaluated.
@@ -20,7 +22,8 @@ const SPRITE_URL = () => spriteUrl ??= (document.querySelector('use[href*="icons
 
 // Symbols that actually exist in icons.svg.
 const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier', 'rainbarrel', 'sprinkler', 'research', 'receiver',
-  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion', 'fins', 'airjug', 'goggles', 'scraper', 'cookpot', 'bowl', 'meal', 'shell', 'wreath', 'float', 'gametable', 'buoyflag', 'scoreboard', 'driftboard']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals
+  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion', 'fins', 'airjug', 'goggles', 'scraper', 'cookpot', 'bowl', 'meal', 'shell', 'wreath', 'float', 'gametable', 'buoyflag', 'scoreboard', 'driftboard',
+  'hay', 'pail', 'milk', 'stormrod', 'stormshard', 'stormlamp', 'stormglass']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals; goats, storm
 // Item kind (normalised) -> sprite symbol.
 const SPRITE_FOR = {
   hook: 'hook', plastichook: 'hook', grapplinghook: 'hook',
@@ -35,6 +38,7 @@ const SPRITE_FOR = {
   antenna: 'antenna', receiver: 'receiver',
   puffegg: 'egg', feather: 'feather', nestbox: 'nest', cushion: 'cushion',
   shell: 'shell', shellwreath: 'wreath', glassfloat: 'float', // trader.js
+  goatpen: 'hay', bucket: 'pail', milk: 'milk',
 };
 // Hand-drawn fallbacks for kinds without a sprite (same palette as icons.svg).
 const CUSTOM = {
@@ -289,7 +293,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-locked .sv-rsub{color:#a3321a}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
 /* detail: big icon, name, what it is for, have / need rows and the Craft button */
-#inventory .sv-detail{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
+#inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
 #inventory .sv-detail[hidden]{display:none}
 #inventory .sv-dhead{flex:none;display:grid;grid-template-columns:64px 1fr auto;gap:11px;align-items:center}
 #inventory .sv-dart{display:grid;place-items:center;width:64px;height:64px;border-radius:4px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
@@ -304,7 +308,8 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-dstate[hidden]{display:none}
 #inventory .sv-dlabel{flex:none;display:flex;justify-content:space-between;font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#6b5638}
 #inventory .sv-dlabel i{font-style:normal;letter-spacing:.6px;text-transform:none;font-weight:700;padding-right:8px}
-#inventory .sv-ings{flex:none;max-height:100px;overflow-y:auto;list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;scrollbar-color:#a08a5e transparent}
+/* every ingredient row stays visible: rows wrap into columns instead of scrolling */
+#inventory .sv-ings{flex:none;list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:3px 4px}
 #inventory .sv-ing{flex:none;display:grid;grid-template-columns:26px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 5px;border-radius:3px;background:#d6c397;box-shadow:inset 3px 0 0 #b0391e}
 #inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #5f9c3a}
 #inventory .sv-ing .sv-icon{width:26px;height:26px}
@@ -342,11 +347,15 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-tip[hidden]{display:none}
 #inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#5e4426}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#8a3a12}
-/* smaller screens: slightly smaller slots, then a stacked, scrolling layout */
+/* smaller screens: slightly smaller slots, then a compact side-by-side layout, and only phones stack */
 @media(max-width:1040px){#inventory.sv-inv{--s:45px;--g:5px}#inventory .sv-cbody{grid-template-columns:80px 256px}}
+@media(max-width:900px){#inventory.sv-inv{--s:min(44px,calc((96vw - 380px) / 10 - 4px));--g:4px}#inventory .sv-wrap{gap:8px;padding:10px}#inventory .sv-side{gap:8px}
+  #inventory .sv-cbody{grid-template-columns:66px 222px;gap:6px}#inventory .sv-tab{height:54px;font-size:11px}#inventory .sv-tab .sv-icon{width:24px;height:24px}
+  #inventory .sv-recipe{grid-template-columns:34px 1fr auto;gap:7px;min-height:44px;padding:4px 6px 4px 5px}#inventory .sv-rart{width:34px;height:34px}#inventory .sv-rart .sv-icon{width:30px;height:30px}
+  #inventory .sv-bag{padding:8px 10px 9px;gap:6px}#inventory .sv-detail{gap:5px;padding:8px 9px 9px}#inventory .sv-craftbtn{height:38px}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-height:640px){#inventory .sv-dart{width:52px;height:52px}#inventory .sv-dart .sv-icon{width:46px;height:46px}#inventory .sv-dhead{grid-template-columns:52px 1fr auto}
   #inventory .sv-hint{font-size:11px;line-height:1.3}#inventory .sv-tab{height:56px}}
-@media(max-width:900px),(max-height:520px){#inventory.sv-inv{width:auto;--s:44px;--g:5px}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}
+@media(max-width:720px),(max-height:520px){#inventory.sv-inv{width:auto;--s:44px;--g:5px}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}
   #inventory .sv-craft{height:auto;max-height:none;overflow:visible}#inventory .sv-cbody{grid-template-columns:76px minmax(0,1fr)}#inventory .sv-rlist{max-height:40vh}
   #inventory .sv-side{flex:none}#inventory .sv-detail{flex:none}#inventory .sv-bag{min-width:0}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-width:560px){#inventory.sv-inv{--s:min(36px,calc((92vw - 75px) / ${HB}));--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
@@ -369,6 +378,8 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #craftTracker .ct-state{display:block;margin-top:2px;font:700 10px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#f4efe280}
 #craftTracker.ct-ready .ct-state{color:#a9e48a}
 #craftTracker.ct-ready{box-shadow:inset 0 0 0 1px #8fd36a88,0 0 12px #8fd36a33,0 6px 18px #0006}
+#craftTracker.ct-gated .ct-art>*{filter:grayscale(1) brightness(.6)}
+#craftTracker.ct-gated .ct-state{color:#e8c27a;line-height:1.2}
 #craftTracker ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 #craftTracker li{display:grid;grid-template-columns:20px 1fr auto;gap:7px;align-items:center;padding:2px 6px 2px 3px;border-radius:4px;background:#ffffff0a;box-shadow:inset 2px 0 0 #e06a4a}
 #craftTracker li.ct-ok{box-shadow:inset 2px 0 0 #8fd36a}
@@ -382,10 +393,11 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 @media(max-width:760px){#craftTracker{bottom:110px;right:10px;width:180px}}
 `;
 
+const BAG_HUD = 'body:has(#inventory[open]) :is(#sailBadge,#lrVitals,#fcChip){visibility:hidden}'; // the open bag covers their edges
 function ensureStyle() {
   let st = document.getElementById('survival-style');
   if (!st) { st = document.createElement('style'); st.id = 'survival-style'; document.head.append(st); }
-  if (st.textContent !== CSS) st.textContent = CSS;
+  if (st.textContent !== CSS + BAG_HUD) st.textContent = CSS + BAG_HUD;
 }
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
@@ -532,7 +544,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let downOnBackdrop = false, upOnBackdrop = false;
   let dragging = false, dragFrom = null, dragAmt = 0, overEl = null;
   let hoverIdx = null;
-  let lastSig = null;
+  let lastSig = null, bagSig = null;
+  let gateSig = null, gateAt = 0; // recipe gates seen by the open bag (goals / unlocks change mid-session)
+  const GATE_POLL_MS = 250;
   // Per-frame fast path: skip snapshot + string signatures when nothing visible changed.
   // Bag.version catches method mutations; the typed-array shadow catches direct .slots writes
   // (game.js edits counts/durability in place), so the HUD never goes stale.
@@ -611,7 +625,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     });
     for (const v of recipeEls) v.el.hidden = v.cat !== activeTab;
     const inTab = recipeEls.filter(v => v.cat === activeTab);
-    if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab[0])?.r.id ?? null;
+    if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab.find(v => v.state !== 'gated') || inTab[0])?.r.id ?? null;
     if (activeTab) dlg.dataset.svTab = activeTab;
     const tabEl = tabsEl.querySelector(`.sv-tab[data-cat="${activeTab}"]`);
     if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
@@ -765,15 +779,17 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const t = ensureTracker();
     const r = pinId && !isOpen ? recipes.find(x => x.id === pinId) : null;
     if (!r) { if (!t.hidden) t.hidden = true; trackSig = null; return; }
-    const key = sig + '|' + pinId;
+    const g = gate(r.id); // research / progression lock: never "Ready" while locked
+    const key = sig + '|' + pinId + '|' + (g ? (g.hidden ? 'h' : 'l') + (g.reason || '') : '');
     if (key === trackSig) return;
     trackSig = key;
     let check = null;
     if (typeof bag.canCraft === 'function') { try { check = bag.canCraft(r.id); } catch {} }
-    const tv = trackerView(r, k => countOf(bag, k), check);
+    const tv = trackerView(r, k => countOf(bag, k), check, g);
     const ready = tv.state === 'ready';
     t.classList.toggle('ct-ready', ready);
-    const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
+    t.classList.toggle('ct-gated', tv.state === 'gated');
+    const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'gated' ? 'Locked: ' + (tv.reason || 'not learned yet') : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
     t.innerHTML = `<div class="ct-head"><span class="ct-art" aria-hidden="true">${art(tv.kind)}</span><span><b class="ct-name">${esc(tv.name)}</b><small class="ct-state">${esc(state)}</small></span></div>`
       + `<ul>${tv.rows.map(x => `<li class="${x.enough ? 'ct-ok' : ''}" aria-label="${esc(itemName(x.kind))}: have ${x.have}, need ${x.need}">${art(x.kind)}<span>${esc(itemName(x.kind))}</span><b>${esc(amountLabel(x))}</b></li>`).join('')}</ul>`
       + (ready ? '<div class="ct-foot">Open your bag with <kbd>Tab</kbd> to craft</div>' : '');
@@ -1063,12 +1079,28 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function hideTip() { if (tip) tip.hidden = true; tipAnchor = null; }
 
   // ---------- render ----------
+  // One string for every recipe's gate: '' open, 'h' hidden, 'l<reason>' locked.
+  function gateSignature() {
+    return recipeList().map(r => { const g = gate(r.id); return r.id + ':' + (g?.hidden ? 'h' : g?.locked ? 'l' + (g.reason || '') : ''); }).join('|');
+  }
+  // While the bag is open, a recipe that unlocks or becomes a goal shows up (or loses its lock) at once.
+  function syncGates(now) {
+    if (now < gateAt) return false;
+    gateAt = now + GATE_POLL_MS;
+    const gs = gateSignature();
+    if (gs === gateSig) return false;
+    gateSig = gs;
+    buildRecipes(); // rebuilds the rows only when the visible set changed
+    recipeEls.forEach(v => { v.sig = null; });
+    return true;
+  }
   function render(force) {
     if (!alive) return;
     if (!iconsLive && document.body?.classList.contains('playing')) liveIcons();
     const bag = bagNow();
     ensureTools();
     if (!bag) return;
+    if (isOpen && !dragging && syncGates(performance.now())) { force = true; lastSig = null; }
     const mode = (isOpen ? 1 : 0) | (dragging ? 2 : 0);
     const ver = bag.version, sel0 = bag.selectedIndex;
     if (!force && bag === fastBag && typeof ver === 'number' && ver === fastVer && sel0 === fastSel
@@ -1082,6 +1114,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     for (let i = 0; i < TOTAL; i++) { sigs[i] = slotSig(slots[i]); all += sigs[i] + '|'; }
     all += selected;
     curSlots = slots; curSelected = selected;
+    if (all !== bagSig) { const first = bagSig === null; bagSig = all; if (!first) document.dispatchEvent(new CustomEvent(BAG_EVENT)); } // item-tooltips.js re-reads its open card
     if (hotEls.length) paintHotbar(slots, sigs, selected);
     paintTracker(bag, all);
     if (isOpen && !dragging && (force || all !== lastSig)) {
@@ -1117,6 +1150,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     if (trackEl) trackEl.hidden = true;
     buildRecipes();
+    gateSig = gateSignature(); gateAt = performance.now() + GATE_POLL_MS;
     invalidate();
     invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });
@@ -1293,7 +1327,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       const n = arrowNeighbor(rects, +slot.dataset.index, e.code);
       if (n >= 0) next = invEls[n];
     } else if (rec && (e.code === 'ArrowDown' || e.code === 'ArrowUp')) {
-      const vis = recipeEls.map(v => v.el).filter(el => !el.hidden), i = vis.indexOf(rec);
+      // Locked (gated) rows are skipped: arrows walk the recipes you can work towards.
+      const vis = recipeEls.filter(v => !v.el.hidden && (v.state !== 'gated' || v.el === rec)).map(v => v.el), i = vis.indexOf(rec);
       next = vis[i + (e.code === 'ArrowDown' ? 1 : -1)] || null;
     }
     if (!next) return;

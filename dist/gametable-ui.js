@@ -4,7 +4,7 @@
 import { iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { rcSq, SIDE_NAMES } from './gametable-core.js?build=v3-survival-ae77fa84ac2b';
 
-const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
+const FONT = "var(--ui-font,'Segoe UI',system-ui,sans-serif)"; // same stack as the inventory (survival-ui.js)
 const FILES = 'abcdefgh';
 const CELL_NAMES = ['top left', 'top', 'top right', 'left', 'centre', 'right', 'bottom left', 'bottom', 'bottom right'];
 const PIECE = { a: 'shell', A: 'shell king', b: 'pebble', B: 'pebble king', x: 'knot', o: 'hoop' };
