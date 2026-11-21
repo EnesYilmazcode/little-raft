@@ -6,17 +6,17 @@ export const normalStrength = 3;
 
 export default function generate(S, N) {
   const n = S * S, albedo = new Float32Array(n * 3), height = new Float32Array(n), rough = new Float32Array(n);
-  const RIP = 6; // whole ripples across v
+  const RIP = 5; // whole ripples across v
   for (let y = 0; y < S; y++) {
     const v = y / S;
     for (let x = 0; x < S; x++) {
       const u = x / S, i = y * S + x;
       // periodic warp bends the ripple crests; integer u coefficient adds a slight diagonal
       const w = N.fbm(u * 3, v * 3, 3, 3, 3, 11) - 0.5, w2 = N.vnoise(u * 2, v * 2, 2, 2, 5) - 0.5;
-      let ph = RIP * v + u + 1.6 * w + 0.6 * w2; ph -= Math.floor(ph);
+      let ph = RIP * v + u + 2.2 * w + 0.8 * w2; ph -= Math.floor(ph);
       // asymmetric profile: long windward slope (0..0.72), short steep lee face
       const r = ph < 0.72 ? N.smooth(0, 0.72, ph) : 1 - N.smooth(0.72, 1, ph);
-      const amp = 0.55 + 0.45 * N.fbm(u * 2, v * 2, 2, 2, 2, 21); // ripples fade in and out
+      const amp = 0.4 + 0.6 * N.smooth(0.3, 0.7, N.fbm(u * 3, v * 3, 3, 3, 2, 21)); // ripples fade in and out
       const trough = (1 - r) * amp;
       // grain: per-pixel hash plus a 2px clump noise
       const g = N.hash2(x, y, 7), g2 = N.hash2(x, y, 8), clump = N.vnoise(u * 56, v * 56, 56, 56, 3);
