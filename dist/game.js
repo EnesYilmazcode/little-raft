@@ -69,7 +69,7 @@ export function mount(transfer = null) {
   let seed = 20240917; const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 
   // ---------- Bags ----------
-  const snapBag = s => { if (!s || typeof s !== 'object') return null; try { return new Bag(s); } catch { return null; } };
+  const snapBag = s => { if (!s || typeof s !== 'object') return null; try { return new Bag(s); } catch { return Bag.salvage(s); } }; // one bad slot never wipes a bag
   const validSnapshot = s => snapBag(s)?.snapshot() ?? null;
   const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
@@ -599,6 +599,7 @@ export function mount(transfer = null) {
     if (!isInt(i) || i < 0 || i >= HOTBAR) return;
     const bag = localBag(); if (bag.selectedIndex === i) return;
     charging = null; hover = null;
+    if (hook) { hook.cancel?.(); fishWait = 0; endHook(); } // switching away retracts the hook / rod; its catch stays in the sea
     if (role === 'guest') { if (!networkReady) return; bag.select(i); action({kind:'selectSlot', index:i}); }
     else action({kind:'selectSlot', index:i});
   }
@@ -657,7 +658,7 @@ export function mount(transfer = null) {
     if (slot?.kind !== 'hook') return;
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
-    hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge});
+    hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deck:deckAt});
     castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; beep(230);
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
@@ -694,6 +695,7 @@ export function mount(transfer = null) {
   // ---------- Frame ----------
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3();
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
+  const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() + .06 : null);
   function surfaceY(x, z, y) {
     const k = clamp((y - WATER_Y) / .6, 0, 1), w = ocean.getHeight(x, z) + .04 + (y - WATER_Y);
     return w + (y - w) * k;
@@ -780,7 +782,7 @@ export function mount(transfer = null) {
       return;
     }
     const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it)), reeling, time:elapsed});
-    const hp = hook.position, pos = new T.Vector3(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
+    const hp = hook.position, pos = new T.Vector3(hp.x, hook.onDeck ? hp.y : surfaceY(hp.x, hp.z, hp.y), hp.z);
     hookMesh.visible = true; hookMesh.position.copy(pos);
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
     else if (hook.stage === 'reeling') hookMesh.rotation.set(-.6, yaw, 0);
