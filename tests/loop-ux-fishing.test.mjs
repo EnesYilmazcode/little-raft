@@ -85,3 +85,17 @@ test('D2: E runs the water action (purifier / planter) before the grill, matchin
   const a = order(act, ['pickupFrom(currentAim());\n', 'wateringTarget(currentAim())', 'content?.interact', 'fc?.interact()', 'prog?.interact']);
   assert.deepEqual([...a].sort((x, y) => x - y), a, 'interact() must try water right after pick-up, before content and the grill');
 });
+
+test('D3: gamepad RT drives the fishing-cooking rod (species catch) before the legacy use/charge path', () => {
+  const down = gameSrc.match(/useDown:\(\) => \{(.*)/)[1];
+  assert.match(down, /^\s*if \(fc\?\.pointerDown\(\)\) return;/, 'fc.pointerDown is tried first');
+  const up = gameSrc.match(/useUp:\(\) => \{(.*)/)[1];
+  const i = up.indexOf('fc?.pointerUp()');
+  assert.ok(i >= 0 && i < up.indexOf('releaseCharge'), 'fc.pointerUp before releaseCharge');
+  // the lane takes that press/release pair as a full cast
+  const h = mount();
+  assert.equal(h.api.pointerDown(), true);
+  h.step(0.3);
+  assert.equal(h.api.pointerUp(), true);
+  assert.equal(h.debug.session.stage, 'flying');
+});
