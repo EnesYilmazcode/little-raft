@@ -110,8 +110,8 @@ const key = (phase, ...colors) => ({ phase, c: new Float32Array(colors.flatMap(h
 export const PALETTE_KEYS = Object.freeze([
   //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
   key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#f6d3c2'), // sunrise peach
-  key(0.13, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'), // day sage
-  key(0.54, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'),
+  key(0.13, '#cbd2c0', '#2a8fd6', '#08355f', '#1a78b0', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'), // day sage
+  key(0.54, '#cbd2c0', '#2a8fd6', '#08355f', '#1a78b0', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'),
   key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#f2b8aa'), // dusk coral
   key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#3a4c66', '#8e88b2'), // blue hour
   key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#2f4762', '#5e6f98'), // cosy blue night
@@ -457,7 +457,7 @@ export function createDayNight(ctx) {
     const u = ctx.ocean?.uniforms;
     if (u) {
       u.uSky?.value.copy(cHorizon); u.uZenith?.value.copy(cZenith); u.uDeep?.value.copy(cDeep); u.uShallow?.value.copy(cShallow);
-      if (u.uFadeFar && scene?.fog) u.uFadeFar.value = scene.fog.far;
+      if (u.uFadeFar && scene?.fog) u.uFadeFar.value = scene.fog.far * 1.52; // water keeps its colour further out than the fog
       u.uSunDir?.value.copy(vDir);
       if (u.uSunColor) {
         const spec = (up ? smooth(-0.02, 0.15, L.sunHeight) : 0.18 * smooth(-0.02, 0.2, -L.sunHeight)) * (1 - 0.7 * wet);
