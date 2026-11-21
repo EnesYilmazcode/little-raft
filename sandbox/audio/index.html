@@ -28,7 +28,7 @@
 <body>
 <main>
   <h1>Raft audio lab</h1>
-  <p>Procedural, file-free: AudioWorklet ocean (swell, wash, slaps, wind, creaks), node-graph SFX, PannerNode spatial voices, ambience/sfx/ui buses with ducking. Click <b>Start audio</b> first.</p>
+  <p>Procedural, file-free: AudioWorklet ocean (swell, wash, slaps, wind, creaks), node-graph SFX, PannerNode spatial voices, head-shadow crossfeed and distance air absorption, an open-air early-reflection send, ambience/sfx/ui buses with ducking. Click <b>Start audio</b> first.</p>
 
   <section>
     <h2>Engine</h2>
@@ -36,6 +36,8 @@
       <button id="start">Start audio</button>
       <button id="amb" class="on">Ambience on</button>
       <button id="reel">Hold to reel</button>
+      <button id="jolt">Raft jolt (creak)</button>
+      <button id="air" class="on">Air reverb on</button>
     </div>
     <div style="margin-top:10px">
       <label>volume <input type="range" id="volume" min="0" max="1" step="0.01" value="0.5"></label>
@@ -80,14 +82,19 @@
 import { createOceanAudio, EVENTS } from './audio.js';
 import { CASES, renderCase, drawReport, wavBase64, scheduleCost, analyse } from './render-lab.js';
 
-let audio = null, ambience = true;
+let audio = null, ambience = true, reverb = true;
 const $ = (s) => document.querySelector(s);
-const make = () => createOceanAudio({ context: audio?.context ?? null, volume: +$('#volume').value, ambience });
+const make = () => createOceanAudio({ context: audio?.context ?? null, volume: +$('#volume').value, ambience, reverb });
 
 $('#start').onclick = async () => { audio ??= make(); const ok = await audio.resume(); $('#start').textContent = ok ? 'Running' : 'Failed'; };
 $('#amb').onclick = async () => {
   ambience = !ambience; $('#amb').classList.toggle('on', ambience); $('#amb').textContent = ambience ? 'Ambience on' : 'Ambience off';
   if (audio) { audio.destroy(); audio = make(); await audio.resume(); }   // also exercises the hot-swap path
+};
+$('#jolt').onclick = () => audio?.creak(+$('#strength').value);
+$('#air').onclick = async () => {
+  reverb = !reverb; $('#air').classList.toggle('on', reverb); $('#air').textContent = reverb ? 'Air reverb on' : 'Air reverb off';
+  if (audio) { audio.destroy(); audio = make(); await audio.resume(); }
 };
 $('#volume').oninput = (e) => audio?.setVolume(+e.target.value);
 for (const el of document.querySelectorAll('[data-ocean]')) el.oninput = () => audio?.setOcean({ [el.dataset.ocean]: +el.value });

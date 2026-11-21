@@ -14,11 +14,14 @@
 //   setReel(on, speed=.5, pos?)    looping ratchet + line hiss while reeling
 //   setBus(name, v)                'ambience' | 'sfx' | 'ui' gain 0..1
 //   duck(amount, hold)             dip ambience (play() does this for big events)
+//   creak(force=.7)                one raft creak now (wave hit, landing on the deck)
 //   stats()                        {voices, worklet, nodes, state}
 // opts for play(): {x,y,z} spatialises through a PannerNode; {at} absolute ctx time (offline renders).
 //
-// Graph: voices -> [panner] -> sfx/ui bus ─┐
-//        ocean worklet (or node fallback) -> ambience bus -> duck ─┴> mix -> master(volume) -> limiter -> out
+// Graph: voices -> [air lp -> panner -> crossfeed] -> sfx bus ─┬────────────────┐
+//                                       sfx bus ─> air send -> convolver ───────┤
+//        UI voices -> ui bus ──────────────────────────────────────────────────┤
+//        ocean worklet (or node fallback) -> ambience bus -> duck ─────────────┴> mix -> master(volume) -> limiter -> out
 // No DOM timers: one-shot cleanup and the gull scheduler both run off AudioScheduledSourceNode 'ended'.
 
 export const EVENTS = Object.freeze([
@@ -29,6 +32,10 @@ export const EVENTS = Object.freeze([
 ]);
 
 const OUTPUT_SCALE = 0.8;
+// Ambience sits ~3 dB under unity so one-shots read 6-10 dB above it (momentary loudness, render-lab
+// loudMax): calm sea about -30, hammer -25, catch -18. Applied in the ambience fade-in, so setBus('ambience')
+// stays a plain 0..1 user control.
+const AMB_LEVEL = 0.7;
 const MAX_VOICES = 24;
 const SILENT = 0.0001;
 const MIN_GAP = {
@@ -50,7 +57,7 @@ const workletDefault = (() => {
 
 export function createOceanAudio({
   context = null, volume = 0.5, ambience = true, worklet = true, workletUrl = workletDefault,
-  hrtf = false, gulls = true,
+  hrtf = false, gulls = true, reverb = true, seed = null,
 } = {}) {
   let ctx = context && typeof context.createGain === 'function' ? context : null;
   let vol = clamp01(volume, 0.5);
@@ -114,8 +121,62 @@ export function createOceanAudio({
         white: makeNoise(2, 'white'), pink: makeNoise(3, 'pink'), brown: makeNoise(6, 'brown'),
       };
       nodeCount += 9;
+      graph.spatial = buildCrossfeed(sfxBus);
+      if (reverb) buildAir(sfxBus, mix);
       return true;
     } catch (_) { graph = null; return false; }
+  }
+
+  // Spatial voices pass one shared crossfeed before the sfx bus. An equal-power PannerNode puts a
+  // 90-degree source entirely in one ear; this feeds each ear a delayed (0.3 ms), low-passed (1.1 kHz),
+  // -8 dB copy of the other, the way a head shadows sound. Far ear: silent -> about -9 dB and dull.
+  // 8 nodes for the whole engine, not per voice.
+  function buildCrossfeed(dest) {
+    const split = ctx.createChannelSplitter(2), merge = ctx.createChannelMerger(2), out = ctx.createGain();
+    const inp = ctx.createGain();
+    inp.channelCount = 2; inp.channelCountMode = 'explicit'; inp.channelInterpretation = 'speakers';
+    out.gain.value = 0.85;                               // centred sources gain ~+1.5 dB at low frequency
+    inp.connect(split);
+    split.connect(merge, 0, 0); split.connect(merge, 1, 1);
+    for (const [from, to] of [[0, 1], [1, 0]]) {
+      const d = ctx.createDelay(0.01); d.delayTime.value = 0.0003;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100; lp.Q.value = 0.5;
+      const k = ctx.createGain(); k.gain.value = 0.4;
+      split.connect(d, from); d.connect(lp); lp.connect(k); k.connect(merge, 0, to);
+      graph.xf = (graph.xf || []).concat(d, lp, k);
+    }
+    merge.connect(out); out.connect(dest);
+    graph.xf.push(inp, split, merge, out);
+    nodeCount += 10;
+    return inp;
+  }
+
+  // Open-sea "air": no walls, so no room reverb, only a few early reflections (deck planks ~3-5 ms,
+  // the water surface ~9-12 ms, barrels/mast/sail 17-40 ms) and a short, dark, diffuse 0.3 s tail.
+  // One ConvolverNode fed by a send from the sfx bus (UI and ambience stay dry).
+  function buildAir(src, dest) {
+    const sr = ctx.sampleRate, len = Math.floor(sr * 0.32), ir = ctx.createBuffer(2, len, sr);
+    const taps = [[0.0032, 0.55, 0.35], [0.0047, 0.4, 0.6], [0.0094, 0.5, 0.45], [0.0118, 0.35, 0.5],
+      [0.0171, 0.22, 0.3], [0.0236, 0.2, 0.25], [0.0312, 0.14, 0.18], [0.0395, 0.12, 0.1]];  // [s, L, R]
+    for (let c = 0; c < 2; c++) {
+      const d = ir.getChannelData(c);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        const t = i / sr, build = Math.min(1, t / 0.012);
+        const k = 0.65 - 0.5 * Math.min(1, t / 0.25);                 // one-pole coefficient: tail darkens as it decays
+        lp += k * ((Math.random() * 2 - 1) - lp);
+        d[i] = lp * 0.12 * build * Math.exp(-6.9 * t / 0.3);          // -60 dB at 0.3 s
+      }
+      for (const tap of taps) { const i = Math.floor(tap[0] * sr * (c ? 1.07 : 1)); if (i < len) d[i] += tap[1 + c]; }
+      const f = Math.min(len, Math.floor(sr * 0.004));                 // fade the tail end to exactly 0
+      for (let i = 0; i < f; i++) d[len - 1 - i] *= i / f;
+    }
+    const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = ir;
+    const send = ctx.createGain(); send.gain.value = 0.16;            // about -16 dB wet
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 220; hp.Q.value = 0.6;  // keep lows dry
+    src.connect(send); send.connect(hp); hp.connect(conv); conv.connect(dest);
+    graph.air = [send, hp, conv];
+    nodeCount += 3;
   }
 
   // ---- ambience -------------------------------------------------------------
@@ -128,10 +189,10 @@ export function createOceanAudio({
           if (destroyed || !graph) return;
           const node = new AudioWorkletNode(ctx, 'raft-ocean', {
             numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
-            processorOptions: { seed: (Math.random() * 2 ** 31) | 0 },
+            processorOptions: { seed: Number.isFinite(seed) ? seed | 0 : (Math.random() * 2 ** 31) | 0 },
           });
           const fade = ctx.createGain(); fade.gain.setValueAtTime(0, ctx.currentTime);
-          fade.gain.linearRampToValueAtTime(1, ctx.currentTime + 2.5);    // fade in, no pop
+          fade.gain.linearRampToValueAtTime(AMB_LEVEL, ctx.currentTime + 2.5);    // fade in, no pop
           node.connect(fade); fade.connect(graph.ambBus);
           amb = { kind: 'worklet', node, sources: [], nodes: [node, fade], params: node.parameters };
           nodeCount += 2;
@@ -149,7 +210,7 @@ export function createOceanAudio({
     try {
       const t = ctx.currentTime, nodes = [], sources = [];
       const mk = (n) => { nodes.push(n); return n; };
-      const fade = mk(ctx.createGain()); fade.gain.setValueAtTime(0, t); fade.gain.linearRampToValueAtTime(1, t + 2.5);
+      const fade = mk(ctx.createGain()); fade.gain.setValueAtTime(0, t); fade.gain.linearRampToValueAtTime(AMB_LEVEL, t + 2.5);
       fade.connect(graph.ambBus);
       const loop = (buf, dest) => { const s = mk(ctx.createBufferSource()); s.buffer = buf; s.loop = true; s.connect(dest); s.start(t, Math.random() * buf.duration); sources.push(s); };
       const lfo = (hz, depth, param) => { const o = mk(ctx.createOscillator()); o.frequency.value = hz; const d = mk(ctx.createGain()); d.gain.value = depth; o.connect(d); d.connect(param); o.start(t); sources.push(o); };
@@ -228,14 +289,22 @@ export function createOceanAudio({
       } else { L.setPosition(x, y, z); L.setOrientation(fx, fy, fz, 0, 1, 0); }
     } catch (_) {}
   }
+  // returns the node a voice connects into: [air low-pass] -> PannerNode -> crossfeed -> sfx bus
   function panner(v, pos, dest, ref = 2) {
     const p = track(v, ctx.createPanner());
     p.panningModel = hrtf ? 'HRTF' : 'equalpower';
     p.distanceModel = 'inverse'; p.refDistance = ref; p.rolloffFactor = 1; p.maxDistance = 80;
-    if (p.positionX) { p.positionX.value = pos.x; p.positionY.value = pos.y ?? listener.y; p.positionZ.value = pos.z; }
-    else p.setPosition(pos.x, pos.y ?? listener.y, pos.z);
+    const y = pos.y ?? listener.y;
+    if (p.positionX) { p.positionX.value = pos.x; p.positionY.value = y; p.positionZ.value = pos.z; }
+    else p.setPosition(pos.x, y, pos.z);
     p.connect(dest);
-    return p;
+    // air absorption (exaggerated for readability): ~10 kHz at 6 m, ~4 kHz at 30 m
+    const d = Math.hypot(pos.x - listener.x, y - listener.y, pos.z - listener.z);
+    if (!(d > 4)) return p;
+    const lp = track(v, ctx.createBiquadFilter());
+    lp.type = 'lowpass'; lp.Q.value = 0.5; lp.frequency.value = Math.max(2000, 16000 / (1 + d / 10));
+    lp.connect(p);
+    return lp;
   }
 
   // ---- voice helpers ----------------------------------------------------------
@@ -324,22 +393,59 @@ export function createOceanAudio({
     const pg = gain(v, v.out);
     osc(v, 'sine', rand(3100, 3500), t, env(pg, t, 0.0005, 0.05 * s, 0.09) - t, pg);
   }
-  function gullCall(v, t, s, f0, len) {
-    // nasal "kyow": sawtooth through a formant, fast up-glide then a slow fall, rough FM
+  // Gull: one voice = one oscillator for the whole call series (calls never overlap), so the cost is
+  // ~14 nodes however many calls. Nasal source (weak fundamental, strong 2nd-4th harmonics) into two
+  // formants that track the pitch a little, an irregular pitch wobble from low-passed noise (not a
+  // periodic FM sine, which reads as a toy whistle), and a breathy noise layer on the same envelope.
+  function gullWave() {
+    if (graph.gullWave) return graph.gullWave;
+    const amp = [0, 0.3, 1, 0.85, 0.6, 0.42, 0.26, 0.16, 0.1, 0.06, 0.035, 0.02];
+    const re = new Float32Array(amp.length), im = Float32Array.from(amp);
+    try { graph.gullWave = ctx.createPeriodicWave(re, im); } catch (_) { graph.gullWave = null; }
+    return graph.gullWave;
+  }
+  // series: [[start, len, f0, amp, shape], ...]; shape: 'kyow' (rise then long fall), 'ha' (short, flat-ish), 'mew' (slow fall)
+  function gullSeries(v, t, series) {
+    const end = series.reduce((m, c) => Math.max(m, c[0] + c[1]), 0) + 0.03;
     const g = gain(v, v.out);
-    const lp = filter(v, 'lowpass', 4200, 0.7, g);
-    const bp = filter(v, 'bandpass', 2300, 2.5, lp);
-    const o = osc(v, 'sawtooth', f0, t, len + 0.02, bp);
-    o.frequency.setValueAtTime(f0 * 0.8, t);
-    o.frequency.exponentialRampToValueAtTime(f0 * 1.25, t + len * 0.18);
-    o.frequency.exponentialRampToValueAtTime(f0 * 0.72, t + len);
-    const fmg = gain(v, o.frequency); fmg.gain.value = f0 * 0.05;   // roughness
-    osc(v, 'sine', rand(38, 55), t, len + 0.02, fmg);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.5 * s, t + 0.025);
-    g.gain.setValueAtTime(0.5 * s, t + len * 0.35);
-    g.gain.exponentialRampToValueAtTime(SILENT, t + len);
-    g.gain.linearRampToValueAtTime(0, t + len + 0.01);
+    const hi = filter(v, 'lowpass', 5200, 0.6, g);
+    const f1g = track(v, ctx.createGain()); f1g.gain.value = 1; f1g.connect(hi);
+    const f2g = track(v, ctx.createGain()); f2g.gain.value = 0.55; f2g.connect(hi);
+    const F1 = filter(v, 'bandpass', 1700, 3, f1g), F2 = filter(v, 'bandpass', 3100, 4, f2g);
+    const o = track(v, ctx.createOscillator());
+    const wave = gullWave(); if (wave) o.setPeriodicWave(wave); else o.type = 'sawtooth';
+    o.connect(F1); o.connect(F2);
+    startSource(v, o, t, t + end);
+    // pitch wobble: brown noise -> 18 Hz low-pass -> a few % of f0 into the frequency (irregular, not periodic)
+    const jit = track(v, ctx.createGain());
+    jit.connect(o.frequency);
+    noise(v, t, end, filter(v, 'lowpass', 18, 0.7, jit), graph.brown);
+    // breath: band-passed noise riding a quieter copy of the amplitude envelope
+    const bg = gain(v, hi);
+    noise(v, t, end, filter(v, 'bandpass', 2600, 0.9, bg), graph.white);
+    const F = o.frequency;
+    for (const [dt, len, f0, a, shape] of series) {
+      const c = t + dt, peak = Math.max(SILENT, a);
+      const rise = shape === 'kyow' ? rand(0.14, 0.24) : shape === 'ha' ? rand(0.3, 0.45) : rand(0.06, 0.12);
+      const top = shape === 'mew' ? rand(1.04, 1.1) : rand(1.12, 1.25), fall = shape === 'ha' ? rand(0.85, 0.95) : rand(0.62, 0.75);
+      F.setValueAtTime(f0 * (shape === 'ha' ? 0.92 : rand(0.72, 0.82)), c);
+      F.exponentialRampToValueAtTime(f0 * top, c + len * rise);
+      F.exponentialRampToValueAtTime(f0 * fall, c + len);
+      jit.gain.setValueAtTime(f0 * 0.1, c);                              // low-passed brown noise rms is ~0.3
+      for (const [fl, base] of [[F1, 1700], [F2, 3100]]) {              // formants follow pitch at 40 %
+        fl.frequency.setValueAtTime(base * (0.6 + 0.4 * f0 / 880) * 0.95, c);
+        fl.frequency.linearRampToValueAtTime(base * (0.6 + 0.4 * f0 * top / 880), c + len * rise);
+        fl.frequency.linearRampToValueAtTime(base * (0.6 + 0.4 * f0 * fall / 880) * 0.97, c + len);
+      }
+      const att = Math.min(0.03, len * 0.2);
+      for (const [p, k] of [[g.gain, 1], [bg.gain, 0.09]]) {
+        p.setValueAtTime(0, c);
+        p.linearRampToValueAtTime(peak * k, c + att);
+        p.linearRampToValueAtTime(peak * k * rand(0.8, 1), c + len * 0.45);
+        p.exponentialRampToValueAtTime(SILENT, c + len);
+        p.linearRampToValueAtTime(0, c + len + 0.008);
+      }
+    }
   }
 
   const recipes = {
@@ -391,7 +497,8 @@ export function createOceanAudio({
       modes(v, t, v.out, [[rand(2200, 2600), 0.05 * s, 0.02]]);
     },
     catch(v, t, s) {
-      // pulled out of the water: upward "shloop", drips, then a bright little two-note pluck
+      // pulled out of the water: upward "shloop", drips, then a bright rising pluck arpeggio
+      // (root, fifth, octave chime): the most rewarding sound in the game, so also the loudest
       const g = gain(v, v.out);
       const bp = filter(v, 'bandpass', 400, 2, g);
       bp.frequency.setValueAtTime(320, t);
@@ -404,12 +511,16 @@ export function createOceanAudio({
       for (let i = 0; i < 4; i++) bubble(v, t + 0.12 + i * rand(0.05, 0.09), rand(1100, 2000), 0.05 * s, 0.04, v.out);
       const lp = filter(v, 'lowpass', 3500, 0.5, v.out);
       const base = rand(620, 660);
-      [[0.16, 1, 0.28], [0.25, 1.5, 0.4]].forEach(([dt, r, a]) => {
+      [[0.16, 1, 0.3], [0.25, 1.5, 0.42]].forEach(([dt, r, a]) => {
         const tg = t + dt, pg = gain(v, lp);
         osc(v, 'triangle', base * r, tg, env(pg, tg, 0.003, a * s, 0.35) - tg, pg);
         const hg = gain(v, lp);
         osc(v, 'sine', base * r * 2, tg, env(hg, tg, 0.002, a * 0.25 * s, 0.12) - tg, hg);
       });
+      const ct = t + 0.34, cg = gain(v, v.out);                        // octave chime with a slow shimmer
+      osc(v, 'sine', base * 2, ct, env(cg, ct, 0.002, 0.2 * s, 0.6) - ct, cg);
+      const sg = gain(v, v.out);
+      osc(v, 'sine', base * 4.01, ct, env(sg, ct, 0.001, 0.05 * s, 0.25) - ct, sg);
     },
     pickup(v, t, s) {
       // grab: soft cloth/wood rustle + a quick rising pop
@@ -500,13 +611,28 @@ export function createOceanAudio({
       }
     },
     gull(v, t, s) {
-      const n = 2 + Math.floor(Math.random() * 3), f0 = rand(1050, 1350);
-      let tt = t;
-      for (let i = 0; i < n; i++) {
-        const len = i === 0 ? rand(0.32, 0.42) : rand(0.18, 0.26);
-        gullCall(v, tt, s * (i === 0 ? 1 : rand(0.6, 0.85)), f0 * (i === 0 ? 1 : rand(1.02, 1.12)), len);
-        tt += len + rand(0.06, 0.12);
+      // irregular call patterns, never the same twice: a long call ("kyow" then a falling run of "ha"s),
+      // one or two plaintive "mew"s, or a couple of clipped "kek"s
+      s *= 0.55;                          // a gull 10 m away must not outshout a catch (~-21 vs -17 LUFS momentary)
+      const f0 = rand(780, 980), r = Math.random(), series = [];
+      let tt = 0;
+      if (r < 0.45) {
+        const l0 = rand(0.34, 0.46); series.push([0, l0, f0, 0.5 * s, 'kyow']); tt = l0 + rand(0.1, 0.22);
+        const n = 3 + Math.floor(Math.random() * 4); let f = f0 * rand(1.02, 1.1), a = 0.42 * s;
+        for (let i = 0; i < n; i++) {
+          const len = rand(0.11, 0.2) * (1 - i * 0.05);
+          series.push([tt, len, f, a, 'ha']);
+          tt += len + rand(0.05, 0.16) + (Math.random() < 0.2 ? rand(0.1, 0.25) : 0);   // the odd hesitation
+          f *= rand(0.95, 1.01); a *= rand(0.78, 0.95);
+        }
+      } else if (r < 0.75) {
+        const n = 1 + (Math.random() < 0.5 ? 1 : 0);
+        for (let i = 0; i < n; i++) { const len = rand(0.45, 0.7); series.push([tt, len, f0 * rand(0.97, 1.08), (i ? 0.33 : 0.42) * s, 'mew']); tt += len + rand(0.25, 0.5); }
+      } else {
+        const n = 2 + (Math.random() < 0.4 ? 1 : 0);
+        for (let i = 0; i < n; i++) { const len = rand(0.08, 0.13); series.push([tt, len, f0 * rand(1.08, 1.2), 0.38 * s * (i ? rand(0.7, 0.9) : 1), 'ha']); tt += len + rand(0.06, 0.12); }
       }
+      gullSeries(v, t, series);
     },
     ui(v, t, s) {
       click(v, t, 0.12 * s, 3000, v.out, 0.01);
@@ -521,7 +647,7 @@ export function createOceanAudio({
       const lp = filter(v, 'lowpass', 1800, 0.5, v.out);
       [[0, 330], [0.11, 247]].forEach(([dt, f]) => {
         const g = gain(v, lp);
-        osc(v, 'triangle', f, t + dt, env(g, t + dt, 0.004, 0.22 * s, 0.16) - t - dt, g);
+        osc(v, 'triangle', f, t + dt, env(g, t + dt, 0.004, 0.12 * s, 0.16) - t - dt, g);   // UI: tell, don't scold
       });
     },
   };
@@ -536,7 +662,7 @@ export function createOceanAudio({
         const mk = (n) => { nodes.push(n); nodeCount++; return n; };
         const out = mk(ctx.createGain()); out.gain.setValueAtTime(0, t);
         let dest = graph.sfxBus;
-        if (pos && Number.isFinite(pos.x)) { const fake = { nodes, sources: [] }; dest = panner(fake, pos, dest); }
+        if (pos && Number.isFinite(pos.x)) { const fake = { nodes, sources: [] }; dest = panner(fake, pos, graph.spatial); }
         out.connect(dest);
         // ratchet: band-limited square edges -> high-pass -> resonant band = clicky pawl
         const sq = mk(ctx.createOscillator()); sq.type = 'square'; sq.frequency.value = 7 + sp * 18;
@@ -638,7 +764,7 @@ export function createOceanAudio({
       if (opts && Number.isFinite(opts.x) && Number.isFinite(opts.z)) {
         // re-route: voice bus -> panner -> sfx bus
         v.bus.disconnect();
-        v.bus.connect(panner(v, opts, graph.sfxBus, REF_DISTANCE[event] ?? 2));
+        v.bus.connect(panner(v, opts, graph.spatial, REF_DISTANCE[event] ?? 2));
       }
       voices.add(v);
       try { recipe(v, now + 0.005, s); }
@@ -664,10 +790,18 @@ export function createOceanAudio({
     stopAmbience();
     if (graph) {
       for (const k of ['ambBus', 'ambDuck', 'sfxBus', 'uiBus', 'mix', 'tone', 'master', 'limiter']) { try { graph[k].disconnect(); } catch (_) {} }
+      for (const n of [...(graph.xf || []), ...(graph.air || [])]) { try { n.disconnect(); } catch (_) {} }
       graph = null;
     }
     // The AudioContext (supplied or lazily created) is intentionally left open so a
     // hot-updated module can reuse it via `instance.context`.
+  }
+
+  // the raft was jolted (wave hit, someone landed on it): one creak from the ambience, pitched by force
+  function creak(force = 0.7) {
+    const f = clamp01(force, 0.7);
+    if (amb?.node) { try { amb.node.port.postMessage({ type: 'creak', force: f }); return true; } catch (_) { return false; } }
+    return play('creak', 0.4 + 0.5 * f);
   }
 
   function stats() {
@@ -677,7 +811,7 @@ export function createOceanAudio({
   return {
     get context() { return ctx; },
     resume, setVolume, play, destroy,
-    setListener, setOcean, setReel, setBus, duck, stats,
+    setListener, setOcean, setReel, setBus, duck, creak, stats,
   };
 }
 

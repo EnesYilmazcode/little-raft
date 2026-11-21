@@ -80,7 +80,7 @@ class RaftOcean extends AudioWorkletProcessor {
     const sr = sampleRate;
     v.on = true; v.age = 0; v.next = 0;
     v.dur = this.r(0.3, 0.8) * (0.7 + force * 0.5);
-    v.amp = 0.5 * force;
+    v.amp = 0.75 * force;
     v.rate = 25 + force * 45;           // stick-slip pulses per second at start
     v.rise = this.r(1.5, 2.6);          // rate multiplier at 60% of the creak
     [v.l, v.r] = this.pan(this.r(-0.7, 0.7));
@@ -110,7 +110,8 @@ class RaftOcean extends AudioWorkletProcessor {
     // trough -> a few slaps on the logs
     if (crossed(0.72)) { this.slapN = 1 + ((this.rnd() * 0.5 + 0.5) * (1 + 3 * swell)) | 0; this.slapAt = 0; }
     // steepest tilt -> maybe creak
-    if ((crossed(0.0) || crossed(0.5)) && this.r(0, 1) < creakAmt * (0.35 + 0.65 * swell)) this.spawnCreak(this.r(0.4, 1) * (0.5 + 0.5 * swell));
+    // (calm seas still creak now and then: the raft is loose logs, not a hull)
+    if ((crossed(0.0) || crossed(0.5)) && this.r(0, 1) < creakAmt * (0.55 + 0.45 * swell)) this.spawnCreak(this.r(0.5, 1) * (0.7 + 0.3 * swell));
 
     // gusts: random-walk target every 1-3 s, smoothed
     this.gustNext -= bt;
@@ -180,7 +181,8 @@ class RaftOcean extends AudioWorkletProcessor {
           x = 60;                        // narrow resonators: a unit impulse is ~-50 dB
         }
         const env = Math.min(1, p / 0.08, (1 - p) / 0.25);
-        const y = (v.a.bp(x) * 1.0 + v.b.bp(x) * 0.6 + v.c.bp(x) * 0.35) * v.amp * env;
+        // upper modes weighted up: 290 Hz sits inside the bed, 640 Hz / 1.2 kHz are what cut through it
+        const y = (v.a.bp(x) * 0.8 + v.b.bp(x) * 0.85 + v.c.bp(x) * 0.55) * v.amp * env;
         yl += y * v.l; yr += y * v.r;
       }
 
