@@ -354,6 +354,18 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M35 18 L39 14.5 M35 30 L39 26.5" stroke="${O}" stroke-width="1.2" stroke-opacity=".5" stroke-linecap="round"/>
     <g fill="#fff2cc"><circle cx="8" cy="19" r=".9"/><circle cx="30" cy="19" r=".9"/><circle cx="8" cy="40" r=".9"/><circle cx="30" cy="40" r=".9"/></g>`,
 
+  // story (mast.js): vine goo (a jar of green paste) and a circuit board
+  vinegoo: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M13 16 H35 V39 C35 42 33 44 30 44 H18 C15 44 13 42 13 39 Z" fill="#cfe6d8"/>
+    <path d="M14 26 C19 23 23 29 28 25 C31 23 33 24 34 25 V39 C34 41 32 43 30 43 H18 C16 43 14 41 14 39 Z" fill="#6fae4a" stroke="none"/>
+    <rect x="11" y="9" width="26" height="7" rx="2" fill="#8a6a48"/>
+    <path d="M20 32 C21 30 23 31 22 33 M27 36 C28 34 30 35 29 37" fill="none" stroke="#3f7a2e" stroke-width="1.6"/></g>`,
+  circuitboard: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="6" y="10" width="36" height="28" rx="3" fill="#3f9a6a"/>
+    <path d="M12 18 H22 V24 H30 M12 30 H18 V34 M34 16 V24 M26 32 H36" fill="none" stroke="#e0a15a" stroke-width="1.8"/>
+    <rect x="20" y="26" width="9" height="8" rx="1" fill="#2b2b2b"/>
+    <g fill="#f2d27a" stroke-width="1.2"><circle cx="12" cy="18" r="1.6"/><circle cx="30" cy="24" r="1.6"/><circle cx="34" cy="16" r="1.6"/><circle cx="36" cy="32" r="1.6"/><circle cx="18" cy="34" r="1.6"/></g></g>`,
+
   // [power] wind turbine, battery, string lights, lamp post
   turbine: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M22 44 L23 17 H25 L26 44 Z" fill="#b9c2c9"/>

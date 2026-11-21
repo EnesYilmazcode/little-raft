@@ -39,6 +39,7 @@ const CATEGORY_OF = Object.freeze({
   rope: 'materials', nail: 'materials', bolt: 'materials', hinge: 'materials',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
   battery: 'materials', // [power]
+  vinegoo: 'materials', circuitboard: 'materials', // story (mast.js)
   // building: furniture, work stations and raft structure
   bench: 'building', crate: 'building', research: 'building', researchtable: 'building', smelter: 'building', kiln: 'building', bed: 'building',
   armor: 'building', // foundation armor (dist/armor.js)
@@ -94,8 +95,10 @@ export const ITEM_TEXT = Object.freeze({
   paint_pebble:   { desc: 'A pot of pebble grey paint.', use: 'One pot paints one piece with the brush.' },
   clay:       { desc: 'Sticky clay from barrels and the seafloor.', use: 'Fire it into bricks on a grill.' },
   metalore:   { desc: 'A lump of ore from barrels and the seafloor.', use: 'Smelt it into metal ingots.' },
-  receiver:   { desc: 'A crackling radio receiver.', use: 'Place one, add antennas, and follow the signal.' },
-  antenna:    { desc: 'A rope-braced antenna mast.', use: 'Strengthens the receiver signal; place on a tile.' },
+  receiver:   { desc: 'A crackling radio receiver.', use: 'Place one, add antennas and a charged battery, press E to switch it on.' },
+  antenna:    { desc: 'A braced antenna mast.', use: 'Place 3, two tiles from the receiver, to hear far landmarks.' },
+  vinegoo:    { desc: 'Sticky paste cooked from seaweed.', use: 'Glues circuit boards together.' }, // story
+  circuitboard: { desc: 'Copper traces on a plastic card.', use: 'The Receiver and its antennas need these.' }, // story
   cup:        { desc: 'An empty plastic cup.', use: 'Click the sea to scoop water.' },
   saltcup:    { desc: 'A cup of salty sea water.', use: 'Pour it into a water purifier.' },
   freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter.' },
@@ -467,6 +470,7 @@ export const ITEM_SOURCE = Object.freeze({
   brick:       Object.freeze({ tag: 'grill, kiln', how: 'Fire clay on a grill or in a Seaside Kiln.' }),
   metalingot:  Object.freeze({ tag: 'smelter, kiln', how: 'Smelt metal ore in a smelter or a Seaside Kiln.' }),
   copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in a smelter.' }),
+  vinegoo:     Object.freeze({ tag: 'smelter', how: 'Smelt seaweed in a smelter.' }), // story
   glass:       Object.freeze({ tag: 'smelter, kiln', how: 'Melt sand in a smelter or a Seaside Kiln.' }),
   stormshard:  Object.freeze({ tag: 'lightning rod', how: 'Place a Lightning Rod; storms charge it with shards (E to collect).' }),
   saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),

@@ -81,8 +81,8 @@ export const RECIPES = Object.freeze({
   bench:      recipe('bench',      'Bench',        1, { wood: 3 }),
   crate:      recipe('crate',      'Crate',        1, { wood: 4, scrap: 1 }),
   ...CONTENT_RECIPES, // content hook
-  receiver:   recipe('receiver',   'Receiver',     1, { wood: 3, scrap: 4, plastic: 3, rope: 2 }),
-  antenna:    recipe('antenna',    'Antenna',      1, { wood: 2, scrap: 1, rope: 1 }),
+  receiver:   recipe('receiver',   'Receiver',     1, { wood: 8, plastic: 6, circuitboard: 2, hinge: 1 }), // Raft: 8 planks, 6 plastic, 2 circuit boards, 1 hinge
+  antenna:    recipe('antenna',    'Antenna',      1, { bolt: 1, scrap: 4, circuitboard: 1 }), // Raft: 1 bolt, 4 scrap, 1 circuit board
   cup:        recipe('cup',        'Cup',          1, { plastic: 4 }), // Raft: 4 plastic (farming.js FARM_RECIPES.cup mirrors this)
   purifier:   recipe('purifier',   'Water Purifier', 1, { wood: 6, leaf: 6, plastic: 4 }), // Raft: 6 planks + 6 leaves + 4 plastic
   rainbarrel: recipe('rainbarrel', 'Rain Barrel',  1, { wood: 3, leaf: 2, plastic: 1 }), // rain-sprinkler
