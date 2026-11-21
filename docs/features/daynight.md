@@ -1,6 +1,6 @@
 # Day, night and weather
 
-Status: design, revised for the content registry. Branch `claude/raft-content-daynight`.
+Status: **built** (see section 10 for what shipped and how to verify it). Branch `claude/raft-content-daynight`.
 Code lives only in `dist/daynight.js` (plus `dist/daynight-*.js` helpers if it grows) and
 `tests/daynight.test.mjs`. **No game.js edits are needed**: everything goes through the module
 shape in `dist/content.js` and the ctx getters listed in `docs/features/content-hooks.md`.
@@ -226,3 +226,76 @@ existing `tests/*.test.mjs` glob.
 Screenshots (separate playwright script, after the code lands): dawn 0.97, noon 0.31, dusk 0.66,
 night 0.82 with a lantern placed, rain day, rain night. The night shot must show the deck clearly,
 the stars and a warm pool around the lantern.
+
+## 10. As built
+
+Everything lives in `dist/daynight.js` (one file, ~520 lines) and `tests/daynight.test.mjs`.
+No shared file (game.js, content.js, inventory-state.js) was touched. `ctx.renderer` is used for
+the exposure; it is already a getter in `contentCtx`.
+
+**What shipped**
+
+- 20 minute cycle with the phases of section 2. `lightAt` gives `nightFactor` (0 by day, 1 from
+  0.72 to 0.92) and `light = max(0.38, ...)`. At deep night hemi is 0.75, the directional light is a
+  cool moon at 0.6 (0.55 floor) and exposure is 0.85.
+- Eight palette keys (sunrise peach, day sage x2, dusk coral, blue hour, cosy blue night x2,
+  predawn) for horizon, ocean zenith/deep/shallow, sun/moon colour, hemi sky/ground and clouds.
+  The horizon colour drives `scene.background`, `scene.fog.color` and `ocean.uSky` together, so the
+  sea still fades seamlessly into the sky. Rain pulls every colour toward a cool grey-green of the
+  same brightness (`rainBlend`, 65%).
+- The sun moves on an arc (east to west, tilted south). At night the same DirectionalLight becomes
+  the moon, which rides lower (about 40 degrees at midnight) on the opposite side. The light's height
+  is clamped so shadows never stretch across the whole raft at dawn and dusk.
+- Ocean: `uSky`, `uZenith`, `uDeep`, `uShallow`, `uSunDir`, `uSunColor` (glint fades at the horizon,
+  soft 0.18 moon glint) and `uFadeFar` (follows fog: 125 dry, 80 in rain). **Addition:** `uFoam` is
+  also dimmed and tinted at night, because white foam glared on a dark sea in the first night shots.
+- Clouds get one module-owned material (originals restored on dispose) with a soft emissive term,
+  so their undersides read as lit puffs instead of dark slabs (they were dark in the old look too).
+  Wind drifts them in breezy/rain; cloud cover scales them up to 1.35x.
+- Stars: one `Points` (450, additive, twinkle in the vertex shader, fade toward the horizon).
+  Moon: one billboard quad with a shader disc and halo. Both are hidden when invisible.
+- Weather schedule exactly as section 2. Segment `i` starts at `i*270 + jitter(+-45)`, so lengths
+  are 180 to 360 s and the segment for any clock is found in O(1). Raw weights calm .4236 / breezy .3
+  / rain .2764 give the 0.5 / 0.3 / 0.2 shares after the "no rain after rain" rule.
+- Rain: one `LineSegments`, 600 streaks (1,200 vertices) in a 14 x 10 x 14 m box around the camera,
+  all motion in the vertex shader, hidden when dry.
+- Lanterns: emissive boost on `lanternGlow` x2.4, `flame` x1.6, `lanternGlass` x1.6, `candle` x2.0
+  (glass was lowered from the design's 2.5, which washed the amber out to white). Four
+  `PointLight('#ffb35c', 0 to 5, range 8, decay 2)` follow the nearest four lanterns with a gentle
+  flicker. Peak raised from the design's 2.2 to 5 so the warm pool on the deck is clearly visible.
+- Co-op: as section 6. One detail changed: `driftStep(local, target, dt)` takes both clocks at the
+  start of the frame and the caller then advances `target += dt`, which removes a one-frame bias.
+  `load(data,'net')` with the same clock twice is a no-op.
+- Opt out: `?daynight=off` or `localStorage['little-raft.daynight'] = 'day'` pins phase 0.15, calm.
+
+**Debug (`raftDebug.content.daynight`)**: `setPhase(p|null)`, `setWeather(name|null)`,
+`freeze(bool)` (stop the clock for screenshots), `giveLantern(n)` (adds lanterns to your bag),
+`placeLantern(x, z)` (gives one and places it on tile x,z through the normal build action),
+`renderInfo()` (renderer draw calls / triangles / points / lines of the last frame) and `state()`.
+
+**How to verify**
+
+1. `npm test`: 13 day/night tests (pure functions, headless module with a stub ctx, save round
+   trip, driftStep, and a two-minute co-op simulation with jittery, lossy, duplicated messages).
+2. In the browser console after clicking Play solo:
+   `d = raftDebug.content.daynight; d.freeze(true); d.placeLantern(1, 0); d.setPhase(0.82)`. You
+   should see a blue night with stars, a moon up and to the left of the start view, readable deck
+   and a warm pool around the lantern. `d.setWeather('rain')` shows streaks and a closer fog;
+   `d.setPhase(0.655)` is dusk; `d.setPhase(null); d.setWeather(null); d.freeze(false)` resumes.
+3. A playwright script that does this headless is described in the report: it seeds
+   `localStorage['little-raft-v1']` with three lanterns and a bench in `decor`, clicks `#solo`,
+   freezes the clock and walks through the phases.
+
+Screenshots: `docs/cloud/shots/content/daynight-morning.png`, `daynight-dusk.png`,
+`daynight-night.png` (lanterns), `daynight-rain.png`.
+
+**Cost** (measured, see report): stars +1 draw call at night, moon +1, rain +1 only while
+raining. Four point lights are always present, so every lit material evaluates four extra lights
+(the main frame-time cost, fixed and shader-stable). The per-frame update does no allocation.
+
+**Known issues**
+
+- The sky is a single colour (background + fog). Dusk reads as an even coral wash rather than a
+  gradient; mounting `dist/sky.js` would fix that at the cost of one full-screen draw.
+- Rain streaks are 1 px WebGL lines, so they look thin at high resolutions.
+- The four point lights add fragment cost to every standard material all day long (at intensity 0).
