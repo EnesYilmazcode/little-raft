@@ -554,7 +554,7 @@ export function createStorage(ctx) {
       stash() { if (ctx.role === 'guest') return null; return run({ kind: 'storage.stash' }, 'host', ctx.localBag()); },
       label(x, z, l) { if (ctx.role === 'guest') return null; return run({ kind: 'storage.label', x, z, label: l ?? null }, 'host', ctx.localBag()); },
       sort(x, z) { if (ctx.role === 'guest') return null; return run({ kind: 'storage.sort', x, z }, 'host', ctx.localBag()); },
-      plaques() { return plaques ? plaques.info() : []; },
+      plaques(withImage = false) { return plaques ? plaques.info(withImage) : []; },
       canLabels: () => !oldLabels(),
     },
     dispose() { ui?.destroy(); ui = null; model?.dispose(); model = null; disposed = true; plaques?.dispose(); plaques = null; if (typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('little-raft-action', onKey); }, // [crate-labels] plaques, F key

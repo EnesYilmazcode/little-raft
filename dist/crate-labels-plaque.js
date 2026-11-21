@@ -60,7 +60,7 @@ export function createPlaques(T, { iconURL, onIconReady, svgFor, nameOf } = {}) 
     img.onload = () => {
       if (disposed || !cache.has(e.key)) return;
       const c = e.cv.getContext('2d'); board(c);
-      const s = 62; try { c.drawImage(img, (W - s) / 2, (H - s) / 2, s, s); } catch { onFail?.(); return; }
+      const s = 74; try { c.drawImage(img, (W - s) / 2, (H - s) / 2, s, s); } catch { onFail?.(); return; }
       e.tex.needsUpdate = true;
     };
     img.onerror = () => { if (!disposed) onFail?.(); };
@@ -87,7 +87,7 @@ export function createPlaques(T, { iconURL, onIconReady, svgFor, nameOf } = {}) 
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const tex = new T.CanvasTexture(cv); if ('colorSpace' in tex && T.SRGBColorSpace) tex.colorSpace = T.SRGBColorSpace;
     tex.anisotropy = 4;
-    const mat = new T.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0 }); mat.userData.shared = true;
+    const mat = new T.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.22 }); mat.userData.shared = true; // a little glow so the label reads in the crate's shade
     const e = { key, mat, tex, cv, ready: false, kind: l.k ?? null, waiting: false };
     cache.set(key, e);
     const c = cv.getContext('2d');
@@ -135,9 +135,12 @@ export function createPlaques(T, { iconURL, onIconReady, svgFor, nameOf } = {}) 
       }
       prune();
     },
-    info() {
+    info(withImage = false) { // QA: what each live plaque shows (withImage adds the canvas as a data URL)
       const out = [];
-      for (const p of live.values()) out.push({ key: p.userData.tileKey, labelKey: p.userData.labelKey, ready: !!cache.get(p.userData.labelKey)?.ready });
+      for (const p of live.values()) {
+        const e = cache.get(p.userData.labelKey);
+        out.push({ key: p.userData.tileKey, labelKey: p.userData.labelKey, ready: !!e?.ready, ...(withImage && e ? { image: e.cv.toDataURL() } : {}) });
+      }
       return out;
     },
     dispose() {

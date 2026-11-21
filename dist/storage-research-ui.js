@@ -274,7 +274,7 @@ export function createStorageUI(api) {
     head.picker.hidden = false; head.labelBtn.setAttribute('aria-expanded', 'true');
     head.ptext.value = l?.t ?? '';
     allBuilt = false; paintPicker(l);
-    try { head.ptext.focus({ preventScroll: true }); } catch {}
+    try { head.ptext.focus({ preventScroll: true }); head.ptext.select(); } catch {}
   }
   function closePicker() {
     if (head.picker.hidden) return;
