@@ -53,7 +53,7 @@ import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
-import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
+import { keyDecision, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -77,7 +77,8 @@ const BLOCK_RADIUS = Object.freeze({palm:.42, bench:.45, receiver:.35, antenna:.
 const SAVE = 'little-raft-v1';
 const SAVE_STATUS = "Solo and hosted rafts save automatically. Joining uses the host's world."; // #saveStatus default
 const THROW_LOFT = .2, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
-const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
+const DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
+const CONTROLS_FAILED = 'Controls failed to start: reload the page (details in the console)';
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
 const ROPE_SEGMENTS = 16, ITEM_FLOAT = .05, CAMERA_ROLL = .2;
@@ -275,8 +276,6 @@ export function mount(transfer = null) {
   const raftPose = {y:X?.raftPose?.y ?? 0, rx:X?.raftPose?.rx ?? 0, rz:X?.raftPose?.rz ?? 0};
   let physics = makePhysics(X);
   let other = X?.other ? validPose(X.other) : null;
-  let keys = X?.keys && typeof X.keys === 'object' ? {...X.keys} : {};
-  const lookFilter = createLookFilter(); // drops pointer-lock spikes without cutting real flicks short
   let hook = X?.hook && (X.hook.fishing || typeof X.hook.update === 'function') ? X.hook : null;
   let castId = typeof X?.castId === 'string' ? X.castId : newToken();
   let hookSlot = isInt(X?.hookSlot) ? X.hookSlot : -1;
@@ -306,7 +305,7 @@ export function mount(transfer = null) {
   const chargeMeter = $('#chargeMeter'); // thin ring around the crosshair, filled by --c
   let crossUsable = false, lastDraw = 0;
   let blockList = [];
-  let controls = null; // controls lane: set in the Input section
+  let controls = null, controlsNag = 0; // controls lane: the one input path (input.js via controls.js), set in the Input section
   let sailing = null; const scenery = [], sailFlow = {x:0, z:0}, aimNdc = {x:0, y:0}; // [sailing]
   function getAimNdc() { // [sailing] same aim point as currentAim(): screen centre when locked, else the drag-mode mouse
     if (isLocked()) { aimNdc.x = 0; aimNdc.y = 0; return aimNdc; }
@@ -736,9 +735,9 @@ export function mount(transfer = null) {
   }
   function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
   function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
-  function clearInput() { keys = {}; charging = null; reeling = false; down = null; controls?.clear(); lookFilter.reset(); } // controls lane: also release the input layer
-  // A panel opening keeps held keys (keyup still arrives); only window blur really loses keyups.
-  function pauseInput() { charging = null; reeling = false; down = null; lookFilter.reset(); }
+  function clearInput() { charging = null; reeling = false; down = null; controls?.clear(); } // controls lane: also release the input layer
+  // A panel opening keeps held keys (keyup still arrives; input.js keeps them while blocked); only window blur really loses keyups.
+  function pauseInput() { charging = null; reeling = false; down = null; }
 
   // ---------- Aiming ----------
   const hits = [], aimScratch = {point:null, item:null, dir:new T.Vector3(), at:new T.Vector3()};
@@ -1243,19 +1242,18 @@ export function mount(transfer = null) {
 
   // ---------- Movement ----------
   let swimStroke = 0; // swim stroke sound timer
-  const held = (a, b) => !!(keys[a] || (b && keys[b]));
   const moveInput = {forward:0, strafe:0, yaw:0, jump:false, sprint:false, tiles:null, deckY:0, waterY:0, blocked:null}; // reused every frame
   function movePlayer(dt, input) {
     const ci = controls?.movement(dt, running && input, physics); // controls lane: polls input, applies look, shapes movement
     if (!running) { walking = false; return; }
-    const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
+    const fwd = ci ? ci.forward : 0, side = ci ? ci.strafe : 0; // no controls: an error is shown (see the Input section)
     const surf = building ? building.preStep(physics, deckY()) : null; // building-pieces lane hook
-    const dive = diving?.move(dt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
+    const dive = diving?.move(dt, physics, {forward:fwd, strafe:side, yaw, pitch, up:!!ci?.jump, down:!!ci?.crouch, fast:!!ci?.sprint, gather:!!(input && controls?.input.down('interact'))}); // diving lane hook
     // Real frame time in equal substeps (<= MAX_DT) so walking speed holds at low fps. Jump stays held on every
     // substep: PlayerPhysics fires the impulse only on the press edge, i.e. the first substep, never again.
     let ev = null;
     if (!dive) {
-      const {n, step} = splitSteps(dt), jump = ci ? ci.jump : input && held('Space'), sprint = ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight');
+      const {n, step} = splitSteps(dt), jump = !!ci?.jump, sprint = !!ci?.sprint;
       ev = {landed:false, splashed:false, leftWater:false};
       for (let i = 0; i < n; i++) {
         const e = physics.update(step, {forward:fwd, strafe:side, yaw, jump, sprint,
@@ -1443,6 +1441,7 @@ export function mount(transfer = null) {
     checkPeerStale(now);
     ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
+    if (!controls && running && now > controlsNag) { controlsNag = now + 8000; notice(CONTROLS_FAILED, 8000); } // no input path: keep the error visible
     const realDt = rawMs / 1000; movePlayer(realDt, running && !dialog); // the player substeps the real frame time (splitSteps)
     updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
@@ -1502,7 +1501,6 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    lookFilter.reset({dropFirst:isLocked()}); // the first move after lock is often a bogus jump
     if (isLocked()) { lockFallback = false; lockFailures = 0; }
     else { if (charging && charging.x === null) charging = null; reeling = false; }
     if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
@@ -1511,9 +1509,7 @@ export function mount(transfer = null) {
   on(document, 'pointerlockerror', lockFailed);
   on(document, 'mousemove', e => {
     if (building?.menu.isOpen) { if (isLocked()) building.menu.move(e.movementX, e.movementY); else building.menu.hoverAt(e.clientX, e.clientY); return; } // building-pieces lane hook
-    if (controls || !isLocked() || uiBlocked()) return; // controls lane: input.js owns mouse look (and drops its own spikes)
-    const [dx, dy] = lookFilter.filter(e.movementX, e.movementY); // spike filter instead of a hard clamp: fast flicks are kept
-    look(dx, dy, LOOK_SENSITIVITY * options.sensitivity);
+    // locked mouse look is input.js's (its look filter drops spikes, keeps flicks); drag-look is pointermove below
   });
   on(canvas, 'pointerdown', e => {
     if (e.button === 2 && running && building && heldKind() === 'hammer' && !uiBlocked()) { building.menu.open(); return; } // building-pieces lane hook
@@ -1575,20 +1571,13 @@ export function mount(transfer = null) {
   on(window, 'keydown', () => { sfx.resume(); }, {capture:true});
   on(document, 'click', e => { if (e.target?.closest?.('button, [role=button], .slot')) play('ui', .8); });
   on(window, 'keydown', e => {
-    const kd = keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:uiBlocked()});
-    if (kd.record && !controls) keys[e.code] = true; // held keys survive a panel; movePlayer gets input=false meanwhile
-    if (!kd.act) return;
+    if (!keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:uiBlocked()}).act) return; // key state lives in input.js
     if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook (X: released below)
     if (e.code === 'KeyX' && !e.repeat && !building) removePiece(); // hammer + X without the building lane: remove decor or a bare floor tile
-    if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
-    const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
-    if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
-    if (e.code === 'KeyE' && !e.repeat) interact();
-    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration
-    if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
+    if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); // actions come from the action map (controls lane)
   });
   on(window, 'keyup', e => {
-    keys[e.code] = false; if (e.code === 'KeyR') sailing?.release(); // [sailing]
+    if (e.code === 'KeyR') sailing?.release(); // [sailing]
     if (e.code === 'KeyX' && building?.removing) { const shown = removeTarget, wheel = building.menu.isOpen; const a = building.removeAction(); if (a && running) { swing = 1; action(a); } else if (running && shown && !wheel) removePiece(); } // building-pieces lane hook; no piece aimed: only the floor/decor fallback that was shown
   });
   on(window, LIVE_STATUS_EVENT, e => { if (!running || !e.detail?.text) return; notice(e.detail.text); e.preventDefault(); }); // live.js update notices -> feed
@@ -1600,7 +1589,7 @@ export function mount(transfer = null) {
   on(window, 'blur', () => { clearInput(); sailing?.release(); // [sailing]
     escHeld = relockOnEscUp = false; document.body.classList.toggle('away', running); refreshPointerUI(true); });
   on(window, 'focus', () => { document.body.classList.remove('away'); refreshPointerUI(true); });
-  // controls lane: one input layer for keyboard/mouse/gamepad; falls back to the legacy handlers above if it fails to start.
+  // controls lane: the one input layer for keyboard/mouse/gamepad. There is no second path: if it fails, say so.
   try {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
@@ -1610,7 +1599,7 @@ export function mount(transfer = null) {
       useDown:() => { if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
       useUp:() => { reeling = false; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
     signal.addEventListener('abort', () => controls?.dispose());
-  } catch (e) { console.error('controls lane failed to start', e); controls = null; }
+  } catch (e) { console.error('controls lane failed to start', e); controls = null; notice(CONTROLS_FAILED, 8000); }
   on(document, 'visibilitychange', () => { quality?.reset(); });
   on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
   on(document, 'visibilitychange', () => {
@@ -1956,7 +1945,7 @@ export function mount(transfer = null) {
       hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:sfx.context, hintsDone, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
       dive:diving?.capture?.() ?? null, // diving lane hook
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
-      joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, keys:{...keys},
+      joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback,
       charging:charging ? {...charging} : null, reeling, down:down ? {...down} : null,
       bindings:bindings.slice(), renderer, lastHostMessage, lastGuestMessage, peerHidden, saveRev, saveBlocked, coop:coop?.capture(), // coop: rejoin state
       raftPose:raft ? {y:raft.position.y, rx:raft.rotation.x, rz:raft.rotation.z} : {...raftPose},

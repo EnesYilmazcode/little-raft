@@ -35,14 +35,18 @@ test('INPUT-1: keys pressed while a panel is open are recorded but trigger no ac
   assert.deepEqual(R.keyDecision({inField:true, blocked:true}), {record:false, act:false});
 });
 
-test('INPUT-1: opening a panel keeps held keys; only window blur wipes them', () => {
+test('INPUT-1/DESIGN: one input path: game.js has no legacy keys[] or look filter; panels pause, blur clears', () => {
   const fn = name => { const line = gameSrc.split('\n').find(l => l.includes(`function ${name}() {`)); assert.ok(line, name); return line; };
-  assert.doesNotMatch(fn('pauseInput'), /keys\s*=/);
-  assert.match(fn('clearInput'), /keys = \{\}/);
+  assert.doesNotMatch(gameSrc, /\bkeys\[e\.code\]|\blet keys\b|const held = \(a, b\)|lookFilter|createLookFilter/);
+  assert.match(fn('clearInput'), /controls\?\.clear\(\)/);
+  assert.doesNotMatch(fn('pauseInput'), /controls\?\.clear|clearInput/);
   assert.match(fn('openInventory'), /pauseInput\(\)/);
   assert.doesNotMatch(fn('openInventory'), /clearInput/);
   assert.doesNotMatch(gameSrc, /onPause:\s*(guard\()?clearInput/);
   assert.match(gameSrc, /on\(window, 'blur', \(\) => \{ clearInput\(\)/);
+  assert.match(gameSrc, /controls lane failed to start', e\); controls = null; notice\(CONTROLS_FAILED/);
+  const inputSrc = readFileSync(fileURLToPath(new URL('input.js', base)), 'utf8');
+  assert.match(inputSrc, /import \{ keyDecision, createLookFilter \} from '\.\/input-rules\.js'/);
 });
 
 test('INPUT3-1: W held through a panel walks on when it closes (createInput, autorepeat firing)', () => {
@@ -131,7 +135,6 @@ test('INPUT3-2: an isolated spike and the first move after lock are still droppe
 
 test('INPUT-2: game.js no longer clamps movementX and does not ask for unadjustedMovement', () => {
   assert.doesNotMatch(gameSrc, /clamp\(e\.movement[XY]/);
-  assert.match(gameSrc, /lookFilter\.filter\(e\.movementX, e\.movementY\)/);
   assert.doesNotMatch(gameSrc, /unadjustedMovement/);
 });
 
