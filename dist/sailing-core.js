@@ -6,14 +6,14 @@
 const TAU = Math.PI * 2;
 
 // Raft-like model: the wind never changes direction and the ocean current flows with it, so an unsailed raft
-// drifts downwind at DRIFT_SPEED. A raised sail steers up to 90° off the wind (slower when wider); one sail's
-// worth only. Motors (engine.js) ignore the wind entirely.
+// drifts downwind at DRIFT_SPEED. A raised sail steers up to 90° off the wind (slower when wider; a heading
+// further upwind is clamped to 90°: the best it can do is sail sideways); one sail's worth only. Motors (engine.js) ignore the wind entirely.
 const DRIFT = 0.30;
 export const SAIL = Object.freeze({
   DRIFT_SPEED: DRIFT,       // ocean current (m/s), always along windDir: the unsailed drift
   SAIL_MULT: 1.5,           // sail ground speed straight downwind = 1.5x drift
   SAIL_SPEED: 1.5 * DRIFT,  // m/s, ground speed with the sail raised and heading straight downwind
-  SAIL_ABEAM: 0.2,          // at 90° off the wind the sail keeps 0.2 of its downwind multiplier
+  SAIL_ABEAM: 0.5,          // at 90° off the wind the sail keeps half its downwind speed (0.225 m/s)
   TAU_UP: 4, TAU_DOWN: 3,   // velocity easing time-constants (s): speeding up / slowing down
   MAX_DT: 0.1,
   WIND_SWING: 0,            // the wind never changes direction (windDir is saved and kept as is)
@@ -83,15 +83,22 @@ export function sailFactor(n) {
   return fin(n) && n >= 1 ? 1 : 0;
 }
 
+/** Sail course: `off` (radians off the wind) clamped to ±90° — the sail cannot point the raft upwind. */
+export function sailOff(off) {
+  if (!fin(off)) return 0;
+  off = normAngle(off);
+  const H = Math.PI / 2;
+  return off > H ? H : off < -H ? -H : off;
+}
+
 /**
- * Sail ground-speed multiplier (x drift) for heading `off` radians off the wind:
- * 1.5 * (0.2 + 0.8 * cos(off)) up to 90°; 0 beyond (the sail gives nothing upwind: the raft just drifts).
+ * Sail ground-speed multiplier (x drift) for heading `off` radians off the wind (clamped to ±90°):
+ * 1.5 * (0.5 + 0.5 * cos(off)) — 1.5 downwind, 0.75 abeam, never 0.
  */
 export function sailMult(off) {
   if (!fin(off)) return 0;
-  const c = Math.cos(off);
-  if (c < -1e-12) return 0;
-  return SAIL.SAIL_MULT * (SAIL.SAIL_ABEAM + (1 - SAIL.SAIL_ABEAM) * Math.max(0, c));
+  const c = Math.max(0, Math.cos(sailOff(off)));
+  return SAIL.SAIL_MULT * (SAIL.SAIL_ABEAM + (1 - SAIL.SAIL_ABEAM) * c);
 }
 
 /** Ocean current (m/s): DRIFT_SPEED along the wind. Writes out.x, out.z. */
@@ -102,14 +109,17 @@ export function currentVector(state, out) {
   return out;
 }
 
-/** Ground velocity the sail aims for (m/s, along the heading); zero when it gives nothing. Writes out.x, out.z. */
+/**
+ * Ground velocity the sail aims for (m/s) along the course (heading clamped to ±90° off the wind); zero when the
+ * sail is lowered / anchored / absent. Writes out.x, out.z.
+ */
 export function sailGround(state, nSails, out) {
   out.x = 0; out.z = 0;
-  if (!state.raised || state.anchored || sailFactor(nSails) <= 0) return out;
-  const m = sailMult(state.heading - state.windDir) * SAIL.DRIFT_SPEED;
-  if (!(m > 0)) return out;
-  out.x = Math.sin(state.heading) * m;
-  out.z = Math.cos(state.heading) * m;
+  if (!state.raised || state.anchored || sailFactor(nSails) <= 0 || !fin(state.heading) || !fin(state.windDir)) return out;
+  const off = sailOff(state.heading - state.windDir), course = state.windDir + off;
+  const m = sailMult(off) * SAIL.DRIFT_SPEED;
+  out.x = Math.sin(course) * m;
+  out.z = Math.cos(course) * m;
   return out;
 }
 

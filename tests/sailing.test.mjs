@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
 const {
   SAIL, defaultSailing, cleanSailing, sailFactor, sailTarget, stepSailing, applySailAction,
-  wrapAxis, placeUpstream, driftedOut, windVector, sailMult, sailGround, currentVector,
+  wrapAxis, placeUpstream, driftedOut, windVector, sailMult, sailOff, sailGround, currentVector,
 } = await import(new URL('sailing-core.js', base));
 
 const KEYS = ['v', 'windDir', 'windStr', 'windTarget', 'windStrTarget', 'windClock', 'heading', 'raised', 'anchored', 'vx', 'vz', 'wx', 'wz', 'gx', 'gz'].sort();
@@ -64,15 +64,20 @@ test('sails do not stack: one sail\'s worth', () => {
   assert.deepEqual(q, p, 'four sails sail exactly like one');
 });
 
-test('sail cos curve: 1.5x drift downwind, 0.3x abeam, nothing past 90 degrees', () => {
-  const D = SAIL.DRIFT_SPEED;
+test('sail cos curve: 1.5x drift downwind, 0.75x abeam; upwind headings clamp to 90 degrees (continuous)', () => {
+  const D = SAIL.DRIFT_SPEED, H = Math.PI / 2;
   near(D, 0.30); near(SAIL.SAIL_SPEED, 1.5 * D);
-  near(sailMult(0), 1.5); near(sailMult(Math.PI / 2), 0.3); near(sailMult(-Math.PI / 2), 0.3);
-  for (const a of [0.1, 0.5, 1, 1.4, -0.7]) near(sailMult(a), 1.5 * (0.2 + 0.8 * Math.cos(a)), 1e-12, `a=${a}`);
-  for (const a of [Math.PI / 2 + 0.01, 2, Math.PI, -2.5]) assert.equal(sailMult(a), 0, `a=${a}`);
+  near(sailMult(0), 1.5); near(sailMult(H), 0.75); near(sailMult(-H), 0.75);
+  near(sailMult(0) * D, 0.45); near(sailMult(H) * D, 0.225);
+  for (const a of [0.1, 0.5, 1, 1.4, -0.7]) near(sailMult(a), 1.5 * (0.5 + 0.5 * Math.cos(a)), 1e-12, `a=${a}`);
+  for (const a of [H + 0.01, 2, Math.PI, -2.5, -Math.PI]) near(sailMult(a), 0.75, 1e-12, `a=${a} clamps to abeam`);
+  near(sailOff(2), H); near(sailOff(-2), -H); near(sailOff(0.3), 0.3); near(sailOff(2 * Math.PI + 0.3), 0.3, 1e-12);
   assert.equal(sailMult(NaN), 0);
   let prev = Infinity;
-  for (let a = 0; a <= Math.PI / 2 + 1e-9; a += 0.05) { const m = sailMult(a); assert.ok(m <= prev + 1e-12, 'slower at wider angles'); prev = m; }
+  for (let a = 0; a <= Math.PI; a += 0.01) {
+    const m = sailMult(a); assert.ok(m <= prev + 1e-12, 'slower at wider angles'); assert.ok(prev === Infinity || prev - m < 0.01, 'continuous'); prev = m;
+  }
+  for (let a = 0; a <= Math.acos(1 / 3) - 1e-9; a += 0.01) assert.ok(sailMult(a) * D >= D - 1e-12, 'downwind-ish: never slower than drift');
   // ground target and water-relative target
   const t = { x: 9, z: 9 }, g = {}, c = {};
   const s = defaultSailing(); s.windDir = 0.6; s.heading = 0.6;
@@ -81,19 +86,23 @@ test('sail cos curve: 1.5x drift downwind, 0.3x abeam, nothing past 90 degrees',
   sailTarget(s, 0, t); assert.deepEqual(t, { x: 0, z: 0 }, 'no sails');
   s.anchored = true; sailTarget(s, 1, t); assert.deepEqual(t, { x: 0, z: 0 }, 'anchored');
   s.anchored = false;
-  s.heading = 0.6 + Math.PI; sailTarget(s, 1, t); assert.deepEqual(t, { x: 0, z: 0 }, 'against wind: just drift');
-  s.heading = 0.6 + Math.PI / 2 + 0.01; sailTarget(s, 1, t); assert.deepEqual(t, { x: 0, z: 0 }, 'just past abeam');
   s.heading = 0.6; sailGround(s, 1, g); currentVector(s, c);
   near(Math.hypot(g.x, g.z), SAIL.SAIL_SPEED); near(Math.atan2(g.x, g.z), 0.6, 1e-9, 'along heading');
   s.windStr = 0.55; sailGround(s, 1, g); near(Math.hypot(g.x, g.z), SAIL.SAIL_SPEED, 1e-12, 'strength does not change speed');
   sailTarget(s, 1, t); near(t.x, g.x - c.x); near(t.z, g.z - c.z);
-  s.heading = 0.6 + 1; sailGround(s, 1, g); near(Math.hypot(g.x, g.z), D * 1.5 * (0.2 + 0.8 * Math.cos(1)));
-  // steady state on the seabed: sail ground speed along the heading
-  for (const off of [0, 0.7, 1.5]) {
+  s.heading = 0.6 + 1; sailGround(s, 1, g); near(Math.hypot(g.x, g.z), D * 1.5 * (0.5 + 0.5 * Math.cos(1)));
+  // a heading past abeam (even dead upwind) sails sideways at the abeam speed, never upwind
+  for (const [h, course] of [[0.6 + H + 0.4, 0.6 + H], [0.6 - H - 1, 0.6 - H], [0.6 + Math.PI - 1e-6, 0.6 + H]]) {
+    s.heading = h; sailGround(s, 1, g);
+    near(Math.hypot(g.x, g.z), 0.225, 1e-9); near(Math.atan2(g.x, g.z), Math.atan2(Math.sin(course), Math.cos(course)), 1e-9);
+    assert.ok(g.x * c.x + g.z * c.z > -1e-12, 'no upwind component');
+  }
+  // steady state on the seabed: sail ground speed along the (clamped) course
+  for (const off of [0, 0.7, 1.5, 2.5]) {
     const r = defaultSailing(); r.raised = true; r.heading = r.windDir + off;
     const o = run(r, 60, { nSails: 1, host: true }, 0.05);
     near(Math.hypot(o.dgx, o.dgz) / 0.05, D * sailMult(off), 1e-4, `off=${off}`);
-    near(Math.atan2(o.dgx, o.dgz), r.heading, 1e-4);
+    near(Math.atan2(o.dgx, o.dgz), r.windDir + sailOff(off), 1e-4);
   }
 });
 
