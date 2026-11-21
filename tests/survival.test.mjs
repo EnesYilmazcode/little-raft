@@ -220,6 +220,15 @@ test('Bag.craft succeeds when consuming the cost frees a slot, or output merges 
   assertStacksValid(b2);
 });
 
+test('Bag: hotbar has 10 slots and an 8-slot era save still loads', () => {
+  assert.equal(HOTBAR_SIZE, 10);
+  const old = new Bag(); old.select(7);
+  const copy = new Bag(old.snapshot());
+  assert.equal(copy.selectedIndex, 7);
+  assert.equal(Bag.salvage({ slots: old.snapshot().slots, selected: 7 }).selectedIndex, 7);
+  assert.equal(copy.select(9), true);
+});
+
 test('Bag: selection, cycling and snapshot round-trips', () => {
   const bag = new Bag();
   bag.add('wood', 25);
@@ -236,7 +245,7 @@ test('Bag: selection, cycling and snapshot round-trips', () => {
   assert.equal(bag.slots[3].count, 1);
 
   assert.equal(bag.cycle(-1), 2);
-  assert.equal(bag.cycle(-3), 7);
+  assert.equal(bag.cycle(-3), HOTBAR_SIZE - 1);
   assert.equal(bag.cycle(1), 0);
   assert.equal(bag.cycle(HOTBAR_SIZE * 2 + 1), 1);
   bag.select(5);

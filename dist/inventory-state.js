@@ -3,7 +3,7 @@
 
 export const STACK_SIZE = 20;
 export const SLOT_COUNT = 28;
-export const HOTBAR_SIZE = 8;
+export const HOTBAR_SIZE = 10;
 export const TOOL_DURABILITY = 100;
 
 const TOOL_KINDS = new Set(['hook', 'hammer', 'fishingrod']);
