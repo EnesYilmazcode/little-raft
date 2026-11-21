@@ -6,6 +6,7 @@ const CSS = `
 #sailBadge{position:fixed;top:64px;right:16px;z-index:30;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;
   color:#f6ecd6;font:600 12px/1.3 var(--ui-font,system-ui,sans-serif);user-select:none}
 #sailBadge[hidden],#sailPrompt[hidden]{display:none}
+body:has(#inventory[open]) #sailBadge{visibility:hidden} /* the bag panel reaches the top-right corner; the compass and its label would peek out from under it */
 #sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:rgba(43,30,18,.7);box-shadow:0 0 0 1.5px rgba(246,236,214,.5),0 4px 14px rgba(43,30,18,.3)}
 #sailBadge .sail-label{padding:2px 8px;border-radius:8px;background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);white-space:nowrap}
 #sailBadge .sail-dim{opacity:.3}
