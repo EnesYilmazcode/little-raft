@@ -27,7 +27,7 @@ export const FEEL = Object.freeze({
   DIP_PER_MS: 0.02,       // m of landing dip per m/s impact speed
   DIP_MIN: 0.04, DIP_MAX: 0.18,
   DIP_MIN_IMPACT: 1.0,    // m/s, softer landings give no dip
-  DIP_OMEGA: 12,          // 1/s, dip peaks at 1/omega (~0.08s), ~90% recovered by ~0.33s
+  DIP_OMEGA: 15,          // 1/s, dip peaks at 1/omega (~0.07s), ~90% recovered by ~0.35s after landing
   CLIMB_SPEED: 2,         // m/s on ladders
   LADDER_JUMP_VY: 3,      // m/s upward when jumping off a ladder
   LADDER_PUSH: 3,         // m/s along the ladder normal when jumping off

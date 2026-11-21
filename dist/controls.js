@@ -14,6 +14,8 @@ const BUILD_PIECES = [
   {id:'lantern', label:'Lantern'}, {id:'net', label:'Net'}, {id:'bench', label:'Bench'}, {id:'crate', label:'Crate'},
 ];
 
+const STOP_BRAKE = 8; // 1/s, added to physics' ground rate of 14 when no move input
+
 function storage() { try { return globalThis.localStorage ?? null; } catch { return null; } }
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
 
@@ -22,7 +24,7 @@ const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEven
 export function createControls(g) {
   const map = new ActionMap({storage:storage()});
   const feel = new MoveFeel({motionScale:1});
-  let radial = null, cursor = [0, 0], tabs = new Set(), fx = {bobY:0, bobX:0, roll:0, eyeOffset:0, footstep:false}, padUse = false, padReel = false;
+  let idle = true, radial = null, cursor = [0, 0], tabs = new Set(), fx = {bobY:0, bobX:0, roll:0, eyeOffset:0, footstep:false}, padUse = false, padReel = false;
   const call = (name, ...a) => { try { return g[name]?.(...a); } catch (e) { console.error('controls:', name, e); } };
 
   const onAction = (id, phase) => {
@@ -66,6 +68,7 @@ export function createControls(g) {
     if (use !== padUse) { padUse = use; call(use ? 'useDown' : g.isBlocked?.() || input.activePad < 0 ? 'useCancel' : 'useUp'); }
     if (reel !== padReel) { padReel = reel; call(reel ? 'reelDown' : 'reelUp'); }
     const m = active ? input.move() : {forward:0, strafe:0};
+    idle = Math.hypot(m.forward, m.strafe) < .05;
     const crouch = active && input.crouching();
     const shaped = feel.shapeInput(dt, {forward:m.forward, strafe:m.strafe, sprint:active && input.sprinting(), crouch,
       grounded:physics.grounded, swimming:physics.swimming});
@@ -73,6 +76,8 @@ export function createControls(g) {
   }
   // Call after physics.update(); ev is its return value.
   function afterMove(dt, physics, ev) {
+    // Raft-style crisp stop: extra ground braking on top of physics' GROUND_ACCEL once the stick/keys are released.
+    if (idle && physics.grounded && !physics.swimming) { const k = Math.exp(-STOP_BRAKE * Math.min(dt, .05)); physics.vx *= k; physics.vz *= k; }
     feel.setMotionScale(g.motion?.() ?? 1);
     fx = feel.step(dt, {speed:Math.hypot(physics.vx, physics.vz), grounded:physics.grounded, swimming:physics.swimming,
       vy:physics.vy, landed:!!ev?.landed, crouch:input.crouching(), onLadder:feel.isOnLadder()});
