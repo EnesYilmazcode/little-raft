@@ -9,7 +9,9 @@
 // userData.strikeNormal Vector3: outward normal of the striking face (0,0,-1)
 // userData.clawTip      Vector3: tip of the claw, in root space
 // userData.firstPerson  suggested camera-space pose for a right-hand hold (tune in game)
-// Meshes: handle, head, face, collar (+ wedge), rivets, rope wrap, rope ties = 7.
+// Parts: handle, wedge, head, face, collar, rivets, rope wrap, rope ties, baked into one mesh
+// (root.children[0] = the re-centred `inner` group holding it).
+import { bakeMeshes } from './bake.js?build=v3-survival-ae77fa84ac2b';
 export function createHammer(T) {
   const root = new T.Group();
   root.name = 'buildHammer';
@@ -318,14 +320,15 @@ export function createHammer(T) {
       }
     }
     const turns = 23;
-    const tub = turns * 14, rad = 6;
+    const perTurn = 7, js = 14 / perTurn;       // colour pattern below was tuned at 14 rings per turn
+    const tub = turns * perTurn, rad = 6;
     const geo = new T.TubeGeometry(new Wrap(turns), tub, ROPE_R, rad, false);
     const n = geo.attributes.position.count;
     const cols = new Float32Array(n * 3);
     const base = new T.Color(0xae9464), hi = new T.Color(0xcdb487), lo = new T.Color(0x6f5a38);
     const c = new T.Color();
     for (let i = 0; i < n; i++) {
-      const j = Math.floor(i / (rad + 1)), k = i % (rad + 1);
+      const j = Math.floor(i / (rad + 1)) * js, k = i % (rad + 1);
       const ply = Math.sin((k / rad) * Math.PI * 2 * 3 + j * 1.25); // 3-ply twist
       const dirt = 0.5 + 0.5 * Math.sin(j * 0.07) * Math.sin(j * 0.031 + 1.3);
       c.copy(base).lerp(ply > 0 ? hi : lo, Math.abs(ply) * 0.55).lerp(lo, dirt * 0.25);
@@ -380,6 +383,15 @@ export function createHammer(T) {
   // ---------- recenter on bounding box ----------
   inner.updateMatrixWorld(true);
   const box = new T.Box3().setFromObject(inner);
+  {
+    const parts = inner.children.slice(), mats = new Set(parts.map(m => m.material));
+    const mesh = bakeMeshes(parts, inner, 'buildHammerBaked');
+    for (const m of parts) { inner.remove(m); m.geometry.dispose(); }
+    for (const m of mats) m.dispose();
+    mesh.castShadow = true; mesh.receiveShadow = false;
+    inner.add(mesh);
+    root.userData.dispose = mesh.userData.dispose;
+  }
   const center = box.getCenter(new T.Vector3());
   inner.position.sub(center);
   const size = box.getSize(new T.Vector3());

@@ -16,7 +16,14 @@ Checks:
 - `python sandbox/water/shoot_game.py <dist_dir> <out> <prefix>`: the real game (title, spawn,
   looking at the raft edge). Use it for an A/B of `dist/` against a patched copy.
 - `node sandbox/water/parity.mjs`: physics parity with `dist/ocean.js` (heights and slopes).
-- `node sandbox/water/cpu-cost.mjs`: JS cost of the raft SDF bake, floater pick and `getHeight`.
+- `node sandbox/water/parity.mjs` also checks that `setAmp(a)` moves the CPU heights with the shader.
+- `node sandbox/water/cpu-cost.mjs`: JS cost of the raft SDF bake, floater stamping, `footprint` and
+  `getHeight`.
+- `python sandbox/water/profile.py 'tier=cur' 'tier=a' ...`: interleaved A/B of lab variants. Besides wall
+  ms it reports `cpuMs`, the CPU time the browser's GPU process spends per frame. SwiftShader rasterises
+  there, so it is the shader work itself and moves only a few % with the load from other agents, while
+  wall ms swings 2 to 4x. Use `cpuMs`. `prof=NO_X` passes shader `#define`s for knock-outs, `src=` loads
+  another copy of the module (a saved older version for before/after), `nowater=1` hides the ocean.
 
 ## What the game has today
 
@@ -44,8 +51,9 @@ Checks:
 - **Waves.** Keep the exact Gerstner set. The CPU `getHeight` inverts the horizontal shift with 2
   fixed-point iterations, and the raft, player and items depend on it. `water.js` uses the same
   constants and code path, and `parity.mjs` reports `worstDiff: 0` over 25,200 samples and 36
-  time steps. A runtime `uAmp` (default 1) scales the GPU and CPU sides together for rough
-  weather later.
+  time steps. `setAmp(a)` (default 1) scales the GPU waves and the CPU wave table together for
+  rough weather; `parity.mjs` checks that runtime `setAmp(2.6)` equals creating with `amp: 2.6`
+  and that `setAmp(1)` returns to the shipping heights exactly. Never set `uAmp` alone.
 - **Crest foam from the Jacobian.** For Gerstner waves, `J = (1+dDx/dx)(1+dDz/dz) - (dDx/dz)^2`
   drops where crests bunch together. That is where real whitecaps sit, and it beats a height
   threshold, which also lights up broad, gentle swells. The terms reuse the `sin` that `wave()`
@@ -57,24 +65,38 @@ Checks:
   is the one stylized element worth keeping. The problem was where it went (everywhere) and
   that it aliased (specks at distance). Now a mask chooses where it goes (crests, raft, items),
   the mask also sets line width (thin lace becomes a patch near contact), and coverage is
-  anti-aliased with `fwidth(noise)`, so far lines thin out instead of sparkling.
+  anti-aliased by the pixel's footprint on the water (distance and grazing angle, so no `fwidth`),
+  with lines thinner than a pixel dimmed, so far lines thin out instead of sparkling or blurring.
+  The noise is a baked 512x512 R8 tiling value-noise texture (one fetch per octave instead of four
+  hashes).
 - **Contact foam without a depth prepass.** The raft is grid tiles (2 m, at `tile*2`), so its
-  footprint is known exactly. `setRaft(tiles)` bakes a 128x128 R8 signed distance texture fitted
+  footprint is known exactly. `setRaft(tiles)` bakes a 128x128 RG8 signed distance texture fitted
   to the raft's bounding box plus an 8 m margin. It stamps each tile into the texels within
-  reach, about 2 to 9 ms for 7 to 400 tiles, and only runs when tiles change. The shader reads
-  it for:
+  reach, a few ms for 7 to 400 tiles, and only runs when tiles change. R is the raft SDF, G the
+  same footprint shifted by the deck shadow offset (sun direction x deck height), so one fetch
+  gives:
   - a thin, noise-ragged white collar on the logs
-  - lace rings that pulse outward to about 1.1 m
-  - a fake deck shadow: the SDF sampled once more, offset toward the sun by the deck height
+  - thin lace rings that pulse outward to about 1.1 m
+  - a fake deck shadow
   - darker, foam-free water under the deck, so plank gaps show shaded water, not foam
 
-  Floating items are passed as up to 16 circles (`setFloaters`, nearest to the camera) and get
-  lace rings only. A solid collar was tried and dropped, because a circle never matches a
-  plank or a palm leaf and showed as a white disc.
+  Floating items are capsules: `footprint(mesh)` measures the model's local bounding box once and
+  returns `[x, z, r, hx, hz]`, the long horizontal side turned by the mesh's current rotation and
+  scale, so a plank gets a band of lace along its length and a barrel or jug a small round one.
+  `setFloaters` stamps every capsule into a 256x256 R8 distance map (64 m, 0.25 m texels) centred
+  on the camera, about 0.02 to 0.1 ms a frame for 30 items, so the shader does one fetch however
+  many items float. (The first pass looped over 16 circles per pixel, the single most expensive
+  term; the nearest-16 limit is gone too.) Items get lace only: a solid collar showed as a white
+  disc that never matches the model.
+- **Hook bobber.** `setBobber(position | null)` while the hook floats (within .25 m of
+  `getHeight`): a small white collar plus ripple rings running outward to about .75 m. A landing
+  splash ring was tried and cut for cost (it is visible for one second per cast).
 - **Sun glint.** The old pow-260 lobe on nearly flat water made a large blown-out white patch
-  in the 3/4 view. It is now a tight lobe (pow 700) multiplied by a fine noise "glitter" cell
-  mask, so the sun path breaks into points, plus a low broad sheen (pow 70 x .1). Past about
-  20 to 70 m the mask blends to a constant, so the far path stays continuous.
+  in the 3/4 view. It is now a tight lobe (pow 700, computed as pow 70 to the 10th by squaring)
+  times a glitter mask, plus a low broad sheen (pow 70 x .1). The glitter is one random point per
+  ~11 cm cell with its own flash cycle (on at once, fades over 40% of the cycle, then dark), so
+  the sun path twinkles point by point over time instead of showing a frozen pattern. One hash
+  per pixel. Past about 14 to 55 m it blends to a constant, so the far path stays continuous.
 - **Body colour.** The existing deep/shallow teal by height and slow noise patches is kept.
   Subsurface is now backlit: crest mask x view-against-sun x grazing view, in the Sea of
   Thieves style. Fresnel is capped at .75 so the low-poly sky never turns the sea into a
@@ -96,80 +118,116 @@ Checks:
 
 ## Tiers and numbers
 
-Machine: SwiftShader (CPU rasteriser) on a shared 4-core box with load average 25 to 35 from
-other agents. **Only the ratios mean anything.** Each tier was measured in the same browser,
-interleaved over 3 rounds (`fp` view, calm, 1280x720, 40 frames after a 10-frame warm-up), and
-the median is reported. `renderer.info` is for one whole frame, including the shadow map pass
-(sun shadows are on, as in the game).
+Machine: SwiftShader (CPU rasteriser) on a shared 4-core box with load average 25 to 40 from
+other agents. **Only ratios mean anything.** Wall-clock frame times swing 2 to 4x between
+identical runs here, so this pass measures `cpuMs` (`profile.py`): CPU time of the browser's GPU
+process per frame, where SwiftShader rasterises. Repeat runs agree within a few %. Variants are
+interleaved in the same browser (order reversed every round), `FRAMES`=10 after an 8-frame
+warm-up, 2 rounds, 1280x720, calm sea, sun shadows on as in the game. `a0` is the first tier A
+(commit 472d549), loaded with `src=shots/water-a0.js`.
 
-Interleaved medians from two full runs (run 1 had 8 floater slots and per-pixel Jacobian; run 2
-the final shader with vertex Jacobian, final.json; the 16-slot bump landed during run 2):
+Lab, GPU-process ms per frame (x cur in the same run):
 
-| tier | avg ms run 1 | avg ms run 2 | x cur (1 / 2) | worst ms (run 2) | calls | triangles | geometries | textures | programs |
-|------|-------------:|-------------:|--------------:|-----------------:|------:|----------:|-----------:|---------:|---------:|
-| cur (dist/ocean.js) | 475 | 502 | 1.0 / 1.0 | 1667 | 42 | 21,648 | 35 | 1 | 4 |
-| **a** (ship) | 705 | 1012 | 1.5 / 2.0 | 2150 | 42 | 21,648 | 35 | 2 | 4 |
-| b (+prepass) | 1208 | 1370 | 2.5 / 2.7 | 2850 | 83 | 23,296 | 35 | 4 | 6 |
-| c (+prepass +reflection) | 1095 | 1159 | 2.3 / 2.3 | 3617 | 120 | 24,896 | 35 | 5 | 8 |
+| view | cur (dist/ocean.js) | a0 (first tier A) | **a (this pass)** | scene without water |
+|------|--------------------:|------------------:|------------------:|--------------------:|
+| fp (deck) | 236 (1.0) | 461 (1.96) | **242 (1.03)** | 86 |
+| over (3/4, high) | 295 (1.0) | 590 (2.00) | **322 (1.09)** | 84 |
+| sun (into the sun) | 286 (1.0) | 495 (1.73) | **298 (1.04)** | 96 |
 
-Per-view single samples from run 2 (20 frames each, same order cur→a→b→c, so later rows saw
-different load): cur fp/over/sun 332/324/407 ms; a 501/691/552; b 579/805/1077; c 1148/1686/1268.
-`calls` doubles for b (scene rendered twice) and triples for c; the `over` view has more calls
-(73 / 145 / 217) because more of the scene is in frame. "calls" includes the sun shadow-map pass.
+So the water shader itself (frame minus the no-water scene) is about 1.04 to 1.13x the current
+ocean's (1.04 / 1.13 / 1.06), down from 2.5 / 2.4 / 2.1x for a0. Earlier runs during the pass gave a at 1.08 to 1.20x; the
+spread is load and tuning between runs.
 
-Read: tier A is ~1.5–2x the SwiftShader frame of the current ocean at identical draw calls and
-triangles. SwiftShader is a CPU rasteriser where a full-screen fragment shader dominates
-everything, so this overstates the GPU cost; it does mean A has a fatter fragment shader
-(2 SDF fetches, 16-slot floater loop, fwidth lace) than today's.
+Real game (`shoot_game.py`, 40 frames looking at the raft edge, GPU-process ms per frame, two
+runs each, interleaved cur / old / new): cur 1102 / 1080, a0 1300 / 1322 (x1.20), a 1140 / 1151
+(x1.05). A later run of the final shader gave 1063. Draw calls, programs, triangles and geometries
+are unchanged from cur; A adds three small textures (raft SDF 32 KB, floater map 64 KB, noise
+256 KB).
 
-The real game (`shoot_game.py`, 40 frames after spawn, same loaded machine, not interleaved)
-gave 1470 ms with the current ocean and 1741 / 1773 / 1898 / 2546 ms in four runs with tier A,
-so somewhere around +20–70% for the whole frame; the load from other agents swamps the signal. Draw calls,
-programs and geometries are unchanged. Tier A adds one 16 KB texture.
+### Where the cost was, and what was cut
 
-JS per frame: `setFloaters` with 30 items and a nearest-16 sort takes about 0.015 to 0.1 ms.
-`getHeight` is unchanged code. The SDF bake runs only on raft edits.
+Profiled with compile-time knock-outs (`profile.py ... 'src=shots/water-prof2.js&prof=NO_X'`).
+The key finding: **SwiftShader does not skip untaken branches.** A runtime-false `if` around the
+lace noise cost the same as no `if` at all; only compiling the code out saved time. So on this
+renderer every term costs on every water pixel, whatever gates surround it. (On a real GPU the
+gates in the shader still skip work in coherent regions, so they stay.)
+
+| term in a0 | what changed | effect |
+|---|---|---|
+| 16-slot floater loop per pixel | capsules stamped on the CPU into a camera-centred 256x256 distance map; one fetch | biggest single term; also removes the 16-item limit |
+| 2 raft SDF fetches (contact + shadow) | RG texture: shadow offset baked into G | one fetch |
+| lace noise: 2 procedural value noises (8 hashes) | baked 512x512 tiling noise texture, 2 fetches | ~a third of the remaining foam cost |
+| `fwidth` for lace AA | footprint from distance and grazing angle | small |
+| debug views (`uDebug` ifs, one more SDF fetch) | compiled in only with `options.debug` | small |
+| `pow(ndh, 700)` | `pow(ndh, 70)^10` by squaring | small |
+| body-colour noise (2 value noises per pixel) | per vertex (7 to 22 m features on a 2.8 m grid) | small |
+| ring `sin`s, bobber block | triangle waves; bobber stamped into the floater map | bobber block was ~6% on its own |
+| far-sky early `return` | removed: SwiftShader ran both paths, including a second colour-space conversion | ~5% |
+
+Tried and reverted: an integer (uint multiply/xor) hash was ~2.8x slower than the float `fract`
+hash in SwiftShader. Glitter (one hash per pixel) and the 5 ripple `cos` are each about 5% and
+were kept for looks.
+
+JS per frame: `footprint` x30 + `setFloaters` (stamping) about 0.02 to 0.1 ms on an unloaded core
+(`cpu-cost.mjs` reports 10 to 20x more on this loaded box). `getHeight` is unchanged code. The raft
+bake runs only on raft edits and now stamps twice (SDF and shadow), a few ms for 7 to 400 tiles.
+
+### Tiers B and C (first pass, wall-clock, not re-measured)
+
+| tier | x cur (two runs) | calls | textures | programs |
+|------|-----------------:|------:|---------:|---------:|
+| b (+prepass) | 2.5 / 2.7 | 83 | 4 | 6 |
+| c (+prepass +reflection) | 2.3 / 2.3 | 120 | 5 | 8 |
+
+They render the scene two or three times and looked almost identical to A here.
 
 ## Decision
 
 **Ship tier A** as a drop-in replacement for `dist/ocean.js`. It has the same file name, the
 same `createOcean` export, bit-identical `getHeight`/`getSlope`, and the same draw call count.
-On top of that, call `setRaft` from `rebuildRaft()` and call `setFloaters` once a frame from
-`updateItems()`. See `docs/tech/water-ADOPT.md`.
+On top of that, call `setRaft` from `rebuildRaft()`, and `setBobber` + `setFloaters` once a frame
+from `updateItems()`. See `docs/tech/water-ADOPT.md`.
 
 What it fixes, visible in the screenshots:
 
-- The raft and every floating item now sit **in** the water. Each has a ragged white collar
-  and lace rings, and the deck casts a soft shadow on the sea.
-- The large blown-out sun blob becomes a glittering sun path.
+- The raft and every floating item now sit **in** the water. The raft has a thin ragged collar,
+  fine lace rings and a soft deck shadow; each item has lace shaped by its footprint (a band
+  along a plank or leaf, a small ring around a jug) with ripple rings running outward; the hook
+  bobber gets the same while it floats.
+- The large blown-out sun blob becomes a sun path of twinkling points.
 - The white specks scattered over the whole sea are gone. Lace appears on crests, more of it
-  on steeper ones (rough sea), and fades cleanly with distance.
+  on steeper ones (rough sea), and thins out with distance.
 
 Screenshots (in `sandbox/water/shots/`, git-ignored, so regenerate them with the scripts):
 
-- sandbox, current against new: `cur-*.png` and `a-*.png` (`fp`, `over`, `sun`, plus
-  `a-fp-amp2.6.png` for a rough sea)
-- real game: `game-cur-{title,spawn,down}.png` and `game-new-{title,spawn,down}.png`
+- lab, current against new: `cur-*.png` and `a-*.png` (`fp`, `over`, `sun`, plus
+  `a-fp-amp2.6.png` for a rough sea); `python sandbox/water/shoot.py sandbox/water/shots cur,a`
+- real game: `game-{cur,old,new}-{title,spawn,down,cast}.png` (`old` = first tier A, `cast` = hook
+  thrown and floating)
 
 Tiers B and C stay in `water.js` behind `#define`s for reference. They cost nothing unless
 `tier` is `'b'` or `'c'`. Recommendation: delete them if nobody picks them up.
 
 ## Honest weaknesses
 
-- Roughly 1.5–2x the current ocean's frame time in the SwiftShader lab and +20–70% for the
-  whole game frame (very noisy, shared machine). On a real GPU one full-screen pass of this size is trivial, but it is not free,
-  and nothing here was measured on real hardware.
-- Floater foam uses circles (r = .35 for every item). Long planks get a round ring, and items
-  beyond the nearest 16 get no foam (30 items spawn; 8 slots was visibly too few in the game shot). Items more than about 30 m away fade out anyway.
-- Contact foam only knows the raft tiles and the item circles. The hook bobber, swimmers and
-  the islands' shores get none. That would need tier B or more circles. Adding the bobber as
-  one more circle is a one-line follow-up (it would take a slot from an item).
-- The raft SDF assumes the raft does not move or turn in x/z, which is true today because the
-  raft group only bobs and tilts. If the raft ever drifts, call `setRaftPose(x, z, yaw)` each
-  frame.
-- Close up from the deck, the contact lace is fairly bold, about 5 to 10 cm ribbons. That is a
-  taste call, and it is tunable in one place: the `0.01 + laceMask * 0.055` width and the
-  `fp * 2.1` noise scale.
-- The glitter mask is a value-noise cell, so frozen-time screenshots show it as a fixed
-  pattern. In motion it scrolls with the foam noise and twinkles, but there is no
-  per-sparkle lifetime.
+- Still about +3 to 10% over the current ocean's lab frame in SwiftShader (+5% for the whole
+  game frame), not free. Nothing here was measured on a real GPU, where the per-pixel gates also
+  skip work and the textures are trivially cheap.
+- Item foam is lace and rings only, no solid collar, so from the deck at 5 to 15 m it is subtle;
+  it is a capsule of the bounding box, so an L-shaped or very irregular model gets a rounded band.
+  The floater map has 0.25 m texels; small items (jug, bobber) get a slightly soft shape.
+- The bobber gets item-style lace and rings, not a distinct splash: the dedicated collar,
+  ripple and landing-splash code cost ~6% of the lab frame on SwiftShader and was folded into
+  the floater map. The bobber is stamped by `setFloaters`, so `setBobber` must come first.
+- Lace anti-aliasing uses an analytic pixel footprint rather than `fwidth`, tuned by eye
+  (`isoAA = foot * 1.2`, coverage floors .5). Lines far away are dimmer and thinner than in the
+  first pass, by design.
+- The baked noise tiles every 64 cells (30 m for the first lace octave); with two octaves at a
+  non-integer ratio and different drifts, no repeat was visible in the shots.
+- Contact foam knows only the raft tiles, the items and the bobber. Swimmers and the islands'
+  shores get none (that needs tier B).
+- The raft SDF assumes the raft does not move or turn in x/z, which is true today. If the raft
+  ever drifts, call `setRaftPose(x, z, yaw)`; a new yaw re-bakes, because the shadow offset is
+  baked in raft space. The shadow also bakes the sun direction and `deckLift` at `setRaft` time.
+- Glitter is a per-cell flash (one point per ~11 cm cell), so up close it can read as a regular
+  dot field, especially in the high `over` view.

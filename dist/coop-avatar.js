@@ -1,5 +1,7 @@
 // Remote co-op player avatar: the brother's body, driven by interpolated pose snapshots.
-// createRemoteAvatar(T, {color, name}) -> { group, update(dt, s, time, camera?), handWorld(out), setName(str), dispose() }
+// createRemoteAvatar(T, {color, name, look}) -> { group, update(dt, s, time, camera?), handWorld(out), setName(str), setLook(look), dispose() }
+//   look (dist/look.js, wins over color) sets the partner's colours and hat; setLook() rebuilds + rebakes the inner
+//   body only when the look key changes (never per frame), keeping group, name tag and held-item cache.
 //   s = {x,y,z,yaw,pitch,speed,swimming,grounded,held,charge,reeling,hookOut,stage,emote:{kind,age}|null,throwAge}
 //   s.y is the FEET height (physics eye y - EYE_OFFSET). Avatar faces yaw + PI like the local player model.
 // Built on createAvatar (./avatar.js). Held items are tiny own low-poly models (~40-250 tris each; the
@@ -8,7 +10,8 @@
 // Draw calls: createAvatar's 36 meshes are baked into one mesh per rigid pivot (body, legs, arms, head+hat)
 // with per-vertex colour + roughness on one shared material (exact same shading), plus the emissive eye shine
 // and the flat-shaded straw: 8 meshes instead of 36. Pivots in body.userData.parts stay animatable.
-import { createAvatar } from './avatar.js';
+import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
+import { lookColors, lookKey } from './look.js?build=v3-survival-ae77fa84ac2b';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
@@ -16,13 +19,14 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const damp = (cur, tgt, rate, dt) => cur + (tgt - cur) * (1 - Math.exp(-rate * dt));
 const EMOTE_LEN = 1.6, SWING = 0.16, RECOVER = 0.45, PULL_BACK = -3.45;
 
-export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = {}) {
+export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', look = null } = {}) {
   const group = new T.Group();
   group.name = 'remoteAvatar';
-  const body = createAvatar(T, color);          // bob / lean happen on body, world pose on group
+  let body = createAvatar(T, look || color);    // bob / lean happen on body, world pose on group
   group.add(body);
-  const P = body.userData.parts;
-  const baked = bakeAvatar(T, body);
+  let P = body.userData.parts;
+  let baked = bakeAvatar(T, body);
+  let curLookKey = look ? lookKey(look) : null;
 
   // ---------------------------------------------------------------- held item models (own art)
   const geos = [], mats = [];
@@ -33,7 +37,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
     wood: M('#9a6b3f'), woodDark: M('#6e4a2b'), steel: M('#9fb3b6', { metalness: 0.6, roughness: 0.4 }),
     rope: M('#c9a76a'), leaf: M('#5fae4a'), leafDark: M('#3f8a3a'), scrap: M('#8c969a', { metalness: 0.5, roughness: 0.5 }),
     rust: M('#a8643a'), plastic: M('#dfeef5', { roughness: 0.5 }), cap: M('#e2574c'), cloth: M('#f3ead2'),
-    glow: M('#ffd27a', { emissive: '#ffb347', emissiveIntensity: 1.2 }), net: M('#d9c48f', { side: T.DoubleSide, transparent: true, opacity: 0.7 }),
+    glow: M('#ffd27a', { emissive: '#ffb347', emissiveIntensity: 1.2 }), net: M('#d9c48f', { side: T.DoubleSide, transparent: true, opacity: 0.7, forceSinglePass: true }),
   });
   // part(parent, geometry, material, x,y,z, rx,ry,rz)
   const part = (p, g, m, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => {
@@ -65,6 +69,29 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
       g.userData.reel = reel;
       return [0, 1.13, 0];
     },
+    spade(g, K) {   // treasure.js Little Spade: shaft, blade, D-grip
+      part(g, Cyl(0.016, 0.018, 0.5), K.wood, 0, 0.12);
+      part(g, Box(0.15, 0.17, 0.014), K.steel, 0, 0.45);
+      part(g, Box(0.1, 0.03, 0.03), K.woodDark, 0, -0.14);
+      return [0, 0.53, 0];
+    },
+    finder(g, K) {  // treasure.js Seashell Finder: wand and brass coil
+      part(g, Cyl(0.012, 0.016, 0.46), K.wood, 0, 0.12);
+      part(g, new T.TorusGeometry(0.08, 0.014, 4, 12), K.glow, 0, 0.36, 0.05, Math.PI / 2);
+      return [0, 0.36, 0.05];
+    },
+    spear(g, K) {   // [spear-repair] wooden shaft, bound tip
+      part(g, Cyl(0.015, 0.018, 0.9), K.wood, 0, 0.25);
+      part(g, Cyl(0.02, 0.02, 0.06), K.rope, 0, 0.66);
+      part(g, new T.ConeGeometry(0.022, 0.12, 5), K.woodDark, 0, 0.76);
+      return [0, 0.76, 0];
+    },
+    metalspear(g, K) {   // [spear-repair] same shaft, steel head
+      part(g, Cyl(0.015, 0.018, 0.9), K.wood, 0, 0.25);
+      part(g, Cyl(0.02, 0.02, 0.06), K.rope, 0, 0.66);
+      part(g, new T.ConeGeometry(0.026, 0.14, 4), K.steel, 0, 0.77);
+      return [0, 0.77, 0];
+    },
     wood(g, K) { part(g, Box(0.13, 0.5, 0.035), K.wood, 0, 0.12); part(g, Box(0.135, 0.03, 0.04), K.woodDark, 0, 0.3); return [0, 0.12, 0]; },
     leaf(g, K) {
       part(g, Cyl(0.006, 0.008, 0.16, 4), K.leafDark, 0, 0.04);
@@ -88,12 +115,16 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
     net(g, K) { part(g, Cyl(0.012, 0.012, 0.3, 4), K.wood, 0, 0.08); part(g, new T.TorusGeometry(0.11, 0.012, 3, 10), K.rope, 0, 0.33); part(g, new T.CircleGeometry(0.105, 8), K.net, 0, 0.33); return [0, 0.33, 0]; },
     bench(g, K) { part(g, Box(0.34, 0.03, 0.12), K.wood, 0, 0.1, 0, Math.PI / 2); part(g, Box(0.03, 0.1, 0.1), K.woodDark, 0.13, 0.1, -0.06); part(g, Box(0.03, 0.1, 0.1), K.woodDark, -0.13, 0.1, -0.06); return [0, 0.1, 0]; },
     crate(g, K) { part(g, Box(0.24, 0.24, 0.24), K.wood, 0, 0.1); part(g, Box(0.25, 0.04, 0.25), K.woodDark, 0, 0.1); return [0, 0.1, 0]; },
+    // [instruments] held instruments (own small props)
+    drum(g, K) { part(g, Cyl(0.08, 0.08, 0.1, 10), K.wood, 0, 0.08); part(g, Cyl(0.082, 0.082, 0.01, 10), M('#7da35a'), 0, 0.135); return [0, 0.14, 0]; },
+    pipes(g) { const m = M('#a5d4d8', { roughness: 0.6 }); [0.16, 0.14, 0.12, 0.1].forEach((h, i) => part(g, Box(0.015, h, 0.015), m, (i - 1.5) * 0.022, h / 2)); return [0, 0.16, 0]; },
+    bells(g, K) { part(g, Box(0.16, 0.02, 0.1), K.wood, 0, 0.06); const m = M('#c9b26a', { metalness: 0.7, roughness: 0.35 }); for (let i = 0; i < 3; i++) part(g, Box(0.02, 0.008, 0.09 - i * 0.015), m, (i - 1) * 0.045, 0.074); return [0, 0.08, 0]; },
   };
   // Holder sits in the right hand; carry items sit upright-ish, tools point forward.
   const holder = new T.Group();
   holder.position.set(0, -0.5, 0.03);
   P.rightArm.add(holder);
-  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45 };
+  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45, drum: 1.5, pipes: 0.4, bells: 1.2, spade: 1.1, finder: 0.9, spear: 1.0, metalspear: 1.0 }; // [instruments] [treasure]
   const cache = new Map();
   let curKind, cur = null;
   const getModel = (kind) => {
@@ -125,8 +156,10 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
     tag.position.set(0, 2.08, 0); tag.scale.set(0.8, 0.2, 1);
     group.add(tag);
   }
-  const dot = '#' + new T.Color(color).getHexString();
+  let dot = '#' + new T.Color(look ? lookColors(look).shirt : color).getHexString();
+  let lastName = name;
   function setName(str) {
+    lastName = str;
     if (!ctx) return;
     const label = String(str || 'Brother').slice(0, 16);
     ctx.clearRect(0, 0, 256, 64);
@@ -240,6 +273,26 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
     return out.setFromMatrixPosition(node.matrixWorld);
   }
 
+  // Swap only the inner body: same pose/bob, fresh pivots; the held model re-mounts on the next update().
+  function setLook(next) {
+    const key = lookKey(next);
+    if (key === curLookKey) return false;
+    const nb = createAvatar(T, next);
+    nb.position.copy(body.position); nb.rotation.copy(body.rotation); nb.scale.copy(body.scale);
+    holder.removeFromParent();
+    group.remove(body);
+    body.userData.dispose(); baked.dispose();
+    group.add(nb);
+    body = nb; P = nb.userData.parts; baked = bakeAvatar(T, nb);
+    P.rightArm.add(holder);
+    if (cur) cur.g.visible = false;
+    cur = null; curKind = undefined;
+    curLookKey = key;
+    dot = '#' + new T.Color(lookColors(next).shirt).getHexString();
+    setName(lastName);
+    return true;
+  }
+
   function dispose() {
     if (group.parent) group.parent.remove(group);
     body.userData.dispose(); baked.dispose();
@@ -250,7 +303,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
     if (tagMat) tagMat.dispose();
   }
 
-  return { group, update, handWorld, setName, dispose };
+  return { group, update, handWorld, setName, setLook, dispose };
 }
 
 // ---------------------------------------------------------------- avatar draw-call baking

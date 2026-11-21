@@ -1,7 +1,7 @@
 """Apply docs/tech/procedural-models-ADOPT.md to a temp copy of dist/ and compare it with the unpatched dist in the
 real game. Run from anywhere:
     python sandbox/procedural-models/adopt_check.py                 # recommended adoption (crafts only)
-    python sandbox/procedural-models/adopt_check.py --mode full     # also deck + debris + plastic (not recommended)
+    python sandbox/procedural-models/adopt_check.py --mode full     # also the deck (not recommended)
     python sandbox/procedural-models/adopt_check.py --no-game       # anchors + node --check only
     python sandbox/procedural-models/adopt_check.py --tests         # also run `node --test tests/*.test.mjs` on both
 
@@ -28,40 +28,35 @@ W, H = 960, 540
 BUILD = 'v3-survival-ae77fa84ac2b'
 
 # (file, line the doc quotes, old, new). Line numbers are 1-based, as in the ADOPT doc.
+# dist/live.js preloads game.js' static import graph (tests/live-preload.test.mjs keeps PRELOAD equal to it).
+PRELOAD = ('live.js', 28, "'look-ui.js', 'look.js',", "'look-ui.js', 'look.js', 'lowpoly-props.js',")
 CRAFTS = [
-    ('game.js', 12,
+    ('game.js', 13,
      f"import {{ createCraft }} from './crafts.js?build={BUILD}';",
      f"import {{ createCraft }} from './lowpoly-props.js?build={BUILD}';"),
-    ('placement.js', 91,
+    ('placement.js', 147,
      "for (const m of [].concat(o.material)) if (m !== mat) m.dispose();",
      "for (const m of [].concat(o.material)) if (m !== mat && !m.userData.shared) m.dispose();"),
+    PRELOAD,
 ]
 # Quality-tier variant: lowpoly crafts only on the 'low' graphics preset, rebuilt when the preset changes.
 TIER = [
-    ('game.js', 12,
+    ('game.js', 13,
      f"import {{ createCraft }} from './crafts.js?build={BUILD}';",
      f"import {{ createCraft as createDetailedCraft }} from './crafts.js?build={BUILD}'; import {{ createCraft as createLowCraft }} from './lowpoly-props.js?build={BUILD}'; let lowProps = false; const createCraft = (T, k) => (lowProps ? createLowCraft : createDetailedCraft)(T, k); // procedural-models: low preset uses lowpoly crafts"),
-    ('game.js', 1010,
+    ('game.js', 1312,
      "if (quality && quality.info.preset !== next.graphics) quality.setCap(next.graphics);",
      "if (quality && quality.info.preset !== next.graphics) quality.setCap(next.graphics); if ((next.graphics === 'low') !== lowProps) { lowProps = next.graphics === 'low'; if (scene) rebuildRaft(); }"),
     CRAFTS[1],
+    PRELOAD,
 ]
+# Deck too. Floating debris and the jug stay on debris.js / plastic.js: main now draws them instanced
+# (debris.js createItemBatch + pooled geometry, game.js 11 / 637 / 644), which lowpoly-props.js does not do.
 FULL = CRAFTS + [
-    ('game.js', 9,
+    ('game.js', 10,
      f"import {{ createRaftMesh, createFloor }} from './deck.js?build={BUILD}';",
      f"import {{ createRaftMesh, createFloor }} from './lowpoly-props.js?build={BUILD}';"),
-    ('game.js', 10,
-     f"import {{ createDebris }} from './debris.js?build={BUILD}';",
-     f"import {{ createDebris }} from './lowpoly-props.js?build={BUILD}';"),
-    ('game.js', 46,
-     f"import {{ createPlastic }} from './plastic.js?build={BUILD}';",
-     f"import {{ createPlastic }} from './lowpoly-props.js?build={BUILD}';"),
-    ('game.js', 520,
-     "if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); }",
-     "if (o.isMesh && o.material.vertexColors && !o.material.userData.shared) { o.material.dispose(); o.material = mat('#8e9aa2'); }"),
-    ('game.js', 521,
-     "const b = jug.getObjectByName('jugBody'); if (b) {",
-     "const b = jug.getObjectByName('jugBody'); if (b && !b.material.userData.shared) {"),
+    ('live.js', 21, "'debris.js',\n  'deck.js', ", "'debris.js',\n  "),   # deck.js leaves the static graph
 ]
 
 ap = argparse.ArgumentParser()

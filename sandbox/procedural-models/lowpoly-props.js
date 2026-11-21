@@ -855,6 +855,12 @@ export function createCraft(T, type) {
   K.mesh(g, S.cloth.build(ao), 'cloth', key + 'Cloth');
   for (const [name, mat, p] of named) { const geo = p.build(ao); if (geo) K.mesh(g, geo, mat, name); else if (typeof mat !== 'string') mat.dispose(); }
   K.mesh(g, S.glow.build(), 'glow', key === 'lantern' ? 'lanternGlow' : key + 'Glow'); // dist/daynight.js LANTERN_PARTS[0]
+  if (key === 'lantern') { // as dist/crafts.js: a waist-high post lantern (x0.65, ~1.2 m), feet-to-crook span centred on the
+    // footprint (placement.js FOOTPRINT.lantern). Baked into the geometry, so daynight.js' bounding-sphere light spot stays right.
+    const b = new T.Box3().setFromObject(g), cx = (b.min.x + b.max.x) / 2;
+    const M = new T.Matrix4().makeScale(0.65, 0.65, 0.65).multiply(new T.Matrix4().makeTranslation(-cx, 0, 0));
+    for (const m of g.children) if (m.isMesh) { m.geometry.applyMatrix4(M); m.geometry.computeBoundingSphere(); }
+  }
   g.updateMatrixWorld(true);
   const box = new T.Box3().setFromObject(g), size = box.getSize(new T.Vector3());
   g.userData.craftType = key;

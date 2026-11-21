@@ -28,7 +28,7 @@ export function createSignalModel(T, type) {
     add(new T.CylinderGeometry(.02, .02, 1, 6), std('#725942'), 0, 1, 0);
     const flag = add(new T.PlaneGeometry(.35, .22), std('#e0523f', {side:T.DoubleSide}), .18, 1.35, 0); flag.castShadow = true;
     const beam = new T.Mesh(new T.CylinderGeometry(.12, .12, 8, 16, 1, true),
-      new T.MeshBasicMaterial({color:'#fff0b0', transparent:true, opacity:.25, depthWrite:false, side:T.DoubleSide}));
+      new T.MeshBasicMaterial({color:'#fff0b0', transparent:true, opacity:.25, depthWrite:false, side:T.DoubleSide, forceSinglePass:true}));
     beam.position.y = 4.5; beam.visible = false; beam.castShadow = false; beam.name = 'signalBeam';
     beam.raycast = () => {}; // light only: never a pick/aim target
     g.add(beam); g.userData.beam = beam;

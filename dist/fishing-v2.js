@@ -10,7 +10,7 @@
 //     update(dt) -> null | {kind:'landed'|'nibble'|'bite'|'missed'|'caught'|'escaped'|'done', catch?, reason?}
 //   createFishingV2(T, { scene, ocean }) -> { bobber, line, hud:{el, update(session)}, splash(x,y,z),
 //     update(dt, session, { tip, origin, dir, time }), dispose() }
-import { rollCatch, biteDelay, speciesById } from './fish-species.js';
+import { rollCatch, biteDelay, speciesById } from './fish-species.js?build=v3-survival-ae77fa84ac2b';
 
 export const FISHING_TUNING = {
   chargeMs: 1100, minCast: 4, maxCast: 18, bobberFlight: 0.9, nibbleCount: [0, 2], nibbleTime: 0.28,

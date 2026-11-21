@@ -24,7 +24,6 @@ export const ACTIONS = Object.freeze([
   { id: 'interact', label: 'Interact', group: 'Actions', kind: 'button' },
   { id: 'inventory', label: 'Inventory', group: 'Actions', kind: 'button' },
   { id: 'rotate', label: 'Rotate', group: 'Actions', kind: 'button' },
-  { id: 'drop', label: 'Drop', group: 'Actions', kind: 'button' },
   { id: 'pause', label: 'Pause', group: 'Actions', kind: 'button' },
   ...hotbar,
   { id: 'hotbarNext', label: 'Next slot', group: 'Hotbar', kind: 'button' },
@@ -44,13 +43,12 @@ export const DEFAULT_BINDINGS = Object.freeze({
   moveRight: b(['KeyD', 'ArrowRight'], ['PadAxis0+']),
   jump: b(['Space'], ['Pad0']),
   sprint: b(['ShiftLeft', 'ShiftRight'], ['Pad10']),
-  crouch: b(['ControlLeft', 'KeyC'], ['Pad1']),
+  crouch: b(['KeyC'], ['Pad1']), // not Ctrl: crouch-walk would be Ctrl+W (closes the tab)
   use: b(['Mouse0'], ['Pad7']),
   aim: b(['Mouse2'], ['Pad6']),
   interact: b(['KeyE'], ['Pad2']),
   inventory: b(['Tab', 'KeyI'], ['Pad3']),
   rotate: b(['KeyR'], ['Pad11']),
-  drop: b(['KeyQ'], ['Pad8']),
   pause: b(['Escape'], ['Pad9']),
   ...Object.fromEntries(hotbar.map((a) => [a.id, b([`Digit${a.id.slice(6)}`])])),
   hotbarNext: b(['WheelDown'], ['Pad5']),
@@ -135,7 +133,10 @@ export class ActionMap {
   _apply(data) {
     this.bindings = {};
     for (const a of ACTIONS) this.bindings[a.id] = fill(blank(), DEFAULT_BINDINGS[a.id]);
-    const src = data?.bindings && typeof data.bindings === 'object' ? data.bindings : {};
+    const src = data?.bindings && typeof data.bindings === 'object' ? { ...data.bindings } : {};
+    // old default crouch was Ctrl+C; saves that still hold exactly that move to the new default (customised ones stay)
+    const ck = src.crouch?.keys;
+    if (Array.isArray(ck) && ck.length === 2 && ck[0] === 'ControlLeft' && ck[1] === 'KeyC') src.crouch = { ...src.crouch, keys: ['KeyC'] };
     for (const id of Object.keys(src)) if (ACTION_IDS.has(id)) fill(this.bindings[id], src[id]);
     this.settings = { ...SETTINGS_DEFAULTS };
     const s = data?.settings && typeof data.settings === 'object' ? data.settings : {};
@@ -263,23 +264,29 @@ export class ActionMap {
 }
 
 // Radial deadzone, rescale to 0..1 past the deadzone, magnitude^curve, clamp length <= 1.
-export function shapeStick(x, y, deadzone = 0.15, curve = 2) {
+// Pass `out` (a 2-array) to fill and return it instead of allocating.
+export function shapeStick(x, y, deadzone = 0.15, curve = 2, out = null) {
+  const r = out || [0, 0];
   const m = Math.hypot(x, y);
   const dz = Math.min(0.99, Math.max(0, deadzone || 0));
-  if (!Number.isFinite(m) || m <= dz) return [0, 0];
+  if (!Number.isFinite(m) || m <= dz) { r[0] = 0; r[1] = 0; return r; }
   const t = (Math.min(1, m) - dz) / (1 - dz);
   const s = Math.pow(t, curve > 0 ? curve : 1) / m;
-  return [x * s, y * s];
+  r[0] = x * s; r[1] = y * s;
+  return r;
 }
 
 // Exponential averaging of look deltas; smoothing 0 is an exact passthrough.
-export function smoothLook(state, dx, dy, smoothing = 0) {
+// Pass `out` (a 2-array) to fill and return it instead of allocating.
+export function smoothLook(state, dx, dy, smoothing = 0, out = null) {
+  const r = out || [0, 0];
   if (!(smoothing > 0)) {
     state.x = dx; state.y = dy;
-    return [dx, dy];
+  } else {
+    const k = 1 - Math.min(0.95, smoothing);
+    state.x = (state.x || 0) + (dx - (state.x || 0)) * k;
+    state.y = (state.y || 0) + (dy - (state.y || 0)) * k;
   }
-  const k = 1 - Math.min(0.95, smoothing);
-  state.x = (state.x || 0) + (dx - (state.x || 0)) * k;
-  state.y = (state.y || 0) + (dy - (state.y || 0)) * k;
-  return [state.x, state.y];
+  r[0] = state.x; r[1] = state.y;
+  return r;
 }

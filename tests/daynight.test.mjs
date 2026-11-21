@@ -209,12 +209,12 @@ test('night is readable: brightness floors hold and lanterns light up', () => {
   const g = addLantern(ctx, 2, 0);
   m.debug.setPhase(0.82); m.debug.freeze(true);
   for (let i = 0; i < 40; i++) m.update(1 / 30);
-  assert.ok(ctx.hemi.intensity >= 0.75 - 1e-9, `hemi ${ctx.hemi.intensity}`);
-  assert.ok(ctx.sun.intensity >= 0.55 - 1e-9, `sun ${ctx.sun.intensity}`);
+  assert.ok(ctx.hemi.intensity >= DN.HEMI_NIGHT - 1e-9 && DN.HEMI_NIGHT >= 0.5, `hemi ${ctx.hemi.intensity}`);
+  assert.ok(ctx.sun.intensity >= DN.MOON_I - 1e-9 && DN.MOON_I >= 0.4, `sun ${ctx.sun.intensity}`);
   assert.ok(ctx.renderer.toneMappingExposure >= 0.85 - 1e-9);
   const st = m.debug.state();
   assert.equal(st.lanterns, 1); assert.equal(st.poolLit, 1);
-  near(g.children.find(c => c.name === 'flame').material.emissiveIntensity, 3 * 1.6, 1e-6);
+  near(g.children.find(c => c.name === 'flame').material.emissiveIntensity, 3 * 2.2, 1e-6);
   near(g.children.find(c => c.name === 'lanternGlow').material.emissiveIntensity, 1.6 * 2.4, 1e-6);
   const lit = ctx.scene.children.filter(o => o.isPointLight && o.intensity > 0);
   assert.equal(lit.length, 1);
@@ -364,7 +364,7 @@ test('P1-2: the shadow light (direction * intensity) has no pop at sunset or sun
     assert.ok(minI < 1e-3, 'fades out through the swap');
   }
   // the floor still holds away from the swap
-  m.debug.setPhase(0.82); m.update(0); assert.ok(ctx.sun.intensity >= 0.55 - 1e-9);
+  m.debug.setPhase(0.82); m.update(0); assert.ok(ctx.sun.intensity >= DN.MOON_I - 1e-9);
   m.debug.setPhase(0.31); m.update(0); assert.ok(ctx.sun.intensity > 2);
   m.dispose();
 });
@@ -451,6 +451,21 @@ test('P2-4: restore with a missing or broken slice resets to a fresh morning', (
   m.dispose();
 });
 
+test('night tints lantern glass amber and dispose puts the colour back', () => {
+  const ctx = stubCtx();
+  const m = createDayNight(ctx);
+  const g = addLantern(ctx, 0, 0), glass = g.children.find(c => c.name === 'lanternGlass').material;
+  const base = glass.emissive.clone(), amber = new T.Color('#ffb35c');
+  m.debug.freeze(true); m.debug.setPhase(0.31); m.update(1 / 60);
+  assert.ok(glass.emissive.equals(base), 'untouched by day');
+  m.debug.setPhase(0.82); m.update(1 / 60);
+  const want = base.clone().lerp(amber, 0.7);
+  near(glass.emissive.r, want.r, 1e-6); near(glass.emissive.g, want.g, 1e-6); near(glass.emissive.b, want.b, 1e-6);
+  near(glass.emissiveIntensity, 0.6 * 1.1, 1e-6);
+  m.dispose();
+  assert.ok(glass.emissive.equals(base)); near(glass.emissiveIntensity, 0.6, 1e-9);
+});
+
 test('co-op: a guest holds still while the host clock is stopped', () => {
   const host = createDayNight(stubCtx('host')), guest = createDayNight(stubCtx('guest'));
   host.load({ v: 1, clock: 900, seed: 77 }, 'save');
@@ -465,4 +480,38 @@ test('co-op: a guest holds still while the host clock is stopped', () => {
   for (let f = 0; f < 600; f++) step();
   near(guest.debug.state().clock, host.debug.state().clock, 0.4, 'and follows again');
   host.dispose(); guest.dispose();
+});
+
+test('the sky refreshes every 0.1 s of clock, and at once on load, pins and phase jumps', () => {
+  const ctx = stubCtx();
+  const m = createDayNight(ctx);
+  const fog = () => ctx.scene.fog.color.toArray().join(), sky = new T.Color();
+  // what a fresh module shows for a clock (every first update refreshes)
+  const fresh = (clock, seed, pin) => { const c = stubCtx(), f = createDayNight(c); f.load({ v: 1, clock, seed }, 'save'); if (pin) f.debug.setWeather(pin); f.update(0); const h = c.scene.fog.color.clone(); f.dispose(); return h; };
+  m.load({ v: 1, clock: 0.63 * DAY, seed: 9 }, 'save'); // dusk: the palette moves fast here
+  m.update(0);
+  const c0 = m.debug.state().clock, h0 = fog();
+  for (let i = 0; i < 5; i++) m.update(1 / 60); // under 0.1 s: held
+  assert.equal(fog(), h0, 'held between refreshes');
+  for (let i = 0; i < 2000 && m.debug.state().clock - c0 < 0.1; i++) m.update(1 / 60);
+  assert.notEqual(fog(), h0, 'refreshed after 0.1 s');
+  assert.ok(ctx.scene.fog.color.equals(fresh(m.debug.state().clock, 9)), 'and matches an unthrottled sky');
+  // a load jumps straight to the new sky on the next frame, even a tiny step away
+  m.load({ v: 1, clock: 0.635 * DAY, seed: 9 }, 'save'); m.update(1 / 60);
+  assert.ok(ctx.scene.fog.color.equals(fresh(m.debug.state().clock, 9)), 'load');
+  m.debug.freeze(true);
+  m.debug.setWeather('rain'); m.update(0);
+  assert.ok(ctx.scene.fog.color.equals(fresh(m.debug.state().clock, 9, 'rain')), 'weather pin');
+  m.debug.setWeather(null); m.debug.setPhase(0.82); m.update(0);
+  assert.equal(m.debug.state().nightFactor, 1, 'phase jump');
+  sky.copy(ctx.scene.background); m.debug.setPhase(0.3); m.update(0);
+  assert.ok(!ctx.scene.background.equals(sky) && ctx.scene.background.equals(ctx.scene.fog.color));
+  // the moon faces the camera from wherever it moves, without a per-frame lookAt
+  m.debug.setPhase(0.82); m.update(0);
+  ctx.camera.position.set(7, 3, -4); m.update(1 / 60);
+  const moon = ctx.scene.getObjectByName('daynight-moon');
+  const n = new T.Vector3(0, 0, 1).applyQuaternion(moon.quaternion);
+  const toCam = ctx.camera.position.clone().sub(moon.position).normalize();
+  near(n.dot(toCam), 1, 1e-6, 'moon faces the camera');
+  m.dispose();
 });

@@ -1,5 +1,5 @@
 // Cooking: driftwood grill state + model + pooled smoke (ES module, no imports, no textures).
-// Usage: import { GrillState, createGrillModel, createSmoke } from './cooking.js';
+// Usage: import { GrillState, createGrillModel, createSmoke } from './cooking.js?build=v3-survival-ae77fa84ac2b';
 //
 // Pure (Node-safe, no THREE at import time):
 //   COOK_TUNING                         tuning constants (see below)
@@ -301,7 +301,7 @@ export function createGrillModel(T, opts = {}) {
   add(kit.embers, emberMat, 'grillEmbers', false);
 
   // --- three flickering cone flames: one instanced draw call, additive, no shadows
-  const flameMat = new T.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, toneMapped: false });
+  const flameMat = new T.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, forceSinglePass: true, toneMapped: false });
   const FL = [[-0.1, 0.04, 0.27, 1.0], [0.11, -0.04, 0.24, 1.1], [0, 0, 0.36, 1.3]].map(([x, z, h, w], i) => ({ x, z, h, w, ph: i * 2.1 }));
   const flames = new T.InstancedMesh(kit.flame, flameMat, FL.length);
   flames.instanceMatrix.setUsage(T.DynamicDrawUsage);
@@ -370,6 +370,7 @@ export function createSmoke(T, { max = 48 } = {}) {
   });
   const points = new T.Points(geo, mat);
   points.name = 'smoke'; points.frustumCulled = false;
+  points.visible = false; // hidden (no draw call) while no puff is alive; emit() shows it, update() hides it again
   const _v2 = new T.Vector2();
   points.onBeforeRender = (renderer, scene, camera) => {
     renderer.getDrawingBufferSize(_v2);
@@ -385,13 +386,15 @@ export function createSmoke(T, { max = 48 } = {}) {
       age[i] = 0; life[i] = 3.0 + rnd() * 1.0; s0[i] = 0.12 + rnd() * 0.08; shade[i] = dark ? 0.85 : 0.05 * rnd();
     }
     geo.attributes.aShade.needsUpdate = true;
+    if (n > 0) points.visible = true;
   };
   const update = (dt, wind = NO_WIND) => {
     dt = fin(dt, 0);
     const wx = fin(wind && wind.x, 0), wz = fin(wind && wind.z, 0);
+    let alive = 0;
     for (let i = 0; i < N; i++) {
       if (age[i] >= life[i]) { alpha[i] = 0; continue; }
-      age[i] += dt;
+      age[i] += dt; alive++;
       const t = Math.min(1, age[i] / life[i]), j = i * 3;
       vel[j + 1] *= 1 - 0.25 * dt;
       pos[j] += (vel[j] + wx * (0.25 + t)) * dt;
@@ -400,6 +403,8 @@ export function createSmoke(T, { max = 48 } = {}) {
       size[i] = s0[i] * (1 + 2.6 * t);
       alpha[i] = t >= 1 ? 0 : Math.min(1, t * 8) * (1 - t) * (1 - t) * (shade[i] > 0.5 ? 0.75 : 0.55);
     }
+    if (!alive && !points.visible) return; // idle: nothing to draw or upload
+    points.visible = alive > 0;
     aPos.needsUpdate = aSize.needsUpdate = aAlpha.needsUpdate = true;
   };
   return { points, emit, update, dispose() { geo.dispose(); mat.dispose(); } };

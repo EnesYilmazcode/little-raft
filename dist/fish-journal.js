@@ -9,7 +9,7 @@
 //     .totalCaught  .speciesSeen() -> ids[]  .entry(id) -> {count,bestCm,firstAt}|null
 //     .basket [{species,cm,stars,state}]   .dishes {"Grilled Pomfret": n}   .snapshot() -> plain JSON
 //   createJournalPanel({ getJournal, onClose }) -> { open(), close(), toggle(), isOpen, refresh(), destroy() }
-import { SPECIES, RARITY, speciesById, dishName } from './fish-species.js';
+import { SPECIES, RARITY, speciesById, dishName } from './fish-species.js?build=v3-survival-ae77fa84ac2b';
 
 export const BASKET_MAX = 40;
 const STATES = ['raw', 'cooked', 'burnt'];
@@ -228,7 +228,7 @@ export function createJournalPanel({ getJournal, onClose } = {}) {
   dlg.addEventListener('close', () => { try { onClose && onClose(); } catch (e) { console.error(e); } });
   dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
   dlg.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' || e.key === 'j' || e.key === 'J') { e.preventDefault(); e.stopPropagation(); close(); }
+    if (e.code === 'KeyJ' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
   });
   dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); }); // backdrop click
   x.addEventListener('click', close);

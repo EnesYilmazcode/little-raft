@@ -172,6 +172,69 @@ Wind motion is unchanged: 27.8% changed pixels in the craft palm region and 10.2
 Triangles per palm: 2386 (trunk 196 to 406). The grass saving (520x30 to 260x24, -9.4k per island) more than
 pays for that.
 
+### Retarget onto main's islands (2026-11-21)
+
+Main now ships `islands.js` (one seeded island at a time drifts in, docks, drifts off), `islands-models.js`
+(cached palm, spent palm, coconut, bush, rock and sand-mound geometries, all vertex coloured
+`MeshStandardMaterial`s), `daynight.js` (moves the sun, retints the ocean, weather wind) and `quality.js`
+(low / medium / high presets plus an adaptive ladder that drops pixel ratio, then shadow map size, then shadows).
+foliage.js is now the vegetation provider for those islands through a small adapter, `islands-foliage.js`:
+
+- **Contracts kept.** islands.js still builds its own InstancedMeshes (`island-palm`, `-palmSpent`, `-nuts`,
+  `-bush`, `-rock`, `-sand`) from `models.geos` / `models.mats`; the adapter only swaps the geometry and material
+  objects for the four vegetation kinds before that happens. Instance counts, matrices, hover/drained instance
+  colours, the gather bounce, the spent-palm swap, `pickNode` and `SOLID_R` collision are untouched. The foliage
+  palm takes an explicit spine (`points`), set to islands.js's own curve `x = PALM_BEND s^2, y = PALM_H s`, so the
+  trunk pick capsule (r 0.25) and coconut pick sphere still sit on the visible trunk: the farthest trunk vertex
+  is 0.177 m from the spine. `sandbox/foliage/islands_contract.mjs` checks all of this in node against the
+  patched dist (same pick result with and without foliage, spent swap, 300 seeds, deterministic decor).
+- **Decor** (new, cosmetic): ferns and elephant ears round each palm base, a green tuft lawn under the palms and
+  pale beach grass on the open sand. No pick, no collision; placed from the island seed, so co-op peers match.
+  Density by preset: low 0.4, medium 0.75, high 1 (medium: 9 ferns, 7 broadleaf, 68 + 38 tufts on seed 1234).
+- **Sun and wind.** `createFoliage(T, {sunDirUniform: ocean.uniforms.uSunDir})` shares the uniform that
+  daynight.js rewrites, so the canopy tint follows the sun with no extra code. `F.update(t, camera, windTarget)`
+  eases wind strength toward `0.25 + 0.9 * daynight.wind` (calm 0.39, rain 0.7, storm 0.88).
+- **Quality.** Shadows follow `sun.castShadow` (quality.js); decor ferns and broadleaf cast only on high.
+- **Judge fixes.** Depth twins are disposed by a `dispose` listener on their source material, so every path that
+  disposes the visible material frees the twin (the hot-swap leak); `disposeScene` also collects
+  `customDepthMaterial`. Program cache keys carry `shaderVersion()`, a hash of the GLSL and of `createFoliage`'s
+  source. Bushes shrink out at 62 to 74 m (was 34 to 46). The raft palm gets the smooth ringed trunk (crafts.js
+  edit A16). The false "smooth trunk" verify claim is gone.
+
+Triangles per model (main / foliage): palm 1472 / 2326, spent palm 1472 / 2326, coconuts 320 / 240, bush 880 /
+345; decor fern 602, broadleaf 132, tuft 24, beach tuft 15. islands.js draws the spent mesh for every palm
+(zero-scaled when live), so a 3-palm island costs about 9.8k triangles of vegetation on main and about 24.6k
+with foliage at medium decor density (before the shadow pass).
+
+In game, A/B on the same seed (island 1234: 1 palm, 2 bushes, 4 rocks, 2 sand), `adopt_check.py`, 960x540
+SwiftShader under shared load. Frame times are noise; programs are exact; calls and triangles drift by a few
+percent between runs because floating debris and birds differ:
+
+| view | calls main / foliage | triangles main / foliage | programs main / foliage |
+| --- | --- | --- | --- |
+| raft deck, island docked at ~22 m | 130 / 139 | 111.0k / 129.7k | 40 / 47 |
+| ashore, at the palm | 160 / 146 | 126.4k / 129.4k | 41 / 48 |
+| beach, across the island | 173 / 161 | 132.9k / 136.9k | 41 / 48 |
+| canopy, under the crown | 86 / 90 | 75.0k / 84.2k | 41 / 48 |
+| far, 68 m out | 212 / 199 | 175.3k / 172.0k | 41 / 48 |
+
+Draw calls stay level or drop because the 12 background islands drop from 8 meshes to 1 palm mesh each (A9) while the
+docked island adds 4 decor meshes. Programs: +7 (palm, bush, grass and fern/broadleaf colour variants plus their
+depth twins, and the craft palm). Hot swap through live.js, twice: programs 48 -> 47 -> 47 and program users
+223 -> 222 -> 222 patched (foliage programs 9 -> 9 -> 9), against 41 -> 40 -> 40 and 220 -> 219 -> 219 on main. No
+growth. Tests: 532 of 533 pass both unpatched and patched; the one failure is the `art.test.mjs` atlas timing
+budget, which fails on both copies under load and passes when run alone.
+
+**Where main's islands look better (honest).** Side-by-side shots are in `sandbox/foliage/shots/adopt/pair-*.png`.
+Main's palm crown is broader and lighter, and reads as a friendly toy palm from the raft; the foliage crown is
+darker and denser. Main's dark round coconuts were a clearer gather cue than the first foliage nuts (small,
+green); the adapter now uses larger brown nuts, but from the side they still read less clearly than main's. Main's bush shows a few small red berries; the foliage bush uses
+red five-petal blooms, which read as flowers rather than berries and look flat up close. Main's sand island is
+calm and clean; the decor makes it lush, but the pale beach tufts in the foreground can look busy at eye height.
+Where foliage is better: everything sways (and its shadows sway), the ringed trunk and dry fronds give the palm
+character, the spent palm keeps its frond structure instead of becoming a yellow paper fan, and the background
+islands finally show their palms (main's cone palm sits inside the hill).
+
 ## Alternatives considered
 
 | approach | verdict |
@@ -185,14 +248,14 @@ pays for that.
 
 ## Weaknesses (honest)
 
-- The craft (raft) palm comes from `crafts.js` and still has its own stacked-block trunk. It sways, but the
-  new smooth trunk applies only to the island palms. Porting it means editing `crafts.js`, which this module
-  avoids on purpose.
+- The craft (raft) palm's smooth ringed trunk is an edit to `crafts.js` (ADOPT A16), not something
+  `swayCraftPalm` can do at runtime. Until A16 is applied the raft palm keeps its stacked-block trunk.
 - The crossfade is screen-door dithering. At normal FOV and 44 to 54 m it is barely visible, but zoomed in
   (the `lod` shots use 3.5x zoom) the fronds speckle during the band. Discard disables early-z for the palm
   program on some GPUs. The palms are small on screen at that range, so this is cheap, but it is not free.
 - The underside tint is per vertex, so on very large leaflets it would band. On these leaflets it is smooth.
-  It reads `uSunDir`, which a day/night system has to keep updated.
+  In game it shares `ocean.uniforms.uSunDir`, which daynight.js rewrites; at night that is the moon direction,
+  so the glow toward the light still makes sense, but it is not dimmed separately.
 - The normal tilt is an approximation (slope of the bend plus flutter), not a true derivative. That is fine at
   wind 0.4 to 1.0. Far stronger wind would need more than a lean anyway.
 - The trunk ring bands are regular (15 equal bands). A real coconut palm has denser scars near the top.
@@ -201,7 +264,8 @@ pays for that.
   InstancedMeshes.
 - Frond shadows on the 1024 shadow map (±25 m frustum, copied from game.js) are blobby wedges. That is the
   shadow map resolution, not foliage.
-- Collisions and gather interaction are out of scope. `island.userData.palms` and `heightAt` are exposed for the
-  islands module.
+- Collisions and gather interaction stay in `islands.js`. The foliage palm is bent to its spine so the
+  pick capsule and `SOLID_R` still fit; any future change of `PALM_H` / `PALM_BEND` flows through, but a change of
+  the islands spine formula itself would need `islands-foliage.js` to follow.
 - SwiftShader timing under heavy shared load is noisy (the box sat at load average 30 to 45 during this pass).
   Trust the calls, triangles and overdraw numbers. The interleaved A/B milliseconds are indicative only.
