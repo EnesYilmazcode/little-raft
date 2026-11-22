@@ -6,9 +6,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
 const { BuildGrid, LEVEL_H, FLOOR_THICK } = await import(new URL('building-pieces.js', base));
-const { PlayerPhysics, PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base));
+const { PlayerPhysics, PLAYER_CONSTANTS: PC, MOVE_MUL } = await import(new URL('player-physics.js', base));
+// cookpot.js caps the jump buff (impulse multiplier); read it from the source so a retune cannot slip past.
+const COOK_JUMP = +readFileSync(fileURLToPath(new URL('cookpot.js', base)), 'utf8').match(/MOVE_MUL\.jump = Math\.min\(mods\.jump, ([\d.]+)\)/)[1];
 
 const EYE = PC.EYE_OFFSET, HEAD = 0.15, WATER = -0.24, D0 = 0.2;
 const tilesSq = (n) => { const a = []; for (let i = -n; i <= n; i++) for (let j = -n; j <= n; j++) a.push([i, j]); return a; };
@@ -117,5 +121,45 @@ test('the same jump against a two-storey wall is blocked and lands back on the d
     run(g, ph, 1, {}, dt, bob, st);
     assert.ok(ph.grounded && ph.x < -1 - 0.07 - PC.BODY_RADIUS + 1e-6, `${tag(dt, bob)}: blocked (x ${ph.x})`);
     assert.ok(ph.y - EYE < D0 + 0.2, `${tag(dt, bob)}: on the deck`);
+  }
+});
+
+// Railings all round the raft (cells -1..1, outer edges at +-3).
+const RING = [];
+for (let k = -1; k <= 1; k++) RING.push(P('railing', 2, k, 0, 1), P('railing', -1, k, 0, 1), P('railing', k, 2, 0, 0), P('railing', k, -1, 0, 0));
+const ringGrid = () => { const g = new BuildGrid(); g.setTiles(tilesSq(1)); for (const p of RING) assert.ok(g.place(p)); return g; };
+
+test('railings keep sprint jumps on the raft, with the cookpot jump buff too', () => {
+  assert.ok(COOK_JUMP >= 1 && COOK_JUMP < 2, `cookpot jump cap ${COOK_JUMP}`);
+  try {
+    for (const mul of [1, COOK_JUMP]) for (const dt of [1 / 60, 1 / 20]) for (const bob of BOBS) for (const jx of [0.5, 1, 1.5, 2]) for (const t0 of [0, 0.4, 0.8]) {
+      MOVE_MUL.jump = mul;
+      const g = ringGrid(), ph = new PlayerPhysics({ x: -1, y: D0 + EYE, z: 0 }), st = { t: t0 };
+      const tr = run(g, ph, 3, (p) => ({ forward: 1, yaw: yawTo(1, 0), sprint: true, jump: p.x > jx }), dt, bob, st);
+      const msg = `mul ${mul} ${tag(dt, bob)} jump at x ${jx} t0 ${t0}`;
+      assert.ok(tr.some(s => s.feet > 2), `${msg}: jumped high`);
+      assert.ok(Math.max(...tr.map(s => s.x)) <= 3 - 0.07 - PC.BODY_RADIUS + 1e-6 && !ph.swimming, `${msg}: stayed aboard (x ${ph.x})`);
+    }
+  } finally { MOVE_MUL.jump = 1; }
+});
+
+test('a railing under an upper floor does not bump players jumping up there', () => {
+  // Pillars hold two floors on cells (0,0) and (1,0); a railing on the deck edge x = 1 below them.
+  const sup = [P('pillar', 0, 0, 0), P('pillar', 1, 0, 0), P('pillar', 2, 0, 0), P('pillar', 0, 1, 0), P('pillar', 1, 1, 0), P('pillar', 2, 1, 0)];
+  const ups = [P('floor', 0, 0, 1), P('floor', 1, 0, 1)];
+  for (const dt of [1 / 60, 1 / 20]) {
+    const ends = [];
+    for (const rail of [[], [P('railing', 1, 0, 0, 1)]]) {
+      const g = grid([...sup, ...rail, ...ups]), e = [];
+      for (const [x, input] of [[1.1, (p, n) => ({ jump: n < 2 })], [-0.5, (p, n) => ({ forward: 1, yaw: yawTo(1, 0), jump: n < 2 })]]) {
+        const ph = new PlayerPhysics({ x, y: D0 + LEVEL_H + EYE, z: 0.3 }), st = { t: 0 };
+        run(g, ph, 0.1, {}, dt, 0, st);
+        run(g, ph, 1.2, input, dt, 0, st);
+        assert.ok(ph.grounded && Math.abs(ph.y - EYE - D0 - LEVEL_H) < 1e-6, `${tag(dt, 0)}: landed upstairs`);
+        e.push(ph.x, ph.z);
+      }
+      ends.push(e);
+    }
+    for (let k = 0; k < ends[0].length; k++) assert.ok(Math.abs(ends[0][k] - ends[1][k]) < 1e-9, `${tag(dt, 0)}: same path with the railing below (${ends[0]} vs ${ends[1]})`);
   }
 });

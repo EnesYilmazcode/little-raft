@@ -72,9 +72,9 @@ test('pack pieces: catalogue, appended order, stateful set', () => {
   assert.equal(PIECES.railing.slot, 'edge'); assert.equal(PIECES.gate.slot, 'edge');
   assert.equal(PIECES.hatch.slot, 'cell'); assert.equal(PIECES.ladder.slot, 'cell');
   for (const t of ['railing', 'hatch', 'ladder', 'gate']) assert.equal(PIECES[t].full, false);
-  // The guard box, not the visible rail, stops jumps: it clears the jump apex plus ~0.25 m of deck bob.
-  assert.ok(RAIL_GUARD >= PC.JUMP_IMPULSE ** 2 / (2 * PC.GRAVITY) + 0.25, 'railing guard is above the jump height');
-  assert.ok(RAIL_GUARD <= LEVEL_H + 0.55, 'guard stays within a step of the storey above');
+  // The guard box, not the visible rail, stops jumps: it clears the cookpot-buffed jump apex (x1.15 impulse,
+  // cookpot.js cap) plus ~0.25 m of deck bob. Under a floor one storey up it stops at LEVEL_H (jump.test.mjs).
+  assert.ok(RAIL_GUARD >= (1.15 * PC.JUMP_IMPULSE) ** 2 / (2 * PC.GRAVITY) + 0.25, 'railing guard is above the jump height');
   assert.deepEqual(Object.keys(STATEFUL).sort(), ['gate', 'hatch']);
 });
 
