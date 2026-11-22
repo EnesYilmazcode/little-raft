@@ -53,14 +53,14 @@ const WOOD = 0x7a5634, PLANK = 0xb98b55;
 const THATCH = 0xc9a35c, THATCH_D = 0xa8843f, SHELL = 0xf7d9c4;
 
 /**
- * Trading post stall: a small open wooden hut, ~2.2 m wide along x, 1.4 m deep, the counter on the +z side.
- * Origin on the sand at the centre of its footprint. One merged vertex-colour mesh (1 draw call).
+ * Trading post stall: a small open wooden hut, ~2.2 m wide along x, 1.4 m deep, the counter on the +z side, on a
+ * 3.5 x 1.6 m deck (trader-core.js FOOT_X / FOOT_Z). Origin: the centre of the deck underside. One merged vertex-colour mesh (1 draw call).
  */
 export function buildStall(T) {
   const { parts, add } = painter(T, 23);
   // floor planks and four corner posts
-  add(new T.BoxGeometry(2.3, .08, 1.5), PLANK, 0, .04, 0, 0, 0, 0, .1);
-  add(new T.BoxGeometry(2.24, .6, 1.44), 0x6a4a2c, 0, -.3, 0, 0, 0, 0, .08); // footing: sinks into the uphill sand
+  add(new T.BoxGeometry(3.5, .08, 1.6), PLANK, 0, .04, 0, 0, 0, 0, .1); // deck under the stall, crates and barrel
+  add(new T.BoxGeometry(3.44, .8, 1.54), 0x6a4a2c, 0, -.4, 0, 0, 0, 0, .08); // footing: fills the gap to the downhill sand
   for (const [x, z, h] of [[-1, .62, 2.05], [1, .62, 2.05], [-1, -.62, 2.35], [1, -.62, 2.35]]) add(new T.CylinderGeometry(.065, .075, h, 7), WOOD, x, h / 2, z, 0, 0, 0, .06);
   // counter: plank front, top board, a few shells on show
   for (let i = 0; i < 5; i++) add(new T.BoxGeometry(.4, .86, .05), i % 2 ? 0x9a6b3c : 0x8d5f36, -.84 + i * .42, .47, .72, 0, 0, (i - 2) * .012, .07);

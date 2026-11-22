@@ -7,9 +7,12 @@ import { TRADER as C, offersFor, postFor, cleanTrader, openVisit, tradeCheck, ap
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { islandNow } from './islands.js?build=v3-survival-ae77fa84ac2b'; // same specifier as content.js: one shared instance
 import { buildStall, buildShellWreath, buildGlassFloat } from './trader-model.js?build=v3-survival-ae77fa84ac2b';
+import { ISLAND } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
+import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
 const PROMPT = '<kbd>E</kbd>Trade', CLOSER = 'Move a little closer to the counter';
 const COUNTER_OUT = .7, COUNTER_Y = 1.0; // the aim point: in front of the stall, at counter height
+const SOLID_X = 1.7, SOLID_Z = .78, SOLID_H = 2.5; // the stall, crates and barrel block walking (stall-local half extents, height)
 
 export function createTrader(ctx) {
   const T = ctx.T;
@@ -23,6 +26,7 @@ export function createTrader(ctx) {
   // the post in view: island seed (null when none) and the counter point in scene (raft-local) metres
   let postSeed = null;
   const stall = { x: 0, y: 0, z: 0 };
+  const base = { x: 0, y: 0, z: 0, c: 1, s: 0 }; // stall origin in scene metres and its yaw as cos / sin
   const scratch = T ? new T.Vector3() : null;
   // serialize() output, reused (no steady-state allocation)
   const out = { v: 1, r: 0, plans: [], visit: null };
@@ -44,11 +48,14 @@ export function createTrader(ctx) {
     postSeed = isl.seed;
     const sx = Math.sin(post.yaw), sz = Math.cos(post.yaw);
     stall.x = isl.cx + post.x + sx * COUNTER_OUT; stall.z = isl.cz + post.z + sz * COUNTER_OUT; stall.y = isl.gy + post.y + COUNTER_Y;
+    base.x = isl.cx + post.x; base.z = isl.cz + post.z; base.y = isl.gy + post.y; base.c = sz; base.s = sx;
     if (T && ctx.scene) {
       if (!stallM) { stallM = buildStall(T); ctx.scene.add(stallM.group); }
       const g = stallM.group;
       if (g.parent !== ctx.scene) ctx.scene.add(g);
       g.position.set(isl.cx + post.x, isl.gy + post.y - .05, isl.cz + post.z); g.rotation.y = post.yaw;
+      const grow = 1 - (isl.sink > 0 ? isl.sink : 0) / ISLAND.SINK; // shrink with the island as it rises / sinks, like its palms
+      g.scale.setScalar(grow < 1e-3 ? 1e-3 : grow);
       g.visible = true;
     }
     return post;
@@ -58,6 +65,18 @@ export function createTrader(ctx) {
   function step() {
     if (postSeed === null) { if (st.visit) { st.visit = null; st.r++; uiVer++; } return; }
     if (!st.visit || st.visit.seed !== postSeed) { st.visit = openVisit(postSeed, has); st.r++; uiVer++; }
+  }
+
+  // ---- walk around the stall (after player physics, like islands.js does for palm trunks and rocks)
+  function afterMove(p) {
+    if (!p || !place()) return;
+    const dx = p.x - base.x, dz = p.z - base.z, br = PLAYER_CONSTANTS.BODY_RADIUS;
+    const lx = dx * base.c - dz * base.s, lz = dx * base.s + dz * base.c; // into stall-local
+    const hx = SOLID_X + br, hz = SOLID_Z + br, ox = hx - Math.abs(lx), oz = hz - Math.abs(lz);
+    if (ox <= 0 || oz <= 0 || p.y - PLAYER_CONSTANTS.EYE_OFFSET > base.y + SOLID_H) return;
+    let nx = lx, nz = lz;
+    if (ox < oz) nx = lx < 0 ? -hx : hx; else nz = lz < 0 ? -hz : hz; // out through the nearest side
+    p.x = base.x + nx * base.c + nz * base.s; p.z = base.z - nx * base.s + nz * base.c;
   }
 
   function update() {
@@ -171,7 +190,7 @@ export function createTrader(ctx) {
 
   return {
     name: 'trader',
-    update, serialize, load, action, interact, prompt, debug,
+    update, afterMove, serialize, load, action, interact, prompt, debug,
     craftLocked(id) { return id === 'shellwreath' && !st.plans.includes('shellwreath') ? 'Buy the plan at a trading post' : null; },
     decorModel(type) {
       if (!T) return null;

@@ -74,21 +74,32 @@ test('posts stand only on the larger islands, about a third of them', () => {
   for (const bad of [-1, 1.5, 2 ** 32, '5', null, NaN]) { assert.equal(isPostIsland(bad), false); assert.equal(postFor(bad), null); }
 });
 
-test('the stall sits on dry sand, clear of nodes and treasure, its counter facing the sea', () => {
+test('the stall sits on dry, level-enough sand, its whole footprint clear of nodes and treasure, counter facing the sea', () => {
+  const SR = { palm: .28, bush: .3, rock: .42, sand: .15 };
   let clear = 0, total = 0;
   for (let s = 0; s < 600; s++) {
     const seed = (s * 40503 + 17) >>> 0, post = postFor(seed); if (!post) continue;
     total++;
     const lay = layoutFor(seed), a = Math.atan2(post.z, post.x), rad = Math.hypot(post.x, post.z);
-    assert.ok(groundHeight(rad, lay.R, a - lay.rot) >= TRADER.POST_MIN_Y, `dry sand ${seed}`);
-    assert.ok(post.y <= groundHeight(rad, lay.R, a - lay.rot) + 1e-9 && post.y > groundHeight(rad, lay.R, a - lay.rot) - .6, 'settled on its lowest corner');
+    const ground = (x, z) => groundHeight(Math.hypot(x, z), lay.R, Math.atan2(z, x) - lay.rot);
+    assert.ok(ground(post.x, post.z) >= TRADER.POST_MIN_Y, `dry sand ${seed}`);
     assert.ok(rad <= TRADER.POST_U_MAX * lay.R * shape(a - lay.rot) + 1e-9);
     assert.ok(Math.abs(Math.sin(post.yaw) - post.x / rad) < 1e-9 && Math.abs(Math.cos(post.yaw) - post.z / rad) < 1e-9, 'faces outward');
+    const c = Math.cos(post.yaw), sn = Math.sin(post.yaw);
+    // the deck (3.5 x 1.6 m) is never buried and its .8 m footing always reaches the sand; every corner is dry
+    for (let i = -4; i <= 4; i++) for (let j = -2; j <= 2; j++) {
+      const mx = i * 1.75 / 4, mz = j * .8 / 2, g = ground(post.x + mx * c + mz * sn, post.z - mx * sn + mz * c);
+      assert.ok(g > 0, `footprint in the sea on ${seed}`);
+      assert.ok(g <= post.y + .06, `deck buried ${(g - post.y).toFixed(2)} m on ${seed}`);
+      assert.ok(g > post.y - .75, `footing floats ${(post.y - g).toFixed(2)} m on ${seed}`);
+    }
     let gap = Infinity;
-    for (const n of lay.nodes) gap = Math.min(gap, Math.hypot(n.x - post.x, n.z - post.z));
-    for (const t of spotsFor(seed)) gap = Math.min(gap, Math.hypot(t.x - post.x, t.z - post.z));
-    if (gap >= TRADER.POST_CLEAR) clear++;
-    assert.ok(gap >= 1, `stall overlaps a node on ${seed} (${gap.toFixed(2)} m)`);
+    const toFoot = (px, pz, r) => { const dx = px - post.x, dz = pz - post.z, lx = dx * c - dz * sn, lz = dx * sn + dz * c;
+      return Math.hypot(Math.max(0, Math.abs(lx) - 1.75), Math.max(0, Math.abs(lz) - .8)) - r; };
+    for (const n of lay.nodes) gap = Math.min(gap, toFoot(n.x, n.z, SR[n.kind] * n.s));
+    for (const t of spotsFor(seed)) gap = Math.min(gap, toFoot(t.x, t.z, .3));
+    if (gap >= TRADER.POST_GAP - .2) clear++;
+    assert.ok(gap > 0, `stall overlaps a node or treasure on ${seed} (${gap.toFixed(2)} m)`);
   }
   assert.ok(total > 100 && clear / total > .9, `${clear} of ${total} fully clear`);
 });
@@ -242,6 +253,13 @@ test('createTrader: a post opens on a large island only, trades, old barge save,
   assert.equal(g.debug.post(), seed); assert.deepEqual(g.debug.state().stall, m.debug.state().stall);
   assert.deepEqual(g.debug.stock(), m.debug.stock());
   g.load(undefined, 'net'); assert.equal(g.serialize().visit, null);
+  // the player cannot walk into the stall: pushed out through the nearest side
+  const inside = { x: 20 + post.x + Math.sin(post.yaw) * .3, y: 1.6 + post.y, z: -5 + post.z + Math.cos(post.yaw) * .3 };
+  m.afterMove(inside);
+  const out = Math.hypot(inside.x - 20 - post.x, inside.z + 5 - post.z);
+  assert.ok(out > 1, `pushed out (${out.toFixed(2)} m)`);
+  const front = { x: 20 + post.x + Math.sin(post.yaw) * 2, y: 1.6, z: -5 + post.z + Math.cos(post.yaw) * 2 }, fx = front.x, fz = front.z;
+  m.afterMove(front); assert.equal(front.x, fx); assert.equal(front.z, fz);
   // the island leaves: the post closes; the plan stays learned
   island = null; m.update(1);
   assert.equal(m.serialize().visit, null); assert.deepEqual(m.serialize().plans, ['shellwreath']);

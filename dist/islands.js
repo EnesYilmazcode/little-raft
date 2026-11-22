@@ -451,10 +451,10 @@ export function createIslands(ctx) {
   }
 
   // ---------- live accessor (islandNow) ----------
-  const now = { seed: 0, cx: 0, cz: 0, gy: 0, R: 0, rot: 0, phase: 'gone', onSand: false, hover: -1, groundAt };
+  const now = { seed: 0, cx: 0, cz: 0, gy: 0, R: 0, rot: 0, sink: 0, phase: 'gone', onSand: false, hover: -1, groundAt }; // sink: metres below rest while rising/sinking
   function mine() {
     if (!shown || !st.isl || !layout) return null;
-    now.seed = st.isl.seed; now.cx = cx; now.cz = cz; now.gy = gy; now.R = layout.R; now.rot = layout.rot;
+    now.seed = st.isl.seed; now.cx = cx; now.cz = cz; now.gy = gy; now.R = layout.R; now.rot = layout.rot; now.sink = path.sink;
     now.phase = path.phase; now.onSand = sandState.onSand; now.hover = hoverNode;
     return now;
   }

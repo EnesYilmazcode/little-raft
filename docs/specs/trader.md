@@ -4,8 +4,10 @@
 > trading posts on some islands. So there is no visiting barge, no named trader and no arrival or cast-off notices.
 > A small wooden stall stands on every larger island (`isPostIsland(seed)`: layout radius R >= `TRADER.POST_MIN_R` = 8,
 > about a third of islands). `postFor(seed)` places it from the island seed alone (own RNG stream, dry sand, clear of
-> resource nodes and buried treasure, counter facing the sea, settled on its lowest footprint corner), so host and guest
-> agree with no messages. trader.js reads the island in view through islands.js `islandNow()` (islands.js is untouched),
+> resource nodes and buried treasure across its whole 3.5 x 1.6 m deck, on fairly flat sand, deck at the highest sand
+> under it with a footing down to the lowest, counter facing the sea), so host and guest agree with no messages. The
+> stall is solid (trader.js afterMove) and shrinks with the island while it rises or sinks (`islandNow().sink`, the only
+> islands.js change). trader.js reads the island in view through islands.js `islandNow()`,
 > opens one visit (seeded offers + stock, keyed by the island seed) while a post island is in view, and closes it when the
 > island leaves. Walk up to the counter and press E. The offer pool, Bright Shells, the Shell Wreath plan and the Glass
 > Float are unchanged. Slice `world.ext.trader` is now `{v:1, r, plans, visit:{seed, stock}|null}`; older saves with the
