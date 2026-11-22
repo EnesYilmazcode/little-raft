@@ -1,7 +1,7 @@
 // First-person held models for item kinds held-items.js has no tuned model for. ES module.
 // buildHeldModel(T, kind) -> { model, shared } | null
 //   model: a fresh Object3D in the item's own units (held-items.js fit() scales and centres it);
-//   shared: true when its geometry and materials belong to a world-model kit cached here (never dispose).
+//   shared: true when its geometry or materials may be cached and used by world copies (never dispose or retune).
 // HELD_HOLD[kind] = { hand, pose, rx, ry, rz, size, grip: [fx, fy, fz] (fraction of the fitted size) }.
 // Placeables reuse their own world model (scaled down, on the left fist while the right hand points);
 // small resources, food and gear reuse icon-models.js or get a simple low-poly model matching the icon.
@@ -355,9 +355,11 @@ export const HELD_MODEL_KINDS = Object.freeze([...new Set([...Object.keys(SHARED
 export function buildHeldModel(T, kind) {
   try {
     if (SHARED[kind]) { const m = SHARED[kind](T, kits(T)); if (m) return { model: m, shared: true }; }
-    const make = OWN[kind] || OWN_WORLD[kind];
-    const m = make ? make(T) : buildIconModel(T, kind);
-    return m ? { model: m, shared: false } : null;
+    // World and icon models may keep module-cached materials (maptable, recycler, smelter, purifier ...): report them
+    // shared so hands.js works on material copies and never retunes or disposes what placed copies still use.
+    if (OWN[kind]) return { model: OWN[kind](T), shared: false };
+    const m = OWN_WORLD[kind] ? OWN_WORLD[kind](T) : buildIconModel(T, kind);
+    return m ? { model: m, shared: true } : null;
   } catch (e) {
     console.warn('held model failed', kind, e);
     return null;
