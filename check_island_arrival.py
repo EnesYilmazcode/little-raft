@@ -68,7 +68,10 @@ with sync_playwright() as p:
     page.on('pageerror', lambda e: report['errors'].append(str(e)))
     page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=60000)
     page.locator('.ob-item[data-act="new"]:visible, #solo:visible').first.click(); page.wait_for_function('raftDebug.state.running', timeout=15000)
-    page.wait_for_function('!!window.raftMount && !!raftDebug.content.islands', timeout=15000); page.wait_for_timeout(800)
+    page.wait_for_function('!!window.raftMount && !!raftDebug.content.islands', timeout=15000)
+    # Clear midday: the thinnest fog (90 to 260 m), the hardest case. Rain pulls the fog in to 60 m.
+    page.evaluate("() => { const d = raftDebug.content.daynight; if (d) { d.setPhase(0.3); d.setWeather('calm'); d.freeze(true); } }")
+    page.wait_for_timeout(800)
 
     r = page.evaluate(PROBE, [1234, 0.25])
     rows = r['rows']; base = rows[0]['y']
