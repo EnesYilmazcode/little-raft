@@ -1,8 +1,11 @@
-// Unit tests for Pim's Barge pure rules (dist/trader-core.js, docs/specs/trader.md §11).
+// Unit tests for the island trading posts (dist/trader-core.js, dist/trader.js, docs/specs/trader.md §11).
 // Run: node --test tests/trader.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRADER, TRADER_PLANS, POOL, rng, offersFor, nextDelay, pathAt, parkAt, deckGap, cleanTrader, tradeCheck, applyTrade } from '../dist/trader-core.js';
+import { readFileSync } from 'node:fs';
+import { TRADER, TRADER_PLANS, POOL, rng, offersFor, isPostIsland, postFor, openVisit, cleanTrader, tradeCheck, applyTrade } from '../dist/trader-core.js';
+import { layoutFor, groundHeight, shape } from '../dist/islands-layout.js';
+import { spotsFor } from '../dist/treasure-rules.js';
 import { Bag, ITEM_INFO, RECIPES } from '../dist/inventory-state.js';
 import { CONTENT_DECOR, CONTENT_BLOCK_RADIUS } from '../dist/content-items.js';
 
@@ -12,7 +15,7 @@ const emptyBag = () => new Bag({ slots: new Array(28).fill(null), selected: 0 })
 const SEED = 12345;
 const docked = (seed = SEED) => {
   const offers = offersFor(seed, has);
-  return { v: 1, r: 3, clock: 1000, next: 1500, plans: [], visit: { seed, born: 1000 - TRADER.APPROACH - 10, hold: 0, stock: offers.map(o => o.stock) } };
+  return { v: 1, r: 3, plans: [], visit: { seed, stock: offers.map(o => o.stock) } };
 };
 const idx = (st, id) => offersFor(st.visit.seed, has).findIndex(o => o.id === id);
 const snap = (st, bag) => JSON.stringify([st, bag.snapshot()]);
@@ -57,47 +60,42 @@ test('the float row shows up in 30-50% of seeds, always last', () => {
   assert.ok(n >= 300 && n <= 500, `float in ${n} of 1000`);
 });
 
-test('pathAt boundaries and hold', () => {
-  const o = {};
-  assert.deepEqual(pathAt(-5, 0, o), { phase: 'approach', u: 0, left: TRADER.APPROACH + TRADER.DOCK + 5 });
-  assert.equal(pathAt(0, 0, o).phase, 'approach');
-  assert.equal(pathAt(TRADER.APPROACH / 2, 0, o).u, .5);
-  assert.equal(pathAt(TRADER.APPROACH, 0, o).phase, 'docked');
-  assert.equal(o.left, TRADER.DOCK);
-  assert.equal(pathAt(TRADER.APPROACH + TRADER.DOCK - 1, 0, o).phase, 'docked');
-  assert.equal(o.left, 1);
-  assert.equal(pathAt(TRADER.APPROACH + TRADER.DOCK, 0, o).phase, 'depart');
-  assert.equal(pathAt(TRADER.APPROACH + TRADER.DOCK + 30, 60, o).phase, 'docked');
-  assert.equal(o.left, 30);
-  assert.equal(pathAt(TRADER.APPROACH + TRADER.DOCK + TRADER.DEPART, 0, o).phase, 'gone');
-  assert.equal(pathAt(NaN, 0, o).phase, 'gone');
-  const same = pathAt(1, 0, o); assert.equal(same, o);
-});
-
-test('nextDelay stays in GAP_MIN..GAP_MAX', () => {
-  for (let s = 0; s < 500; s++) { const d = nextDelay(s * 104729); assert.ok(d >= TRADER.GAP_MIN && d <= TRADER.GAP_MAX); }
-});
-
-test('parkAt: gap <= GAP for 1x1, wide, L and holey rafts; no-tile fallback', () => {
-  const rafts = [
-    [[0, 0]],
-    [[-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [0, 1]],
-    [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]],
-    [[3, -1], [0, 0], [1, 0], [2, 0], [3, 0]],
-    [[-3, 0], [3, 0], [0, 1], [-3, 1], [3, 1]],
-  ];
-  const o = {};
-  for (const t of rafts) {
-    parkAt(t, o);
-    assert.ok(deckGap(t, o.x, o.z + TRADER.HALF_BEAM) <= TRADER.GAP + 1e-6, JSON.stringify(t));
-    const minZ = Math.min(...t.map(q => q[1]));
-    assert.ok(o.z + TRADER.HALF_BEAM < minZ * 2 - 1, 'barge sits off the bow');
+test('posts stand only on the larger islands, about a third of them', () => {
+  let n = 0;
+  for (let s = 0; s < 1000; s++) {
+    const seed = (s * 2654435761) >>> 0, R = layoutFor(seed).R, post = postFor(seed);
+    assert.equal(isPostIsland(seed), R >= TRADER.POST_MIN_R);
+    if (R < TRADER.POST_MIN_R) { assert.equal(post, null, `small island ${seed} has no post`); continue; }
+    n++;
+    assert.ok(post && Object.isFrozen(post));
+    assert.equal(postFor(seed), post, 'cached'); // deterministic: host and guest get the same post
   }
-  parkAt([[0, 0], [1, 0], [0, 1]], o); assert.equal(o.x, 1); // mean of the bow row
-  assert.deepEqual(parkAt([], o), { x: 0, z: -3 - TRADER.GAP - TRADER.HALF_BEAM });
-  assert.deepEqual(parkAt(null, {}), { x: 0, z: -3 - TRADER.GAP - TRADER.HALF_BEAM });
-  assert.deepEqual(parkAt([['a', 1], null], {}), { x: 0, z: -3 - TRADER.GAP - TRADER.HALF_BEAM });
-  assert.equal(deckGap([], 5, 5), 0);
+  assert.ok(n >= 250 && n <= 420, `${n} posts in 1000 islands`);
+  for (const bad of [-1, 1.5, 2 ** 32, '5', null, NaN]) { assert.equal(isPostIsland(bad), false); assert.equal(postFor(bad), null); }
+});
+
+test('the stall sits on dry sand, clear of nodes and treasure, its counter facing the sea', () => {
+  let clear = 0, total = 0;
+  for (let s = 0; s < 600; s++) {
+    const seed = (s * 40503 + 17) >>> 0, post = postFor(seed); if (!post) continue;
+    total++;
+    const lay = layoutFor(seed), a = Math.atan2(post.z, post.x), rad = Math.hypot(post.x, post.z);
+    assert.ok(groundHeight(rad, lay.R, a - lay.rot) >= TRADER.POST_MIN_Y, `dry sand ${seed}`);
+    assert.ok(post.y <= groundHeight(rad, lay.R, a - lay.rot) + 1e-9 && post.y > groundHeight(rad, lay.R, a - lay.rot) - .6, 'settled on its lowest corner');
+    assert.ok(rad <= TRADER.POST_U_MAX * lay.R * shape(a - lay.rot) + 1e-9);
+    assert.ok(Math.abs(Math.sin(post.yaw) - post.x / rad) < 1e-9 && Math.abs(Math.cos(post.yaw) - post.z / rad) < 1e-9, 'faces outward');
+    let gap = Infinity;
+    for (const n of lay.nodes) gap = Math.min(gap, Math.hypot(n.x - post.x, n.z - post.z));
+    for (const t of spotsFor(seed)) gap = Math.min(gap, Math.hypot(t.x - post.x, t.z - post.z));
+    if (gap >= TRADER.POST_CLEAR) clear++;
+    assert.ok(gap >= 1, `stall overlaps a node on ${seed} (${gap.toFixed(2)} m)`);
+  }
+  assert.ok(total > 100 && clear / total > .9, `${clear} of ${total} fully clear`);
+});
+
+test('openVisit: full seeded stock for the island', () => {
+  const v = openVisit(SEED, has);
+  assert.equal(v.seed, SEED); assert.deepEqual(v.stock, offersFor(SEED, has).map(o => o.stock));
 });
 
 test('applyTrade ok: shells in, fish out, stock-1, r+1, same slots array', () => {
@@ -127,9 +125,9 @@ test('each failure leaves the bag and the slice untouched', () => {
     ['missing', (st, bag) => { bag.add('fish', 1); return { offer: idx(st, 'fish'), visit: SEED }; }, /Need 2 more Fish/],
     ['full', (st, bag) => { for (let i = 0; i < 28; i++) bag.add(i === 0 ? 'fish' : 'wood', i === 0 ? 4 : 20); return { offer: idx(st, 'fish'), visit: SEED }; }, /Bag full/],
     ['soldout', (st, bag) => { bag.add('fish', 9); st.visit.stock[idx(st, 'fish')] = 0; return { offer: idx(st, 'fish'), visit: SEED }; }, /Sold out/],
-    ['stale', (st, bag) => { bag.add('fish', 9); return { offer: 0, visit: SEED + 1 }; }, /new stock/],
-    ['closed', (st, bag) => { bag.add('fish', 9); st.clock = st.visit.born + 1; return { offer: 0, visit: SEED }; }, /isn.t here/],
-    ['closed', (st, bag) => { bag.add('fish', 9); st.visit = null; return { offer: 0, visit: SEED }; }, /isn.t here/],
+    ['stale', (st, bag) => { bag.add('fish', 9); return { offer: 0, visit: SEED + 1 }; }, /stock changed/],
+    ['stale', (st, bag) => { bag.add('fish', 9); return { offer: 0 }; }, /stock changed/],
+    ['closed', (st, bag) => { bag.add('fish', 9); st.visit = null; return { offer: 0, visit: SEED }; }, /No trading post/],
     ['bad', (st, bag) => { bag.add('fish', 9); return { offer: 99, visit: SEED }; }, /./],
     ['bad', (st, bag) => { bag.add('fish', 9); return { offer: '0', visit: SEED }; }, /./],
   ];
@@ -152,29 +150,32 @@ test('a full bag that frees a slot by paying still trades (atomic scratch)', () 
 });
 
 test('cleanTrader never throws and repairs junk', () => {
-  const D = { v: 1, r: 0, clock: 0, next: TRADER.FIRST, plans: [], visit: null };
+  const D = { v: 1, r: 0, plans: [], visit: null };
   for (const junk of [undefined, null, 0, 'x', [], [1], { v: 2 }, { v: '1' }, () => 1]) assert.deepEqual(cleanTrader(junk, has), D);
-  const nan = cleanTrader({ v: 1, clock: NaN, next: NaN, r: -1 }, has);
-  assert.equal(nan.clock, 0); assert.equal(nan.next, TRADER.FIRST); assert.equal(nan.r, 0);
-  const big = cleanTrader({ v: 1, clock: 5e9, next: 1, r: 2.5 }, has);
-  assert.equal(big.clock, TRADER.MAX_CLOCK); assert.equal(big.next, TRADER.MAX_CLOCK); assert.equal(big.r, 0);
-  const far = cleanTrader({ v: 1, clock: 100, next: 1e6 }, has); assert.equal(far.next, 100 + TRADER.GAP_MAX);
+  assert.equal(cleanTrader({ v: 1, r: -1 }, has).r, 0); assert.equal(cleanTrader({ v: 1, r: 2.5 }, has).r, 0);
   assert.deepEqual(cleanTrader({ v: 1, plans: ['shellwreath', 'shellwreath', 'nope', 3] }, has).plans, ['shellwreath']);
-  for (const seed of [-1, 1.5, 2 ** 32, '5', null, NaN]) assert.equal(cleanTrader({ v: 1, clock: 50, visit: { seed, born: 40, stock: [] } }, has).visit, null);
-  const n = offersFor(77, has).length;
-  const v = cleanTrader({ v: 1, clock: 100, visit: { seed: 77, born: 500, hold: 9999, stock: [-3, 99, 'x', 1.7, NaN, null, 1, 1, 1, 1] } }, has).visit;
-  assert.equal(v.born, 100); assert.equal(v.hold, TRADER.HOLD_MAX); assert.equal(v.stock.length, n);
-  const offers = offersFor(77, has);
+  for (const seed of [-1, 1.5, 2 ** 32, '5', null, NaN]) assert.equal(cleanTrader({ v: 1, visit: { seed, stock: [] } }, has).visit, null);
+  const n = offersFor(77, has).length, offers = offersFor(77, has);
+  const v = cleanTrader({ v: 1, visit: { seed: 77, stock: [-3, 99, 'x', 1.7, NaN, null, 1, 1, 1, 1] } }, has).visit;
+  assert.equal(v.stock.length, n);
   assert.equal(v.stock[0], 0); assert.equal(v.stock[1], offers[1].stock); assert.equal(v.stock[2], offers[2].stock); assert.equal(v.stock[3], Math.min(1, offers[3].stock));
   for (let i = 0; i < n; i++) assert.ok(Number.isInteger(v.stock[i]) && v.stock[i] >= 0 && v.stock[i] <= offers[i].stock);
-  assert.equal(cleanTrader({ v: 1, clock: 100, visit: { seed: 77, born: 50, stock: [1] } }, has).visit.stock.length, n); // padded
-  const gone = cleanTrader({ v: 1, clock: 5000, next: 5000, visit: { seed: 77, born: 10, hold: 0, stock: [] } }, has);
-  assert.equal(gone.visit, null); assert.ok(gone.next > 5000);
-  const evil = { v: 1, get clock() { throw new Error('boom'); } };
+  assert.equal(cleanTrader({ v: 1, visit: { seed: 77, stock: [1] } }, has).visit.stock.length, n); // padded
+  const evil = { v: 1, get r() { throw new Error('boom'); } };
   assert.deepEqual(cleanTrader(evil, has), D);
   const round = cleanTrader(JSON.parse(JSON.stringify(docked())), has);
   assert.deepEqual(round, docked());
   assert.ok(JSON.stringify(round).length < 1024);
+});
+
+test('an old save with the visiting barge loads: plans kept, barge timing dropped', () => {
+  const old = { v: 1, r: 9, clock: 5321.5, next: 5800, plans: ['shellwreath'], visit: { seed: 4242, born: 5300, hold: 12, stock: [1, 0, 1, 2, 2, 1] } };
+  const c = cleanTrader(JSON.parse(JSON.stringify(old)), has);
+  assert.deepEqual(c.plans, ['shellwreath']); assert.equal(c.r, 9);
+  assert.deepEqual(Object.keys(c).sort(), ['plans', 'r', 'v', 'visit']);
+  assert.deepEqual(Object.keys(c.visit).sort(), ['seed', 'stock']);
+  const gone = cleanTrader({ v: 1, r: 2, clock: 9000, next: 9100, plans: [], visit: null }, has);
+  assert.deepEqual(gone, { v: 1, r: 2, plans: [], visit: null });
 });
 
 test('content wiring: kinds, recipe, decor, plans', () => {
@@ -188,45 +189,78 @@ test('content wiring: kinds, recipe, decor, plans', () => {
   for (const d of POOL) for (const k of [...Object.keys(d.give), ...Object.keys(d.get)]) assert.ok(has(k), `${d.id}: ${k}`);
 });
 
-test('createTrader: host spawns, holds, departs; craftLocked; serialize reuse; guest never spawns', async () => {
+const postSeed = () => { for (let s = 1; ; s++) if (postFor(s)) return s; };
+const plainSeed = () => { for (let s = 1; ; s++) if (!postFor(s)) return s; };
+
+test('createTrader: a post opens on a large island only, trades, old barge save, guest mirrors', async () => {
   const { createTrader } = await import('../dist/trader.js');
   const notes = [], bag = emptyBag();
-  const ctx = { T: null, role: 'host', running: true, world: { tiles: [[0, 0]] }, physics: { x: 0, z: 0 }, other: null, emit: (e, to) => notes.push([e.text, to]),
-    localBag: () => bag, deckY: () => .2, action: a => m.action(a, 'host', bag), esc: s => s };
+  let island = null;
+  const ctx = { T: null, role: 'host', running: true, world: { tiles: [[0, 0]] }, physics: { x: 0, z: 0 }, other: null, emit: (e, to) => notes.push([e.text, to, e.kind]),
+    localBag: () => bag, deckY: () => .2, action: a => m.action(a, 'host', bag), esc: s => s, islandNow: () => island };
   const m = createTrader(ctx);
+  // an old save from the barge days: the plan survives, the barge does not come back
+  m.load({ v: 1, r: 4, clock: 900, next: 950, plans: ['shellwreath'], visit: { seed: 99, born: 880, hold: 0, stock: [4, 2, 1, 3, 3, 2] } }, 'save');
+  assert.equal(m.craftLocked('shellwreath'), null);
+  for (let i = 0; i < 3000; i++) m.update(1);
+  assert.equal(m.serialize().visit, null, 'no island in view: no trader at all');
+  assert.deepEqual(m.serialize().plans, ['shellwreath']);
+  assert.equal(notes.length, 0, 'no arrival or cast-off popups ever');
+  // a fresh world: locked until the plan is bought
   m.load(undefined, 'save');
-  assert.equal(m.craftLocked('shellwreath'), 'Buy the plan from Pim’s barge');
+  assert.equal(m.craftLocked('shellwreath'), 'Buy the plan at a trading post');
   assert.equal(m.craftLocked('rope'), null);
-  for (let i = 0; i < 241; i++) m.update(1);
-  assert.equal(m.debug.phase(), 'approach');
-  assert.equal(notes[0][0], 'A little trading barge is bobbing this way!'); assert.equal(notes[0][1], 'all');
+  // a small island: no post
+  island = { seed: plainSeed(), cx: 20, cz: -5, gy: 0 };
+  m.update(1); assert.equal(m.debug.post(), null); assert.equal(m.serialize().visit, null);
+  // a large island: the post opens with full stock at the island's seed
+  const seed = postSeed(), post = postFor(seed);
+  island = { seed, cx: 20, cz: -5, gy: 0 };
+  m.update(1);
+  assert.equal(m.debug.post(), seed);
+  assert.equal(m.serialize().visit.seed, seed);
+  assert.deepEqual(m.debug.stock(), offersFor(seed, has).map(o => o.stock));
   const s1 = m.serialize(), s2 = m.serialize();
   assert.equal(s1, s2); assert.equal(s1.visit.stock, s2.visit.stock);
-  for (let i = 0; i < 30; i++) m.update(1);
-  assert.equal(m.debug.phase(), 'docked');
+  // far from the stall: refused
+  ctx.physics = { x: 0, z: 0 };
   bag.add('fish', 6);
-  m.debug.trade(m.debug.offers().findIndex(o => o.id === 'fish'));
-  assert.equal(bag.count('shell'), 2);
-  // far away: refused
-  ctx.physics = { x: 0, z: 50 };
-  m.debug.trade(0); assert.equal(bag.count('shell'), 2); assert.equal(notes.at(-1)[0], 'Get a bit closer to Pim');
-  // near the stall at the end: hold grows instead of leaving
-  ctx.physics = { ...m.debug.state().stall };
-  for (let i = 0; i < 460; i++) m.update(1);
-  assert.equal(m.debug.state().visit.hold, TRADER.HOLD_MAX);
-  assert.ok(notes.some(n => n[0] === 'Pim is getting ready to cast off'));
-  m.debug.skip(3600);
-  assert.equal(m.debug.phase(), 'gone'); assert.equal(m.serialize().visit, null);
-  // the plan unlocks the wreath
-  m.debug.summon(5); bag.add('shell', 10);
+  const fi = m.debug.offers().findIndex(o => o.id === 'fish');
+  m.debug.trade(fi); assert.equal(bag.count('shell'), 0); assert.equal(notes.at(-1)[0], 'Move a little closer to the counter');
+  // at the counter: the trade goes through, loot only to the trader
+  ctx.physics = { x: 20 + post.x + Math.sin(post.yaw) * 1.5, z: -5 + post.z + Math.cos(post.yaw) * 1.5 };
+  m.debug.trade(fi);
+  assert.equal(bag.count('shell'), 2); assert.equal(notes.at(-1)[1], 'host');
+  // the plan unlocks the wreath; the float row (when stocked) pays out a Glass Float
+  bag.add('shell', 20);
   m.debug.trade(m.debug.offers().findIndex(o => o.id === 'plan'));
   assert.equal(m.craftLocked('shellwreath'), null);
-  // guest: own clock, never spawns or ends a visit
+  // guest mirrors the host slice and places the same post from the island seed
   const g = createTrader({ ...ctx, role: 'guest', emit: () => assert.fail('guest emits') });
   g.load(JSON.parse(JSON.stringify(m.serialize())), 'net');
-  assert.equal(g.debug.summon(), false);
-  for (let i = 0; i < 2000; i++) g.update(1);
-  assert.ok(g.serialize().visit, 'the guest keeps the host visit until told');
+  g.update(1);
+  assert.equal(g.debug.post(), seed); assert.deepEqual(g.debug.state().stall, m.debug.state().stall);
+  assert.deepEqual(g.debug.stock(), m.debug.stock());
   g.load(undefined, 'net'); assert.equal(g.serialize().visit, null);
+  // the island leaves: the post closes; the plan stays learned
+  island = null; m.update(1);
+  assert.equal(m.serialize().visit, null); assert.deepEqual(m.serialize().plans, ['shellwreath']);
+  assert.ok(!notes.some(n => /barge|cast off|bobbing/i.test(n[0] ?? '')));
   m.dispose(); g.dispose();
+});
+
+test('the float trade still pays out a Glass Float', () => {
+  let seed = 0; while (!offersFor(seed, has).some(o => o.id === 'float')) seed++;
+  const st = docked(seed), bag = emptyBag(); bag.add('shell', 12);
+  const r = applyTrade(st, { kind: 'trader.trade', offer: idx(st, 'float'), visit: seed }, bag, has, name);
+  assert.equal(r.ok, true); assert.equal(bag.count('glassfloat'), 1); assert.equal(bag.count('shell'), 2);
+});
+
+test('no Pim or barge in player-facing strings', () => {
+  const files = ['trader.js', 'trader-core.js', 'trader-ui.js', 'craft-book.js', 'content-items.js', 'item-tooltips.js', 'survival-ui.js'];
+  for (const f of files) {
+    const src = readFileSync(new URL('../dist/' + f, import.meta.url), 'utf8');
+    for (const m of src.matchAll(/(['"`])((?:\\.|(?!\1).)*)\1/g)) assert.ok(!/\bPim\b|barge/i.test(m[2]), `${f}: ${m[2]}`);
+  }
+  for (const d of POOL) assert.ok(!/Pim/.test(JSON.stringify(d)));
 });
