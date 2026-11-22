@@ -555,12 +555,15 @@ export class BuildGrid {
       const x = phys.x, z = phys.z;
       if (x < b[k] - R || x > b[k + 3] + R || z < b[k + 2] - R || z > b[k + 5] + R) continue;
       const y0 = b[k + 1] + deckY;
-      if (b[k + 4] + deckY <= lo || y0 >= phys.y + HEAD) continue;
+      if (y0 >= phys.y + HEAD) continue;
+      // Ceiling first, before the `lo` filter: one long rising frame can carry the feet to within the step-up of
+      // a slab top (or past it), and the slab must still stop the head instead of being stepped through.
       if (!phys.grounded && y0 >= this._prevHead - 0.02) {
         const px = clamp(x, b[k], b[k + 3]) - x, pz = clamp(z, b[k + 2], b[k + 5]) - z;
         if (px * px + pz * pz < R * R) { phys.y = y0 - HEAD; if (phys.vy > 0) phys.vy = 0; }
         continue;
       }
+      if (b[k + 4] + deckY <= lo) continue;
       this._push(phys, b[k], b[k + 3], b[k + 2], b[k + 5]);
     }
   }
