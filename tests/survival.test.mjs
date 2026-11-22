@@ -539,8 +539,15 @@ test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES orde
   assert.equal(seen.length, recipes.length);
   assert.deepEqual([...seen].sort(), recipes.map(r => r.id).sort());
   for (const g of groups) assert.ok(g.recipes.length > 0, `${g.id} not empty`);
-  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'driftboard', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'binoculars', 'spyglass', 'drum', 'pipes', 'bells', 'finder', 'spade', 'camera', 'glidehandle']); // [instruments] [treasure] [camera] [zipline] [spyglass]
-  assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'nail', 'bolt', 'hinge']);
+  assert.deepEqual(ids, ['tools', 'navigation', 'food', 'materials', 'building', 'other']);
+  const tab = id => groups.find(g => g.id === id).recipes.map(r => r.id);
+  assert.deepEqual(tab('tools'), ['hook', 'hammer', 'fishingrod', 'sinker', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'driftboard', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'binoculars', 'spyglass', 'finder', 'spade', 'camera', 'glidehandle']); // [treasure]
+  assert.deepEqual(tab('navigation'), ['sail', 'motor', 'wheel', 'receiver', 'antenna', 'anchor', 'maptable']);
+  assert.deepEqual(tab('food'), ['palm', 'glasscups', 'brickplanter', 'nestbox', 'goatpen', 'bucket', 'cookpot', 'bowl', 'cup', 'purifier', 'rainbarrel', 'sprinkler', 'canteen', 'honeyfish', 'cropplot', 'flowerbox', 'beehive', 'juicer', 'fishtrap', 'scarecrow', 'grill']);
+  assert.deepEqual(tab('materials'), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'nail', 'bolt', 'hinge', 'battery']);
+  assert.deepEqual(tab('building'), ['bench', 'crate', 'research', 'kiln', 'stormrod', 'bed', 'turbine', 'glidepost', 'glidestep', 'armor', 'researchtable', 'smelter', 'recycler']);
+  assert.deepEqual(tab('other'), ['lantern', 'net', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'glasslamp', 'stormlamp', 'stormglass', 'cushion', 'egglamp', 'shellwreath', 'coursekit', 'scoreboard', 'gametable', 'flagpole', 'drum', 'pipes', 'bells', 'candle', 'perch', 'stringlights', 'lamppost', 'shelf', 'trophystand', 'taskboard', 'photoframe', 'musicbox', 'skyrocket']); // [instruments]
+  for (const c of CB.CATEGORIES) assert.ok(c.name.length <= 7 && c.icon && c.title, `${c.id} short label, icon and full title`);
 });
 
 test('CraftBook: unknown outputs fall back to tools (tool flag) or building', () => {

@@ -10,7 +10,8 @@ const L = await import(new URL('islands-layout.js', base));
 const { createIslands } = await import(new URL('islands.js', base));
 const { Bag, SLOT_COUNT, STACK_SIZE } = await import(new URL('inventory-state.js', base));
 const { PlayerPhysics, PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base));
-const { ISLAND, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset, applyGather, standOnSand, SHORE_U } = L;
+const { ISLAND, layoutFor, spawnRel, islandRel, clean, lootFor, groundHeight, nextDelay, dockOffset, applyGather, standOnSand, SHORE_U } = L;
+const SAIL_CORE = await import(new URL('sailing-core.js', base));
 
 const RAFT3 = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
 const SEEDS = Array.from({ length: 300 }, (_, i) => (i * 2654435761) >>> 0);
@@ -57,21 +58,91 @@ test('groundHeight: dome top, shoreline, rim', () => {
 
 // ---------------------------------------------------------------- timeline
 
-test('pathAt phases in order with continuous z', () => {
-  const dock = 180, dz = -3, order = [];
-  let lastZ = pathAt(0, dock, dz).z;
-  for (let t = 0; t <= 25 + dock + 30 + 2; t += 0.05) {
-    const p = pathAt(t, dock, dz);
-    if (order.at(-1) !== p.phase) order.push(p.phase);
-    assert.ok(Math.abs(p.z - lastZ) < 0.5, `z jump at t=${t}`);
-    lastZ = p.z;
+test('spawnRel: 120-160 m ahead of the travel direction, 20-40 m to a seeded side', () => {
+  const o = {}, sides = new Set();
+  for (const seed of SEEDS) {
+    for (const [dx, dz] of [[0, 0.3], [1.3, 0.3], [-0.5, -1], [0, 0]]) {
+      spawnRel(seed, dx, dz, o);
+      let ux = dx, uz = dz, m = Math.hypot(ux, uz); if (!m) { ux = 0; uz = 1; m = 1; } ux /= m; uz /= m;
+      const along = o.x * ux + o.z * uz, lat = o.x * uz - o.z * ux;
+      assert.ok(along >= ISLAND.SPAWN_MIN - 1e-9 && along <= ISLAND.SPAWN_MAX + 1e-9, `ahead ${along}`);
+      assert.ok(Math.abs(lat) >= ISLAND.LAT_MIN - 1e-9 && Math.abs(lat) <= ISLAND.LAT_MAX + 1e-9, `lateral ${lat}`);
+      sides.add(Math.sign(lat));
+    }
+    const a = spawnRel(seed, 0, 1, {}), b = spawnRel(seed, 0, 1, {});
+    assert.deepEqual(a, b, 'deterministic from the seed');
   }
-  assert.deepEqual(order, ['approach', 'docked', 'depart', 'gone']);
-  assert.equal(pathAt(0, dock, dz).z, ISLAND.START_Z);
-  assert.equal(pathAt(100, dock, dz).z, dz);
+  assert.equal(sides.size, 2, 'both sides occur');
+  assert.equal(ISLAND.SPAWN_MIN, 120); assert.equal(ISLAND.SPAWN_MAX, 160);
+  // the first island of a fresh world comes closer: 60-80 m ahead, same seeded side
+  assert.equal(ISLAND.FIRST_MIN, 60); assert.equal(ISLAND.FIRST_MAX, 80);
+  for (const seed of SEEDS) {
+    const f = spawnRel(seed, 0, 1, {}, true), later = spawnRel(seed, 0, 1, {});
+    assert.ok(f.z >= 60 - 1e-9 && f.z <= 80 + 1e-9, `first ahead ${f.z}`);
+    assert.equal(f.x, later.x, 'same lateral offset');
+  }
+  // the spawn is never already past the despawn line
+  for (const seed of SEEDS) { spawnRel(seed, 0, 0.3, o); assert.equal(L.shouldDespawn(o.x, o.z, 0, 0.3 / 60), false); }
 });
 
-test('docked island sits a short swim from a 3x3 raft', () => {
+test('islandRel: the island moves only by the seabed offset, like the scenery', () => {
+  const isl = { bx: 30, bz: 140 };
+  const o = islandRel(isl, 0, 0, {});
+  assert.deepEqual(o, { x: 30, z: 140 });
+  // drifting with the current: the seabed offset grows along +z and the island comes closer
+  const SC = SAIL_CORE, s = SC.defaultSailing(), out = {};
+  s.windDir = s.windTarget = 0; // the current follows the wind: point it along +z
+  let gz0 = s.gz;
+  for (let i = 0; i < 600; i++) SC.stepSailing(s, 0.1, { nSails: 0, host: false }, out); // 60 s of drift
+  islandRel(isl, s.gx, s.gz, o);
+  assert.ok(Math.abs(o.z - (140 - (s.gz - gz0))) < 1e-9);
+  assert.ok(Math.abs((140 - o.z) - 0.3 * 60) < 0.01, `drifted ${140 - o.z} m in 60 s at 0.3 m/s`);
+  // wraps across the seabed seam without a jump
+  const HG = SC.SAIL.GROUND_WRAP / 2;
+  const near = islandRel({ bx: -HG + 5, bz: 0 }, HG - 5, 0, {});
+  assert.ok(Math.abs(near.x - 10) < 1e-6, `across the seam ${near.x}`);
+});
+
+test('anchored: the island stays put relative to the raft', () => {
+  const SC = SAIL_CORE, s = SC.defaultSailing(), out = {};
+  s.raised = true; s.heading = s.windDir; // full sail...
+  SC.applySailAction(s, { op: 'anchor' });  // ...but anchored
+  const isl = { bx: 25, bz: 60 }, before = islandRel(isl, s.gx, s.gz, {});
+  for (let i = 0; i < 1200; i++) SC.stepSailing(s, 0.1, { nSails: 1, host: true, rng: () => 0.5 }, out);
+  assert.deepEqual(islandRel(isl, s.gx, s.gz, {}), before);
+  // under sail it moves, and faster than drift
+  SC.applySailAction(s, { op: 'unanchor' });
+  for (let i = 0; i < 600; i++) SC.stepSailing(s, 0.1, { nSails: 1, host: true, rng: () => 0.5 }, out);
+  const after = islandRel(isl, s.gx, s.gz, {});
+  assert.ok(Math.hypot(after.x - before.x, after.z - before.z) > 0.3 * 60, 'sailing moves the world past faster than the current'); // Raft sail: 1.5x drift downwind, eased in
+});
+
+test('shouldDespawn: 150 m behind the travel, or 220 m anywhere; never ahead or while anchored', () => {
+  const dg = [0, 0.3 / 60]; // drifting toward +z
+  assert.equal(L.shouldDespawn(0, -149, ...dg), false);
+  assert.equal(L.shouldDespawn(0, -151, ...dg), true, 'behind, past 150 m');
+  assert.equal(L.shouldDespawn(40, -145, ...dg), true, 'behind and to the side');
+  assert.equal(L.shouldDespawn(0, 160, ...dg), false, 'ahead (a fresh spawn)');
+  assert.equal(L.shouldDespawn(40, 155, ...dg), false);
+  assert.equal(L.shouldDespawn(0, -200, 0, 0), false, 'anchored: no travel, nothing is behind');
+  assert.equal(L.shouldDespawn(0, 221, ...dg), true, 'far off in any direction');
+  assert.equal(L.shouldDespawn(0, -221, 0, 0), true);
+  assert.equal(ISLAND.DESPAWN, 150);
+});
+
+test('phaseAt: rise, here, sink, gone (no docked phase)', () => {
+  const isl = { born: 10 };
+  assert.equal(L.phaseAt(isl, 10).phase, 'rise');
+  assert.equal(L.phaseAt(isl, 10).sink, ISLAND.SINK);
+  assert.equal(L.phaseAt(isl, 10 + ISLAND.RISE).phase, 'here');
+  assert.equal(L.phaseAt(isl, 1e6).phase, 'here', 'an island never leaves on a timer');
+  isl.end = 500;
+  assert.equal(L.phaseAt(isl, 501).phase, 'sink');
+  assert.equal(L.phaseAt(isl, 500 + ISLAND.RISE).phase, 'gone');
+  assert.equal(L.phaseAt(null, 0).phase, 'gone');
+});
+
+test('spawnNear (QA) island sits a short swim from a 3x3 raft', () => {
   for (const seed of SEEDS) {
     const lay = layoutFor(seed), { side, off } = dockOffset(RAFT3, lay);
     assert.ok(side === 1 || side === -1);
@@ -94,27 +165,52 @@ test('nextDelay', () => {
 // ---------------------------------------------------------------- save validation
 
 test('clean: garbage gives defaults', () => {
-  for (const bad of [undefined, null, 'x', 7, [], { v: 2 }, { v: '1' }]) assert.deepEqual(clean(bad), { v: 1, clock: 0, next: 90, isl: null });
+  for (const bad of [undefined, null, 'x', 7, [], { v: 3 }, { v: '1' }]) assert.deepEqual(clean(bad), { v: 2, clock: 0, next: 90, isl: null });
 });
 
 test('clean fixes or drops bad fields', () => {
-  assert.equal(clean({ v: 1, clock: NaN, next: 50, isl: null }).clock, 0);
-  assert.equal(clean({ v: 1, clock: 10, next: 5000, isl: null }).next, 610);
-  const good = { seed: 1234, born: 0, dock: 180, side: 1, off: 20, used: [] };
+  assert.equal(clean({ v: 2, clock: NaN, next: 50, isl: null }).clock, 0);
+  assert.equal(clean({ v: 2, clock: 10, next: 5000, isl: null }).next, 610);
+  const good = { seed: 1234, born: 0, bx: 20, bz: 30, used: [] };
   const n = layoutFor(1234).nodes.length;
-  assert.equal(clean({ v: 1, clock: 30, next: 0, isl: { ...good, side: 0 } }).isl, null);
-  assert.equal(clean({ v: 1, clock: 30, next: 0, isl: { ...good, seed: 1.5 } }).isl, null);
-  assert.equal(clean({ v: 1, clock: 30, next: 0, isl: { ...good, seed: -1 } }).isl, null);
-  assert.equal(clean({ v: 1, clock: 30, next: 0, isl: { ...good, used: 'no' } }).isl, null);
-  const fixed = clean({ v: 1, clock: 30, next: 0, isl: { ...good, used: [99, -4, 1.5, 2, ...new Array(40).fill(1)] } }).isl;
+  assert.deepEqual(clean({ v: 2, clock: 30, next: 0, isl: good }).isl, { seed: 1234, born: 0, bx: 20, bz: 30, used: new Array(n).fill(0) });
+  assert.equal(clean({ v: 2, clock: 30, next: 0, isl: { ...good, bx: NaN } }).isl, null);
+  assert.equal(clean({ v: 2, clock: 30, next: 0, isl: { ...good, bz: 'x' } }).isl, null);
+  assert.equal(clean({ v: 2, clock: 30, next: 0, isl: { ...good, seed: 1.5 } }).isl, null);
+  assert.equal(clean({ v: 2, clock: 30, next: 0, isl: { ...good, seed: -1 } }).isl, null);
+  assert.equal(clean({ v: 2, clock: 30, next: 0, isl: { ...good, used: 'no' } }).isl, null);
+  const fixed = clean({ v: 2, clock: 30, next: 0, isl: { ...good, used: [99, -4, 1.5, 2, ...new Array(40).fill(1)] } }).isl;
   assert.equal(fixed.used.length, n);
   assert.equal(fixed.used[0], layoutFor(1234).nodes[0].max);
   assert.equal(fixed.used[1], 0);
   assert.equal(fixed.used[2], 0);
   assert.equal(fixed.used[3], Math.min(2, layoutFor(1234).nodes[3].max));
-  assert.equal(clean({ v: 1, clock: 30, next: 0, isl: { ...good, off: 500 } }).isl.off, ISLAND.OFF_MAX);
-  // already gone when loaded: dropped
-  assert.equal(clean({ v: 1, clock: 1000, next: 0, isl: { ...good, born: 0 } }).isl, null);
+  // an island never times out on load (it stays put), but one that had finished sinking is dropped
+  assert.ok(clean({ v: 2, clock: 1e6, next: 0, isl: good }).isl);
+  assert.equal(clean({ v: 2, clock: 30, next: 0, isl: { ...good, end: 29 } }).isl.end, 29);
+  assert.equal(clean({ v: 2, clock: 30, next: 0, isl: { ...good, end: 20 } }).isl, null);
+  // huge seabed coordinates wrap like the seabed offset
+  const HG = SAIL_CORE.SAIL.GROUND_WRAP / 2;
+  assert.ok(Math.abs(clean({ v: 2, clock: 30, next: 0, isl: { ...good, bx: 2 * HG + 7 } }).isl.bx - 7) < 1e-6);
+});
+
+test('clean migrates a v1 (docking) save: the island is placed where it was, relative to the raft', () => {
+  const lay = layoutFor(1234), old = { seed: 1234, born: 0, dock: 180, side: 1, off: 20, used: [] };
+  const g = { gx: 100, gz: -200 };
+  // docked at save time: x = side*off, z = dockZ
+  const m = clean({ v: 1, clock: 100, next: 0, isl: old }, layoutFor, g);
+  assert.equal(m.v, 2);
+  const r = islandRel(m.isl, g.gx, g.gz, {});
+  assert.ok(Math.abs(r.x - 20) < 1e-9 && Math.abs(r.z - lay.dockZ) < 1e-9, `placed at ${r.x}, ${r.z}`);
+  assert.equal(L.phaseAt(m.isl, 100).phase, 'here', 'already up, no second rise');
+  // side/off are validated as before
+  assert.equal(clean({ v: 1, clock: 100, next: 0, isl: { ...old, side: 0 } }).isl, null);
+  assert.ok(Math.abs(islandRel(clean({ v: 1, clock: 100, next: 0, isl: { ...old, off: 500 } }).isl, 0, 0, {}).x - ISLAND.OFF_MAX) < 1e-9);
+  // approaching at save time: wherever it was on its way in
+  const a = clean({ v: 1, clock: 5, next: 0, isl: old }).isl;
+  assert.ok(a && a.bz < lay.dockZ && a.bz > -60);
+  // already gone on the old timeline: dropped
+  assert.equal(clean({ v: 1, clock: 1000, next: 0, isl: old }).isl, null);
 });
 
 // ---------------------------------------------------------------- loot and the host gather check
@@ -210,7 +306,8 @@ function stubWorld({ role = 'solo', wave = () => -0.24 } = {}) {
   const ctx = {
     T, scene: new T.Scene(), camera: new T.PerspectiveCamera(70, 1, 0.05, 200),
     ocean: { mesh: { position: { y: -0.24 } }, getHeight: (x, z) => wave(x, z) },
-    world: { tiles: RAFT3 }, role, running: true, physics, other: null,
+    world: { tiles: RAFT3, sailing: { gx: 0, gz: 0, vx: 0, vz: 0, windDir: 0 } }, role, running: true, physics, other: null, // windDir 0: the current runs along +z
+    notice: s => emits.push({ e: { kind: 'notice', text: s }, to: 'local' }),
     emit: (e, to) => emits.push({ e, to }),
     action: a => { actions.push(a); if (role !== 'guest') mod.action(a, 'host', bag); return true; },
   };
@@ -292,34 +389,109 @@ test('walking off the rim ends up swimming; swimming in lands on the sand', () =
   assert.equal(w.mod.debug.state().onSand, true);
 });
 
-test('timeline: waits while a player is close, departs at the cap', () => {
+// Drift the stub world's seabed offset like an unanchored raft on the current (0.3 m/s toward +z).
+const drift = (w, dt, v = 0.3) => { w.ctx.world.sailing.gz += v * dt; };
+
+test('no timer: an anchored island stays put forever', () => {
   const w = stubWorld();
-  w.mod.debug.spawnNear(1234); w.mod.update(0); w.mod.debug.teleportAshore();
-  // nobody near: departs after the normal dock
-  const w2 = stubWorld(); w2.mod.debug.spawnNear(1234); w2.mod.update(0);
-  for (let i = 0; i < 200 * 10; i++) w2.mod.update(0.1);
-  assert.equal(w2.mod.debug.phase().phase, 'depart');
-  assert.ok(w2.emits.some(x => /drift away/.test(x.e.text)));
-  // someone standing on it: still docked well past 180 s
-  for (let i = 0; i < 400 * 10; i++) { w.mod.afterMove(w.physics, 0.1); w.mod.update(0.1); }
-  assert.equal(w.mod.debug.phase().phase, 'docked');
-  // ... but the 600 s cap departs anyway
-  for (let i = 0; i < 300 * 10; i++) { w.mod.afterMove(w.physics, 0.1); w.mod.update(0.1); }
-  assert.notEqual(w.mod.debug.phase().phase, 'docked');
+  w.mod.debug.spawnNear(1234); w.mod.update(0);
+  const p0 = w.mod.debug.phase();
+  for (let i = 0; i < 1500 * 10; i++) w.mod.update(0.1); // 25 minutes, seabed offset unchanged (anchored)
+  const p1 = w.mod.debug.phase();
+  assert.equal(p1.phase, 'here');
+  assert.equal(p1.x, p0.x); assert.equal(p1.z, p0.z);
 });
 
-test('full cycle: calm, first island at 90 s, gone, calm again', () => {
+test('drifting past: gone once 150 m behind, then the 150-240 s calm', () => {
+  const w = stubWorld();
+  w.mod.debug.spawnNear(1234); w.mod.update(0);
+  let gone = -1;
+  for (let i = 0; i < 700 * 10 && gone < 0; i++) {
+    drift(w, 0.1); w.mod.update(0.1);
+    const p = w.mod.debug.phase();
+    if (p.phase === 'sink') assert.ok(p.dist > ISLAND.DESPAWN, `sinks only past 150 m (${p.dist})`);
+    if (p.phase === 'calm') gone = i;
+  }
+  assert.ok(gone > 0, 'drifted past and went');
+  assert.ok(gone / 10 > 140 / 0.3, 'not before it was 150 m behind');
+  const ph = w.mod.debug.phase();
+  assert.ok(ph.next - ph.clock >= ISLAND.CALM_MIN - 0.1 && ph.next - ph.clock <= ISLAND.CALM_MAX);
+});
+
+test('never leaves while a player stands on it; the player rides along and is told the raft is drifting', () => {
+  const w = stubWorld();
+  w.mod.debug.spawnNear(1234); w.mod.update(0); w.mod.debug.teleportAshore();
+  for (let i = 0; i < 900 * 10; i++) { drift(w, 0.1); w.mod.afterMove(w.physics, 0.1); w.mod.update(0.1); }
+  const p = w.mod.debug.phase(), s = w.mod.debug.state();
+  assert.equal(p.phase, 'here');
+  assert.ok(p.dist > 200, `the raft drifted ${p.dist.toFixed(0)} m away`);
+  assert.equal(s.onSand, true);
+  assert.ok(Math.hypot(w.physics.x - s.cx, w.physics.z - s.cz) < 1, 'still on the island');
+  assert.equal(w.emits.filter(x => /drifting away/.test(x.e.text)).length, 1);
+});
+
+test('full cycle: calm, first island at 90 s ahead with a notice, it drifts by, calm again', () => {
   const w = stubWorld();
   w.mod.load(undefined, 'save');
-  for (let i = 0; i < 89 * 10; i++) w.mod.update(0.1);
+  for (let i = 0; i < 89 * 10; i++) { drift(w, 0.1); w.mod.update(0.1); }
   assert.equal(w.mod.debug.phase().phase, 'calm');
-  for (let i = 0; i < 2 * 10; i++) w.mod.update(0.1);
-  assert.equal(w.mod.debug.phase().phase, 'approach');
+  for (let i = 0; i < 2 * 10; i++) { drift(w, 0.1); w.mod.update(0.1); }
+  const p0 = w.mod.debug.phase();
+  assert.equal(p0.phase, 'rise');
+  assert.ok(p0.z > ISLAND.FIRST_MIN - 2 && p0.z <= ISLAND.FIRST_MAX, `first island close ahead along the current (+z): ${p0.z}`);
+  assert.ok(Math.abs(p0.x) >= ISLAND.LAT_MIN && Math.abs(p0.x) <= ISLAND.LAT_MAX, `to the side: ${p0.x}`);
+  assert.ok(w.emits.some(x => x.to === 'all' && /Land ahead/.test(x.e.text)));
   const seen = new Set();
-  for (let i = 0; i < 300 * 10; i++) { w.mod.update(0.1); seen.add(w.mod.debug.phase().phase); }
-  assert.ok(seen.has('docked') && seen.has('depart') && seen.has('calm'));
+  let closest = Infinity;
+  for (let i = 0; i < 1200 * 10; i++) {
+    drift(w, 0.1); w.mod.update(0.1);
+    const p = w.mod.debug.phase(); seen.add(p.phase);
+    if (p.phase === 'here') { closest = Math.min(closest, p.dist); assert.equal(p.x, p0.x, 'drifting on the current only changes z'); }
+    if (p.phase === 'calm' && seen.has('sink')) break;
+  }
+  assert.ok(seen.has('here') && seen.has('sink') && seen.has('calm'));
+  assert.ok(closest <= ISLAND.LAT_MAX + 0.5, `passes by ${closest.toFixed(1)} m off`);
   const ph = w.mod.debug.phase();
   assert.ok(ph.next - ph.clock >= 0 && ph.next - ph.clock <= 240);
+  // the next island keeps the usual 120-160 m
+  for (let i = 0; i < 241 * 10 && w.mod.debug.phase().phase === 'calm'; i++) { drift(w, 0.1); w.mod.update(0.1); }
+  const p1 = w.mod.debug.phase();
+  assert.equal(p1.phase, 'rise');
+  assert.ok(p1.z > ISLAND.SPAWN_MIN - 2 && p1.z <= ISLAND.SPAWN_MAX, `second island ahead: ${p1.z}`);
+});
+
+test('spawnAhead follows the raft travel (sail + current)', () => {
+  const w = stubWorld();
+  w.ctx.world.sailing.vx = 1.2; w.ctx.world.sailing.vz = -0.3; // sailing toward +x, against the current
+  const p = w.mod.debug.spawnAhead(77); // a fresh world: the first island comes close
+  assert.ok(p.x > ISLAND.FIRST_MIN * 0.9 && p.x <= ISLAND.FIRST_MAX + 1, `ahead toward +x: ${p.x}`);
+  w.mod.load({ v: 2, clock: 500, next: 400, isl: null }, 'save'); // later in the game: the usual distance
+  const q = w.mod.debug.spawnAhead(77);
+  assert.ok(q.x > ISLAND.SPAWN_MIN * 0.9, `later island ahead toward +x: ${q.x}`);
+  assert.ok(Math.abs(p.z) <= ISLAND.LAT_MAX + 1);
+});
+
+test('grounding: the island hands sailing a blocker and the raft beaches on it', () => {
+  const s = SAIL_CORE.defaultSailing(), out = {}, opts = { nSails: 1, host: true, rng: () => 0.5, blockers: [] };
+  const w = stubWorld();
+  w.ctx.world.sailing = s;
+  w.ctx.sailing = { addBlocker: b => { opts.blockers.push(b); return b; }, blockerClear: () => 2.5 + 3.5, groundOffset: o => { o.x = s.gx; o.z = s.gz; return o; }, markIsland: x => { mark = x; } };
+  let mark;
+  w.mod.debug.spawnNear(1234); w.mod.update(0);
+  assert.equal(opts.blockers.length, 1);
+  const b = opts.blockers[0], st = w.mod.debug.state();
+  assert.equal(b.x, st.cx); assert.equal(b.z, st.cz);
+  assert.equal(mark, st.cx, 'compass marker points at the island');
+  assert.ok(b.r > layoutFor(1234).R * SHORE_U + 6);
+  // sail straight at it: the raft stops at the blocker instead of passing through
+  s.raised = true; s.heading = s.windDir = Math.atan2(st.cx, st.cz);
+  let minD = Infinity;
+  for (let i = 0; i < 600; i++) { SAIL_CORE.stepSailing(s, 0.1, opts, out); w.mod.update(0.1); const q = w.mod.debug.state(); minD = Math.min(minD, Math.hypot(q.cx, q.cz)); }
+  assert.ok(minD > b.r - 0.5 && minD < b.r + 1, `stopped ${minD.toFixed(2)} m from the centre (blocker ${b.r.toFixed(2)})`);
+  assert.equal(opts.blockers.length, 1, 'registered once');
+  w.mod.debug.clear(); w.mod.update(0);
+  assert.equal(b.r, 0, 'no island: blocker off');
+  assert.ok(Number.isNaN(mark), 'no island: no compass marker');
 });
 
 test('module survives garbage loads and round-trips its save', () => {
@@ -380,7 +552,7 @@ function oceanWorld(seed = 1234) {
     w.mod.afterMove(w.physics, 1 / 60); w.mod.update(1 / 60);
     return ev;
   };
-  w.mod.debug.spawnNear(seed, ISLAND.APPROACH + 1); frame();
+  w.mod.debug.spawnNear(seed); frame();
   return { ...w, frame, lay: layoutFor(seed) };
 }
 
@@ -426,21 +598,21 @@ test('stand on sand: hysteresis, a lapping wave does not knock you off', () => {
   assert.equal(standOnSand(p, 0.3, 0.45, s), false, 'a deep wave lets go');
 });
 
-test('departing island slides out from under the player (no 50 m ride)', () => {
+test('a raft sailing away does not drag the player off the sand (real waves)', () => {
   const w = oceanWorld(1234);
-  const dock = w.mod.debug.phase();
   w.mod.debug.teleportAshore(0, 0);
-  let maxFromDock = 0;
-  for (let i = 0; i < 60 * 700; i++) {
-    w.frame();
-    maxFromDock = Math.max(maxFromDock, Math.hypot(w.physics.x - dock.x, w.physics.z - dock.z));
+  let splashes = 0, maxOff = 0;
+  for (let i = 0; i < 60 * 12; i++) {
+    w.ctx.world.sailing.gz += 1.6 / 60; w.ctx.world.sailing.gx += 0.4 / 60; // full sail + current
+    if (w.frame().splashed) splashes++;
+    const s = w.mod.debug.state(); maxOff = Math.max(maxOff, Math.hypot(w.physics.x - s.cx, w.physics.z - s.cz));
   }
-  assert.equal(w.mod.debug.phase().phase, 'calm');
-  assert.ok(maxFromDock < dock.R + 3, `stayed near the dock spot (${maxFromDock.toFixed(1)} m)`);
-  assert.equal(w.physics.swimming, true);
+  assert.equal(splashes, 0); assert.equal(w.physics.swimming, false);
+  assert.ok(maxOff < 0.5, `stayed where they stood (${maxOff.toFixed(2)} m)`);
+  assert.ok(w.mod.debug.phase().dist > 30, "and the raft is well off now"); // (PlayerPhysics puts you back aboard past 50 m)
 });
 
-test('rider moves with the approaching island in the same frame', () => {
+test('rider moves with the drifting island in the same frame', () => {
   const w = stubWorld();
   w.mod.debug.spawnNear(1234, 5); w.mod.update(0);
   assert.equal(w.mod.debug.teleportAshore(1, 1), true);
@@ -448,13 +620,14 @@ test('rider moves with the approaching island in the same frame', () => {
   step(w, 1); // settle (a palm or rock may nudge us on the first frame)
   const o0 = off(), z0 = w.mod.debug.state().cz;
   for (let i = 0; i < 60; i++) {
+    drift(w, 1 / 60, 1.5);              // game.js steps sailing (the seabed offset) first...
     w.physics.update(1 / 60, { tiles: RAFT3, deckY: 0.2, waterY: -0.24 });
-    w.mod.afterMove(w.physics, 1 / 60); // game.js sets the camera here...
+    w.mod.afterMove(w.physics, 1 / 60); // ...sets the camera here...
     w.mod.update(1 / 60);               // ...and the island is drawn where update leaves it
     assert.ok(Math.abs(off() - o0) < 1e-6, 'no lag between the camera and the island');
   }
-  assert.equal(w.mod.debug.phase().phase, 'approach');
-  assert.ok(w.mod.debug.state().cz - z0 > 1, 'the island did move');
+  assert.equal(w.mod.debug.phase().phase, 'here');
+  assert.ok(z0 - w.mod.debug.state().cz > 1, 'the island did move (toward -z as the raft drifts +z)');
 });
 
 test('guest clock eases small corrections and snaps big ones', () => {

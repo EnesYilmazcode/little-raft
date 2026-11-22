@@ -124,6 +124,7 @@ function durFrac(s) {
   if (!s || s.durability == null) return null;
   const d = Number(s.durability); if (!Number.isFinite(d)) return null;
   const i = info(s.kind);
+  if (i?.unbreakable) return null; // the hammer never wears: no bar
   let max = Number(i?.maxDurability ?? i?.durability ?? i?.maxDur ?? s.maxDurability);
   if (!(max > 0)) max = DUR_MAX;
   if (max > 0) return clamp01(d / max);
@@ -255,6 +256,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-tabs{display:flex;flex-direction:column;gap:5px;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
 #inventory .sv-tab{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;min-width:0;height:62px;margin:0;padding:6px 3px 5px;border:0;border-radius:4px;
   background:linear-gradient(#b8a173,#a68e60);box-shadow:inset 0 0 0 1px #7a5a34;color:#3e2a17;font:700 12px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
+#inventory .sv-tlabel{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:clip}
 #inventory .sv-tab .sv-icon{width:28px;height:28px;opacity:.8}
 #inventory .sv-tab:hover{background:linear-gradient(#c8b285,#b39b6d);box-shadow:inset 0 0 0 1px #4a3520}
 #inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#ead9ae,#d6c397);color:#2e1f10;box-shadow:inset 0 0 0 2px #4a3520,inset 4px 0 0 #5f9c3a}
@@ -402,7 +404,7 @@ function ensureStyle() {
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
 
-const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one. Arrow keys move between slots; Tab, E, I or Esc closes.';
+const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one; let go outside the bag to drop it in the sea. Arrow keys move between slots; Tab, E, I or Esc closes.';
 function mountDialog() {
   let d = document.getElementById('inventory');
   if (!d || d.tagName !== 'DIALOG') {
@@ -486,10 +488,10 @@ function paintSlot(el, s, sig, label) {
   const f = durFrac(s);
   if (r.dur) {
     r.dur.hidden = f == null;
-    if (f != null) { r.bar.style.width = (f * 100).toFixed(0) + '%'; r.bar.style.background = f > 0.5 ? '#8fd36a' : f > 0.25 ? '#ffbd66' : '#e06a4a'; }
+    if (f != null) { r.bar.style.width = (f * 100).toFixed(0) + '%'; r.bar.style.background = s.kind === 'canteen' ? '#4fb6e8' /* [canteen] fill, not wear */ : f > 0.5 ? '#8fd36a' : f > 0.25 ? '#ffbd66' : '#e06a4a'; }
   }
   el.classList.remove('sv-empty');
-  el.setAttribute('aria-label', `${label}, ${itemName(s.kind)}${s.count > 1 ? ', ' + s.count : ''}${f != null ? ', durability ' + Math.round(f * 100) + ' percent' : ''}`);
+  el.setAttribute('aria-label', `${label}, ${itemName(s.kind)}${s.count > 1 ? ', ' + s.count : ''}${f == null ? '' : s.kind === 'canteen' ? ', ' + Math.round(f * 4) + ' of 4 sips' /* [canteen] */ : ', durability ' + Math.round(f * 100) + ' percent'}`);
   return true;
 }
 
@@ -501,7 +503,7 @@ function readSnap(bag) {
 
 // getModel (optional): (kind) -> Object3D, e.g. models.js getModel; icons are rendered from it.
 // iconFor (optional): (kind) -> data URL; overrides the rendered icon for that kind.
-export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate, getModel } = {}) {
+export function createSurvivalUI({ getBag, onSelect, onMove, onDrop, onCraft, onResume, onPause, iconFor, recipeGate, getModel } = {}) {
   if (typeof getModel === 'function') setModelProvider(getModel);
   const gate = id => { try { return recipeGate?.(id) || null; } catch { return null; } }; // [progression-hook] {hidden, locked, reason}
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
@@ -601,7 +603,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const key = recipes.map(r => r.id).join(',') + '|' + (iconFor ? 3 : 2);
     if (dlg.dataset.svRecipes !== key || rlist.childElementCount !== recipes.length || !recipes.length) {
       tabsEl.style.setProperty('--tabs', String(Math.max(1, groups.length)));
-      tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" aria-selected="false" tabindex="-1">${iconSVG(g.icon)}<span>${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
+      tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" data-title="${esc(g.title || g.name)}" title="${esc(g.title || g.name)}" aria-selected="false" tabindex="-1">${iconSVG(g.icon)}<span class="sv-tlabel">${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
       // Rows in tab order so the list reads naturally inside each category.
       const ordered = groups.flatMap(g => g.recipes);
       rlist.innerHTML = ordered.length ? ordered.map(r => `<button type="button" class="sv-recipe sv-locked" data-recipe="${esc(r.id)}" data-cat="${esc(catOf.get(r.id))}" data-tip-kind="${esc(r.out.kind)}">
@@ -628,7 +630,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab.find(v => v.state !== 'gated') || inTab[0])?.r.id ?? null;
     if (activeTab) dlg.dataset.svTab = activeTab;
     const tabEl = tabsEl.querySelector(`.sv-tab[data-cat="${activeTab}"]`);
-    if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
+    if (tabEl) rlist.setAttribute('aria-label', (tabEl.dataset.title || tabEl.textContent.trim()) + ' recipes');
     applyPick();
     paintMore();
   }
@@ -741,7 +743,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     tabsEl.querySelectorAll('.sv-tab').forEach(t => {
       const n = readyPer.get(t.dataset.cat) || 0, b = t.querySelector('.sv-tbadge');
       if (b && b.textContent !== (n ? String(n) : '')) b.textContent = n ? String(n) : '';
-      t.setAttribute('aria-label', `${t.querySelector('span')?.textContent || ''}${n ? `, ${n} ready` : ''}`);
+      t.setAttribute('aria-label', `${t.dataset.title || t.querySelector('span')?.textContent || ''}${n ? `, ${n} ready` : ''}`);
     });
     paintDetail();
   }
@@ -1016,6 +1018,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (r && typeof r.then === 'function') r.then(v => { if (v === false) deny(el, 'Can’t place that there'); }, e => console.error(e));
     return true;
   }
+  // A held / dragged stack let go on the backdrop falls into the sea (Raft: drag out of the inventory to drop).
+  function dropOut(from, amt) {
+    if (from == null || !(amt > 0) || !slotSig(curSlots[from]) || typeof onDrop !== 'function') return false;
+    try { onDrop(from, Math.min(amt, curSlots[from].count)); } catch (e) { console.error(e); }
+    invalidate(); return true;
+  }
   function paintInventory(slots, sigs, selected) {
     for (let i = 0; i < TOTAL; i++) {
       const el = invEls[i]; if (!el) continue;
@@ -1191,7 +1199,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   dlg.addEventListener('pointerdown', e => { downOnBackdrop = e.target === dlg; upOnBackdrop = false; }, opt);
   dlg.addEventListener('pointerup', e => { upOnBackdrop = e.target === dlg; }, opt);
   dlg.addEventListener('click', e => {
-    if (e.target === dlg) { const shut = backdropCloses(downOnBackdrop, upOnBackdrop); downOnBackdrop = upOnBackdrop = false; if (shut) close(); return; }
+    if (e.target === dlg) { const shut = backdropCloses(downOnBackdrop, upOnBackdrop); downOnBackdrop = upOnBackdrop = false; if (shut && src != null) { const from = src, amt = srcAmt; clearSrc(); dropOut(from, amt); return; } if (shut) close(); return; } // holding a stack: the backdrop drops it
     downOnBackdrop = upOnBackdrop = false;
     if (e.target.closest?.('.sv-pinbtn')) { togglePin(); return; }
     const tb = e.target.closest?.('.sv-tab');
@@ -1260,7 +1268,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!dragging) return;
     const el = slotFrom(e);
     if (el !== overEl) { overEl?.classList.remove('sv-over'); overEl = el; el?.classList.add('sv-over'); }
-    if (el) { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch {} }
+    if (el || e.target === dlg) { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch {} } // backdrop accepts: drops into the sea
   }, opt);
   dlg.addEventListener('drop', e => {
     if (!dragging) return;
@@ -1269,6 +1277,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const from = dragFrom, amt = dragAmt;
     endDrag();
     clearSrc();
+    if (!el && e.target === dlg) { dropOut(from, amt); return; }
     if (el && from != null) {
       const to = +el.dataset.index;
       if (to !== from && amt > 0) { if (planMove(from, to, amt).ok) sendMove(from, to, amt, el); else deny(el, refusal(from, to)); }

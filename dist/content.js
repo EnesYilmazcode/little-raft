@@ -52,7 +52,7 @@
 //   dispose()
 //
 // ctx (live getters, set up by game.js): T, scene, camera, raft, ocean, sun, hemi, clouds, world, role,
-// running, physics, elapsed, options, localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
+// running, physics, elapsed, options, sailing (sailing-world, may be null), localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
 // esc(s), mat(color), rebuildRaft(), deckY(), uiOpen(), building (piece grid/tint, may be null early), brush (held
 // brush model), woodMat(hex) (cached procedural wood material), aim() (this frame's aim {point, dir} or null),
 // observe(ev, actor), dayIndex(), hasGrill() ([tasks]).
@@ -91,11 +91,12 @@ import { createFireworks } from './fireworks.js?build=v3-survival-ae77fa84ac2b';
 import { createZipline } from './zipline.js?build=v3-survival-ae77fa84ac2b'; // [zipline]
 import { createSpyglass } from './spyglass.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
 import { createStorm } from './storm.js?build=v3-survival-ae77fa84ac2b'; // [storm]
+import { createMusicBox } from './musicbox.js?build=v3-survival-ae77fa84ac2b'; // [musicbox]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [crops] + createCrops; [spyglass]; [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createMusicBox, createCookpot]; // [musicbox] before cookpot // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [crops] + createCrops; [spyglass]; [juicer] + createJuicer [gull] + createGull
 // [undecor] decor whose module stores items per tile but has no beforeUndecor/undecorLoot/afterUndecor yet:
 // picking it up would lose what it holds, so the host refuses (display, fish trap, cooking pot, gull perch tray).
-const NO_UNDECOR = new Set(['shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch', 'cropplot', 'glidepost', 'glidestep']); // [zipline] posts hold line rope // [crops] slots live on the decor entry
+const NO_UNDECOR = new Set(['stormrod', 'shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch', 'cropplot', 'glidepost', 'glidestep']); // [zipline] posts hold line rope // [crops] slots live on the decor entry
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice

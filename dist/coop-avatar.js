@@ -8,9 +8,9 @@
 // Built on createAvatar (./avatar.js). Held items are tiny own low-poly models (~40-250 tris each; the
 // first-person hook/hammer/rod factories are 6-13k tris, too heavy for a third-person prop), built lazily
 // and cached per kind. update() allocates nothing. Name tag needs a DOM (or OffscreenCanvas); skipped in Node.
-// Draw calls: createAvatar's 36 meshes are baked into one mesh per rigid pivot (body, legs, arms, head+hat)
+// Draw calls: createAvatar's 36 meshes are baked into one mesh per rigid pivot (body, thighs, shins, arms, head+hat)
 // with per-vertex colour + roughness on one shared material (exact same shading; the straw hat is faceted by its
-// geometry, so it bakes in too), plus the emissive eye shine: 7 meshes instead of 36. Pivots in body.userData.parts stay animatable.
+// geometry, so it bakes in too), plus the emissive eye shine. Pivots in body.userData.parts stay animatable.
 import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { lookColors, lookKey } from './look.js?build=v3-survival-ae77fa84ac2b';
 
@@ -18,6 +18,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 const damp = (cur, tgt, rate, dt) => cur + (tgt - cur) * (1 - Math.exp(-rate * dt));
+const TAG_NEAR = 2.1, TAG_FADE = 0.7; // name tag: gone within 2.1 m (level distance), fading up to 2.8 m (it would cover the top banner)
 const EMOTE_LEN = 1.6, SWING = 0.16, RECOVER = 0.45, PULL_BACK = -3.45;
 
 export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', look = null } = {}) {
@@ -271,19 +272,20 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
     A.raX = damp(A.raX, raX, ta !== null && ta !== undefined && ta < SWING ? 60 : k, dt); A.raZ = damp(A.raZ, raZ, k, dt);
     A.head = damp(A.head, -pitch * 0.75, 12, dt); A.lean = damp(A.lean, lean, 10, dt);
     P.leftLeg.rotation.x = A.lLx; P.rightLeg.rotation.x = A.rLx;
+    const kn = 1.45 * A.sit; if (P.leftKnee) P.leftKnee.rotation.x = kn; if (P.rightKnee) P.rightKnee.rotation.x = kn; // [sit] shins hang, feet on deck
     P.leftArm.rotation.set(A.laX, 0, A.laZ); P.rightArm.rotation.set(A.raX, 0, A.raZ);
     P.head.rotation.x = A.head - A.lean * 0.6;
     body.rotation.x = A.lean;
     const bob = (Math.abs(Math.sin(phase)) * 0.045 * amp + sw * (Math.sin(time * 2.1) * 0.06 - 0.05)) * (1 - A.sit); // [sit]
     body.position.y = damp(body.position.y, bob, 20, dt);
 
-    // name tag: ~constant screen size, fades beyond 40 m
+    // name tag: ~constant screen size, fades beyond 40 m and up close (under 2.5 m it would cover the top banner)
     if (tag) {
-      let d = 6;
-      if (camera) { camPos.setFromMatrixPosition(camera.matrixWorld); d = camPos.distanceTo(group.position); }
+      let d = 6, dh = 6;
+      if (camera) { camPos.setFromMatrixPosition(camera.matrixWorld); d = camPos.distanceTo(group.position); dh = Math.hypot(camPos.x - group.position.x, camPos.z - group.position.z); }
       const h = clamp(d * 0.034, 0.17, 2.2);
       tag.scale.set(h * 4, h, 1);
-      tagMat.opacity = 1 - smooth((d - 40) / 10);
+      tagMat.opacity = (1 - smooth((d - 40) / 10)) * smooth((dh - TAG_NEAR) / TAG_FADE);
       tag.visible = tagMat.opacity > 0.01;
     }
   }
@@ -338,7 +340,7 @@ const PLAIN = (m) => m.isMeshStandardMaterial && !m.flatShading && !m.map && !m.
 
 function bakeAvatar(T, body) {
   const P = body.userData.parts;
-  const pivots = [body, P.head, P.leftArm, P.rightArm, P.leftLeg, P.rightLeg];
+  const pivots = [body, P.head, P.leftArm, P.rightArm, P.leftLeg, P.rightLeg, P.leftKnee, P.rightKnee].filter(Boolean);
   const owned = [];
   const shared = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 1, metalness: 0 });
   shared.onBeforeCompile = (sh) => {

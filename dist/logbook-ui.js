@@ -50,13 +50,14 @@ const CSS = `
 .lb-card em{display:inline-block;margin-top:3px;font:600 11px/1 ${FONT};font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#d6b67e}
 .lb-card.lb-locked{opacity:.5}
 .lb-card.lb-locked .lb-icon{filter:grayscale(1)}
-#lb-toast{position:fixed;top:16px;right:16px;z-index:40;max-width:min(380px,calc(50vw - 130px));max-height:40px;overflow:hidden;white-space:nowrap;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:4px 10px;
+#lb-toast{position:fixed;top:16px;right:16px;z-index:40;max-width:max(220px,min(380px,calc(50vw - 130px)));max-height:40px;overflow:hidden;white-space:nowrap;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:4px 10px;
   background:linear-gradient(180deg,#664730f2,#46301cf2);border:2px solid #3e2a17;border-radius:4px;box-shadow:0 0 0 2px #d6b67e,0 8px 24px #0008;
   color:#fff2cc;font:600 14px/1.35 ${FONT};pointer-events:none;opacity:0;transform:translateY(-6px);transition:opacity .2s,transform .2s}
 #lb-toast.lb-show{opacity:1;transform:none}
 #lb-toast[hidden]{display:none}
 #lb-toast .lb-icon{width:24px;height:24px;flex:none}#lb-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media (prefers-reduced-motion:reduce){#lb-toast{transition:none;transform:none}}
+@media (max-width:760px){#lb-toast{top:12px;right:12px;max-width:calc(100vw - 210px)}} /* narrow: right of the top-left signal pill, above the compass */
 /* One line, at most 40px tall: ends above #sailBadge (top:64px, sailing-ui.js); the width cap keeps it right of the centred signal pill. */
 .lb-tk-head{margin:0 0 8px;font:600 12px/1.3 ${FONT};letter-spacing:.06em;text-transform:uppercase;color:#d6b67e}
 .lb-tk-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}

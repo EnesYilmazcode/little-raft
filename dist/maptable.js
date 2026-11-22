@@ -3,10 +3,11 @@
 // world.ext.maptable. Spec: docs/specs/maptable.md. The top half is pure (no DOM, no THREE) and
 // exported for tests; the dialog lives in maptable-ui.js (lazy) and the mesh in maptable-model.js.
 import { SAIL, wrapAxis } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
-import { ISLAND, layoutFor, pathAt, hash3 } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
+import { ISLAND, layoutFor, phaseAt, islandRel, hash3 } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 import { createMapTableModel } from './maptable-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const HG = SAIL.GROUND_WRAP / 2;
+export const CHART_R = 80; // an island is charted once it is this close to the raft (m)
 export const TRAIL_STEP = 25, TRAIL_MAX = 240, ISL_MAX = 40, PIN_MAX = 8, PIN_RANGE = 12000;
 export const REACH = 2.6, PIN_COOLDOWN = 0.25, SAMPLE = 0.5;
 export const SCALES = Object.freeze([150, 600, 2500, 10000]);
@@ -128,7 +129,7 @@ export function createMapTable(ctx, opts = {}) {
   let cache = null, dirty = true, viewRev = 0, netSynced = false;
   let acc = 0, firstTick = true;
   const cool = { host: -Infinity, guest: -Infinity };
-  const path = { phase: 'gone', z: 0, left: 0, sink: 0 };
+  const path = { phase: 'gone', sink: 0 }, rel = { x: 0, z: 0 };
   let ui = null, uiLoading = null, uiFailed = false, unprovide = null;
   const scratch = T ? new T.Vector3() : null;
 
@@ -170,13 +171,15 @@ export function createMapTable(ctx, opts = {}) {
     const isl = peek('islands');
     const i = isl && isl.isl;
     if (!i || !g || !isInt(i.seed)) { firstTick = false; return; }
+    if (isl.v !== 2 || !fin(i.bx) || !fin(i.bz)) { firstTick = false; return; }
     const lay = layoutFor(i.seed);
-    pathAt((fin(isl.clock) ? isl.clock : 0) - i.born, i.dock, lay.dockZ, path);
+    phaseAt(i, fin(isl.clock) ? isl.clock : 0, path);
     if (path.phase === 'gone') { firstTick = false; return; }
+    islandRel(i, g.gx, g.gz, rel); // islands sit still on the seabed: (bx, bz) is already a chart position
     let e = null;
     for (let k = 0; k < st.isl.length; k++) if (st.isl[k].s === i.seed) { e = st.isl[k]; break; }
-    if (!e && (path.phase === 'docked' || firstTick)) {
-      if (recordIsland(st, i.seed, g.gx + i.side * i.off, g.gz + lay.dockZ)) {
+    if (!e && (rel.x * rel.x + rel.z * rel.z <= CHART_R * CHART_R || firstTick)) {
+      if (recordIsland(st, i.seed, g.gx + rel.x, g.gz + rel.z)) {
         e = st.isl[st.isl.length - 1]; change();
         tell(`Charted ${islandName(i.seed)}`, 'all');
       }
@@ -184,8 +187,8 @@ export function createMapTable(ctx, opts = {}) {
     firstTick = false;
     if (!e) return;
     let f = e.f;
-    const cx = i.side * i.off, r = lay.R * ISLAND.RIM + 1;
-    if (near(ctx.physics, cx, path.z, r) || near(ctx.other, cx, path.z, r)) f |= 1;
+    const r = lay.R * ISLAND.RIM + 1;
+    if (near(ctx.physics, rel.x, rel.z, r) || near(ctx.other, rel.x, rel.z, r)) f |= 1;
     if (Array.isArray(i.used) && lay.nodes.length && lay.nodes.every((n, k) => i.used[k] >= n.max)) f |= 2;
     if (f !== e.f) { e.f = f; change(); }
   }

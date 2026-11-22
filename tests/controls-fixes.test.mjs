@@ -187,15 +187,21 @@ test('CTL-4: game.js wires the radial to the hammer wheel pieces and selects the
   assert.ok(fn.indexOf('selectSlot(i)') < fn.indexOf('building.menu.setSelected(id)'), 'holds the hammer, then picks the piece');
 });
 
-test('CTL-4: the dead drop action and its Q / Back default are gone', async () => {
+test('drop: Q / Back drop the held item; the hammer wheel stays on right-click', async () => {
   const { ACTIONS, DEFAULT_BINDINGS } = await import(new URL('input-map.js', base));
-  assert.ok(!ACTIONS.some(a => a.id === 'drop'));
-  assert.equal(DEFAULT_BINDINGS.drop, undefined);
+  assert.ok(ACTIONS.some(a => a.id === 'drop'));
+  assert.deepEqual(DEFAULT_BINDINGS.drop, { keys: ['KeyQ'], pad: ['Pad8'] });
   const m = new ActionMap();
-  assert.deepEqual(m.actionFor('KeyQ'), [], 'Q stays free for the hammer build wheel');
-  assert.deepEqual(m.actionFor('Pad8'), []);
-  const stale = { getItem: () => JSON.stringify({ v: 1, bindings: { drop: { keys: ['KeyQ', null], pad: ['Pad8'] } }, settings: {} }), setItem() {} };
-  assert.equal(new ActionMap({ storage: stale }).bindingsFor('drop'), null, 'old saves load without it');
+  assert.deepEqual(m.actionFor('KeyQ'), ['drop']);
+  assert.deepEqual(m.actionFor('Pad8'), ['drop']);
+  const stale = { getItem: () => JSON.stringify({ v: 1, bindings: { drop: { keys: ['KeyG', null], pad: ['Pad8'] } }, settings: {} }), setItem() {} };
+  assert.deepEqual(new ActionMap({ storage: stale }).bindingsFor('drop').keys[0], 'KeyG', 'a saved custom drop key is kept');
+  const bsrc = readFileSync(new URL('building.js', base), 'utf8');
+  assert.doesNotMatch(bsrc, /KeyQ/, 'Q no longer toggles the build wheel');
+  assert.match(gameSrc, /e\.button === 2 && running && building && heldKind\(\) === 'hammer'/, 'right-click opens the wheel');
+  assert.match(gameSrc, /drop:all => dropHeld\(!!all\)/, 'controls lane wires drop');
+  const csrc = readFileSync(new URL('controls.js', base), 'utf8');
+  assert.match(csrc, /id === 'drop'\) call\('drop', input\.shiftHeld\(\)\)/, 'Shift+Q drops the stack');
 });
 
 // ---------------------------------------------------------------- CTL-5

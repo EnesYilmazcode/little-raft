@@ -16,6 +16,7 @@
 //   placeholder: true when the icon is not a dedicated icons.svg symbol
 //   tool:      true only for durability items (Bag keeps durability 0..100 percent)
 //   durability: tools only: number of uses from 100% to 0% (wear per use = 100 / uses)
+//   unbreakable: tools only: never wears (no durability, no repair, no bar), e.g. the hammer
 //   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer' | 'spear' | 'paddle' | 'axe'); see toolRole()
 //   placeable: true when the item is put on a raft tile as a decor/station
 //   recipe:    null (gathered) | {
@@ -65,11 +66,13 @@ const cook = (station, input, { count = 1, time, fuel }) => ({ cost: { [input]: 
 function item(id, name, category, opts) {
   const {
     stack = STACK, icon = `icon-${id}`, placeholder = !opts.icon, iconTint, tool = false,
-    durability, actsAs, placeable = false, recipe = null, unlock = START, tip,
+    durability, unbreakable = false, actsAs, placeable = false, recipe = null, unlock = START, tip, startEmpty = false, // [canteen]
   } = opts;
   const e = { id, name, category, stack: tool ? 1 : stack, icon, placeholder, tool, placeable, recipe, unlock, tip };
   if (iconTint) e.iconTint = iconTint;
-  if (tool) e.durability = durability;
+  if (tool && unbreakable) e.unbreakable = true;
+  else if (tool) e.durability = durability;
+  if (tool && startEmpty) e.startEmpty = true; // [canteen] crafted with durability 0
   if (actsAs) e.actsAs = actsAs;
   return e;
 }
@@ -156,18 +159,18 @@ const LIST = [
   // ----- tools -----
   item('hook', 'Hook', 'tool', { icon: 'icon-hook', placeholder: false, tool: true, durability: 40, // Raft's plastic hook: 40 uses
     recipe: hand({ wood: 1, plastic: 2 }), unlock: START,
-    tip: 'Throw it, reel it, grab the goodies. Gets tired after about 40 catches; R fixes it up.' }),
+    tip: 'Throw it, reel it, grab the goodies. Breaks after about 40 catches, so press R to fix it up before then.' }),
   item('metalhook', 'Metal Hook', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#a9b4c2',
-    tool: true, durability: 150, actsAs: 'hook',
+    tool: true, durability: 100, actsAs: 'hook',
     recipe: hand({ metalingot: 6, bolt: 2, rope: 2, wood: 2 }), unlock: research('metalingot', 'bolt'),
-    tip: 'A shiny metal hook that lasts three times longer. Your arm will thank you.' }),
-  item('hammer', 'Hammer', 'tool', { icon: 'icon-hammer', placeholder: false, tool: true, durability: 120,
+    tip: 'A shiny metal hook that lasts two and a half times longer. Your arm will thank you.' }),
+  item('hammer', 'Hammer', 'tool', { icon: 'icon-hammer', placeholder: false, tool: true, unbreakable: true,
     recipe: hand({ wood: 4, rope: 2 }), unlock: START,
-    tip: 'Builds new floor tiles (2 planks + 2 plastic each). Make room for friends!' }),
+    tip: 'Builds and removes raft pieces: right-click picks a piece, click places it. Never wears out.' }),
   item('fishingrod', 'Fishing Rod', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#c69860',
-    tool: true, durability: 40,
+    tool: true, durability: 10, // Raft: a wooden rod lasts 10 catches, then snaps
     recipe: hand({ wood: 6, rope: 8 }), unlock: discover('rope'),
-    tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 40 catches between repairs.' }),
+    tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 10 catches before it snaps.' }),
   item('spear', 'Wooden Spear', 'tool', { iconTint: '#bb8650', tool: true, durability: 20,
     recipe: hand({ wood: 8, rope: 3 }), unlock: discover('rope'),
     tip: 'A long pole with a sharp lashed tip. Click to jab at things in the water; wears only when it lands.' }),
@@ -202,6 +205,8 @@ const LIST = [
   // [camera] Little Camera (dist/camera.js): no durability, photos stay in this browser
   item('camera', 'Little Camera', 'tool', { iconTint: '#e07a5f', stack: 1, recipe: hand({ glass: 1, plastic: 2, scrap: 2, rope: 1 }), unlock: research('glass'),
     tip: 'Click to snap a photo. Press P to open your album.' }),
+  item('canteen', 'Seaglass Canteen', 'tool', { tool: true, durability: 4, startEmpty: true, iconTint: '#8fd8f2', recipe: hand({ glass: 1, rope: 1, plastic: 2 }), unlock: research('glass'),
+    tip: 'A sea-glass flask on a rope strap. Holds 4 sips of fresh water.' }), // [canteen]
   item('glidehandle', 'Glide Handle', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 2, rope: 2, scrap: 2 }), unlock: discover('nail'), // [zipline] tool:false, no durability
     tip: 'A wooden T-bar with a wheel. E links two posts or hooks you onto a line. Space lets go.' }),
 
@@ -282,6 +287,7 @@ const LIST = [
     tip: 'Pin up the crew tasks for the day.' }),
   item('photoframe', 'Photo Frame', 'decor', { placeable: true, iconTint: '#c69860', recipe: hand({ wood: 3, glass: 1, nail: 1 }), unlock: research('glass', 'nail'), // [camera]
     tip: 'Hang a favourite photo on your raft. Press E on it to choose one.' }),
+  item('musicbox', 'Music Box', 'decor', { placeable: true, iconTint: '#b4824b', recipe: hand({ wood: 3, nail: 1, scrap: 2 }), unlock: discover('nail'), tip: 'A shell-inlaid box with a tiny turning cylinder. Press E to wind it up.' }), // [musicbox] shell is a content-items kind (not in ITEMS), so nail/scrap
   // [fireworks] sky rocket (model in dist/fireworks-model.js, logic in dist/fireworks.js)
   item('skyrocket', 'Sky Rocket', 'decor', { placeable: true, stack: 20, iconTint: '#e9a08c',
     recipe: hand({ plastic: 2, leaf: 1, scrap: 1 }, 3), unlock: discover('plastic', 'scrap'),
@@ -301,6 +307,10 @@ const LIST = [
   item('net', 'Collection Net', 'build', { icon: 'icon-net', placeholder: false, placeable: true,
     recipe: hand({ wood: 6, rope: 8, nail: 2 }), unlock: discover('nail'),
     tip: 'Hang it off the raft edge. Debris drifting into it stays there (up to 10, even barrels). Press E to empty it.' }),
+  // Raft's Throwable Anchor (2 planks, 4 rope, 4 stone): placed on an edge tile, E drops / raises it (anchor-rules.js)
+  item('anchor', 'Anchor', 'build', { iconTint: '#5e5a52', placeable: true,
+    recipe: hand({ wood: 2, rope: 4, stone: 4 }), unlock: discover('rope', 'stone'),
+    tip: 'A stone anchor on a rope reel. Place it at the raft edge, then press E on it to stop the raft or let it drift again.' }),
   item('maptable', 'Map Table', 'decor', { iconTint: '#c9a46a', stack: 5, placeable: true,
     recipe: hand({ wood: 6, rope: 3, nail: 2, copperingot: 1 }), unlock: research('copperingot'),
     tip: 'A little chart table. It remembers the islands you meet and points the sail where you like.' }),
@@ -350,10 +360,12 @@ export const BLOCK_RADII = deepFreeze({
   fishtrap: 0.2, // [fishtrap] only the post stands on the deck
   taskboard: 0.3, // [tasks]
   photoframe: 0.15, // [camera]
+  musicbox: 0.2, // [musicbox]
   recycler: 0.45, // [recycler]
   scarecrow: 0.25, // [scarecrow]
   skyrocket: 0.1, // [fireworks]
   glidepost: 0.15, glidestep: 0.15, // [zipline]
+  anchor: 0.3, // [anchor]
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
@@ -383,7 +395,6 @@ export const FUEL_VALUE = deepFreeze({ wood: 1, leaf: 0.5, seaweed: 0.5 });
 const REPAIRS = deepFreeze({
   hook: { wood: 2, scrap: 1 },
   metalhook: { scrap: 2, nail: 2 },
-  hammer: { wood: 2, rope: 1 },
   fishingrod: { wood: 1, rope: 2 },
   spade: { wood: 2, scrap: 1 },
   spear: { wood: 2, rope: 1 },
@@ -440,31 +451,36 @@ export const PROGRESSION_PLAN = deepFreeze([
 ]);
 
 /**
- * Barrel loot: BARREL_ROLLS.basic picks from the 'basic' pool (min..max each)
- * plus BARREL_ROLLS.treasure picks from the 'treasure' pool (always 1 of the
- * kind, so mid-game materials trickle in steadily with low variance).
- * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 111, incl. beet 5 and potato 4): ~5.3
- * basics plus clay .18, stone .12, metal ore .10, sand .12, seaweed .08 (x1.5), copper ore
- * .06, flower seed .06, scrap .29. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
- * least every 5-13 barrels (a few more when two are overdue at once), so the real rates are
- * clay .24, stone .19, metal ore .18, sand .14, copper ore .09, seaweed .05 (x1.5).
+ * Barrel loot, Raft-style: every barrel holds BARREL_ROLLS.min..max single items (4-6).
+ * One of them is the 'treasure' pick (mid-game materials with bad-luck protection, see
+ * BARREL_PITY); the other 3-5 are rolled one by one from the 'basic' pool, whose weights
+ * follow Raft's barrel table: plank 37.7%, leaf 18.9%, plastic 14.2%, scrap 9.4%, rope 7.1%,
+ * stone 6.1%, then seeds and food 6.6% (flower seed 1.7%, beet 1.7%, potato 1.6%, coconut 1.6%).
+ * Plain treasure odds (total 90): clay .20, stone .13, metal ore .11, sand .13, seaweed .09,
+ * copper ore .07, scrap filler .27; with the caller's luck state the mid-game kinds come at
+ * least every 4-12 barrels (a few more when two are overdue at once).
+ * Per barrel on average: ~1.5 planks, .76 leaves, .57 plastic, .38+.27 scrap, .28 rope, .25+.13 stone;
+ * about 1 barrel in 8 holds a beet or potato so a new player can start farming [crops].
  */
-export const BARREL_ROLLS = deepFreeze({ basic: 3, treasure: 1 });
+export const BARREL_ROLLS = deepFreeze({ min: 4, max: 6, treasure: 1 });
 export const BARREL_LOOT = deepFreeze([
-  { kind: 'wood', min: 2, max: 3, weight: 30, pool: 'basic' },
-  { kind: 'leaf', min: 1, max: 3, weight: 22, pool: 'basic' },
-  { kind: 'plastic', min: 1, max: 2, weight: 22, pool: 'basic' },
-  { kind: 'scrap', min: 1, max: 2, weight: 16, pool: 'basic' },
+  { kind: 'wood', min: 1, max: 1, weight: 377, pool: 'basic' },
+  { kind: 'leaf', min: 1, max: 1, weight: 189, pool: 'basic' },
+  { kind: 'plastic', min: 1, max: 1, weight: 142, pool: 'basic' },
+  { kind: 'scrap', min: 1, max: 1, weight: 94, pool: 'basic' },
+  { kind: 'rope', min: 1, max: 1, weight: 71, pool: 'basic' },
+  { kind: 'stone', min: 1, max: 1, weight: 61, pool: 'basic' },
+  { kind: 'flowerseed', min: 1, max: 1, weight: 17, pool: 'basic' }, // [bees]
+  { kind: 'beet', min: 1, max: 1, weight: 17, pool: 'basic' }, // [crops] a new player can start farming
+  { kind: 'potato', min: 1, max: 1, weight: 16, pool: 'basic' }, // [crops]
+  { kind: 'coconut', min: 1, max: 1, weight: 16, pool: 'basic' }, // [juicer] keep last: rand=1 picks it
   { kind: 'clay', min: 1, max: 1, weight: 18, pool: 'treasure' },
   { kind: 'stone', min: 1, max: 1, weight: 12, pool: 'treasure' },
   { kind: 'metalore', min: 1, max: 1, weight: 10, pool: 'treasure' },
   { kind: 'sand', min: 1, max: 1, weight: 12, pool: 'treasure' },
-  { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
+  { kind: 'seaweed', min: 1, max: 1, weight: 8, pool: 'treasure' },
   { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },
-  { kind: 'flowerseed', min: 1, max: 1, weight: 6, pool: 'treasure' }, // [bees]
-  { kind: 'beet', min: 1, max: 2, weight: 5, pool: 'treasure' }, // [crops] a new player can start farming
-  { kind: 'potato', min: 1, max: 1, weight: 4, pool: 'treasure' }, // [crops]
-  { kind: 'scrap', min: 1, max: 1, weight: 30, pool: 'treasure' },
+  { kind: 'scrap', min: 1, max: 1, weight: 24, pool: 'treasure' },
 ]);
 const POOLS = Object.freeze(Object.fromEntries(['basic', 'treasure'].map((p) => {
   const rows = BARREL_LOOT.filter((e) => e.pool === p);
@@ -510,7 +526,8 @@ function luckMisses(luck) {
 export function rollBarrel(rand = Math.random, luck = null) {
   const out = {};
   const misses = luckMisses(luck);
-  for (let i = 0; i < BARREL_ROLLS.basic; i++) pickFrom(POOLS.basic, rand, out);
+  const items = BARREL_ROLLS.min + Math.floor(unit(rand) * (BARREL_ROLLS.max - BARREL_ROLLS.min + 1));
+  for (let i = 0; i < items - BARREL_ROLLS.treasure; i++) pickFrom(POOLS.basic, rand, out);
   for (let i = 0; i < BARREL_ROLLS.treasure; i++) {
     let forced = null, worst = 1;
     if (misses) for (const k of PITY_KINDS) { const due = misses[k] / BARREL_PITY[k]; if (due >= worst && (!forced || due > worst)) { forced = k; worst = due; } }
@@ -543,6 +560,23 @@ export function wearPerUse(kind) {
   return it && it.tool && it.durability > 0 ? MAX_DURABILITY / it.durability : 0;
 }
 
+/** Durability a newly made tool starts with: 0 for startEmpty tools (the canteen), else full. [canteen] */
+export function freshDurability(kind) { return isItem(kind) && ITEMS[kind].startEmpty ? 0 : MAX_DURABILITY; }
+/**
+ * Wears tool slot i of `slots` by `amount` percent. Raft rule: at 0 the tool breaks and the slot empties.
+ * Returns {kind, before, after, broke} or null for an empty slot. Float dust below 1e-6 counts as 0.
+ */
+export function wearSlot(slots, i, amount) {
+  const s = slots?.[i]; if (!s) return null;
+  const d = Number.isFinite(s.durability) ? s.durability : MAX_DURABILITY;
+  const before = Math.max(0, Math.min(MAX_DURABILITY, d));
+  let after = before - (Number.isFinite(amount) && amount > 0 ? amount : 0); if (after < 1e-6) after = 0;
+  s.durability = after;
+  const broke = before > 0 && after === 0;
+  if (broke) slots[i] = null;
+  return { kind: s.kind, before, after, broke };
+}
+
 /** Gameplay role of a held item: metalhook -> 'hook'; otherwise the kind itself. */
 export function toolRole(kind) {
   return isItem(kind) ? (ITEMS[kind].actsAs ?? kind) : kind;
@@ -566,7 +600,8 @@ export function infoTable() {
   for (const id of ITEM_IDS) {
     const it = ITEMS[id];
     const row = { kind: id, name: it.name, icon: it.icon, maxStack: it.stack, tool: it.tool, placeholder: it.placeholder };
-    if (it.tool) row.maxDurability = MAX_DURABILITY;
+    if (it.unbreakable) row.unbreakable = true;
+    else if (it.tool) row.maxDurability = MAX_DURABILITY;
     out[id] = Object.freeze(row);
   }
   return Object.freeze(out);

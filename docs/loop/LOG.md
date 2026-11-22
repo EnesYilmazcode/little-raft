@@ -1197,3 +1197,280 @@ No regressions. Intended differences:
 - Lower the net rope segment count (about 5k tris).
 - Measure decor and deck chunk culling on rafts of 144+ tiles.
 - Check whether three.js's `setValueV3f` boxing (8–11 KB/frame) can be avoided.
+
+## 2026-11-21 · integrator round 6 (integrator A)
+- Merged clean: loop-perf-0823, loop-features-0831 (finished juicer), raft-tech.
+- Lane agents (respecting STATUS.md claims by integrators B/C/D): features 0648, 0735 (power, fish trap, display shelf), 0749 (camera/album, crew tasks, recycler, photo frame, task board), 0753-zfs (scarecrow, fireworks, zipline); visuals 0558 (record only, stale copy), 0748 (crisp horizon, deck water, hand shading), 0843 (outlined icons, notes card). Fixed along the way: bake.js baked the fishing rod's instanced guide rings at unit size.
+- Skipped: loop-perf-0720 (stale rewritten copy of work already in raft-master), loop-fidelity-0747 (second needs/shark system next to vitals), loop-ux-0743 (needs worker rebase onto the wood crafting panel). loop-fidelity-0804 is resolved and tested on merge/loop-fidelity-0804 for its claimant (B).
+- PR #5 review (2 reviewers, comments on the PR). Fixed: juicer hopper never added to the model; string lights turned on the point-light pool (19 shader links mid-game); photo frame cast 9 shadows; picking up a linked glide post dropped its rope (posts now refuse pickup); misleading "Empty it first" text. The photo album's exit-lock fix had already landed.
+- Gate at fd3724d: 1398/1398, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause. Perf vs main: 99-103 vs 185-197 ms, 45-49 vs 46-52 draw calls.
+- Merged PR #5 into main (c3a29df).
+
+## Integrator B, round 6 (09:30-10:00 UTC)
+- Merges (one subagent each, tests + shoot after each): loop-fidelity-0804/-0821 (only commits another integrator had not taken), loop-ux-0648 via -0833 (most of 0833 was a stale copy; took build rules, crate/desk keyboard nav, chip/lock wording, logbook back-to-pause), loop-visuals-0805 (partial, menu restyle dropped), loop-perf-0708 (docs). features-0814 was already merged by another integrator.
+- Skipped, need a worker rebase: loop-ux-0742, loop-ux-0743 (23 conflicting files each).
+- PR #5 reviews posted (code + visual). Fixed: junk pickups now drawn by the item batch with no shadows; content first() skips modules without the hook (no per-frame arrays); look and album panels release the lock via exitLock; duplicate craft-book key; fish-trap tails cast no shadow; compass, vitals and journal chip hidden while the bag is open.
+- Not bugs: the pause-menu double highlight is a headless stale-cursor hover. esc-relock.py is out of date (uses #newGame and #crewButton).
+- Gate at fd3724d: 1402/1402, no errors, hook-only spawn, Esc OK, perf 126/96 vs 255/159 ms, draws 51/45 vs 50/50. A merged it into main (c3a29df); PR #6 open.
+
+
+## 2026-11-21 · :00 integrator round (08:35-10:10 UTC)
+- Merged into raft-master: raft-tech, raft-integration, loop-perf-0648/-0823, loop-ux-0742 (partial: new-game grill reset, cup rename, title sim freeze, icon-models), loop-ux-0748, loop-visuals-0748, loop-features-0831/-0847-r2/-0849, loop-perf-0847.
+- Skipped, need a worker rebase: loop-perf-0708, loop-perf-0720, loop-ux-0743, loop-ux-0848, loop-visuals-0843, loop-fidelity-0747.
+- PR #2 review (2 reviewers, comments posted). Must-fix: crafting threw "justMade is not defined" (undeclared assignment brought back by a merge); fixed in survival-ui.js and checked with a craft probe.
+- Fixed: the bag's Requires list showed only one ingredient because an empty 88px feed lane squeezed the detail pane.
+- Not changed: reviewer asked to centre the crosshair prompt; the gate requires no centred text, so it stays beside the crosshair.
+- Gate at fd3724d: 1402/1402, no page errors, hook-only spawn, Esc from bag keeps lock and no pause, perf 138 vs 141 ms/frame, 49 vs 51 draw calls. Merged PR #5 into main (c3a29df). PR #6 open.
+- Open nits: hookableItems/updateNotices allocate per frame (game.js hook update, updateNotices); tooltip on the detail icon covers the Requires rows.
+
+## 2026-11-21 · integrator B: PR #5 (round 6) merged
+- Reviews on PR #5: juicer hopper was a new shadow caster (fixed); floating junk (sea jars, tin cans) drew as separate meshes,
+  pushing draw calls +10-14% over main (now drawn through the instanced item batch; the parallel integrator landed the same fix).
+- Perf probe is now seeded (Math.random replaced by a fixed PRNG in an init script), so draw-call counts are repeatable (main: 53.0 on every run).
+- Gate at fd3724d: 1402/1402, no page errors, hook-only spawn, Esc OK, 135 vs 225 ms, 50.8 vs 53.0 calls. Merged as c3a29df.
+- Open, pre-existing: in the browser, Esc with the hammer build wheel open closes the wheel but leaves the cursor free (Chrome needs a click
+  to relock after a user exit). Fix idea: have the wheel release the lock itself, like the inventory does.
+## 2026-11-21 · claude/loop-visuals-202611210927 (visuals, round 4)
+Base: origin/claude/raft-master 23bfb35 (the integrator already took round 3's icons/onboarding/gulls and kept raft-master's own pause menu, Notes plate, hook and islands, so this round targets other gaps). Fleet: critic, 7 builders, art judge, perf checker.
+- Debris: pooled sea items sink to a set share of their height with a darker wet band at the waterline (held items and icons unchanged).
+- Hands: muted warm-tan skin, faint emissive, slimmer palm and fingers, knuckle caps (poses untouched).
+- Hook rope: braided brown camera-facing ribbon (new dist/rope-mesh.js) instead of a 1-px white line.
+- Vitals: slim bars on dark tracks with round icon tabs, no board; muted red health, cream food, cool pale water.
+- Plastic: flatter, lower, glossy jugs in pale blue / mint / off-white colourways, picked per item id.
+- Deck/wood: warm weathered driftwood, per-plank brightness, end grime, dark seams and contact shade.
+- Ocean: teal body and turquoise far sea (daynight midday keys), aqua crest glow (uCrest).
+- Judge: 7/7 accepted. Perf: PASS (spawn median 106.4 vs 106.4 ms; rope ~+4k tris, no cost). Note: ?fixedres is not read by any module.
+- Next: sink jugs ~15% deeper, more saturated colourways, rounder cap; rope narrower near camera + hemp colour + sag; vitals order and number legibility; deck albedo +10%; ocean darker at steep angles, softer horizon band; raft edge at the waterline (thickness, foam, wetness); forearm taper and thumb; HUD style clash (light hotbar vs dark vitals, slate quest panel/compass); crate material.
+## 2026-11-21 · loop-features-202611210847-r2 (features)
+
+Base: `origin/claude/raft-master` 4ee6b16 (910 tests green). Note: master now carries vitals (hunger/thirst/hp) and sharks, which goes against the friendly brief. This round left them alone.
+
+Features (research, spec, build, review for each; then visual QA and a polish pass):
+- **Pick up placed items** (`dist/decor-pickup.js`; spec `docs/specs/decor-pickup.md`).
+  - Hold X with the hammer. Building pieces still win; otherwise the aimed decor gets a red see-through ghost and the build card names it. Release X sends `{kind:'undecor',x,z,t}`.
+  - The host gives back the item itself plus its contents through a scratch bag. It refuses when the item is busy (mid-cook, ripe palm, ready purifier, comb in the hive, motor on, someone in the bed or seat, hen in the nest) or when the bag is full. Items are never lost: a purifying purifier returns its salt cup.
+  - New content hooks: `beforeUndecor`, `undecorLoot` and `afterUndecor`, plus a matching set in progression. `caps:{undecor:1}` lets a guest detect an old host.
+- **Flagpole + flag designer** (`dist/flags*.js`; spec `docs/specs/raft-flag.md`).
+  - The designer offers 8 colours, 6 patterns, 8 original emblems and an emblem colour. The pole flies downwind with a shader wave.
+  - Saved as `world.ext.flags` per tile, with one cached texture per design. Guests send `flag.set` and the host checks it.
+- **Sitting** (`dist/sitting*.js`; spec `docs/specs/sitting.md`).
+  - Bench has 2 seats, Feather Cushion 1 low seat. Look is clamped to ±100°, and the view eases down on sit.
+  - WASD, Space or E stands you up; while seated, the sit module gets first claim on E.
+  - The host picks seats and stores them in `ext.sit`. Co-op pose bit 16 means seated, and the partner avatar now has knees.
+  - New achievement `sit1` "Sit a While". `content.ride` is a shared first-wins hook, the same shape as the zipline branch.
+
+Review fixes:
+- Flag pointed crosswind.
+- The flag dialog outlived its pole.
+- A flag texture leaked.
+- E while seated could also start sleeping.
+- A stale aim could pick up a different item.
+
+QA: `docs/cloud/qa-round-r2.md`, shots in `docs/cloud/shots/r2/`. It found the existing Wind Pennant flying 90° off the wind; that is fixed too.
+
+Checks: `npm test` 954/954.
+
+Merge notes for the integrator:
+- `coop.js` flag math now lives in `poseFlags`/`readFlags`. Add the zipline's bit 8 there.
+- `content.ride` is identical on both branches, so keep one copy.
+- logbook achievement counts add up (`firework1` + `sit1`).
+
+Open for next round:
+- No gamepad binding for remove.
+- An intermittent three.js warm-up error, `reading 'isReady'`, existed before this round.
+- `cleanWorld` keeps decor on integer tiles only.
+- Locked recipes still say "Ready to craft".
+||||||| 050b35f0
+## 2026-11-21 · loop-fidelity-202611210821 (raft fidelity, round 2b)
+Base: raft-master 77b1cb6. Research: docs/loop/research/fidelity-r2b-stations.md and fidelity-r2b-world.md (the wiki hosts were DNS-blocked, so the numbers come from search snippets).
+Skipped because the parallel fidelity run (loop-fidelity-202611210804) already claims them: crop plots, collection net, foundation armor, 2x2 start, Raft recipe costs.
+Claimed and landed:
+- **Station fuel and timings.** The purifier burns fuel: a plank gives 50 s and a leaf 25 s, capped at 150 s. A cup takes 60 s and only advances while lit. It has a flame and a plank-tray visual, and its prompts show the time and fuel. The grill burns 50 s per plank, holds 2 planks, cooks in 28 + 0.4*cm s, and chars only after 120 s. The cook times in items.js now match cooking.js.
+- **Drowning.** You get 33 s of air, or 17 s when food or water is at 0. Out of air you float up and take 3.5 HP/s through hurtPlayer. The air bar turns red below 25%.
+- **Stone Axe and palm chopping** (axe-model.js, islands-layout.js chop action):
+  - Recipe 6 planks + 3 stone + 2 rope, 50 chops.
+  - A palm takes 5 chops and drops 5 planks + 2 leaves. Each chop rolls 17.6% for a coconut and 11.8% for a palm seed.
+  - Bare hands can no longer gather wood from palms. A felled palm leaves a stump.
+  - New coconut food: +5 food, +20 water.
+- **Paddle** (paddle.js, paddle-model.js):
+  - Recipe 4 planks + 2 rope + 2 plastic, 60 strokes.
+  - LMB from an edge tile pushes the raft the way you face. Host checks: the stroke's slot holds a paddle, you stand on an edge tile, the raft is not anchored, and the 0.8 s cooldown has passed (the local cooldown is 0.85 s).
+  - PADDLE_CAP raised to 1.1.
+- **Debris follows raft motion** (debris-budget.js). It spawns at 0.6 items per metre travelled plus 0.05/s, with at most 3 banked. Anchoring stops the water flow and the item drift.
+- **Fix:** items.js HOTBAR_SIZE is now 10 (it was 8), so a saved selection of slot 9 or 0 no longer resets.
+Fleet: 2 researchers, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- the host no longer finds a paddle anywhere in the bag; it uses the stroke's slot
+- a NaN angle wore the paddle
+- held paddle and coconut poses
+- the coconut icon
+- the purifier countdown spammed the pickup feed
+- the felled-palm fronds
+- the axe head tones
+Checks:
+- npm test 753/753 (base 724).
+- shoot.py `errors: []`.
+- Frame time 154 ms (base 159 ms on the same machine).
+Open:
+- In old saves a boiling cup waits for fuel.
+- Islands still sail in, dock and leave, while Raft's islands stay fixed and you sail to them (the top world gap for next round).
+- The axe uses the generic tool swing.
+- The paddle can't be repaired with R.
+- coop.js's held-item list lacks paddle, axe and spear.
+- Rope never drops from barrels (Raft about 7%).
+- Raft wind never changes direction; ours shifts every 70-140 s.
+Next gaps: fixed-position islands, crafting tabs (Navigation, Food/Water), bed as a respawn point, tool durability (hook 40, rod 10), Tinker's Desk cost 14 planks + 2 scrap.
+
+## 2026-11-21 · loop-fidelity-202611210900 (raft fidelity, round 3)
+Base: raft-master 0cf1e15 merged with loop-fidelity-202611210821 (db942be7, ported by hand: import build suffixes, juicer coconut unified to Raft's +5/+20, dive gear oxy x drowning air).
+This branch carries round 2b too, so merge it instead of 202611210821.
+Claimed and landed:
+- **Islands stay put** (islands-layout.js, islands.js, sailing-world.js):
+  - An island sits at a fixed seabed position and moves only by the sailing seabed offset. You steer, paddle or anchor to reach it, or drift past it. The old dock timeline is gone.
+  - The first island spawns 60-80 m ahead and later ones 120-160 m, 20-40 m to the side.
+  - It despawns more than 150 m behind or more than 220 m away, but never while a player is on it.
+  - It shows a "Land ahead!" notice and a compass badge, and the raft can beach on it.
+  - Save format v2 (bx, bz); v1 saves migrate. The host owns spawn and despawn.
+- **Bed respawn point** (sleep.js spawn[role], content respawn hook): sleeping in a bed, or E on it by day, sets your respawn. A faint wakes you beside that bed if it still stands.
+- **Crafted anchor** (anchor-rules.js, anchor-model.js):
+  - Costs 2 wood + 4 rope + 4 stone and is placed on an edge tile. E drops or raises it; hammer + X takes it back.
+  - The raft can't drop anchor without one. Old anchored saves get one placed for free.
+- **Fishing rod** lasts 10 catches; it now wears per catch and breaks at 0.
+- **Six crafting tabs**: Tools, Sailing, Food, Parts, Build, Other. Every recipe sits in exactly one tab, and labels hide below 440 px.
+- **Barrel loot** follows Raft's shape: 4-6 items (plank 37.7, leaf 18.9, plastic 14.2, scrap 9.4, rope 7.1, stone 6.1, flower seed and coconut 3.3 each, plus 1 treasure roll).
+- **Tinker's Desk** costs 14 planks + 2 scrap.
+Fleet: 1 porter, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- a rod already at 0 never broke
+- islands dispose left the compass marker and blocker live
+- the anchor had a floating brace and no rope run
+- the compass island glyph read as "H"; the compass also jumped when its label changed
+- seven recipes had blank icons (rug, pennant, fern, hammock, glass lamp, receiver, sinker)
+- the land notice wrapped
+Checks:
+- npm test 1041/1041.
+- shoot.py `errors: []`; Esc from the inventory: no pause, still locked.
+- Frame time 151 ms vs raft-master 147 ms on the same machine (+3%, within pose noise).
+Open:
+- PlayerPhysics pulls you aboard at 50 m, so a drifting raft yanks you off an island.
+- migrateAnchor ignores grill tiles.
+- The palm planter and lantern onboarding steps may wait on the 14-plank desk in a fresh world; check it in play.
+- The anchor has no held model.
+- The sailing spec and engine docs still mention the anchor post.
+Next gaps: seagull crop raids + scarecrow (after the crops lane lands), swimming back to a drifting raft instead of the 50 m teleport, a hook range and reel speed check against Raft, a Medium Crop Plot, backpack +10 slots, constant wind direction.
+
+## 2026-11-21 · loop-fidelity-202611210946 (raft fidelity, round 4, in progress)
+Base: raft-master 473da9a, merged with loop-fidelity-202611210900 (d2edaa06). That merge carries round 3, which integrator D skipped by mistake (it is not just 0821): fixed islands, crafted anchor, six tabs, Raft barrel loot, rod wear and Tinker's Desk 14+2. For bed respawn and drowning, master's versions were kept.
+Claimed for round 4 (research: docs/loop/research/fidelity-r4-gaps.md):
+- swimming back to a drifting raft (no 50 m snap), plus constant wind
+- the Receiver chain (circuit board, vine goo, battery power), leading to an original beacon-mast landmark
+- a Medium Crop Plot with watermelon and pineapple
+
+## 2026-11-21 · integrator D: loop-perf-202611210859, loop-perf-202611210748, loop-visuals-202611210843
+- Merged loop-perf-202611210859 (drop backdrop blurs). raft-master already had the blur removals in graphics.css, settings.js and coop-feed.js, so those conflicts keep raft-master. This adds the fish journal, research panel and style.css backdrops.
+- Skipped loop-perf-202611210748: a stale parallel copy of perf work raft-master already has (quality ladder, shadow camera fit, pre-warm, pinned quality). It hit 77 conflict hunks across 28 files. Its every-third-frame shadow redraw and frustum-culled foam need a rebase by their worker.
+- Not merged by D: loop-visuals-202611210843 was already on raft-master (cd51bb0f) from another integrator, so D's own merge of it was dropped.
+- Gate: npm test 1402/1402. shoot.py errors [], hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
+- Perf, final vs raft-master, six interleaved pairs, medians: 146 vs 141 ms (+3.5%), 46.5 vs 46.5 draw calls, 97 shadow casters on both.
+## 2026-11-21 · integrator H (the scheduled :00/:30 second integrator; logged as B in rounds 3-5 before the name clash)
+- Round 5 merged and pushed: loop-fidelity-0804, -0821 (nets, crop plot, armor, paddle, stone axe + coconut, debris budget, purifier fuel; 0747 skipped as a duplicate shark/needs build); fleet-tech/perf; icons.svg fetched once (from loop-perf-0720); place-mode prompt wiring from loop-features-0735.
+  Co-op HELD: paddle 23, axe 24 (after glidehandle 21, spyglass 22). Sail chip/lock text follow the new sail recipe.
+- Reverted the loop-features-0831 merge at 7190097 (its WIP juicer commit broke 5 tests); the branch was later finished and merged by integrator C.
+- PR #5 review (2 reviewers, comments on #5). Fixed in 99a2d3e, which landed on raft-master after #5 merged, so it ships with PR #6:
+  floor1 achievement and START_TILES/onboarding reset assumed the old 3x3 start; net view resync when the shark breaks a tile;
+  blocked placement showed "LMB Place X" (now shows the reason, like the hammer); the Place row lost to the keyed aim prompt in place mode;
+  build chip overlapped the vitals panel under 1100px; Lightning Rod pickup lost its shards (now not pick-up-able); duplicate motor/wheel/bed/brush/paint recipes; duplicate `play` hook.
+- Perf at 99a2d3e vs main c3a29df (pinned quality, median of 3, quiet box): 137 vs 138 ms idle, 122 vs 124 ms walking, ~50 draw calls both.
+- Process note: three or more integrators merged the same branches in parallel this round; much worker-merge work was thrown away. Claims in STATUS.md are now the coordination point.
+
+## 2026-11-21 · integrator D summary (09:20–10:05 UTC)
+- Coordinated with integrators A/B/C through the STATUS claims list. Dropped my early duplicate batches (B had claimed the same branches) and did not merge raft-reference: its 53MB of stills are scraped from the commercial game, which doesn't belong in an original game.
+- Merged: loop-ux-0852 (no-op), loop-fidelity-0914 (Simple Bed, breath/drowning), loop-features-0855 (docs), loop-perf-0859 (cheaper menu backdrops).
+- Skipped:
+  - loop-ux-0848 (B's 0833/0648 work)
+  - loop-fidelity-0900 (B's 0821)
+  - loop-fidelity-0910 (replaces the existing nets; needs a rebase)
+  - loop-perf-0748 (stale copy, 77 conflict hunks; its 3-frame shadow refresh and foam culling are worth porting)
+- PR #5 review: code (https://github.com/EnesYilmazcode/little-raft/pull/5#issuecomment-7060592670) and playtest (https://github.com/EnesYilmazcode/little-raft/pull/5#issuecomment-7060667647). Fixed:
+  - junk pickups disposed shared models.js geometry and materials
+  - icons.svg was unstamped on first load (stale sprite after a deploy)
+  - Q was listed twice in Controls
+  - the craft card hid its second ingredient
+  - the 900x600 bag pushed the backpack and hotbar off-screen
+  - the bag covered the compass
+  - the settings panel ran off-screen
+- Note: quality level 3 now renders at a 0.7 pixel ratio (main had 0.85), so part of the frame-time gain is resolution.
+## 2026-11-21 · loop-fidelity-202611210947 (raft fidelity, worker A round 3)
+Base: origin/claude/raft-master (ed5d6c8d). Branch: claude/loop-fidelity-202611210947.
+Research: 2 researchers (world/navigation, UI/tools). The wiki hosts were DNS-blocked, so the numbers come from search summaries.
+Claimed and landed:
+- **Islands fixed in the world** (islands-layout.js, islands.js, sailing-world.js blockers, maptable.js):
+  - An island spawns 120-160 m ahead along the raft's travel over the seabed (downwind), 0-40 m to the side, and stays put on the seabed. The raft drifts past it unless you anchor, sail or motor to it.
+  - Removed: the dock timer, the near-player extension and the "drifting away" warning. New notices: "An island on the horizon" and, once it is 60 m behind, "The island is falling behind".
+  - It sinks once it is 150 m behind (or 260 m away in any direction), then the calm delay starts.
+  - The raft runs aground on the island.
+  - The save format is now v2 (seabed position). v1 saves are migrated.
+- **Wind, sail and engine like Raft** (sailing-core.js, engine.js):
+  - Wind: the direction is constant, and the current (0.30 m/s) follows the wind. Debris and the floating hook drift along it and arrive from upwind.
+  - Sail: the course is clamped to 90° off the wind. Speed is 1.5 x drift x (0.5 + 0.5 cos): 0.45 m/s downwind, 0.225 m/s at 90°. Sails don't stack.
+  - Engine: needs a steering wheel and ignores the wind. 0.6 m/s, with gains 1 / 1.25. One motor per 100 tiles. When sail and motor are both active, the faster one wins.
+- **Drop key and tool breakage** (drop.js, items.js wearSlot):
+  - Dropping:
+    - Q drops one of the held item and Shift+Q drops the stack. The gamepad's Back button drops. Dragging a stack out of the bag drops it.
+    - A dropped item floats as a pooled debris model, can be collected with the hook or E, and sinks after 90 s.
+    - The host checks every drop: reach of 3 m or less and at most 40 drops at once.
+    - Q no longer opens the build wheel (right-click does).
+  - Durability:
+    - Hook 40, metal hook 100, rod 15 (the rod now wears on each catch).
+    - At 0 a tool breaks and the feed says "Hook broke".
+    - R repairs while durability is above 0.
+    - The hammer is unbreakable and has no bar.
+Fleet: 2 researchers, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- leftover "Q" build-wheel hints
+- the hook ignored drops when the bag was full
+- islands spawned along +z at anchor or before the first reading
+- new supplies spawned off to the side of a non-+z current
+- stack wording "plank ×19"
+Checks: npm test 1286/1286 (base 1022 before raft-master moved). shoot.py `errors: []`. Frame time is noisy on swiftshader but shows no regression (after 73-170 ms, base 120-228 ms). Draw calls 41 vs 40, with no new meshes.
+Known limits:
+- At the 0.30 m/s base drift an island takes about 8 min to reach, so islands are rarer unless you sail.
+- Top speeds are lower than before (sail 0.45, motors up to 0.75 m/s).
+- Drops are not saved.
+- Old saves with motors but no wheel lose engine power.
+- Drop notices use lowercase item names.
+Next gaps to consider:
+- Receiver/Antenna to a fixed destination, with battery power and an altitude check
+- a large island with a Radio Tower story note
+- blueprints gating the Receiver, Wheel and Motor at the Research Table
+- crafting categories: Food & Water, Navigation, Weapons, Decorations
+- bag 20 + Backpack
+- **Overlap note for the integrator** (found after pushing). Two other fidelity branches built the same things at the same time:
+  - `loop-fidelity-0900` also made stationary islands, with the first island at 60-80 m and a crafted anchor.
+  - `loop-fidelity-0910` also added Q drop bundles and hook breakage.
+  - Merge only one islands version and one drop version. This branch's own additions are the constant wind with the current following it, the sail curve, the engine rules (steering wheel, 1/1.25, 100 tiles per motor), debris drifting along the current, and the rod/metal-hook numbers.
+  - If 0900's islands are taken, port only its `travelOf` → `currentVector` change from here.
+
+## 2026-11-21 · integrator A, QA round (head fbfc100 → dfe019b)
+- QA fixes pushed: Continue on the title after quitting (and focused, so Enter resumes), the world hotbar hidden under the bag,
+  "plank" in build costs/hints, build chip on the hotbar, X/Z emotes only with a crewmate aboard (X dropped a ping beacon solo),
+  Q/G/J/C listed in Controls help, juicer items given craft-book text and sources (the merged loop-features-0831 WIP failed 5 tests).
+- Gate: unit, playbot, visual, electron pass (electron binary installed). perf fails from cd51bb0 (loop-visuals-0843 merge)
+  on domNodesLateHalf 38–44 > 20 and GL growth. Investigation: not a leak. With seed 1 the first hook catch lands late
+  (68–81 s), adding recipe rows and shader programs once; DOM plateaus over 200 s; seeds 2 and 3 pass. The DOM metric lacks
+  the step exclusion the GL metric has. Needs a gate-owner decision; not auto-merged.
+- Perf QA: draw calls, triangles, JS heap, hitches equal to main; frame time too noisy under shared load to call.
+- Open: farming.js/farming-view.js are not imported anywhere (palm planters run on the watering lane); two left-side notice feeds overlap.
+## 2026-11-21 · integrator E (was "C" in earlier entries), round 3
+- Claimed and merged loop-features-202611210911 up to 4651a84: Driftwood Game Table, Buoy ring course, Driftboard.
+  The head commit ("Round 5 work in progress", a half-done diving change) was left out. Wired alongside zipline and sitting
+  (one content.ride hook; seated modules still get E first); the course flag, decor and block radii survived the content-items merge.
+- Skipped loop-perf-202611210823: it trims the old hook model, which raft-master has already rebuilt and merged per material.
+- QA (bugs, detail, perf in worktrees):
+  - Game table and trader open their dialog before releasing the lock, so a slow first load no longer opens pause.
+  - The zipline steps aside while riding a board. Prompts no longer glue a key to the next word.
+  - The Driftboard uses the normal arm pose (the raised fist was the zipline's). Prompts wrap before the Notes column at <=1100px.
+  - The game dialog and race timer use --ui-font.
+  - The board hull and pennant are off the shadow pass. Junk items are instanced.
+- The race timer and signal readout moved from top-centre to top-left (no centred text in play).
+- The new features cost about 0 when not placed. Draw calls are a little above main (junk item parts) but within the gate budget.

@@ -1,10 +1,13 @@
-// Islands content module: small islands drift past the raft, dock for a few minutes, and let players
-// gather leaves, seeds, stone and sand with E, and chop palms for wood with a Stone Axe. Host-authoritative; saved in world.ext.islands.
+// Islands content module: small islands stay put on the seabed like Raft's. One spawns ahead of the raft's
+// travel every few minutes and the world drifting past brings it closer: steer (sail, paddle) and drop anchor
+// to stay, or drift past. Players gather leaves, seeds, stone and sand with E, and chop palms for wood with a
+// Stone Axe. Host-authoritative; saved in world.ext.islands.
 // Design and notes: docs/features/islands.md. Pure logic lives in islands-layout.js (unit tested).
 import {
-  ISLAND, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
-  applyGather, standOnSand, DEFAULTS, CHOP, isAxe,
+  ISLAND, NODE_MAX, SHORE_U, layoutFor, clean, lootFor, groundHeight, nextDelay, dockOffset,
+  applyGather, standOnSand, DEFAULTS, CHOP, isAxe, spawnRel, islandRel, shouldDespawn, phaseAt, wrapGround,
 } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
+import { currentVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 import { createIslandModels, PALM_H, PALM_BEND } from './islands-models.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
@@ -43,14 +46,17 @@ export function islandNow() { return live ? live() : null; }
 
 export function createIslands(ctx) {
   const T = ctx.T;
-  const st = DEFAULTS();              // {v, clock, next, isl}
+  const st = DEFAULTS();              // {v, clock, next, isl: {seed, born, bx, bz, used, end?}}
   let layout = null;                  // layoutFor(st.isl.seed)
-  let warned = false;
+  let warned = false;                 // local "your raft is drifting away" notice given for this island
   const cool = { host: 0, guest: 0 };
   const gatherState = { isl: null, layout: null, cx: 0, cz: 0, clock: 0, cool };
-  const out = { v: 1, clock: 0, next: 0, isl: null }; // cached serialize() object
-  const outIsl = { seed: 0, born: 0, dock: 0, side: 1, off: 0, used: null };
-  const path = { phase: 'gone', z: 0, left: 0, sink: 0 };
+  const out = { v: 2, clock: 0, next: 0, isl: null }; // cached serialize() object
+  const outIsl = { seed: 0, born: 0, bx: 0, bz: 0, used: null };
+  const path = { phase: 'gone', sink: 0 };
+  const rel = { x: 0, z: 0 }, gnd = { x: 0, z: 0 }, ahead = { x: 0, z: 0 };
+  const blocker = { x: 0, z: 0, r: 0 }; // grounding blocker handed to sailing-world (raft-relative)
+  let blockerOwner = null, lastGx = NaN, lastGz = NaN, dgx = 0, dgz = 0;
 
   // Live placement, refreshed in update().
   let shown = false, cx = 0, cz = 0, gy = 0, carryX = NaN, carryZ = NaN;
@@ -168,12 +174,37 @@ export function createIslands(ctx) {
   }
 
   // ---------- placement ----------
+  // Seabed offset: the sailing display offset (what the scenery is drawn with), else the synced world state
+  // (tests, or before sailing exists), else 0.
+  function ground(o) {
+    const s = ctx.sailing;
+    if (s && typeof s.groundOffset === 'function') return s.groundOffset(o);
+    const w = ctx.world && ctx.world.sailing;
+    o.x = w && Number.isFinite(w.gx) ? w.gx : 0; o.z = w && Number.isFinite(w.gz) ? w.gz : 0;
+    return o;
+  }
+  // Seabed step since the last call (the raft's travel over the seabed; 0 while anchored).
+  function trackGround() {
+    ground(gnd);
+    if (lastGx === lastGx) { dgx = wrapGround(gnd.x - lastGx); dgz = wrapGround(gnd.z - lastGz); } else dgx = dgz = 0;
+    lastGx = gnd.x; lastGz = gnd.z;
+  }
+  // Hand our blocker to the live sailing module (once per instance) and keep it on the island's shore.
+  function updateBlocker() {
+    const s = ctx.sailing;
+    if (s && s !== blockerOwner && typeof s.addBlocker === 'function') { s.addBlocker(blocker); blockerOwner = s; }
+    if (s && typeof s.markIsland === 'function') s.markIsland(shown && path.phase !== 'sink' ? cx : NaN, cz); // compass marker
+    if (!shown || path.phase !== 'here') { blocker.r = 0; return; }
+    blocker.x = cx; blocker.z = cz;
+    blocker.r = layout.R * SHORE_U * 1.05 + (s && typeof s.blockerClear === 'function' ? s.blockerClear() : 6);
+  }
   function place() {
     const isl = st.isl;
     if (!isl || !layout) { shown = false; group.visible = lagoon.visible = false; return; }
-    pathAt(st.clock - isl.born, isl.dock, layout.dockZ, path);
+    phaseAt(isl, st.clock, path);
     if (path.phase === 'gone') { shown = false; group.visible = lagoon.visible = false; return; }
-    cx = isl.side * isl.off; cz = path.z;
+    ground(gnd); islandRel(isl, gnd.x, gnd.z, rel);
+    cx = rel.x; cz = rel.z;
     const b = baseY();
     gy = b + (waveAt(cx, cz) - b) * .25 - path.sink;
     group.position.set(cx, gy, cz);
@@ -192,13 +223,26 @@ export function createIslands(ctx) {
   }
   const near = p => !!p && Number.isFinite(p.x) && Number.isFinite(p.z) && (p.x - cx) ** 2 + (p.z - cz) ** 2 < (layout.R + ISLAND.NEAR) ** 2;
 
-  function spawn(seed, t = 0) {
-    seed = (Number.isInteger(seed) && seed >= 0 && seed < 4294967296) ? seed : (Math.random() * 4294967296) >>> 0;
+  // A new island at raft-relative (rx, rz), t seconds old. Stored on the seabed: base = offset + relative.
+  function spawnAt(seed, rx, rz, t) {
     const lay = layoutFor(seed);
-    const { side, off } = dockOffset(ctx.world && ctx.world.tiles, lay);
-    st.isl = { seed, born: st.clock - Math.max(0, t), dock: ISLAND.DOCK, side, off, used: lay.nodes.map(() => 0) };
+    ground(gnd);
+    st.isl = { seed, born: st.clock - Math.max(0, t), bx: wrapGround(gnd.x + rx), bz: wrapGround(gnd.z + rz), used: lay.nodes.map(() => 0) };
     relayout(); place();
-    if (t < ISLAND.APPROACH) emitAll('An island is drifting this way. Swim over and take a look!');
+  }
+  const cur = { x: 0, z: 0 };
+  const pickSeed = seed => ((Number.isInteger(seed) && seed >= 0 && seed < 4294967296) ? seed : (Math.random() * 4294967296) >>> 0);
+  // The real spawn: SPAWN_MIN..SPAWN_MAX m ahead of the raft's travel over the seabed (sail + current), a
+  // seeded 20-40 m to one side. The first island of a fresh world comes FIRST_MIN..FIRST_MAX ahead: that is
+  // the one whose countdown is still the fresh-world ISLAND.FIRST (later countdowns are clock + >= CALM_MIN).
+  function spawn(seed) {
+    seed = pickSeed(seed);
+    const s = ctx.world && ctx.world.sailing;
+    const vx = s && Number.isFinite(s.vx) ? s.vx : 0, vz = s && Number.isFinite(s.vz) ? s.vz : 0;
+    currentVector(s, cur); // the current follows the (constant) wind
+    spawnRel(seed, vx + cur.x, vz + cur.z, ahead, st.next === ISLAND.FIRST);
+    spawnAt(seed, ahead.x, ahead.z, 0);
+    emitAll('Land ahead! Steer in and drop anchor');
   }
   function emitAll(text) { try { ctx.emit({ kind: 'notice', text }, 'all'); } catch {} }
 
@@ -219,25 +263,29 @@ export function createIslands(ctx) {
     if (ticked) ticked = false; else tick(dt);
     if (localCool > 0) localCool -= dt;
     if (chopCool > 0) chopCool -= dt;
+    trackGround();
     const isl = st.isl;
     if (authority()) {
       if (!isl) {
         if (st.clock >= st.next) spawn();
       } else if (layout) {
-        pathAt(st.clock - isl.born, isl.dock, layout.dockZ, path);
+        phaseAt(isl, st.clock, path);
         if (path.phase === 'gone') {
           st.isl = null; st.next = st.clock + nextDelay(isl.seed); relayout();
-        } else if (path.phase === 'docked') {
-          cx = isl.side * isl.off; cz = path.z;
-          // Wait while someone is on or right by the island (hard cap DOCK_CAP).
-          if (path.left <= ISLAND.WARN + 1 && isl.dock < ISLAND.DOCK_CAP && (near(ctx.physics) || near(ctx.other))) {
-            isl.dock = Math.min(ISLAND.DOCK_CAP, isl.dock + dt);
-          } else if (path.left <= ISLAND.WARN && !warned) { warned = true; emitAll('The island is starting to drift away'); }
+        } else if (path.phase !== 'sink') {
+          islandRel(isl, gnd.x, gnd.z, rel); cx = rel.x; cz = rel.z;
+          // Left behind (or far off): sink and go, unless someone is on or right by it.
+          if (shouldDespawn(rel.x, rel.z, dgx, dgz) && !near(ctx.physics) && !near(ctx.other)) isl.end = st.clock;
         }
       }
     }
     place();
+    updateBlocker();
     if (!shown) { sandState.onSand = false; return; }
+    // Standing on the island while the raft drifts off: say so once.
+    if (!warned && sandState.onSand && cx * cx + cz * cz > (layout.R + 20) ** 2 && (dgx || dgz)) {
+      warned = true; try { ctx.notice?.('Your raft is drifting away from the island!'); } catch {}
+    }
     // Gather pop: one instance matrix per frame for a third of a second.
     if (bounceNode >= 0) {
       bounceT -= dt;
@@ -253,9 +301,9 @@ export function createIslands(ctx) {
     if (!ticked) { tick(dt); ticked = true; }
     place();
     if (!p || !shown) { sandState.onSand = false; sandState.lastJump = !!(p && p._prevJump); carryX = NaN; return; }
-    // Ride along while the island glides in to dock. Not while it departs: it slides out from under
-    // the player, who stays near the dock spot instead of being carried 50 m out to sea.
-    if (sandState.onSand && carryX === carryX && path.phase !== 'depart') { p.x += cx - carryX; p.z += cz - carryZ; }
+    // Stay on the island while the world (and the island with it) moves past the raft. A big jump means a
+    // re-placement (load, new island), not motion: no carry then.
+    if (sandState.onSand && carryX === carryX && (cx - carryX) ** 2 + (cz - carryZ) ** 2 < 4) { p.x += cx - carryX; p.z += cz - carryZ; }
     carryX = cx; carryZ = cz;
     // Walk around palm trunks and rocks.
     const fx = p.x - cx, fz = p.z - cz;
@@ -281,7 +329,8 @@ export function createIslands(ctx) {
     else {
       // A copy (the caller may keep or mutate it), reusing two cached objects to stay cheap at ~8 Hz.
       if (!outIsl.used || outIsl.used.length !== i.used.length) outIsl.used = new Array(i.used.length);
-      outIsl.seed = i.seed; outIsl.born = i.born; outIsl.dock = i.dock; outIsl.side = i.side; outIsl.off = i.off;
+      outIsl.seed = i.seed; outIsl.born = i.born; outIsl.bx = i.bx; outIsl.bz = i.bz;
+      if (Number.isFinite(i.end)) outIsl.end = i.end; else delete outIsl.end;
       for (let k = 0; k < i.used.length; k++) outIsl.used[k] = i.used[k];
       out.isl = outIsl;
     }
@@ -289,7 +338,9 @@ export function createIslands(ctx) {
   }
 
   function load(data, from) {
-    const c = clean(data);
+    // v1 saves migrate against the synced seabed state (not the smoothed display, which may lag a fresh load).
+    const ws = ctx.world && ctx.world.sailing;
+    const c = clean(data, layoutFor, ws && Number.isFinite(ws.gx) ? ws : null);
     // Saves and restores snap. Guests ('net') ease toward the host clock unless it is over 1 s off, so a
     // late packet does not make the drifting island pop.
     const err = c.clock - st.clock;
@@ -301,11 +352,10 @@ export function createIslands(ctx) {
       st.isl = c.isl; relayout();
     } else {
       const isl = st.isl;
-      isl.born = c.isl.born; isl.dock = c.isl.dock; isl.side = c.isl.side; isl.off = c.isl.off;
+      isl.born = c.isl.born; isl.bx = c.isl.bx; isl.bz = c.isl.bz;
+      if (c.isl.end !== undefined) isl.end = c.isl.end; else delete isl.end;
       for (let k = 0; k < isl.used.length; k++) if (isl.used[k] !== c.isl.used[k]) { isl.used[k] = c.isl.used[k]; writeNode(k); }
     }
-    pathAt(st.clock - st.isl.born, st.isl.dock, layout.dockZ, path);
-    warned = path.phase === 'depart' || (path.phase === 'docked' && path.left <= ISLAND.WARN);
     place();
   }
 
@@ -316,7 +366,7 @@ export function createIslands(ctx) {
     const pos = actor === 'guest' ? ctx.other : ctx.physics;
     gatherState.isl = st.isl; gatherState.layout = layout; gatherState.clock = st.clock;
     gatherState.cx = cx; gatherState.cz = cz;
-    if (st.isl && layout) { gatherState.cx = st.isl.side * st.isl.off; gatherState.cz = pathAt(st.clock - st.isl.born, st.isl.dock, layout.dockZ, path).z; }
+    if (st.isl && layout) { ground(gnd); islandRel(st.isl, gnd.x, gnd.z, rel); gatherState.cx = rel.x; gatherState.cz = rel.z; }
     const r = applyGather(gatherState, a, actor, pos, bag);
     if (r.ok) {
       writeNode(a.node);
@@ -444,6 +494,7 @@ export function createIslands(ctx) {
 
   function dispose() {
     if (live === mine) live = null;
+    blocker.r = 0; try { blockerOwner?.markIsland?.(NaN, NaN); } catch {} // no stale grounding blocker or compass marker
     if (group.parent) group.parent.remove(group);
     if (lagoon.parent) lagoon.parent.remove(lagoon);
     for (const m of veg) m.dispose?.();
@@ -462,12 +513,23 @@ export function createIslands(ctx) {
 
   // ---------- QA helpers (raftDebug.content.islands) ----------
   const debug = {
-    spawnNear(seed = 1234, t = ISLAND.APPROACH) { if (!authority()) return false; spawn(seed >>> 0, t); return debug.phase(); },
+    // QA: an island a short swim from the raft (the clearer side, 10-13 m from the deck), t seconds old.
+    spawnNear(seed = 1234, t = ISLAND.RISE + 1) {
+      if (!authority()) return false;
+      seed = seed >>> 0;
+      const lay = layoutFor(seed), { side, off } = dockOffset(ctx.world && ctx.world.tiles, lay);
+      spawnAt(seed, side * off, lay.dockZ, t); return debug.phase();
+    },
+    // QA: the real spawn (ahead of the raft's travel), as if the calm had just ended.
+    spawnAhead(seed) { if (!authority()) return false; spawn(seed === undefined ? undefined : seed >>> 0); return debug.phase(); },
     phase() {
       if (!st.isl || !layout) return { phase: 'calm', t: 0, left: Math.max(0, st.next - st.clock), seed: null, clock: st.clock, next: st.next };
-      const p = pathAt(st.clock - st.isl.born, st.isl.dock, layout.dockZ, {});
-      return { phase: p.phase, t: st.clock - st.isl.born, left: p.left, seed: st.isl.seed, clock: st.clock, next: st.next, x: st.isl.side * st.isl.off, z: p.z, R: layout.R };
+      const p = phaseAt(st.isl, st.clock, {}), r = islandRel(st.isl, ground(gnd).x, gnd.z, {});
+      return { phase: p.phase, t: st.clock - st.isl.born, left: 0, seed: st.isl.seed, clock: st.clock, next: st.next, x: r.x, z: r.z, dist: Math.hypot(r.x, r.z), R: layout.R, bx: st.isl.bx, bz: st.isl.bz };
     },
+    blocker: () => ({ ...blocker }),
+    // QA: drop (true) or raise (false) the anchor through the normal sail action, to check an island holds still.
+    anchor(on = true) { return ctx.action({ kind: 'sail', op: on ? 'anchor' : 'unanchor' }) !== false; },
     skip(seconds = 0) { if (Number.isFinite(seconds) && seconds > 0) st.clock += seconds; update(0); return debug.phase(); },
     teleportAshore(dx = 0, dz = 0) {
       const p = ctx.physics; if (!p || !shown) return false;

@@ -70,7 +70,7 @@ function build(T) {
 export function createDriftboard(T, ropeMat) {
   const S = shared ?? build(T);
   const g = new T.Group(); g.name = 'driftboard';
-  const hull = new T.Mesh(S.hull, S.hullMat); hull.castShadow = true; hull.receiveShadow = false; g.add(hull);
+  const hull = new T.Mesh(S.hull, S.hullMat); hull.castShadow = false; hull.receiveShadow = false; g.add(hull); // the ocean takes no shadows: skip the shadow pass
   const pivot = new T.Group(); pivot.position.set(HAND_X, HAND_Y, HAND_Z); g.add(pivot);
   const paddle = new T.Mesh(S.paddle, S.hullMat); paddle.castShadow = false; pivot.add(paddle);
   const pos = new Float32Array(6), rg = new T.BufferGeometry(); rg.setAttribute('position', new T.BufferAttribute(pos, 3));

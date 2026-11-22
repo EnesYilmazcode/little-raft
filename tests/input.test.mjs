@@ -23,7 +23,7 @@ test('actions and defaults are consistent', () => {
   assert.deepEqual(m.bindingsFor('moveForward'), { keys: ['KeyW', 'ArrowUp'], pad: ['PadAxis1-'] });
   assert.equal(m.bindingsFor('hotbar0').keys[0], 'Digit0');
   assert.equal(m.bindingsFor('pause').pad[0], 'Pad9');
-  assert.equal(m.bindingsFor('drop'), null, 'no drop feature, no dead binding');
+  assert.deepEqual(m.bindingsFor('drop'), { keys: ['KeyQ', null], pad: ['Pad8'] }, 'Raft: Q drops the held item');
   assert.deepEqual(m.settings, SETTINGS_DEFAULTS);
   assert.equal(m.bindingsFor('nope'), null);
 });
@@ -34,6 +34,7 @@ test('reverse lookup', () => {
   assert.deepEqual(m.actionFor('Pad0'), ['jump']);
   assert.deepEqual(m.actionFor('Mouse0'), ['use']);
   assert.deepEqual(m.actionFor('KeyZ'), []);
+  assert.deepEqual(m.actionFor('KeyF'), ['stash']); // [crate-labels]
   assert.deepEqual(m.actionFor(42), []);
 });
 

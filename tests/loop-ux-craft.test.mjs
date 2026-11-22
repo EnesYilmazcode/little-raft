@@ -134,9 +134,10 @@ test('F4: crafting tooltips sit beside the whole column and never over the Craft
 });
 
 // ---------------------------------------------------------------- F5
-test('F5: water gear sits in Survival; desk, antenna and receiver in Building', () => {
-  for (const k of ['cup', 'purifier', 'rainbarrel', 'sprinkler']) assert.equal(CB.categoryOf(k), 'survival', k);
-  for (const k of ['research', 'antenna', 'receiver']) assert.equal(CB.categoryOf(k), 'building', k);
+test('F5: water gear sits in Food & Water; the desk in Building; antenna and receiver in Navigation', () => {
+  for (const k of ['cup', 'purifier', 'rainbarrel', 'sprinkler']) assert.equal(CB.categoryOf(k), 'food', k);
+  assert.equal(CB.categoryOf('research'), 'building');
+  for (const k of ['antenna', 'receiver']) assert.equal(CB.categoryOf(k), 'navigation', k);
 });
 
 // ---------------------------------------------------------------- hold to craft
@@ -186,7 +187,7 @@ test('build costs: bag names and per-material have/need colouring', async () => 
   const b = src('building.js');
   assert.match(b, /countOf:k => \(curBag \? curBag\.count\(k\) : 0\), nameOf:k => ITEM_INFO\[k\]\?\.name/);
   assert.match(b, /if \(active\) menu\.refresh\(\);/, 'the chip follows the bag');
-  assert.match(src('build-menu.js'), /<kbd>Q<\/kbd> \/ <kbd>Right-click<\/kbd> pieces/);
+  assert.match(src('build-menu.js'), /"bm-hint"><kbd>Right-click<\/kbd> pieces/);
 });
 
 test('help text matches the real hotbar and mentions the build wheel', async () => {
@@ -198,5 +199,6 @@ test('help text matches the real hotbar and mentions the build wheel', async () 
   if (HOTBAR_SIZE >= 10) assert.match(slots, /or 0/);
   const set = src('settings.js');
   assert.doesNotMatch(set, /'1 - 8 \/ Wheel'/);
-  assert.match(set, /\['Q \/ Right-click', 'Build wheel \(hammer\)'\]/);
+  assert.match(set, /\['Right-click', 'Build wheel \(hammer\)'\]/);
+  assert.match(set, /\['Q \/ Shift \+ Q', 'Drop one \/ the stack'\]/);
 });

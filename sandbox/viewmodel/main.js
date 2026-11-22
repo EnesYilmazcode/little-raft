@@ -4,7 +4,7 @@
 // URL params:
 //   mode=vm|legacy|naive   vm = proposed layer + ./hands.js (default), legacy = dist/game.js today, naive = plain camera child
 //   scene=idle|walk|charge|throw|swap|use|look|wall|shade|rod|hammer|rope|reselect|pickup|crate   scripted state (see SCENES)
-//   fov=75 (world FOV, the game's options.fov), vmfov=70, motion=.35 (options.cameraMotion), t=<seconds> freeze time
+//   fov=75 (world FOV, the game's options.fov), vmfov=60, motion=.35 (options.cameraMotion), t=<seconds> freeze time
 //   auto=0 do not run requestAnimationFrame (shoot.py drives the clock through window.vmLab)
 import * as T from '../../dist/vendor/three.module.js';
 import { createOcean } from '../../dist/ocean.js';
@@ -14,7 +14,7 @@ import { getModel } from '../../dist/models.js';
 
 const P = new URLSearchParams(location.search);
 const MODE = P.get('mode') || 'vm', SCENE = P.get('scene') || 'idle';
-const WORLD_FOV = +(P.get('fov') || 75), VM_FOV = +(P.get('vmfov') || 70), MOTION = +(P.get('motion') ?? 0.35);
+const WORLD_FOV = +(P.get('fov') || 75), VM_FOV = +(P.get('vmfov') || 60), MOTION = +(P.get('motion') ?? 0.35);
 const AUTO = P.get('auto') !== '0', FREEZE = P.has('t') ? +P.get('t') : null;
 const CHARGE_MS = 900;
 // vm mode uses the proposed hands.js (prepare hook, hammer strike, long sleeve, re-select fix); legacy/naive use dist/hands.js
@@ -115,7 +115,7 @@ function step(dt) {
   const u0 = performance.now();
   hands.setHeld(s.kind);
   hands.setPose(isPlaceable(s.kind) ? 'point' : null);
-  hands.update({ dt, time: t, charge: s.charge, casting: s.swing, walking: s.walking, hasHookOut: s.hookOut, motion: MOTION, yaw: s.yaw, pitch: s.pitch });
+  hands.update({ dt, time: t, charge: s.charge, casting: s.swing, walking: s.walking, hasHookOut: s.hookOut, motion: MOTION, yaw: s.yaw, pitch: s.pitch, fov: vm ? vm.projCam.fov : WORLD_FOV }); // = game.js hp.fov
   vm?.update({ dt, held: hands.state.held, grounded: true, charge: s.charge, swing: s.swing, motion: MOTION });
   camera.updateMatrixWorld(true);
   if (vm) vm.anchor(hands.ropeAnchor(), handPos); else hands.ropeAnchor().getWorldPosition(handPos);

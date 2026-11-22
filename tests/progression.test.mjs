@@ -110,10 +110,16 @@ test('items: every entry is complete and self-consistent', () => {
     assert.ok(Number.isInteger(it.stack) && it.stack >= 1, `${id} stack`);
     assert.equal(typeof it.tool, 'boolean');
     assert.equal(typeof it.placeable, 'boolean');
-    if (it.tool) {
+    if (it.tool && it.unbreakable) {
+      assert.equal(it.stack, 1, `${id} tool stack`);
+      assert.equal(it.durability, undefined, `${id} unbreakable: no durability`);
+      assert.equal(repairCost(id), null, `${id} unbreakable: nothing to repair`);
+      assert.equal(wearPerUse(id), 0, `${id} unbreakable: never wears`);
+    } else if (it.tool) {
       assert.equal(it.stack, 1, `${id} tool stack`);
       assert.ok(Number.isInteger(it.durability) && it.durability > 0, `${id} durability uses`);
-      assert.ok(repairCost(id), `${id} tool needs a repair cost`);
+      if (id === 'canteen') assert.equal(repairCost(id), null, 'canteen is refilled, never repaired'); // [canteen] durability is the fill
+      else assert.ok(repairCost(id), `${id} tool needs a repair cost`);
     } else {
       assert.equal(it.durability, undefined, `${id} non-tool durability`);
     }
@@ -157,7 +163,7 @@ test('items: every recipe, unlock, repair, alias, loot and fuel reference is a r
     const st = ITEMS[id].recipe?.station;
     if (st && st !== 'purifier') assert.ok(STATION_IDS.includes(st) && ITEMS[st].recipe, `station ${st}`);
   }
-  for (const t of TOOL_IDS) for (const k of Object.keys(repairCost(t))) assert.ok(valid(k), `repair ${t} ${k}`);
+  for (const t of TOOL_IDS) for (const k of Object.keys(repairCost(t) ?? {} /* [canteen] no repair cost */)) assert.ok(valid(k), `repair ${t} ${k}`);
   for (const [a, k] of Object.entries(LEGACY_ALIASES)) { assert.ok(valid(k), `alias ${a}`); assert.ok(!valid(a), `alias shadows item ${a}`); }
   for (const e of BARREL_LOOT) { assert.ok(valid(e.kind)); assert.ok(e.min >= 1 && e.max >= e.min && e.weight > 0); }
   for (const k of Object.keys(FUEL_VALUE)) assert.ok(valid(k) && FUEL_VALUE[k] > 0);
@@ -171,7 +177,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
     assert.equal(INFO[k].tool, Inv.ITEM_INFO[k].tool, `${k} tool flag matches Bag`);
   }
   assert.equal(ITEMS.wood.name, 'Plank');
-  assert.deepEqual([...TOOL_IDS].sort(), ['axe', 'fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'paddle', 'spade', 'spear']);
+  assert.deepEqual([...TOOL_IDS].sort(), ['axe', 'canteen' /* [canteen] */, 'fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'paddle', 'spade', 'spear']);
   for (const s of ['smelter', 'researchtable', 'grill']) assert.ok(STATION_IDS.includes(s) && PLACEABLE_IDS.includes(s));
   for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'juicer' /* [juicer] */]) assert.ok(PLACEABLE_IDS.includes(k));
   assert.ok(!STATION_IDS.includes('juicer')); // [juicer] decor, not a slot-panel station
@@ -212,7 +218,7 @@ test('items: infoTable and recipeTable have Bag shapes', () => {
     assert.equal(row.maxStack, ITEMS[k].stack);
     assert.equal(row.tool, ITEMS[k].tool);
     assert.equal(typeof row.placeholder, 'boolean');
-    if (row.tool) assert.equal(row.maxDurability, 100); else assert.equal(row.maxDurability, undefined);
+    if (row.tool && !row.unbreakable) assert.equal(row.maxDurability, 100); else assert.equal(row.maxDurability, undefined);
     assert.ok(Object.isFrozen(row));
   }
   const RT = recipeTable();
@@ -248,8 +254,10 @@ test('items: exports are deeply frozen and helpers return safe values', () => {
   }
   assert.equal(fuelValue('constructor'), 0);
   assert.equal(fuelValue('__proto__'), 0);
-  assert.equal(wearPerUse('hook'), 2.5); // 40 uses (Raft's plastic hook)
-  assert.ok(Math.abs(wearPerUse('metalhook') - 100 / 150) < 1e-12);
+  assert.equal(wearPerUse('hook'), 2.5); // Raft: plastic hook 40 uses
+  assert.equal(wearPerUse('metalhook'), 1); // metal hook 100
+  assert.ok(Math.abs(wearPerUse('fishingrod') - 100 / 10) < 1e-12); // rod 10
+  assert.equal(wearPerUse('hammer'), 0); // the hammer never wears
   assert.equal(toolRole('metalhook'), 'hook');
   assert.equal(toolRole('hook'), 'hook');
   assert.equal(toolRole('nope'), 'nope');
@@ -264,7 +272,8 @@ test('items: exports are deeply frozen and helpers return safe values', () => {
 
 test('rollBarrel: bounds hold for edge rand values', () => {
   const lootMax = {};
-  for (const e of BARREL_LOOT) lootMax[e.kind] = (lootMax[e.kind] || 0) + e.max * (e.pool === 'basic' ? I.BARREL_ROLLS.basic : I.BARREL_ROLLS.treasure);
+  const R = I.BARREL_ROLLS;
+  for (const e of BARREL_LOOT) lootMax[e.kind] = (lootMax[e.kind] || 0) + e.max * (e.pool === 'basic' ? R.max - R.treasure : R.treasure);
   const check = (out) => {
     let n = 0;
     for (const [k, v] of Object.entries(out)) {
@@ -272,8 +281,7 @@ test('rollBarrel: bounds hold for edge rand values', () => {
       assert.ok(Number.isInteger(v) && v >= 1 && v <= lootMax[k], `${k} ${v}`);
       n += v;
     }
-    const picks = I.BARREL_ROLLS.basic + I.BARREL_ROLLS.treasure;
-    assert.ok(n >= picks, `at least one item per pick (${n})`);
+    assert.ok(n >= R.min && n <= R.max, `${R.min}-${R.max} items per barrel (${n})`);
   };
   for (const v of [0, 0.9999999, 1, NaN, -1, 2, Infinity, -Infinity, '0.5', null, undefined, {}]) check(rollBarrel(() => v));
   check(rollBarrel());
@@ -284,8 +292,8 @@ test('rollBarrel: bounds hold for edge rand values', () => {
   const a = rng(42), b = rng(42);
   for (let i = 0; i < 50; i++) assert.deepEqual(rollBarrel(a), rollBarrel(b));
   // rand=0 picks the first row of each pool at its min, 1 picks the last at its max
-  assert.deepEqual(rollBarrel(() => 0), { wood: 6, clay: 1 });
-  assert.deepEqual(rollBarrel(() => 1), { scrap: 6 + 1 });
+  assert.deepEqual(rollBarrel(() => 0), { wood: 3, clay: 1 });
+  assert.deepEqual(rollBarrel(() => 1), { coconut: 5, scrap: 1 });
 });
 
 test('rollBarrel: treasure materials appear at sane rates', () => {
@@ -293,6 +301,22 @@ test('rollBarrel: treasure materials appear at sane rates', () => {
   const N = 4000;
   for (let i = 0; i < N; i++) for (const [k, v] of Object.entries(rollBarrel(r))) tot[k] = (tot[k] || 0) + v;
   for (const k of ['clay', 'stone', 'metalore', 'sand', 'seaweed', 'copperore']) assert.ok(tot[k] / N > 0.03, `${k} rate ${tot[k] / N}`);
+});
+
+test('rollBarrel: Raft-like shape, 4-6 single items with the Raft basic odds', () => {
+  assert.deepEqual({ ...I.BARREL_ROLLS }, { min: 4, max: 6, treasure: 1 });
+  const basic = BARREL_LOOT.filter((e) => e.pool === 'basic'), total = basic.reduce((s, e) => s + e.weight, 0);
+  const pct = Object.fromEntries(basic.map((e) => [e.kind, Math.round((e.weight / total) * 1000) / 10]));
+  assert.deepEqual(pct, { wood: 37.7, leaf: 18.9, plastic: 14.2, scrap: 9.4, rope: 7.1, stone: 6.1, flowerseed: 1.7, beet: 1.7, potato: 1.6, coconut: 1.6 });
+  for (const e of BARREL_LOOT) assert.equal(e.max, 1, `${e.kind} one per pick`);
+  const r = rng(21), sizes = { 4: 0, 5: 0, 6: 0 }, N = 6000;
+  let wood = 0;
+  for (let i = 0; i < N; i++) {
+    const out = rollBarrel(r), n = Object.values(out).reduce((s, v) => s + v, 0);
+    sizes[n]++; wood += out.wood || 0;
+  }
+  for (const k of [4, 5, 6]) assert.ok(sizes[k] / N > 0.28 && sizes[k] / N < 0.39, `size ${k}: ${sizes[k] / N}`);
+  assert.ok(Math.abs(wood / N - 4 * 0.377) < 0.08, `planks per barrel ${wood / N}`);
 });
 
 test('rollBarrel luck: null/undefined/junk luck keeps the plain roll', () => {
@@ -363,7 +387,9 @@ test('rollBarrel luck: deterministic for the same rand and luck state, and real 
     const out = rollBarrel(r, luck);
     for (const k of Object.keys(I.BARREL_PITY)) if (out[k]) { worst[k] = Math.max(worst[k] ?? 0, i - (last[k] ?? -1) - 1); last[k] = i; }
   }
-  for (const [k, n] of Object.entries(I.BARREL_PITY)) assert.ok(worst[k] <= n + 3, `${k} worst gap ${worst[k]}`);
+  // Overdue kinds queue behind each other (one forced pick per barrel), so allow one wait per pity kind.
+  const queue = Object.keys(I.BARREL_PITY).length;
+  for (const [k, n] of Object.entries(I.BARREL_PITY)) assert.ok(worst[k] <= n + queue, `${k} worst gap ${worst[k]}`);
 });
 
 // ============================================================ migration

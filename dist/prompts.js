@@ -99,7 +99,7 @@ export const hasKey = p => !!normalizePrompt(p)?.some(x => x.key);
 export function statePrompt(s, opt = {}) {
   if (!s || !s.running) return null;
   if (s.role === 'guest' && !s.networkReady) return {label:'Waiting for your brother’s raft…', muted:true};
-  if (s.pickup) return {key:'E', label:'Pick up ' + (PICK_NAMES[s.pickup.type] ?? 'supply')};
+  if (s.pickup) return {key:'E', label:'Pick up ' + (s.pickup.name ?? PICK_NAMES[s.pickup.type] ?? 'supply')};
   if (s.swimming && !s.physics?.climbing) { // physics: hold jump near a tile edge to clamber
     const d = raftDistance(s.me?.x, s.me?.z, s.tileList);
     if (d <= CLIMB_REACH) return {key:'Space', hold:true, label:'Climb aboard'};
@@ -130,6 +130,8 @@ export function statePrompt(s, opt = {}) {
 // because game.js mutes its own game-aim providers while a placeable is held.
 export function placePrompt(s) {
   const name = DECOR_NAMES[s.heldKind] ?? String(s.heldKind).replace(/[-_]+/g, ' ');
+  const why = s.build?.hover?.blocked;
+  if (why && why !== 'nofloor') return null; // red ghost: game.js says why (BLOCK_TEXT) in #contextPrompt, like the hammer
   const place = s.build?.hover && s.build.hover.blocked !== 'nofloor' ? {key:'LMB', label:'Place ' + name} : {label:s.heldKind === 'net' ? 'Aim at the water by the raft edge' : 'Aim at the raft floor', muted:true}; // [nets]; nofloor: red ghost just off the deck
   const aim = s.aimPrompt ? promptFromHtml(s.aimPrompt) : null;
   return aim ? [place, aim] : place;
@@ -225,7 +227,9 @@ function createPrompts(win, doc) {
         const fcStage = safe(() => win.raftFC?.session?.stage) ?? 'idle';
         const sp = statePrompt(state, {throws, fcStage}), cp = safe(() => contextPromptOf(doc.getElementById('contextPrompt')));
         const spKey = hasKey(sp), cpKey = hasKey(cp);
-        for (const p of [cpKey && cp, spKey && sp, !cpKey && cp, !spKey && sp]) if (p) cands.push({prompts:p, priority:0, ray:false});
+        const placing = state?.tool === 'place' && !!sp; // place mode: placePrompt already stacks the aim row, so the Place row leads
+        const order = placing ? [sp, !cpKey && cp] : [cpKey && cp, spKey && sp, !cpKey && cp, !spKey && sp];
+        for (const p of order) if (p) cands.push({prompts:p, priority:0, ray:false});
         list = pickPrompt(cands);
       }
       shown = list; const s = signature(list);

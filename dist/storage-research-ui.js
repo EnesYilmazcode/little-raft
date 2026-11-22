@@ -5,6 +5,7 @@
 import { iconSVG, slotSig, paintSlot, itemName } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { arrowNeighbor } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { LABEL_MAX, groupedKinds } from './crate-labels.js?build=v3-survival-ae77fa84ac2b'; // [crate-labels]
 
 const CHEST = 12;
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
@@ -121,6 +122,27 @@ body.lr-sr-open .tools.sv-hotbar{visibility:hidden}
   #lrStorage .lr-sr-tiles{grid-template-columns:repeat(auto-fill,minmax(84px,96px))}}
 @media(max-width:700px),(max-height:600px){#lrStorage .lr-sr-cgrid{grid-template-columns:repeat(6,44px)}#lrStorage .lr-sr-grid{grid-template-columns:repeat(7,44px)}#lrStorage .lr-sr-hotrow{grid-template-columns:repeat(${HOTBAR_SIZE},44px)}
   #lrStorage button.sv-slot{width:44px;height:44px}#lrStorage .sv-slot .sv-art{inset:6px}}
+/* [crate-labels] label chip, picker, sort/stash */
+#lrStorage .lr-sr-chesthead{display:flex;align-items:center;gap:6px}
+#lrStorage .lr-sr-labelbtn{display:inline-flex;align-items:center;gap:5px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.2px;text-transform:none}
+#lrStorage .lr-sr-labelbtn .sv-icon{width:16px;height:16px;flex:none}
+#lrStorage .lr-sr-labelbtn::before{content:'🏷';font-size:12px;opacity:.85}
+#lrStorage .lr-sr-picker{width:100%;max-width:378px;display:flex;flex-direction:column;gap:7px;padding:8px;border-radius:4px;background:#24170ccc;box-shadow:inset 0 0 0 1px #d4b07a44;box-sizing:border-box}
+#lrStorage .lr-sr-picker[hidden]{display:none}
+#lrStorage .lr-sr-prow{display:flex;gap:6px}
+#lrStorage .lr-sr-ptext{flex:1;min-width:0;padding:6px 8px;border:0;border-radius:4px;background:#fff2cc;color:#2a1b0e;font:600 13px/1.2 ${FONT};box-shadow:inset 0 1px 3px #0006}
+#lrStorage .lr-sr-ptext:focus{outline:2px solid #ffe3a6;outline-offset:1px}
+#lrStorage .lr-sr-psub{margin:2px 0 0;font:800 10px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
+#lrStorage .lr-sr-ptiles{display:flex;flex-wrap:wrap;gap:4px}
+#lrStorage .lr-sr-ptile{display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:4px;background:linear-gradient(#5d4129,#4a3220);box-shadow:inset 0 0 0 1px #d4b07a44;cursor:pointer;transform:none}
+#lrStorage .lr-sr-ptile .sv-icon{width:26px;height:26px}
+#lrStorage .lr-sr-ptile:hover,#lrStorage .lr-sr-ptile:focus-visible{box-shadow:inset 0 0 0 2px #ffe3a6;outline:none}
+#lrStorage .lr-sr-ptile.lr-sr-on{box-shadow:inset 0 0 0 2px #9fe07a}
+#lrStorage .lr-sr-picker details{max-height:180px;overflow:auto;overscroll-behavior:contain;scrollbar-color:#b48d55 #2a1b0e}
+#lrStorage .lr-sr-picker summary{cursor:pointer;font:700 12px/1.4 ${FONT};color:#eadcbe}
+#lrStorage .lr-sr-pcat{margin:6px 0 3px;font:700 10px/1 ${FONT};letter-spacing:1px;text-transform:uppercase;color:#cdbd9a}
+#lrStorage .lr-sr-pfoot{display:flex;justify-content:space-between;gap:6px}
+#lrStorage .lr-sr-bagbtns{display:flex;gap:6px}
 @media(prefers-reduced-motion:reduce){#lrStorage *,#inventory .sv-recipe{animation:none!important;transition:none!important}}
 `;
 
@@ -152,15 +174,21 @@ export function createStorageUI(api) {
     <div class="lr-sr-banner" role="status"></div>
     <div class="lr-sr-body">
       <section class="lr-sr-panel lr-sr-chest" aria-label="Crate contents">
-        <div class="lr-sr-label"><span>In the crate</span><span class="lr-sr-used"></span></div>
+        <div class="lr-sr-label"><span class="lr-sr-chesthead"><button type="button" class="lr-sr-btn lr-sr-labelbtn" aria-haspopup="true" aria-expanded="false" title="Label this crate">Label</button><button type="button" class="lr-sr-btn lr-sr-sort" title="Stack and order this crate">Sort</button></span><span class="lr-sr-used"></span></div>
         <div class="lr-sr-cgrid">${chestSlots}</div>
+        <div class="lr-sr-picker" hidden role="group" aria-label="Crate label">
+          <div class="lr-sr-prow"><input class="lr-sr-ptext" type="text" maxlength="${LABEL_MAX}" placeholder="Name this crate" aria-label="Crate name" autocomplete="off" spellcheck="false"><button type="button" class="lr-sr-btn lr-sr-psave">Save</button></div>
+          <p class="lr-sr-psub">Seen</p><div class="lr-sr-ptiles lr-sr-pseen"></div>
+          <details class="lr-sr-pall"><summary>All items</summary><div class="lr-sr-pallbody"></div></details>
+          <div class="lr-sr-pfoot"><button type="button" class="lr-sr-btn lr-sr-pclear">Clear label</button><button type="button" class="lr-sr-btn lr-sr-pclose">Done</button></div>
+        </div>
       </section>
       <section class="lr-sr-panel lr-sr-bag" aria-label="Your bag">
-        <div class="lr-sr-label"><span>Your backpack</span><button type="button" class="lr-sr-btn lr-sr-putall">Put all in crate</button></div>
+        <div class="lr-sr-label"><span>Your backpack</span><span class="lr-sr-bagbtns"><button type="button" class="lr-sr-btn lr-sr-stash" title="Stash (F): fill nearby crates that already hold that item">Stash nearby</button><button type="button" class="lr-sr-btn lr-sr-putall">Put all in crate</button></span></div>
         <div class="lr-sr-grid">${bagSlots}</div>
         <div class="lr-sr-rope" aria-hidden="true"></div>
         <div class="lr-sr-hotrow">${hotSlots}</div>
-        <p class="lr-sr-hint">Click a stack to move it across. <kbd>Shift</kbd>+click moves half. Put all keeps your hotbar.</p>
+        <p class="lr-sr-hint">Click a stack to move it across. <kbd>Shift</kbd>+click moves half. Stash nearby fills crates that already hold that item (6 m). Your hotbar stays put.</p>
       </section>
       <section class="lr-sr-panel lr-sr-study" aria-label="Study an item">
         <div class="lr-sr-label lr-sr-slabel"><span>Study an item</span></div>
@@ -179,7 +207,9 @@ export function createStorageUI(api) {
   const $ = s => dlg.querySelector(s);
   const chestEls = [...dlg.querySelectorAll('[data-chest]')];
   const bagEls = []; dlg.querySelectorAll('[data-bag]').forEach(el => { bagEls[+el.dataset.bag] = el; });
-  const head = { icon: $('.lr-sr-hicon'), title: $('.lr-sr-title'), sub: $('.lr-sr-sub'), used: $('.lr-sr-used'), banner: $('.lr-sr-banner'), putAll: $('.lr-sr-putall') };
+  const head = { icon: $('.lr-sr-hicon'), title: $('.lr-sr-title'), sub: $('.lr-sr-sub'), used: $('.lr-sr-used'), banner: $('.lr-sr-banner'), putAll: $('.lr-sr-putall'),
+    labelBtn: $('.lr-sr-labelbtn'), sort: $('.lr-sr-sort'), stash: $('.lr-sr-stash'), picker: $('.lr-sr-picker'), ptext: $('.lr-sr-ptext'), pseen: $('.lr-sr-pseen'), pall: $('.lr-sr-pall'), pallBody: $('.lr-sr-pallbody') }; // [crate-labels]
+  let lastLabelSig = null, allBuilt = false; // [crate-labels]
   const panels = { chest: $('.lr-sr-chest'), bag: $('.lr-sr-bag'), study: $('.lr-sr-study'), next: $('.lr-sr-next') };
   const tilesEl = $('.lr-sr-tiles'), seenEl = $('.lr-sr-seen'), listEl = $('.lr-sr-list');
 
@@ -210,7 +240,47 @@ export function createStorageUI(api) {
     head.sub.textContent = used >= CHEST ? 'Full! Stack things up or place another crate' : used ? 'Your things stay safe here' : 'Empty and ready for your things';
     let any = false; if (bag) for (let i = HOTBAR_SIZE; i < SLOT_COUNT; i++) if (bag.slots[i]) { any = true; break; }
     head.putAll.disabled = !any || used >= CHEST && !canMerge(bag, chest);
+    paintLabels(used); // [crate-labels]
   }
+  // [crate-labels] title/icon from the label, Label chip, Sort/Stash enable, hidden on an old host
+  function paintLabels(used) {
+    const can = api.canLabels(), l = can ? api.labelAt(tx, tz) : null, name = api.labelName(l);
+    head.labelBtn.hidden = head.sort.hidden = head.stash.hidden = !can;
+    if (!can) closePicker();
+    head.sort.disabled = used <= 1;
+    head.stash.disabled = !can || !api.stashable();
+    const sig = l ? (l.k ? 'k:' + l.k : 't:' + l.t) : '';
+    if (sig !== lastLabelSig) {
+      lastLabelSig = sig;
+      head.title.textContent = !l ? 'Crate' : l.k ? `${name} crate` : name;
+      head.icon.innerHTML = iconSVG(l?.k ?? 'crate');
+      head.labelBtn.innerHTML = l ? (l.k ? iconSVG(l.k) : '') + `<span>${esc(name)}</span>` : 'Label';
+      head.labelBtn.title = l ? 'Change this crate’s label' : 'Label this crate';
+    }
+    if (!head.picker.hidden) paintPicker(l);
+  }
+  const tile = (k, l) => `<button type="button" class="lr-sr-ptile${l?.k === k ? ' lr-sr-on' : ''}" data-label-kind="${esc(k)}" title="${esc(itemName(k))}" aria-label="${esc(itemName(k))}">${iconSVG(k)}</button>`;
+  const CAT_NAMES = { tool: 'Tools', material: 'Materials', refined: 'Refined', food: 'Food', build: 'Building', station: 'Stations', decor: 'Decor', other: 'Other' };
+  function paintPicker(l) {
+    const seen = api.seenKinds();
+    head.pseen.innerHTML = seen.length ? seen.map(k => tile(k, l)).join('') : '<p class="lr-sr-empty">Nothing yet</p>';
+    if (head.pall.open || !allBuilt) {
+      head.pallBody.innerHTML = groupedKinds(Object.keys(ITEM_INFO)).map(g => `<p class="lr-sr-pcat">${CAT_NAMES[g.category] ?? g.category}</p><div class="lr-sr-ptiles">${g.kinds.map(k => tile(k, l)).join('')}</div>`).join('');
+      allBuilt = true;
+    }
+  }
+  function openPicker() {
+    const l = api.labelAt(tx, tz);
+    head.picker.hidden = false; head.labelBtn.setAttribute('aria-expanded', 'true');
+    head.ptext.value = l?.t ?? '';
+    allBuilt = false; paintPicker(l);
+    try { head.ptext.focus({ preventScroll: true }); } catch {}
+  }
+  function closePicker() {
+    if (head.picker.hidden) return;
+    head.picker.hidden = true; head.labelBtn.setAttribute('aria-expanded', 'false'); head.pall.open = false;
+  }
+  function sendLabel(label) { api.send({ kind: 'storage.label', x: tx, z: tz, label }); closePicker(); paint(); }
   function canMerge(bag, chest) {
     if (!chest) return true;
     for (let i = HOTBAR_SIZE; i < SLOT_COUNT; i++) { const s = bag.slots[i]; if (s && chest.some(c => c && c.kind === s.kind && c.count < (ITEM_INFO[s.kind]?.maxStack ?? 1))) return true; }
@@ -285,6 +355,7 @@ export function createStorageUI(api) {
     panels.study.hidden = panels.next.hidden = mode !== 'research';
     head.icon.innerHTML = iconSVG(mode === 'crate' ? 'crate' : 'research');
     head.title.textContent = mode === 'crate' ? 'Crate' : 'Tinker\u2019s Desk';
+    lastLabelSig = null; closePicker(); // [crate-labels] paintChest sets title/icon from api.labelAt
     head.banner.classList.remove('show'); prevKnown = null; prevSeen = null;
     if (mode !== 'research') { panels.next.hidden = true; delete dlg.dataset.done; }
     for (const el of [...chestEls, ...bagEls]) el._svSig = undefined;
@@ -307,7 +378,14 @@ export function createStorageUI(api) {
   }
   dlg.addEventListener('close', onClosed, on);
   dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, on);
-  dlg.addEventListener('keydown', e => { if (e.code === 'KeyE' && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } }, on);
+  dlg.addEventListener('keydown', e => { if (e.target?.tagName === 'INPUT') return; /* [crate-labels] */ if (e.code === 'KeyE' && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } }, on);
+  // [crate-labels] typing a crate name: keys stay in the field (E/F/Tab never close or stash); Enter saves, Escape closes the picker only
+  head.ptext.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); const t = head.ptext.value; if (t.trim()) sendLabel({ t }); }
+    else if (e.key === 'Escape') { e.preventDefault(); closePicker(); try { head.labelBtn.focus({ preventScroll: true }); } catch {} }
+  }, on);
+  head.ptext.addEventListener('keyup', e => e.stopPropagation(), on);
   // Tab / Shift+Tab wrap inside the dialog (so focus never drops to the page behind it and E / Esc keep working).
   dlg.addEventListener('keydown', e => {
     if (e.code !== 'Tab' || !isOpen) return;
@@ -334,6 +412,13 @@ export function createStorageUI(api) {
     if (e.detail > 0) { t.blur(); try { $('.lr-sr-wrap').focus({ preventScroll: true }); } catch {} }
     if (t.classList.contains('lr-sr-x')) { close(); return; }
     if (t.classList.contains('lr-sr-putall')) { api.send({ kind: 'storage.putAll', x: tx, z: tz }); paint(); return; }
+    if (t.classList.contains('lr-sr-stash')) { api.send({ kind: 'storage.stash' }); paint(); return; } // [crate-labels]
+    if (t.classList.contains('lr-sr-sort')) { api.send({ kind: 'storage.sort', x: tx, z: tz }); paint(); return; }
+    if (t.classList.contains('lr-sr-labelbtn')) { if (head.picker.hidden) openPicker(); else closePicker(); return; }
+    if (t.dataset.labelKind) { sendLabel({ k: t.dataset.labelKind }); return; }
+    if (t.classList.contains('lr-sr-pclear')) { sendLabel(null); return; }
+    if (t.classList.contains('lr-sr-psave')) { const v = head.ptext.value; if (v.trim()) sendLabel({ t: v }); return; }
+    if (t.classList.contains('lr-sr-pclose')) { closePicker(); return; }
     if (t.dataset.study) { study(t.dataset.study); return; }
     const half = e.shiftKey;
     if (t.dataset.chest !== undefined) {
