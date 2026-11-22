@@ -404,4 +404,66 @@ export class PlayerPhysics {
   }
 }
 
+// ---------- Riding the raft's tilt ----------
+// PlayerPhysics works on a flat deck plane at deckY (the raft never moves in x/z, it only heaves,
+// pitches and rolls). The deck mesh tilts, so a player standing away from the raft centre would see
+// the deck swell up and sink under the camera. RaftRide gives the offset that carries the camera
+// with the raft's pitch and roll, so the player lives in the raft's local frame while aboard.
+// The offset blends in and out (WEIGHT_RATE) so stepping off into the water never pops the view.
+// game.js: raftRide.update(dt, physics, raft.position.y, raft.rotation.x, raft.rotation.z, world.tiles, FLOOR_Y, rideOff),
+// then add rideOff to the camera position.
+
+export const RIDE = Object.freeze({
+  WEIGHT_RATE: 10,   // 1/s, blend toward aboard / not aboard
+  FOOT_MARGIN: 0.4,  // m, feet up to this far past a tile edge still ride (ledge, mid-jump over the edge)
+  BELOW: 0.35,       // m, feet this far under the deck plane (in the water) no longer ride
+});
+
+// Offset (world minus local) of the raft-local point (x, y, z) under rotation Euler XYZ (rx, 0, rz),
+// which is how three.js composes raft.rotation (R = Rx * Rz). Writes out.x/y/z and returns out.
+export function tiltOffset(rx, rz, x, y, z, out) {
+  const cz = Math.cos(rz), sz = Math.sin(rz), cx = Math.cos(rx), sx = Math.sin(rx);
+  const x1 = x * cz - y * sz, y1 = x * sz + y * cz;   // Rz
+  const y2 = y1 * cx - z * sx, z2 = y1 * sx + z * cx; // Rx
+  out.x = x1 - x; out.y = y2 - y; out.z = z2 - z;
+  return out;
+}
+
+function overRaft(tiles, x, z) {
+  if (!Array.isArray(tiles)) return false;
+  const h = C.TILE_SIZE / 2 + RIDE.FOOT_MARGIN;
+  for (let i = 0; i < tiles.length; i++) {
+    const t = tiles[i];
+    if (!Array.isArray(t)) continue;
+    if (Math.abs(x - t[0] * C.TILE_SIZE) <= h && Math.abs(z - t[1] * C.TILE_SIZE) <= h) return true;
+  }
+  return false;
+}
+
+export class RaftRide {
+  constructor() { this.weight = 0; this._first = true; }
+
+  // Is the player riding the raft right now (on deck, on a raised floor, mid-jump above it, clambering)?
+  aboard(p, raftY, tiles, floorY) {
+    if (!p || p.swimming) return false;
+    const feet = fin(p.y, 0) - C.EYE_OFFSET;
+    return feet >= raftY + floorY - RIDE.BELOW && overRaft(tiles, fin(p.x, 0), fin(p.z, 0));
+  }
+
+  update(dt, p, raftY, rx, rz, tiles, floorY, out) {
+    dt = Math.max(0, fin(dt, 0)); raftY = fin(raftY, 0); rx = fin(rx, 0); rz = fin(rz, 0); floorY = fin(floorY, 0.2);
+    const target = this.aboard(p, raftY, tiles, floorY) ? 1 : 0;
+    if (this._first) { this.weight = target; this._first = false; }
+    else this.weight = target + (this.weight - target) * Math.exp(-RIDE.WEIGHT_RATE * Math.min(dt, 0.1));
+    if (this.weight < 1e-4) this.weight = 0;
+    if (!p || this.weight === 0) { out.x = 0; out.y = 0; out.z = 0; return out; }
+    // Rotate the feet point about the raft origin; the eye stays straight above the feet.
+    tiltOffset(rx, rz, fin(p.x, 0), fin(p.y, 0) - C.EYE_OFFSET - raftY, fin(p.z, 0), out);
+    out.x *= this.weight; out.y *= this.weight; out.z *= this.weight;
+    return out;
+  }
+
+  reset() { this.weight = 0; this._first = true; }
+}
+
 export default PlayerPhysics;

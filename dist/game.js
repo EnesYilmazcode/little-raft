@@ -12,7 +12,7 @@ import { createDebris, createItemBatch } from './debris.js?build=v3-survival-ae7
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { PlayerPhysics, PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
+import { PlayerPhysics, PLAYER_CONSTANTS, RaftRide } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, decorBlock, pieceBlock, pieceCell, inReach, BUILD_REACH, PIECE_REACH, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createContent, cleanExt, promptParts } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
@@ -1638,12 +1638,14 @@ export function mount(transfer = null) {
     raft.rotation.x += (-s.sz * .35 - raft.rotation.x) * kr;
     raft.rotation.z += (s.sx * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
   }
+  const raftRide = new RaftRide(), rideOff = new T.Vector3(); // camera offset that keeps the player on the tilting deck
   function updateCamera(dt) {
     viewZoom = running ? content?.zoom() ?? 1 : 1; const damp = 1 / viewZoom; const fov = running ? options.fov / viewZoom : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); } // [spyglass] zoomed FOV
     if (running) {
       const cf = controls?.camera(yaw); // controls lane: replaces the old sine bob with footstep bob + crouch + landing dip
       const bob = (cf ? cf.y : walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0) * damp; // [spyglass] damp
       camera.position.set(physics.x + (cf?.x ?? 0) * damp, physics.y + bob, physics.z + (cf?.z ?? 0) * damp); // [spyglass] damp
+      raftRide.update(dt, physics, raft.position.y, raft.rotation.x, raft.rotation.z, world.tiles, FLOOR_Y, rideOff); camera.position.add(rideOff); // aboard: ride the deck's pitch and roll (raft-local frame)
       camera.rotation.set(pitch, yaw, ((physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0) + (cf?.roll ?? 0)) * damp, 'YXZ'); // [spyglass] damp
       if (eating) { const k = Math.sin(Math.min(1, eating.t / EAT_SECONDS) * Math.PI); camera.rotation.x -= k * .09; camera.position.y -= k * .035; } // [vitals] hand-to-mouth nod
       if (shakeAmp > .002) { const k = shakeAmp * (.4 + options.cameraMotion) * damp; /* [spyglass] */ camera.position.x += (Math.random() - .5) * k; camera.position.y += (Math.random() - .5) * k; camera.rotation.z += (Math.random() - .5) * k * .3; shakeAmp *= Math.exp(-dt * 7); } else shakeAmp = 0; // shark lane: bite shake
