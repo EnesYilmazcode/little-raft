@@ -23,7 +23,7 @@ test('actions and defaults are consistent', () => {
   assert.deepEqual(m.bindingsFor('moveForward'), { keys: ['KeyW', 'ArrowUp'], pad: ['PadAxis1-'] });
   assert.equal(m.bindingsFor('hotbar0').keys[0], 'Digit0');
   assert.equal(m.bindingsFor('pause').pad[0], 'Pad9');
-  assert.equal(m.bindingsFor('drop'), null, 'no drop feature, no dead binding');
+  assert.deepEqual(m.bindingsFor('drop'), { keys: ['KeyQ', null], pad: [null] }, 'Q drops the held item');
   assert.deepEqual(m.settings, SETTINGS_DEFAULTS);
   assert.equal(m.bindingsFor('nope'), null);
 });
