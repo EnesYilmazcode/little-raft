@@ -7,14 +7,14 @@ import { ID_RE, sharedPhotoStore } from './photo-store.js?build=v3-survival-ae77
 import { photoNet } from './camera.js?build=v3-survival-ae77fa84ac2b';
 
 export const FRAME_CAP = 64, REACH = 2.6;
-const KEY_RE = /^-?\d+,-?\d+$/;
+const KEY_RE = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/; // free placement: decor x/z may be fractional
 const OWNERS = ['host', 'guest'];
 export const tileKey = (x, z) => x + ',' + z;
 const isKey = k => typeof k === 'string' && k.length <= 24 && KEY_RE.test(k) && (() => { const [x, z] = k.split(',').map(Number); return tileKey(x, z) === k; })();
 
 export function frameKeys(decor) {
   const out = new Set();
-  if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'photoframe' && Number.isInteger(d.x) && Number.isInteger(d.z)) out.add(tileKey(d.x, d.z));
+  if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'photoframe' && Number.isFinite(d.x) && Number.isFinite(d.z)) out.add(tileKey(d.x, d.z));
   return out;
 }
 
@@ -94,7 +94,7 @@ export function createPhotoFrame(ctx) {
     for (const g of kids) {
       if (g.name !== 'craft_photoframe') continue;
       const plane = g.getObjectByName('photoPlane'); if (!plane) continue;
-      frames.push({ g, plane, k: tileKey(Math.round(g.position.x / 2), Math.round(g.position.z / 2)) });
+      frames.push({ g, plane, k: tileKey(Math.round(g.position.x * 500) / 1000, Math.round(g.position.z * 500) / 1000) });
     }
   }
 

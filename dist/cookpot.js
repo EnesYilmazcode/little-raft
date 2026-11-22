@@ -99,7 +99,7 @@ export function createCookpot(ctx) {
     const raft = ctx.raft; if (!raft) return;
     for (let c = 0; c < raft.children.length && shown < MAX_SHOWN; c++) {
       const g = raft.children[c]; if (g.name !== 'cookpot_station' || !g.userData.cookpot) continue;
-      groups[shown] = g; gKeys[shown] = keyOf(Math.round(g.position.x / 2), Math.round(g.position.z / 2)); shown++;
+      groups[shown] = g; gKeys[shown] = keyOf(Math.round(g.position.x * 500) / 1000, Math.round(g.position.z * 500) / 1000); shown++;
     }
     for (let i = shown; i < MAX_SHOWN; i++) { groups[i] = null; gKeys[i] = null; }
   }

@@ -21,7 +21,7 @@ export const TEXT = Object.freeze({
 
 const isInt = Number.isInteger;
 const intIn = (v, lo, hi) => isInt(v) && v >= lo && v <= hi;
-const KEY_RE = /^(-?\d{1,2}),(-?\d{1,2})$/;
+const KEY_RE = /^(-?\d{1,2}(?:\.\d{1,3})?),(-?\d{1,2}(?:\.\d{1,3})?)$/; // free placement: fractional decor spots
 
 export function blank() { return { r: null, q: 0, t: 0, h: 0, f: 0, o: null, n: 0 }; }
 const idle = e => e.q === 0 && e.f === 0 && e.n === 0;
@@ -132,7 +132,7 @@ const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) ba
 export function applyKilnAction(st, a, actor, bag, env) {
   const no = reason => ({ ok: false, reason, text: TEXT[reason] });
   if (!a || typeof a !== 'object' || !KILN_ACTIONS.includes(a.kind)) return no('bad');
-  if (!isInt(a.x) || !isInt(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return no('bad');
+  if (!Number.isFinite(a.x) || !Number.isFinite(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return no('bad');
   if (!bag || !Array.isArray(bag.slots) || bag.slots.length !== 28 || typeof bag.count !== 'function') return no('bad');
   if ((env?.decorAt?.(a.x, a.z) ?? null) !== 'kiln') return no('missing');
   const p = env?.pos?.(actor);

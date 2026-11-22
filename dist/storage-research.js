@@ -82,7 +82,7 @@ export function cleanSlice(data) {
   if (d.chests && typeof d.chests === 'object' && !Array.isArray(d.chests)) {
     for (const k of Object.keys(d.chests)) {
       if (n >= MAX_CHESTS) break;
-      const m = /^(-?\d{1,2}),(-?\d{1,2})$/.exec(k); if (!m) continue;
+      const m = /^(-?\d{1,2}(?:\.\d{1,3})?),(-?\d{1,2}(?:\.\d{1,3})?)$/.exec(k); if (!m) continue; // free placement: fractional crate spots
       const x = +m[1], z = +m[2]; if (Math.abs(x) > 25 || Math.abs(z) > 25) continue;
       const c = cleanChest(d.chests[k]); if (chestEmpty(c)) continue;
       chests[keyOf(x, z)] = c; n++;
@@ -202,7 +202,7 @@ export function applyStorageAction(st, a, actor, bag, env) {
   const verb = a.kind.slice(8);
   if (!['put', 'take', 'putAll', 'research'].includes(verb)) return no('bad');
   if (!bag || !Array.isArray(bag.slots) || bag.slots.length !== SLOT_COUNT) return no('bad');
-  if (!isInt(a.x) || !isInt(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return no('bad');
+  if (!Number.isFinite(a.x) || !Number.isFinite(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return no('bad'); // free placement: fractional tile units
   const type = env?.decorAt?.(a.x, a.z) ?? null;
   if (type !== (verb === 'research' ? 'research' : 'crate')) return no('missing');
   const p = env?.pos?.(actor);
@@ -382,7 +382,7 @@ export function createStorage(ctx) {
       return true;
     },
     // A foundation the shark tore off takes its crate's contents with it (game.js calls this on the host).
-    dropTile(x, z) { return dropKey(keyOf(x, z)); }, // [undecor] shares the delete with afterUndecor
+    dropTile(x, z) { let any = false; for (const k of Object.keys(st.chests)) { const c = k.indexOf(','); if (Math.round(+k.slice(0, c)) === x && Math.round(+k.slice(c + 1)) === z) any = dropKey(k) || any; } return any; }, // [undecor] shares the delete with afterUndecor; free placement: every crate centred on that tile
     undecorLoot(d) { // [undecor] every chest slot comes back, tools keep their wear
       if (d?.type !== 'crate') return null; const c = st.chests[keyOf(d.x, d.z)]; if (!c) return null;
       const out = []; for (const s of c) if (s) out.push(s.durability !== undefined || s.id !== undefined ? [s.kind, s.count, { ...(s.durability !== undefined ? { durability: s.durability } : {}), ...(s.id !== undefined ? { id: s.id } : {}) }] : [s.kind, s.count]);

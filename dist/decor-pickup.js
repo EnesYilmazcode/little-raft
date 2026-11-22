@@ -9,7 +9,6 @@ export const UNDECOR_TEXT = Object.freeze({
   ripe:'Harvest it first', water:'Take your water first', oldHost:'Your friend’s raft can’t pick items back up yet' });
 export const tileKey = (x, z) => x + ',' + z;
 
-const isInt = Number.isInteger;
 const plainObj = v => !!v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
 const isKind = k => typeof k === 'string' && Object.prototype.hasOwnProperty.call(ITEM_INFO, k);
 
@@ -83,18 +82,21 @@ export function clearCoreTile(world, k) {
 
 // Last parsed hit key, so aiming at the same decor frame after frame allocates nothing.
 let lastKey = null, lastX = 0, lastZ = 0;
-/** Aimed decor: the ray hit's tile key wins, else the aim point's tile. -> the decor entry or null. */
+/** Aimed decor: the ray hit's decor key wins, else the aim point's tile, else the nearest decor to it. -> the decor entry or null. */
 export function targetFromAim(decor, hitKey, point) {
   if (typeof hitKey === 'string') {
     if (hitKey !== lastKey) {
       const c = hitKey.indexOf(','), x = +hitKey.slice(0, c), z = +hitKey.slice(c + 1);
-      if (c > 0 && isInt(x) && isInt(z)) { lastKey = hitKey; lastX = x; lastZ = z; } else lastKey = null;
+      if (c > 0 && Number.isFinite(x) && Number.isFinite(z)) { lastKey = hitKey; lastX = x; lastZ = z; } else lastKey = null;
     }
     if (lastKey === hitKey) { const i = decorAt(decor, lastX, lastZ); if (i >= 0) return decor[i]; }
   }
   if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.z)) return null;
   const i = decorAt(decor, Math.round(point.x / 2), Math.round(point.z / 2));
-  return i >= 0 ? decor[i] : null;
+  if (i >= 0) return decor[i];
+  let best = null, bestD = .64; // free placement: the nearest decor centre within .8 m of the aim point
+  if (Array.isArray(decor)) for (const d of decor) { if (!d) continue; const dx = d.x * 2 - point.x, dz = d.z * 2 - point.z, q = dx * dx + dz * dz; if (q < bestD) { bestD = q; best = d; } }
+  return best;
 }
 
 /** Guest side: did the last host 'state' say it understands {kind:'undecor'}? */

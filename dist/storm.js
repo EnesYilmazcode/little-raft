@@ -7,7 +7,7 @@ import { stormMaterials, buildRod, buildLamp, buildStormGlass, buildBolt } from 
 
 export const STRIKE = Object.freeze({ LEAD: 30, END: 45, GAP_MIN: 6, GAP_SPAN: 12, MAX_K: 62, R_MIN: 20, R_SPAN: 60, ROD_PULL: 32, TOP: 70 });
 export const STORM_AMP = 0.3, ROD_MAX = 3, REACH = 3.2, MAX_RODS = 256, FORECAST_SEGMENTS = 24;
-const KEY_RE = /^-?\d{1,6},-?\d{1,6}$/;
+const KEY_RE = /^-?\d{1,6}(\.\d{1,3})?,-?\d{1,6}(\.\d{1,3})?$/; // free placement: fractional rod spots
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 // ---------------------------------------------------------------- pure strike schedule (salts 4-7)
@@ -185,7 +185,7 @@ export function createStorm(ctx, { peek } = {}) {
   function rebuildRodKeys() {
     rodKeys.length = 0;
     const d = ctx.world?.decor;
-    if (Array.isArray(d)) for (let i = 0; i < d.length; i++) if (d[i].type === 'stormrod' && Number.isInteger(d[i].x) && Number.isInteger(d[i].z)) rodKeys.push(keyOf(d[i].x, d[i].z));
+    if (Array.isArray(d)) for (let i = 0; i < d.length; i++) if (d[i].type === 'stormrod' && Number.isFinite(d[i].x) && Number.isFinite(d[i].z)) rodKeys.push(keyOf(d[i].x, d[i].z));
     rodKeys.sort();
   }
   function rescanModels() {
@@ -193,7 +193,7 @@ export function createStorm(ctx, { peek } = {}) {
     const raft = ctx.raft;
     if (raft) for (let c = 0; c < raft.children.length; c++) {
       const g = raft.children[c];
-      if (g.name === 'storm_rod' && g.userData.rod && nRod < MAX_SHOWN) { rodG[nRod] = g; rodK[nRod] = keyOf(Math.round(g.position.x / 2), Math.round(g.position.z / 2)); nRod++; }
+      if (g.name === 'storm_rod' && g.userData.rod && nRod < MAX_SHOWN) { rodG[nRod] = g; rodK[nRod] = keyOf(Math.round(g.position.x * 500) / 1000, Math.round(g.position.z * 500) / 1000); nRod++; }
       else if (g.name === 'storm_lamp' && nLamp < MAX_SHOWN) lampG[nLamp++] = g;
       else if (g.name === 'storm_glass' && g.userData.crystals && nGlass < MAX_SHOWN) glassG[nGlass++] = g;
     }
@@ -398,7 +398,7 @@ export function createStorm(ctx, { peek } = {}) {
     if (!host()) return true; // guest-sent actions are only applied by the host
     if (a.kind !== 'storm.collect') return true;
     const x = a.x, z = a.z;
-    if (!Number.isInteger(x) || !Number.isInteger(z) || decorAt(x, z) !== 'stormrod') return true;
+    if (!Number.isFinite(x) || !Number.isFinite(z) || decorAt(x, z) !== 'stormrod') return true;
     const p = posOf(actor);
     if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z) || Math.hypot(p.x - x * 2, p.z - z * 2) > REACH) return true;
     const key = keyOf(x, z), e = st.rods[key];

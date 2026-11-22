@@ -8,7 +8,7 @@ import { swapOne, plantStage, tileKey } from './watering.js?build=v3-survival-ae
 export const BARREL_CAP = 4, SPRINKLER_CAP = 3, TENTHS_PER_CUP = 300, DEW_TENTHS = 1, SPRAY_SECONDS = 3, MAX_TICK = 60;
 export const RAIN_ACTIONS = Object.freeze(['takeRain', 'fillSprinkler']);
 
-const KEY_RE = /^-?\d+,-?\d+$/;
+const KEY_RE = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/; // free placement: decor x/z may be fractional
 const TEXT = Object.freeze({
   takeRain:'+ 1 cup of rain water', fillSprinkler:'The sprinkler tank gurgles', empty:'The barrel is empty',
   tankfull:'The sprinkler is full', full:'Your bag is full', nocup:'You need a cup', notarget:'Nothing to use that on',
@@ -21,7 +21,7 @@ const intField = (v, hi) => (Number.isInteger(v) ? Math.min(hi, Math.max(0, v)) 
 
 function decorTypes(decor) {
   const m = new Map();
-  if (Array.isArray(decor)) for (const d of decor) if (d && Number.isInteger(d.x) && Number.isInteger(d.z) && typeof d.type === 'string') m.set(tileKey(d.x, d.z), d.type);
+  if (Array.isArray(decor)) for (const d of decor) if (d && Number.isFinite(d.x) && Number.isFinite(d.z) && typeof d.type === 'string') m.set(tileKey(d.x, d.z), d.type);
   return m;
 }
 const keysOf = (types, want) => { const out = []; for (const [k, t] of types) if (t === want) out.push(k); return out.sort(); };
@@ -67,14 +67,27 @@ function prune(world) {
 }
 const tidy = (map, k) => { const e = map[k]; if (e && !(e.w || e.f || e.s)) delete map[k]; };
 
+// Rain barrel keys beside (x, z): the 4 neighbouring tiles first (NEIGHBOURS order), then any freely placed
+// barrel within 1.2 tiles (free placement), nearest first.
+function barrelsNear(types, x, z) {
+  const out = [];
+  for (const [dx, dz] of NEIGHBOURS) { const nk = tileKey(x + dx, z + dz); if (types.get(nk) === 'rainbarrel') out.push(nk); }
+  if (out.length < types.size) {
+    const more = [];
+    for (const [k, t] of types) {
+      if (t !== 'rainbarrel' || out.includes(k)) continue;
+      const c = k.indexOf(','), d = Math.hypot(+k.slice(0, c) - x, +k.slice(c + 1) - z);
+      if (d > 0 && d <= 1.2) more.push([d, k]);
+    }
+    more.sort((a, b) => a[0] - b[0] || (a[1] < b[1] ? -1 : 1)); for (const m of more) out.push(m[1]);
+  }
+  return out;
+}
 // A sprinkler's water: its own tank first, else a neighbouring rain barrel (NEIGHBOURS order).
 function waterSource(world, types, x, z) {
   const k = tileKey(x, z);
   if (world.sprinklers?.[k]?.w >= 1) return [world.sprinklers, k];
-  for (const [dx, dz] of NEIGHBOURS) {
-    const nk = tileKey(x + dx, z + dz);
-    if (types.get(nk) === 'rainbarrel' && world.collectors?.[nk]?.w >= 1) return [world.collectors, nk];
-  }
+  for (const nk of barrelsNear(types, x, z)) if (world.collectors?.[nk]?.w >= 1) return [world.collectors, nk];
   return null;
 }
 const hasWater = (world, types, x, z) => !!waterSource(world, types, x, z);
@@ -99,13 +112,23 @@ export function sprinkleOther(world, pick, water) {
   for (const k of keysOf(types, 'sprinkler')) {
     const [x, z] = k.split(',').map(Number);
     if (!hasWater(world, types, x, z)) continue;
-    const around = [];
-    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) around.push(tileKey(x + dx, z + dz));
-    around.sort();
+    const around = nearKeys(types, x, z, null);
     const key = pick(around); if (!key) continue;
     useWater(world, types, x, z); water(key); out.push(key);
   }
   return out;
+}
+
+// Sorted keys of the decor (of type want, or any) within 1.5 tiles of (x, z) on both axes, itself excluded: the
+// 8 neighbouring tiles for grid-placed decor, and the same reach for freely placed decor.
+function nearKeys(types, x, z, want) {
+  const out = [];
+  for (const [k, t] of types) {
+    if (want && t !== want) continue;
+    const c = k.indexOf(','), dx = Math.abs(+k.slice(0, c) - x), dz = Math.abs(+k.slice(c + 1) - z);
+    if ((dx || dz) && dx <= 1.5 && dz <= 1.5) out.push(k);
+  }
+  return out.sort();
 }
 
 /** One sprinkler pass: each sprinkler waters at most one dry, unripe neighbouring palm. -> palm keys watered. */
@@ -117,13 +140,7 @@ export function sprinkle(world) {
   for (const k of keysOf(types, 'sprinkler')) {
     const [x, z] = k.split(',').map(Number);
     if (!hasWater(world, types, x, z)) continue;
-    const palms = [];
-    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
-      if (!dx && !dz) continue;
-      const pk = tileKey(x + dx, z + dz);
-      if (types.get(pk) === 'palm') palms.push(pk);
-    }
-    palms.sort();
+    const palms = nearKeys(types, x, z, 'palm');
     const pk = palms.find(p => plantStage(garden[p]) < 2 && garden[p]?.water !== 1);
     if (!pk) continue;
     garden[pk] = {water:1, grow:garden[pk]?.grow ?? 0};
@@ -210,7 +227,7 @@ export function rainTarget(world, d, kind, raining) {
     if (n < SPRINKLER_CAP && kind === 'freshcup') return {prompt:`<kbd>E</kbd>Fill sprinkler (${n}/${SPRINKLER_CAP})`, click:{kind:'fillSprinkler', ...at}, e:{kind:'fillSprinkler', ...at}, why:null};
     if (n >= SPRINKLER_CAP) return noop(`Sprinkler: full (${SPRINKLER_CAP}/${SPRINKLER_CAP})`);
     const types = decorTypes(world.decor);
-    const fed = NEIGHBOURS.some(([dx, dz]) => { const k = tileKey(d.x + dx, d.z + dz); return types.get(k) === 'rainbarrel' && world.collectors?.[k]?.w >= 1; });
+    const fed = barrelsNear(types, d.x, d.z).some(k => world.collectors?.[k]?.w >= 1);
     return noop(fed ? `Sprinkler: ${n}/${SPRINKLER_CAP} · drawing from the rain barrel` : `Sprinkler: ${n}/${SPRINKLER_CAP} · add fresh water`);
   }
   return null;

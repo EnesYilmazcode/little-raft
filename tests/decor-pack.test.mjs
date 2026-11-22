@@ -52,7 +52,7 @@ test('every pack type builds a shared, coloured, dispose-proof model', () => {
   assert.deepEqual(mod.debug.models().built.sort(), [...PACK].sort());
   assert.equal(mod.decorModel('crate', { x: 0, z: 0 }), null);
   assert.equal(mod.decorModel('sign', null), null);
-  assert.equal(mod.decorModel('sign', { x: .5, z: 0 }), null);
+  assert.equal(mod.decorModel('sign', { x: NaN, z: 0 }), null); // free placement: fractional x is fine, NaN is not
   assert.doesNotThrow(() => mod.dispose());
 });
 

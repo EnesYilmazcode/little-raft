@@ -207,7 +207,7 @@ export function tally(st, gm) {
 const no = reason => ({ ok: false, reason, text: TEXT[reason] });
 
 export function applyGameAction(st, a, actor, env) {
-  if (!a || typeof a !== 'object' || !KINDS.includes(a.kind) || !isInt(a.x) || !isInt(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25 || (actor !== 'host' && actor !== 'guest')) return no('bad');
+  if (!a || typeof a !== 'object' || !KINDS.includes(a.kind) || !Number.isFinite(a.x) || !Number.isFinite(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25 || (actor !== 'host' && actor !== 'guest')) return no('bad');
   if (!st || typeof st !== 'object' || !st.t || !st.wins) return no('bad');
   if (env.decorAt(a.x, a.z) !== 'gametable') return no('missing');
   const p = env.pos(actor);
@@ -271,7 +271,7 @@ export function cleanGame(raw) {
     return gm;
   } catch { return null; }
 }
-const KEY_RE = /^(-?\d{1,2}),(-?\d{1,2})$/;
+const KEY_RE = /^(-?\d{1,2}(?:\.\d{1,3})?),(-?\d{1,2}(?:\.\d{1,3})?)$/; // free placement: fractional decor spots
 const blankSlice = () => ({ v: 1, r: 0, t: {}, wins: { host: 0, guest: 0, ai: 0 } });
 const count = v => (isInt(v) && v >= 0 ? v : 0);
 export function cleanSlice(data, decorAt) {

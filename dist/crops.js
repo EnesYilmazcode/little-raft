@@ -123,7 +123,7 @@ function takeOne(bag, kind) {
  * Mutates the plot and bag. Returns {ok, reason?, text, kind?, loot?}.
  */
 export function applyCrop(decor, bag, a) {
-  if (!a || typeof a.kind !== 'string' || !isInt(a.x) || !isInt(a.z) || !isInt(a.slot) || a.slot < 0 || a.slot >= SLOTS) return fail('notarget');
+  if (!a || typeof a.kind !== 'string' || !Number.isFinite(a.x) || !Number.isFinite(a.z) || !isInt(a.slot) || a.slot < 0 || a.slot >= SLOTS) return fail('notarget');
   const d = plotAt(decor, a.x, a.z); if (!d) return fail('notarget');
   d.crop = cleanCrop(d.crop);
   const s = d.crop[a.slot];
@@ -261,7 +261,7 @@ export function createCrops(ctx) {
     plots.length = 0;
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i]; if (g.name !== 'craft_cropplot') continue;
-      const x = Math.round(g.position.x / 2), z = Math.round(g.position.z / 2), d = plotAt(list, x, z);
+      const x = Math.round(g.position.x * 500) / 1000, z = Math.round(g.position.z * 500) / 1000, d = plotAt(list, x, z);
       if (!d) continue;
       if (!g.userData.cropSlots) attachPlants(g);
       g.userData.cropDecor = d; plots.push(g);
@@ -329,7 +329,7 @@ export function createCrops(ctx) {
     },
     action(a, actor, bag) {
       if (!a || typeof a.kind !== 'string' || !a.kind.startsWith('crops.')) return false;
-      if (!isInt(a.x) || !isInt(a.z)) return true;
+      if (!Number.isFinite(a.x) || !Number.isFinite(a.z)) return true;
       const pose = actor === 'guest' ? ctx.other : ctx.physics;
       if (!pose || !Number.isFinite(pose.x) || !Number.isFinite(pose.z) || Math.hypot(a.x * 2 - pose.x, a.z * 2 - pose.z) > REACH + (actor === 'guest' ? HOST_SLACK : .01)) return true;
       const r = applyCrop(ctx.world?.decor, bag, a);

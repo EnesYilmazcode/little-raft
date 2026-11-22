@@ -53,7 +53,7 @@ function canon(out, ax, az, bx, bz) {
   if (ax > bx || (ax === bx && az > bz)) { out[0] = bx; out[1] = bz; out[2] = ax; out[3] = az; } else { out[0] = ax; out[1] = az; out[2] = bx; out[3] = bz; }
   return out;
 }
-const CAN = new Int32Array(4);
+const CAN = new Float64Array(4); // free placement: posts may sit at fractional tile spots
 
 /** Validated slice {v:1, s, r, l}. Junk -> defaults; bad, short, long, self, duplicate, over-full and orphan lines dropped. */
 export function cleanZip(v, decor) {
@@ -64,7 +64,7 @@ export function cleanZip(v, decor) {
   const list = Array.isArray(v.l) ? v.l : [];
   for (let i = 0; i < list.length && out.l.length < MAX_LINES; i++) {
     const e = list[i];
-    if (!Array.isArray(e) || e.length !== 4 || !e.every(isInt)) continue;
+    if (!Array.isArray(e) || e.length !== 4 || !e.every(Number.isFinite)) continue;
     const [ax, az, bx, bz] = canon(CAN, e[0], e[1], e[2], e[3]);
     if (ax === bx && az === bz) continue;
     if (!postAt(decor, ax, az) || !postAt(decor, bx, bz)) continue;
@@ -448,7 +448,7 @@ export function createZipline(ctx) {
 
   function action(a, actor, bag) {
     if (!a || typeof a.kind !== 'string' || !a.kind.startsWith('zip.')) return false;
-    if (a.kind !== 'zip.link' || !isInt(a.ax) || !isInt(a.az) || !isInt(a.bx) || !isInt(a.bz)) return true;
+    if (a.kind !== 'zip.link' || ![a.ax, a.az, a.bx, a.bz].every(Number.isFinite)) return true;
     const pose = actor === 'guest' ? ctx.other : ctx.physics;
     if (!pose || !Number.isFinite(pose.x) || !Number.isFinite(pose.z) || Math.hypot(a.bx * 2 - pose.x, a.bz * 2 - pose.z) > REACH + HOST_SLACK) return true;
     if (!bag || typeof bag.count !== 'function' || !(bag.count('glidehandle') > 0)) return true;
