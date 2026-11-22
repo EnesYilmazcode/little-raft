@@ -101,12 +101,11 @@ function fit(T, model, maxDim, gripFn) {
 }
 
 // Small tiling surface textures (procedural DataTextures, built once per THREE instance and shared,
-// never disposed): 'skin' mottle, 'weave' canvas cloth, 'rope' twisted fibres. Values are near white so
+// never disposed): 'skin' mottle (+ 'skinBump' pores and creases), 'weave' canvas cloth, 'rope' twisted fibres. Values are near white so
 // they modulate a material's colour; the same texture doubles as a bump map.
 const TEX = new WeakMap();
 export function surfaceTextures(T) {
   if (TEX.has(T)) return TEX.get(T);
-  const N = 64;
   const hash = (x, y, s) => { const h = Math.sin(x * 127.1 + y * 311.7 + s * 74.7) * 43758.5453; return h - Math.floor(h); };
   // tiling value noise, `c` cells across the tile
   const noise = (u, v, c, s) => {
@@ -115,7 +114,7 @@ export function surfaceTextures(T) {
     const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
     return (g(0, 0) * (1 - sx) + g(1, 0) * sx) * (1 - sy) + (g(0, 1) * (1 - sx) + g(1, 1) * sx) * sy;
   };
-  const make = (fn) => {
+  const make = (fn, N = 64) => {
     const d = new Uint8Array(N * N * 4);
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const [r, g, b] = fn(x / N, y / N, x, y), i = (y * N + x) * 4;
@@ -126,11 +125,21 @@ export function surfaceTextures(T) {
     t.generateMipmaps = true; t.colorSpace = T.SRGBColorSpace; t.needsUpdate = true;
     return t;
   };
-  const skin = make((u, v) => {
+  // skin (128 px): soft mottle, faint blotchy redness, fine pores and a criss-cross of tiny creases; skinBump is
+  // the same relief as a height map (pores and creases sink), so the hands catch light like skin, not wax.
+  const relief = (u, v, x, y) => {
+    const pore = hash(x, y, 9) > 0.86 ? 0.55 + 0.45 * hash(x, y, 10) : 1;            // tiny dark pits
+    const a = u * 0.8 + v * 0.6, b = u * 0.6 - v * 0.8;                                // two crossing crease sets
+    const w = noise(u, v, 8, 11);
+    const crease = Math.min(1, 0.55 + 2.2 * Math.abs(Math.sin((a * 22 + w * 2.5) * Math.PI)) ) * Math.min(1, 0.6 + 2.2 * Math.abs(Math.sin((b * 18 + w * 2) * Math.PI)));
+    return pore * (0.82 + 0.18 * crease);
+  };
+  const skin = make((u, v, x, y) => {
     const m = 0.5 * noise(u, v, 4, 1) + 0.3 * noise(u, v, 8, 2) + 0.2 * noise(u, v, 32, 3);
-    const k = 0.9 + 0.1 * m, red = 0.03 * (noise(u, v, 6, 4) - 0.5);     // faint blotchy redness
+    const k = (0.9 + 0.1 * m) * (0.94 + 0.06 * relief(u, v, x, y)), red = 0.035 * (noise(u, v, 6, 4) - 0.5); // faint blotchy redness
     return [k + red, k - red * 0.5, k - red * 0.3];
-  });
+  }, 128);
+  const skinBump = make((u, v, x, y) => { const k = 0.55 + 0.45 * relief(u, v, x, y) * (0.85 + 0.15 * noise(u, v, 16, 12)); return [k, k, k]; }, 128);
   const weave = make((u, v, x, y) => {
     const P = 8, cx = Math.floor(x / P), cy = Math.floor(y / P), over = (cx + cy) % 2 === 0;
     const fu = (x % P + 0.5) / P, fv = (y % P + 0.5) / P;
@@ -145,8 +154,9 @@ export function surfaceTextures(T) {
     const k = 0.55 + 0.32 * Math.pow(strand, 0.6) + 0.13 * fibre + 0.05 * (hash(x, y, 8) - 0.5);
     return [k, k, k];
   });
-  skin.repeat.set(3, 2); weave.repeat.set(10, 12); rope.repeat.set(8, 1);
-  const set = { skin, weave, rope };
+  skin.repeat.set(3, 2); skinBump.repeat.set(3, 2); weave.repeat.set(10, 12); rope.repeat.set(8, 1);
+  skinBump.colorSpace = T.NoColorSpace;
+  const set = { skin, skinBump, weave, rope };
   TEX.set(T, set);
   return set;
 }
