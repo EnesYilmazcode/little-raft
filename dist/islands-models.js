@@ -1,6 +1,6 @@
 // Islands: cached geometries and materials (built once per game, shared by every island).
 // Everything uses vertex colours so instance colours (setColorAt) can tint a node when it drains.
-import { ISLAND, SHORE_U, shape, hash3, heightU } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
+import { ISLAND, VIEW, SHORE_U, shape, hash3, heightU } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -269,6 +269,7 @@ void main() {
   #include <tonemapping_fragment>
   float fade = smoothstep(uFadeNear, uFadeFar, length(cameraPosition.xz - vWorld.xz));
   gl_FragColor.rgb = mix(gl_FragColor.rgb, uSky, fade);
+  gl_FragColor.a *= 1.0 - fade; // gone where the ocean is plain far sea, so a far island shows no pale disc
   #include <colorspace_fragment>
 }`;
 
@@ -303,23 +304,19 @@ export function createIslandModels(T, ocean) {
     lagoon: new T.ShaderMaterial({ uniforms: lagoonUniforms, vertexShader: vert, fragmentShader: LAGOON_FRAG, transparent: true, depthWrite: false, fog: false, lights: false,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
   };
-  // Island fog: the scene fog, but fully fogged by islandFogFar (islands.js keeps it a little short of the
-  // camera far plane and of VIEW). The scene fog runs past the far plane, so without this a far island would
-  // be clipped while still clearly visible. One shared uniform and one program for all island materials.
-  const fogFar = { value: 190 };
-  const fogChunk = () => T.ShaderChunk.fog_fragment.replace(/\bfogFar\b/g, 'min( fogFar, islandFogFar )');
-  for (const k of ['dome', 'palm', 'palmSpent', 'nuts', 'bush', 'rock', 'sand']) {
-    const m = mats[k];
-    m.onBeforeCompile = sh => {
-      sh.uniforms.islandFogFar = fogFar;
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <fog_pars_fragment>', '#include <fog_pars_fragment>\n#ifdef USE_FOG\nuniform float islandFogFar;\n#endif')
-        .replace('#include <fog_fragment>', fogChunk());
-    };
-    m.customProgramCacheKey = () => 'island-fog';
-  }
+  // Distance fog on the lit island parts ends at islandFogFar (fogClip: camera far minus a margin, set by
+  // islands.js), so an island drifting in from out of sight fades in from full fog instead of popping at
+  // the far plane. In clear weather the scene fog ends at 260 m, past the 200 m camera far. Shared code,
+  // so the lit materials still share programs.
+  const fogClip = { value: Math.min(VIEW.CAMERA_FAR, VIEW.FOG_FAR) - VIEW.FOG_MARGIN };
+  const clipFog = sh => {
+    sh.uniforms.islandFogFar = fogClip;
+    sh.fragmentShader = 'uniform float islandFogFar;\n' + sh.fragmentShader.replace('#include <fog_fragment>',
+      T.ShaderChunk.fog_fragment.replace('smoothstep( fogNear, fogFar, vFogDepth )', 'smoothstep( fogNear, max( fogNear + 1.0, min( fogFar, islandFogFar ) ), vFogDepth )'));
+  };
+  for (const k in mats) if (k !== 'lagoon') mats[k].onBeforeCompile = clipFog;
   return {
-    geos, mats, lagoonUniforms, fogFar,
+    geos, mats, lagoonUniforms, fogClip,
     dispose() { for (const g of Object.values(geos)) g.dispose(); for (const m of Object.values(mats)) m.dispose(); },
   };
 }

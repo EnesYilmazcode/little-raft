@@ -222,7 +222,7 @@ function stubWorld(role = 'solo') {
 
 test('stub ctx: islandNow, host seeding, dig, mounds, save round trip and clear', () => {
   const w = stubWorld();
-  w.isl.debug.spawnNear(1234, I.ISLAND.APPROACH + 5); w.isl.update(0); // docked
+  w.isl.debug.spawnNear(1234, I.ISLAND.APPROACH + 5); w.isl.update(0);
   assert.equal(I.islandNow().seed, 1234);
   w.tre.update(1 / 60);
   assert.equal(w.tre.debug.state().seed, 1234);
@@ -271,7 +271,7 @@ test('stub ctx: guests send actions and only follow host state', () => {
 
 test('stub ctx: host digs for the guest at the guest pose, into the guest bag', () => {
   const w = stubWorld('host');
-  w.isl.debug.spawnNear(1234, 30); w.isl.update(0); w.tre.update(1 / 60);
+  w.isl.debug.spawnNear(1234, I.ISLAND.APPROACH + 5); w.isl.update(0); w.tre.update(1 / 60);
   const now = I.islandNow(), s = spotsFor(1234)[0], kind0 = s.kind;
   const gBag = bagWith([null, spade()], 1);
   const hostBefore = JSON.stringify(w.bag.snapshot());

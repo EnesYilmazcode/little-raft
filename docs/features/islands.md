@@ -18,7 +18,7 @@ inventory-state.js are unchanged, and no new hook was needed.
 | `dist/islands.js` | `createIslands(ctx)`: timeline, placement, stand on sand, E to gather, save/sync, debug. Re-exports the pure helpers. |
 | `dist/islands-layout.js` | Pure logic with no THREE: `layoutFor`, `pathAt`, `clean`, `lootFor`, `groundHeight`, `nextDelay`, `dockOffset`, `applyGather`, `standOnSand`. |
 | `dist/islands-models.js` | Cached geometries and materials, built once per game. |
-| `tests/islands.test.mjs` | 35 tests: layout, timeline (spawn and despawn out of sight, never sinking, v1 save remap), save validation, loot and host rules, stand on sand with the real `PlayerPhysics` and the real ocean waves, departure, guest clock slew, the ray pick, and a stub-ctx run of the module. |
+| `tests/islands.test.mjs` | 31 tests: layout, timeline, save validation, loot and host rules, stand on sand with the real `PlayerPhysics` and the real ocean waves, departure, guest clock slew, the ray pick, and a stub-ctx run of the module. |
 
 ![Island approaching the raft](../cloud/shots/content/islands-approach.png)
 ![Standing on the beach, aiming at a palm](../cloud/shots/content/islands-gather-prompt.png)
@@ -72,16 +72,17 @@ inventory-state.js are unchanged, and no new hook was needed.
   rocks shrink with each gather (rocks to no less than half size), and sand mounds flatten. A
   spent node stops prompting: palms swap to the straw model, rocks go a darker grey, bushes and
   sand turn dry yellow.
-- **Arriving and leaving.** The island never rises, sinks or scales. It spawns at full height
-  `START_Z` upstream and despawns `END_Z` downstream, both 261 m out: the nearer of the camera far
-  plane (200 m) and the clear-weather fog far (260 m), plus the largest sand rim (9 m x 1.15) and the
-  50 m safety radius players stay inside (`VIEW` and `SPAWN_DIST` in `islands-layout.js`). The scene
-  fog runs past the far plane, so the island materials use the scene fog with its far end clamped to
-  `islandFogFar` (camera far minus 10 m): the island is fully fogged before it can cross the far
-  plane, and fades in and out with distance only. The group draws after the sky dome (renderOrder 2),
-  which would otherwise paint over anything past its 150 m radius. The lagoon thins out over the last
-  fifth of the ocean's fade distance, where the ocean plane ends. `check_island_arrival.py` proves it
-  in a browser.
+- **Arriving and leaving at the draw distance.** Islands never rise out of or sink into the sea.
+  One is born at full height (vegetation at full scale) 261 m upstream, drifts in through the fog
+  and drifts back out to 261 m downstream before it is removed. 261 m is the nearer of the camera
+  far plane (200 m) and the clear-weather fog far (260 m), plus the largest sand rim (9 m x 1.15) and
+  the 50 m safety radius players stay inside (`VIEW` and `SPAWN_DIST` in `islands-layout.js`). The
+  scene fog runs past the far plane, so the lit island materials end their fog at `islandFogFar`
+  (camera far, capped at `VIEW`, minus 10 m): the island is fully fogged before it can reach the far
+  plane and fades in and out from fog alone. The island group draws after the sky dome
+  (renderOrder 2), which would otherwise paint over anything past its 150 m radius. The lagoon fades
+  its alpha out with the ocean's far-sea fade. Checked by
+  `tests/island-arrival.test.mjs` and `check_island_arrival.py` (live camera frustum and fog).
 - **Night.** The lagoon shares `uShallow`, `uDeep`, `uSunColor` and `uFoam` with the ocean and
   scales its own colours by the ratio to their day values (captured when the module starts, before
   day/night touches them). When day/night darkens the sea, the lagoon dims with it instead of
@@ -126,8 +127,8 @@ private `physics._prevJump`, which holds the jump key as of this frame's `update
 `PlayerPhysics` drops it, `_prevJump === true` is never satisfied and jumping on sand is simply
 off. Nothing breaks, and a test covers that fallback.
 
-**Debug** (`raftDebug.content.islands`): `spawnNear(seed = 1234, t = 120)` (`t` is seconds into the
-timeline, so `t < 120` gives an approaching island), `phase()`, `skip(s)`, `teleportAshore(dx, dz)`,
+**Debug** (`raftDebug.content.islands`): `spawnNear(seed = 1234, t = 100)` (`t` is seconds into the
+timeline, so `t < 100` gives an approaching island), `phase()`, `skip(s)`, `teleportAshore(dx, dz)`,
 `aimAt(i)` (stands you on the inland side of node `i` and returns it with `yaw`, the camera yaw
 that faces it), `yawTo()`, `nodes()` (each with an aim point `ax, cy, az`; for a palm that is on
 the bent trunk), `pick()` (node under the screen centre), `drain()`,
@@ -188,18 +189,18 @@ showing a prompt. Palms stay standing. Kinds used: `wood`, `leaf` (core), `sand`
 
 All timing uses the module's own clock, which advances by `dt` only while `ctx.running`.
 
-1. **Calm:** 150 to 240 s (seeded). The first island in a fresh world is born at 30 s (in view
-   about 15 s later, docked at 150 s), so a new player meets one early.
-2. **Approach:** 120 s. Spawns at z = −261 (upstream, where debris comes from, out of sight) and
-   glides in, slowing to a stop (quadratic ease out, under 4.5 m/s) at its dock z, which is 0 to
-   6 m upstream of the raft centre.
+1. **Calm:** 150 to 240 s (seeded). The first island in a fresh world comes at 90 s, so a new
+   player meets one early.
+2. **Approach:** 100 s. Spawns at z = −261 (upstream, where debris comes from), out of sight,
+   drifts in at a steady ~2.9 m/s and eases to a stop over the last
+   30 m (`EASE`) at its dock z, which is 0 to 6 m upstream of the raft centre.
 3. **Docked:** 180 s, 10 to 14 m gap from the raft's bounding box on the clearer `x` side, so an
    easy swim (about 6 s at `SWIM_SPEED` 2.1). Keep the island centre within 38 m of the nearest
    tile, because `PlayerPhysics._safety` teleports a player more than 50 m from the raft.
 4. **Warning:** at 30 s left, `ctx.notice('The island is starting to drift away')` once per actor
    standing on it or near it.
-5. **Depart:** 120 s, eases to z = +261 (quadratic ease in), so it drifts away into the fog; then
-   the island is removed and the next calm starts.
+5. **Depart:** 100 s, the mirror of the approach: eases out of the dock, drifts away into the fog to
+   z = +261, out of sight, then the island is removed and the next calm starts.
 
 Departure pauses while any player (host `ctx.physics`, guest `ctx.other`) is within
 `radius + 6 m` of the centre, up to a hard cap of 10 min docked. After the cap it departs anyway;
@@ -210,10 +211,11 @@ the existing 50 m safety teleport puts a lingering swimmer back on the raft. Tha
 
 ```js
 {
-  v: 2,
+  v: 1,
   clock: 1003.2,   // module seconds, finite >= 0
   next: 1170,      // clock value when the next island is born
   isl: null | {    // null while calm
+    tl: 2,           // timeline version (missing: an older save, see below)
     seed: 12345678,  // uint32
     born: 812.4,     // clock at approach start
     dock: 180,       // docked seconds, grows while someone is near (cap 600)
@@ -226,15 +228,16 @@ the existing 50 m safety teleport puts a lingering swimmer back on the raft. Tha
 
 `clean(data)` (pure, exported) returns a fresh valid object and never throws:
 
-- not an object, or `v` not 1 or 2: defaults `{v:2, clock:0, next:30, isl:null}`.
-- `v: 1` (the old 25 s / 30 s timeline that rose and sank): `born` is remapped with `ageFromV1` to
-  the same z on the new timeline, so a docked island stays docked with the same time left and a
-  drifting one keeps its spot at full height. One still rising goes back out into the fog.
+- not an object, or `v !== 1`: defaults `{v:1, clock:0, next:90, isl:null}` (old saves land here).
 - `clock`, `next`: finite and `>= 0`, else defaults. `next` is clamped to `clock + 600` at most.
 - `isl`: kept only if `seed` is an integer in `[0, 2^32)`, `born`/`dock`/`off` finite, `side` is
   ±1 and `used` is an array. `used` is rebuilt to the layout's node count, each entry an integer
   clamped to `[0, max]`. Anything else gives `isl: null`.
 - An island whose phase is already `gone` at load time is dropped (`isl: null`).
+- No `tl` (saves from when islands rose out of the sea, with a 25 s approach and a 30 s departure):
+  `oldAge` maps the island's age onto the current timeline at the same z: a docked island stays
+  docked with the same time left, an approaching or departing one keeps its spot (now at full
+  height), and a mid-rise one goes back to the spawn point, out in the fog.
 
 Layout, positions and the path are pure functions of `(seed, clock)`; nothing derived is saved.
 
