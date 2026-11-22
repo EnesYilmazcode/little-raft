@@ -15,6 +15,7 @@ export const DROP = Object.freeze({
   REACH: 3.2,        // pick-up reach from the camera
   GUEST_SLACK: 1,    // extra host-side reach for a guest's lagged pose
   FLY: .45,          // seconds of the throw arc
+  SLIDE: .35,        // m/s a box blocked by the raft slides along its edge, so the water still carries it away
 });
 
 const fin = v => typeof v === 'number' && Number.isFinite(v);
@@ -181,13 +182,34 @@ export function stepBox(b, dt, flow, env) {
     if (g === g && g > w) { b.y = g; return false; }
     b.s = 'sea'; delete b.y; // the island left or sank
   }
+  if (hasTile(tiles, b.x, b.z)) { b.s = 'raft'; return false; } // a plank was built under it: it sits on the deck
   const fx = (flow?.x || 0) + Math.sin((env?.clock || 0) * .13 + b.id) * .04, fz = (flow?.z || 0) + (flow?.b || 0);
   const nx = b.x + fx * dt, nz = b.z + fz * dt;
-  if (!hasTile(tiles, nx, nz)) { b.x = nx; b.z = nz; } // bumps against the raft edge instead of drifting through it
-  else if (!hasTile(tiles, nx, b.z)) b.x = nx;
-  else if (!hasTile(tiles, b.x, nz)) b.z = nz;
+  if (!hasTile(tiles, nx, nz)) { b.x = nx; b.z = nz; } // never drifts through the raft: it slides along the edge and on past it
+  else {
+    const sp = Math.max(DROP.SLIDE, Math.hypot(fx, fz)) * dt;
+    if (hasTile(tiles, b.x, nz)) { // the raft is ahead along z: slide along x toward the nearer open end of that row
+      const x = b.x + (Math.abs(fx) > .05 ? Math.sign(fx) : openSide(tiles, b.x, nz, true)) * sp;
+      if (!hasTile(tiles, x, b.z)) b.x = x;
+    } else { // ahead along x: slide along z
+      const z = b.z + (Math.abs(fz) > .05 ? Math.sign(fz) : openSide(tiles, nx, b.z, false)) * sp;
+      if (!hasTile(tiles, b.x, z)) b.z = z;
+    }
+  }
   b.age += dt;
   return b.age >= DROP.DESPAWN || Math.abs(b.x) > DROP.RANGE || Math.abs(b.z) > DROP.RANGE;
+}
+
+/** -1 or +1: the way along a raft row (alongX) or column from (x, z) that reaches open water soonest. */
+export function openSide(tiles, x, z, alongX) {
+  for (let k = 1; k <= 64; k++) {
+    const dp = alongX ? !hasTile(tiles, x + k * 2, z) : !hasTile(tiles, x, z + k * 2);
+    const dn = alongX ? !hasTile(tiles, x - k * 2, z) : !hasTile(tiles, x, z - k * 2);
+    if (dp && dn) return (alongX ? x : z) < 0 ? -1 : 1; // as near both ways: away from the middle
+    if (dp) return 1;
+    if (dn) return -1;
+  }
+  return 1;
 }
 
 /** Plain, JSON-safe copy for saves and the network. */

@@ -114,9 +114,23 @@ test('core: despawn timer in open water only; raft boxes stay; a lost plank drop
   const drift = { id: 3, x: 0, z: -8, s: 'sea', r: 0, age: 0, m: 0, f: 0, items: [{ kind: 'wood', count: 1 }] };
   for (let i = 0; i < 20; i++) C.stepBox(drift, .5, FLOW, env());
   assert.ok(drift.z > -8 + 1.5, 'drifts with the water');
-  const ahead = { id: 4, x: 0, z: -2.9, s: 'sea', r: 0, age: 0, m: 0, f: 0, items: [{ kind: 'wood', count: 1 }] };
-  for (let i = 0; i < 50; i++) C.stepBox(ahead, .5, { x: 0, z: 0, b: .5 }, env());
-  assert.ok(ahead.z < -2.9 + .5, 'bumps against the raft edge instead of passing through');
+  const ahead = { id: 4, x: 0, z: -3.1, s: 'sea', r: 0, age: 0, m: 0, f: 0, items: [{ kind: 'wood', count: 1 }] };
+  const path = [];
+  for (let i = 0; i < 200; i++) { C.stepBox(ahead, .1, { x: 0, z: 0, b: .5 }, env()); path.push([ahead.x, ahead.z]); }
+  assert.ok(path.every(([x, z]) => !C.hasTile(TILES, x, z)), 'never drifts through the raft');
+  assert.ok(ahead.z > 1.5, `slides along the front edge and on past the raft (z=${ahead.z.toFixed(2)})`);
+  for (const [x0, flow] of [[-.5, { x: 0, z: 0, b: .4 }], [-1.5, { x: 0, z: 0, b: .4 }], [-.2, { x: 0, z: -.3, b: 0 }]]) { // head-on, either side, sailing the other way
+    const b = { id: 5, x: x0, z: flow.b ? -3.1 : 2.9, s: 'sea', r: 0, age: 0, m: 0, f: 0, items: [{ kind: 'wood', count: 1 }] };
+    for (let i = 0; i < 400; i++) C.stepBox(b, .1, flow, env());
+    assert.ok(flow.b ? b.z > 1.5 : b.z < -3.5, `x0=${x0}: drifts past (z=${b.z.toFixed(2)})`);
+  }
+  const L = [[-1, -1], [0, -1], [1, -1], [-1, 0], [0, 0], [1, 0]]; // wider raft, a side sideways current
+  const side = { id: 6, x: -3.2, z: -.4, s: 'sea', r: 0, age: 0, m: 0, f: 0, items: [{ kind: 'wood', count: 1 }] };
+  for (let i = 0; i < 400; i++) C.stepBox(side, .1, { x: .4, z: 0, b: 0 }, env({ tiles: L }));
+  assert.ok(side.x > 3.5, `a sideways current carries it past too (x=${side.x.toFixed(2)})`);
+  const built = { id: 7, x: 0, z: 0, s: 'sea', r: 0, age: 3, m: 0, f: 0, items: [{ kind: 'wood', count: 1 }] };
+  C.stepBox(built, .1, FLOW, env());
+  assert.equal(built.s, 'raft', 'a plank built under a floating box lifts it onto the deck');
 });
 
 test('core: land boxes ride the island and fall in when it leaves', () => {
