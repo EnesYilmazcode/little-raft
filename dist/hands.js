@@ -415,7 +415,7 @@ export function createHands(T, { modelFactory = null } = {}) {
       const pivot = new T.Group(); pivot.name = 'held_' + kind;
       pivot.rotation.set(h.rx || 0, h.ry || 0, h.rz || 0);
       const g = item.userData.grip;
-      if (h.hand === 'left') item.position.set(-g[0], 0.03 - g[1], -g[2]);  // base sits on top of the fist
+      if (h.hand === 'left') { item.scale.x = -1; item.position.set(g[0], 0.03 - g[1], -g[2]); }  // base sits on top of the fist; un-mirror (the left arm frame is mirrored) so text and art read right
       else item.position.set(-g[0], -g[1], -g[2]);
       // Own resources of a shared (factory) model: merged geometry and material copies, so prep() never
       // changes the materials world copies of the same cached model use.

@@ -321,6 +321,9 @@ export const HELD_HOLD = Object.freeze({
     'goatpen', 'cropplot', 'perch', 'juicer', 'turbine', 'battery', 'stringlights', 'lamppost', 'fishtrap', 'shelf', 'trophystand', 'taskboard',
     'photoframe', 'maptable', 'recycler', 'research', 'receiver', 'antenna', 'purifier', 'rainbarrel', 'sprinkler', 'smelter', 'researchtable', 'grill']
     .map((k) => [k, PLACE])),
+  // wall pieces face their front (the side the icon shows) toward the eye; flat ones tip up so they are not seen edge-on
+  ...Object.fromEntries(['taskboard', 'photoframe', 'scoreboard', 'shelf'].map((k) => [k, { ...PLACE, ry: Math.PI }])),
+  rug: { ...PLACE, rx: -1.0, grip: [0, -0.5, -0.45] }, bed: { ...PLACE, rx: -0.9 },
   // resources
   stone: LUMP, clay: LUMP, metalore: LUMP, copperore: LUMP,
   sand: S(0.1, 0.3, 0.4, 0.1, -0.45),
