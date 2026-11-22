@@ -222,7 +222,7 @@ function stubWorld(role = 'solo') {
 
 test('stub ctx: islandNow, host seeding, dig, mounds, save round trip and clear', () => {
   const w = stubWorld();
-  w.isl.debug.spawnNear(1234, 30); w.isl.update(0);
+  w.isl.debug.spawnNear(1234, I.ISLAND.APPROACH + 5); w.isl.update(0); // docked
   assert.equal(I.islandNow().seed, 1234);
   w.tre.update(1 / 60);
   assert.equal(w.tre.debug.state().seed, 1234);

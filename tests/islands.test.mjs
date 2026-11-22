@@ -10,7 +10,7 @@ const L = await import(new URL('islands-layout.js', base));
 const { createIslands } = await import(new URL('islands.js', base));
 const { Bag, SLOT_COUNT, STACK_SIZE } = await import(new URL('inventory-state.js', base));
 const { PlayerPhysics, PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base));
-const { ISLAND, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset, applyGather, standOnSand, SHORE_U } = L;
+const { ISLAND, VIEW, ageFromV1, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset, applyGather, standOnSand, SHORE_U } = L;
 
 const RAFT3 = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
 const SEEDS = Array.from({ length: 300 }, (_, i) => (i * 2654435761) >>> 0);
@@ -60,7 +60,7 @@ test('groundHeight: dome top, shoreline, rim', () => {
 test('pathAt phases in order with continuous z', () => {
   const dock = 180, dz = -3, order = [];
   let lastZ = pathAt(0, dock, dz).z;
-  for (let t = 0; t <= 25 + dock + 30 + 2; t += 0.05) {
+  for (let t = 0; t <= ISLAND.APPROACH + dock + ISLAND.DEPART + 2; t += 0.05) {
     const p = pathAt(t, dock, dz);
     if (order.at(-1) !== p.phase) order.push(p.phase);
     assert.ok(Math.abs(p.z - lastZ) < 0.5, `z jump at t=${t}`);
@@ -68,7 +68,57 @@ test('pathAt phases in order with continuous z', () => {
   }
   assert.deepEqual(order, ['approach', 'docked', 'depart', 'gone']);
   assert.equal(pathAt(0, dock, dz).z, ISLAND.START_Z);
-  assert.equal(pathAt(100, dock, dz).z, dz);
+  assert.equal(pathAt(ISLAND.APPROACH + 10, dock, dz).z, dz);
+});
+
+// The view limits VIEW copies from game.js and daynight.js (if this fails, update VIEW in islands-layout.js).
+test('VIEW matches the camera far plane and the clear-weather fog in the game source', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const game = await readFile(new URL('../dist/game.js', import.meta.url), 'utf8');
+  const day = await readFile(new URL('../dist/daynight.js', import.meta.url), 'utf8');
+  const cam = game.match(/camera = new T\.PerspectiveCamera\([^,]+,[^,]+,\s*[\d.]+,\s*([\d.]+)\)/);
+  const fog = game.match(/scene\.fog = new T\.Fog\([^,]+\([^)]*\)[^,]*,\s*([\d.]+),\s*([\d.]+)\)/);
+  const dayFar = day.match(/scene\.fog\.far = \(([\d.]+) -/);
+  assert.ok(cam && fog && dayFar, 'found the camera and fog setup');
+  assert.equal(Number(cam[1]), VIEW.CAMERA_FAR);
+  assert.equal(Number(fog[2]), VIEW.FOG_FAR);
+  assert.equal(Number(dayFar[1]), VIEW.FOG_FAR, 'daynight never pushes the fog past VIEW.FOG_FAR');
+});
+
+test('islands spawn and despawn out of sight, and never sink', () => {
+  const hide = Math.min(VIEW.CAMERA_FAR, VIEW.FOG_FAR);
+  for (const seed of SEEDS) {
+    const lay = layoutFor(seed), rim = lay.R * ISLAND.RIM;
+    const start = pathAt(0, ISLAND.DOCK, lay.dockZ), end = pathAt(ISLAND.APPROACH + ISLAND.DOCK + ISLAND.DEPART, ISLAND.DOCK, lay.dockZ);
+    assert.equal(end.phase, 'gone');
+    // nearest sand vs any camera within the safety radius of the raft centre
+    assert.ok(Math.abs(start.z) - rim - PC.MAX_RAFT_DISTANCE >= hide, `spawn ${start.z}`);
+    assert.ok(Math.abs(end.z) - rim - PC.MAX_RAFT_DISTANCE >= hide, `despawn ${end.z}`);
+  }
+  for (let t = 0; t <= ISLAND.APPROACH + ISLAND.DOCK + ISLAND.DEPART + 1; t += 0.25) assert.equal(pathAt(t, ISLAND.DOCK, -3).sink, 0);
+  // a gentle drift: under 5 m/s even far out, and slowing to a stop at the dock
+  let maxV = 0;
+  for (let t = 0; t < ISLAND.APPROACH + ISLAND.DOCK + ISLAND.DEPART; t += 0.5) maxV = Math.max(maxV, Math.abs(pathAt(t + 0.5, ISLAND.DOCK, -3).z - pathAt(t, ISLAND.DOCK, -3).z) / 0.5);
+  assert.ok(maxV < 5, `top speed ${maxV.toFixed(2)} m/s`);
+  assert.ok(Math.abs(pathAt(ISLAND.APPROACH - 1, ISLAND.DOCK, -3).z + 3) < 0.1, 'eases into the dock');
+});
+
+test('v1 saves load on the new timeline at the same spot', () => {
+  const lay = layoutFor(1234), dz = lay.dockZ, good = { seed: 1234, dock: 180, side: 1, off: 20, used: [] };
+  const v1 = t => clean({ v: 1, clock: 1000, next: 0, isl: { ...good, born: 1000 - t } }).isl;
+  const at = isl => pathAt(1000 - isl.born, isl.dock, dz);
+  // mid-rise: back out in the fog at the start of the approach, at full height
+  assert.equal(at(v1(2)).phase, 'approach'); assert.equal(at(v1(2)).z, ISLAND.START_Z); assert.equal(at(v1(2)).sink, 0);
+  // approaching: same z as the old cubic path
+  const z15 = -60 + (dz + 60) * (1 - (1 - 15 / 25) ** 3);
+  assert.ok(Math.abs(at(v1(15)).z - z15) < 1e-6);
+  // docked: still docked with the same time left
+  assert.equal(at(v1(25 + 100)).phase, 'docked'); assert.ok(Math.abs(at(v1(25 + 100)).left - 80) < 1e-6);
+  // departing (even mid-sink): same z, drifting away at full height
+  const zd = dz + (60 - dz) * (28 / 30) ** 3;
+  assert.equal(at(v1(25 + 180 + 28)).phase, 'depart'); assert.ok(Math.abs(at(v1(25 + 180 + 28)).z - zd) < 1e-6);
+  assert.equal(clean({ v: 1, clock: 1000, next: 0, isl: { ...good, born: 1000 - 300 } }).isl, null, 'gone in v1 stays gone');
+  assert.equal(ageFromV1(NaN, 180, dz), 0);
 });
 
 test('docked island sits a short swim from a 3x3 raft', () => {
@@ -87,14 +137,14 @@ test('docked island sits a short swim from a 3x3 raft', () => {
 });
 
 test('nextDelay', () => {
-  assert.equal(nextDelay(1, true), 90);
+  assert.equal(nextDelay(1, true), ISLAND.FIRST);
   for (const s of SEEDS) { const d = nextDelay(s); assert.ok(d >= 150 && d <= 240); }
 });
 
 // ---------------------------------------------------------------- save validation
 
 test('clean: garbage gives defaults', () => {
-  for (const bad of [undefined, null, 'x', 7, [], { v: 2 }, { v: '1' }]) assert.deepEqual(clean(bad), { v: 1, clock: 0, next: 90, isl: null });
+  for (const bad of [undefined, null, 'x', 7, [], { v: 3 }, { v: '1' }]) assert.deepEqual(clean(bad), { v: 2, clock: 0, next: ISLAND.FIRST, isl: null });
 });
 
 test('clean fixes or drops bad fields', () => {
@@ -308,15 +358,15 @@ test('timeline: waits while a player is close, departs at the cap', () => {
   assert.notEqual(w.mod.debug.phase().phase, 'docked');
 });
 
-test('full cycle: calm, first island at 90 s, gone, calm again', () => {
+test('full cycle: calm, first island at FIRST, gone, calm again', () => {
   const w = stubWorld();
   w.mod.load(undefined, 'save');
-  for (let i = 0; i < 89 * 10; i++) w.mod.update(0.1);
+  for (let i = 0; i < (ISLAND.FIRST - 1) * 10; i++) w.mod.update(0.1);
   assert.equal(w.mod.debug.phase().phase, 'calm');
   for (let i = 0; i < 2 * 10; i++) w.mod.update(0.1);
   assert.equal(w.mod.debug.phase().phase, 'approach');
   const seen = new Set();
-  for (let i = 0; i < 300 * 10; i++) { w.mod.update(0.1); seen.add(w.mod.debug.phase().phase); }
+  for (let i = 0; i < (ISLAND.APPROACH + ISLAND.DOCK + ISLAND.DEPART + 10) * 10; i++) { w.mod.update(0.1); seen.add(w.mod.debug.phase().phase); }
   assert.ok(seen.has('docked') && seen.has('depart') && seen.has('calm'));
   const ph = w.mod.debug.phase();
   assert.ok(ph.next - ph.clock >= 0 && ph.next - ph.clock <= 240);
@@ -431,7 +481,7 @@ test('departing island slides out from under the player (no 50 m ride)', () => {
   const dock = w.mod.debug.phase();
   w.mod.debug.teleportAshore(0, 0);
   let maxFromDock = 0;
-  for (let i = 0; i < 60 * 700; i++) {
+  for (let i = 0; i < 60 * (ISLAND.DOCK_CAP + ISLAND.DEPART + 20); i++) {
     w.frame();
     maxFromDock = Math.max(maxFromDock, Math.hypot(w.physics.x - dock.x, w.physics.z - dock.z));
   }
@@ -442,7 +492,7 @@ test('departing island slides out from under the player (no 50 m ride)', () => {
 
 test('rider moves with the approaching island in the same frame', () => {
   const w = stubWorld();
-  w.mod.debug.spawnNear(1234, 5); w.mod.update(0);
+  w.mod.debug.spawnNear(1234, ISLAND.APPROACH - 40); w.mod.update(0);
   assert.equal(w.mod.debug.teleportAshore(1, 1), true);
   const off = () => w.physics.z - w.mod.debug.state().cz;
   step(w, 1); // settle (a palm or rock may nudge us on the first frame)
@@ -555,4 +605,33 @@ test('pick prefers sand, bush or rock over an overlapping palm', () => {
     return;
   }
   assert.fail('no seed with a node next to a palm');
+});
+
+test('module: full height and size from spawn to despawn; island fog ends short of the far plane', () => {
+  const w = stubWorld();
+  const g = w.ctx.scene.getObjectByName('islands');
+  assert.equal(g.renderOrder, 2, 'drawn after the sky dome');
+  w.mod.load(undefined, 'save');
+  w.mod.debug.spawnNear(1234, 0); w.mod.update(0);
+  assert.equal(w.mod.debug.phase().phase, 'approach');
+  const phases = new Set();
+  let minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < (ISLAND.APPROACH + ISLAND.DOCK + ISLAND.DEPART) * 4 + 4; i++) {
+    w.mod.update(0.25);
+    const ph = w.mod.debug.phase().phase; phases.add(ph);
+    if (!g.visible) continue;
+    minY = Math.min(minY, g.position.y); maxY = Math.max(maxY, g.position.y);
+    for (const c of g.children) assert.equal(c.scale.x * c.scale.y * c.scale.z, c.name === 'islandDome' ? c.scale.x * c.scale.z : 1, `${c.name} at full size (${ph})`);
+  }
+  assert.ok(phases.has('approach') && phases.has('docked') && phases.has('depart') && phases.has('calm'));
+  assert.ok(maxY - minY < 1e-9 && Math.abs(minY + 0.24) < 1e-9, `height held (${minY}..${maxY})`);
+  // the island materials' fog is patched to end at islandFogFar = camera far - margin
+  const dome = g.getObjectByName('islandDome'), sh = { uniforms: {}, fragmentShader: '#include <fog_pars_fragment>\nvoid main() {\n#include <fog_fragment>\n}' };
+  dome.material.onBeforeCompile(sh);
+  assert.match(sh.fragmentShader, /smoothstep\( fogNear, min\( fogFar, islandFogFar \), vFogDepth \)/);
+  assert.match(sh.fragmentShader, /uniform float islandFogFar;/);
+  w.mod.debug.spawnNear(1234, 0); w.mod.update(0);
+  assert.equal(sh.uniforms.islandFogFar.value, Math.min(w.ctx.camera.far, VIEW.CAMERA_FAR, VIEW.FOG_FAR) - VIEW.FOG_MARGIN);
+  w.ctx.camera.far = 120; w.mod.update(0);
+  assert.equal(sh.uniforms.islandFogFar.value, 120 - VIEW.FOG_MARGIN, 'follows a nearer far plane');
 });
