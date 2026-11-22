@@ -72,8 +72,13 @@ inventory-state.js are unchanged, and no new hook was needed.
   rocks shrink with each gather (rocks to no less than half size), and sand mounds flatten. A
   spent node stops prompting: palms swap to the straw model, rocks go a darker grey, bushes and
   sand turn dry yellow.
-- **Rising and sinking.** The vegetation meshes scale with `1 - sink/SINK`, so palm crowns never
-  stick out of open sea while the island rises at the start or sinks at the end.
+- **Arriving and leaving at the draw distance.** Islands never rise out of or sink into the sea.
+  One is born at full height (vegetation at full scale) past `camera.far` (200 m, `ISLAND.VIEW`),
+  drifts in through the fog and drifts back out past it before it is removed. The lit island
+  materials end their distance fog at `0.97 * camera.far` (or the scene fog's far end, if nearer),
+  so the island is fully fogged where it crosses the far plane and fades in from fog alone. The
+  lagoon fades its alpha out with the ocean's far-sea fade. Checked by
+  `tests/island-arrival.test.mjs` and `check_island_arrival.py` (live camera frustum and fog).
 - **Night.** The lagoon shares `uShallow`, `uDeep`, `uSunColor` and `uFoam` with the ocean and
   scales its own colours by the ratio to their day values (captured when the module starts, before
   day/night touches them). When day/night darkens the sea, the lagoon dims with it instead of
@@ -182,14 +187,16 @@ All timing uses the module's own clock, which advances by `dt` only while `ctx.r
 
 1. **Calm:** 150 to 240 s (seeded). The first island in a fresh world comes at 90 s, so a new
    player meets one early.
-2. **Approach:** 25 s. Spawns at z = −60 (upstream, where debris comes from) and eases out to its
-   dock z, which is 0 to 6 m upstream of the raft centre.
+2. **Approach:** 100 s. Spawns at z = −240 (`-(VIEW + 40)`, upstream, where debris comes from), out
+   of sight past the draw distance, drifts in at a steady ~2.7 m/s and eases to a stop over the last
+   30 m (`EASE`) at its dock z, which is 0 to 6 m upstream of the raft centre.
 3. **Docked:** 180 s, 10 to 14 m gap from the raft's bounding box on the clearer `x` side, so an
    easy swim (about 6 s at `SWIM_SPEED` 2.1). Keep the island centre within 38 m of the nearest
    tile, because `PlayerPhysics._safety` teleports a player more than 50 m from the raft.
 4. **Warning:** at 30 s left, `ctx.notice('The island is starting to drift away')` once per actor
    standing on it or near it.
-5. **Depart:** 30 s, eases to z = +60, then the island hides and the next calm starts.
+5. **Depart:** 100 s, the mirror of the approach: eases out of the dock, drifts away into the fog to
+   z = +240, past the draw distance, then the island is removed and the next calm starts.
 
 Departure pauses while any player (host `ctx.physics`, guest `ctx.other`) is within
 `radius + 6 m` of the centre, up to a hard cap of 10 min docked. After the cap it departs anyway;
@@ -204,6 +211,7 @@ the existing 50 m safety teleport puts a lingering swimmer back on the raft. Tha
   clock: 1003.2,   // module seconds, finite >= 0
   next: 1170,      // clock value when the next island is born
   isl: null | {    // null while calm
+    tl: 2,           // timeline version (missing: an older save, see below)
     seed: 12345678,  // uint32
     born: 812.4,     // clock at approach start
     dock: 180,       // docked seconds, grows while someone is near (cap 600)
@@ -222,6 +230,9 @@ the existing 50 m safety teleport puts a lingering swimmer back on the raft. Tha
   ±1 and `used` is an array. `used` is rebuilt to the layout's node count, each entry an integer
   clamped to `[0, max]`. Anything else gives `isl: null`.
 - An island whose phase is already `gone` at load time is dropped (`isl: null`).
+- No `tl` (saves from when islands rose out of the sea, with a 25 s approach and a 30 s departure):
+  `oldAge` maps the island's age to the same phase and progress on the current timeline. A mid-rise
+  island comes back far out in the fog at full height; a docked one keeps its time left.
 
 Layout, positions and the path are pure functions of `(seed, clock)`; nothing derived is saved.
 
