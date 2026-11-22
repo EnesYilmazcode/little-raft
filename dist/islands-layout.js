@@ -3,12 +3,22 @@
 import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { toolRole, wearPerUse } from './items.js?build=v3-survival-ae77fa84ac2b';
 
+// How far the player can see, copied from game.js (scene.fog = new T.Fog(.., 90, 260) and the
+// PerspectiveCamera far of 200; daynight.js only ever pulls the fog in). tests/islands.test.mjs checks
+// these still match the source. The island is fogged out completely FOG_MARGIN short of the nearer of the
+// two (islands-models.js clamps its own fog far there), so it is invisible from that view depth on.
+export const VIEW = Object.freeze({ CAMERA_FAR: 200, FOG_FAR: 260, FOG_MARGIN: 10 });
+const HIDE = Math.min(VIEW.CAMERA_FAR, VIEW.FOG_FAR);
+const R_MAX = 9, RIM_U = 1.15; // largest island radius (layoutFor) and the sand rim (ISLAND.RIM)
+// Spawn and despawn this far up / downstream: the nearest sand is then HIDE metres from any camera within
+// MAX_RAFT_DISTANCE of the raft centre (the safety teleport keeps every player inside that).
+const SPAWN_DIST = Math.ceil(HIDE + R_MAX * RIM_U + PLAYER_CONSTANTS.MAX_RAFT_DISTANCE); // 261 m
+
 export const ISLAND = Object.freeze({
-  FIRST: 90,            // first island in a fresh world (s)
+  FIRST: 30,            // first island in a fresh world (s); it docks APPROACH later
   CALM_MIN: 150, CALM_MAX: 240,
-  APPROACH: 25, DOCK: 180, DOCK_CAP: 600, DEPART: 30, WARN: 30,
-  START_Z: -60, END_Z: 60,
-  RISE: 4, SINK: 3,     // seconds and metres the island rises out of / sinks into the sea at each end
+  APPROACH: 120, DOCK: 180, DOCK_CAP: 600, DEPART: 120, WARN: 30,
+  START_Z: -SPAWN_DIST, END_Z: SPAWN_DIST, // islands arrive and leave at full height, hidden by the fog
   TOP: 0.9,             // dome top above the group origin (mean water)
   FALL: 1.8,            // TOP - FALL * u^4: shoreline at u ~ 0.84, -0.9 m at the rim
   RIM: 1.15,            // the sand mesh (and ground) stop here, in units of R
@@ -121,10 +131,12 @@ export function layoutFor(seed) {
   return out;
 }
 
-const easeOut = u => 1 - (1 - u) * (1 - u) * (1 - u);
-const easeIn = u => u * u * u;
+// Quadratic: a steady glide that slows to a stop at the dock (and the mirror image on the way out).
+const easeOut = u => 1 - (1 - u) * (1 - u);
+const easeIn = u => u * u;
 // Where the island is t seconds after it was born. Writes into out (pass one to avoid allocating).
-// out.left: seconds left in this phase. out.sink: metres below its normal height (rising/sinking).
+// out.left: seconds left in this phase. out.sink is always 0 (kept for old callers): the island is at
+// full height from spawn to despawn, both far past the fog.
 export function pathAt(t, dock, dockZ = 0, out = {}) {
   const A = ISLAND.APPROACH, D = fin(dock) ? Math.max(0, dock) : ISLAND.DOCK, P = ISLAND.DEPART;
   if (!fin(t) || t < 0) t = 0;
@@ -132,18 +144,36 @@ export function pathAt(t, dock, dockZ = 0, out = {}) {
   if (t < A) {
     out.phase = 'approach'; out.left = A - t;
     out.z = ISLAND.START_Z + (dockZ - ISLAND.START_Z) * easeOut(t / A);
-    if (t < ISLAND.RISE) { const k = 1 - t / ISLAND.RISE; out.sink = ISLAND.SINK * k * k; }
   } else if (t < A + D) {
     out.phase = 'docked'; out.left = A + D - t; out.z = dockZ;
   } else if (t < A + D + P) {
     const u = (t - A - D) / P;
     out.phase = 'depart'; out.left = A + D + P - t;
     out.z = dockZ + (ISLAND.END_Z - dockZ) * easeIn(u);
-    if (out.left < ISLAND.RISE) { const k = 1 - out.left / ISLAND.RISE; out.sink = ISLAND.SINK * k * k; }
   } else {
-    out.phase = 'gone'; out.left = 0; out.z = ISLAND.END_Z; out.sink = ISLAND.SINK;
+    out.phase = 'gone'; out.left = 0; out.z = ISLAND.END_Z;
   }
   return out;
+}
+
+// Save v1 ran a 25 s approach from z = -60 and a 30 s departure to z = +60 (cubic eases), rising out of
+// and sinking into the sea for the first and last 4 s. Map such an island age onto the current timeline
+// at the same z, so a docked island stays docked and a drifting one keeps its spot (now at full height).
+// One still rising goes back to the start of the approach, out in the fog.
+export function ageFromV1(t, dock, dockZ) {
+  const A1 = 25, P1 = 30, RISE1 = 4, A = ISLAND.APPROACH;
+  if (!fin(t) || t < 0) t = 0;
+  if (t < RISE1) return 0;
+  if (t < A1) {
+    const z = -60 + (dockZ + 60) * (1 - (1 - t / A1) ** 3);
+    return A * (1 - Math.sqrt(clamp((dockZ - z) / (dockZ - ISLAND.START_Z), 0, 1)));
+  }
+  if (t < A1 + dock) return A + (t - A1);
+  if (t < A1 + dock + P1) {
+    const z = dockZ + (60 - dockZ) * ((t - A1 - dock) / P1) ** 3;
+    return A + dock + ISLAND.DEPART * Math.sqrt(clamp((z - dockZ) / (ISLAND.END_Z - dockZ), 0, 1));
+  }
+  return A + dock + ISLAND.DEPART; // gone
 }
 
 // Seconds of calm before the next island (seeded so it is reproducible in tests).
@@ -167,13 +197,14 @@ export function dockOffset(tiles, layout) {
   return { side, off };
 }
 
-export const DEFAULTS = () => ({ v: 1, clock: 0, next: ISLAND.FIRST, isl: null });
+// v2: the far-spawn timeline (v1 saves load through ageFromV1).
+export const DEFAULTS = () => ({ v: 2, clock: 0, next: ISLAND.FIRST, isl: null });
 
 // Validate a save / net slice. Never throws; always returns a fresh valid object.
 export function clean(data, layoutOf = layoutFor) {
   const out = DEFAULTS();
   try {
-    if (!data || typeof data !== 'object' || Array.isArray(data) || data.v !== 1) return out;
+    if (!data || typeof data !== 'object' || Array.isArray(data) || (data.v !== 1 && data.v !== 2)) return out;
     if (fin(data.clock) && data.clock >= 0) out.clock = Math.min(data.clock, 1e9);
     if (fin(data.next) && data.next >= 0) out.next = Math.min(data.next, out.clock + ISLAND.DOCK_CAP);
     else out.next = out.clock + ISLAND.FIRST;
@@ -181,8 +212,10 @@ export function clean(data, layoutOf = layoutFor) {
     if (!i || typeof i !== 'object' || Array.isArray(i)) return out;
     if (!isSeed(i.seed) || !fin(i.born) || !fin(i.dock) || !fin(i.off) || (i.side !== 1 && i.side !== -1) || !Array.isArray(i.used)) return out;
     const lay = layoutOf(i.seed);
-    const born = clamp(i.born, out.clock - (ISLAND.APPROACH + ISLAND.DOCK_CAP + ISLAND.DEPART), out.clock);
     const dock = clamp(i.dock, 0, ISLAND.DOCK_CAP);
+    let born = i.born;
+    if (data.v === 1) born = out.clock - ageFromV1(out.clock - clamp(born, out.clock - (25 + ISLAND.DOCK_CAP + 30), out.clock), dock, lay.dockZ);
+    born = clamp(born, out.clock - (ISLAND.APPROACH + ISLAND.DOCK_CAP + ISLAND.DEPART), out.clock);
     if (pathAt(out.clock - born, dock, lay.dockZ, {}).phase === 'gone') return out;
     const used = lay.nodes.map((n, k) => { const v = i.used[k]; return Number.isInteger(v) ? clamp(v, 0, n.max) : 0; });
     out.isl = { seed: i.seed, born, dock, side: i.side, off: clamp(i.off, ISLAND.OFF_MIN, ISLAND.OFF_MAX), used };

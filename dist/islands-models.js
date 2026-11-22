@@ -303,8 +303,23 @@ export function createIslandModels(T, ocean) {
     lagoon: new T.ShaderMaterial({ uniforms: lagoonUniforms, vertexShader: vert, fragmentShader: LAGOON_FRAG, transparent: true, depthWrite: false, fog: false, lights: false,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
   };
+  // Island fog: the scene fog, but fully fogged by islandFogFar (islands.js keeps it a little short of the
+  // camera far plane and of VIEW). The scene fog runs past the far plane, so without this a far island would
+  // be clipped while still clearly visible. One shared uniform and one program for all island materials.
+  const fogFar = { value: 190 };
+  const fogChunk = () => T.ShaderChunk.fog_fragment.replace(/\bfogFar\b/g, 'min( fogFar, islandFogFar )');
+  for (const k of ['dome', 'palm', 'palmSpent', 'nuts', 'bush', 'rock', 'sand']) {
+    const m = mats[k];
+    m.onBeforeCompile = sh => {
+      sh.uniforms.islandFogFar = fogFar;
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <fog_pars_fragment>', '#include <fog_pars_fragment>\n#ifdef USE_FOG\nuniform float islandFogFar;\n#endif')
+        .replace('#include <fog_fragment>', fogChunk());
+    };
+    m.customProgramCacheKey = () => 'island-fog';
+  }
   return {
-    geos, mats, lagoonUniforms,
+    geos, mats, lagoonUniforms, fogFar,
     dispose() { for (const g of Object.values(geos)) g.dispose(); for (const m of Object.values(mats)) m.dispose(); },
   };
 }

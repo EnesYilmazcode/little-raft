@@ -2,7 +2,7 @@
 // gather leaves, seeds, stone and sand with E, and chop palms for wood with a Stone Axe. Host-authoritative; saved in world.ext.islands.
 // Design and notes: docs/features/islands.md. Pure logic lives in islands-layout.js (unit tested).
 import {
-  ISLAND, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
+  ISLAND, VIEW, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
   applyGather, standOnSand, DEFAULTS, CHOP, isAxe,
 } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 import { createIslandModels, PALM_H, PALM_BEND } from './islands-models.js?build=v3-survival-ae77fa84ac2b';
@@ -48,7 +48,7 @@ export function createIslands(ctx) {
   let warned = false;
   const cool = { host: 0, guest: 0 };
   const gatherState = { isl: null, layout: null, cx: 0, cz: 0, clock: 0, cool };
-  const out = { v: 1, clock: 0, next: 0, isl: null }; // cached serialize() object
+  const out = { v: 2, clock: 0, next: 0, isl: null }; // cached serialize() object
   const outIsl = { seed: 0, born: 0, dock: 0, side: 1, off: 0, used: null };
   const path = { phase: 'gone', z: 0, left: 0, sink: 0 };
 
@@ -84,8 +84,11 @@ export function createIslands(ctx) {
     return m;
   });
   const [palmSpent, nuts] = extra;
-  const veg = [...meshes, ...extra]; // scaled down while the island rises or sinks
+  const veg = [...meshes, ...extra];
   group.add(dome, ...veg);
+  // Draw after the sky dome (renderOrder 1, radius 150, no depth write) so a far island is not painted
+  // over by it: the island fades out in its own fog (models.fogFar) instead.
+  group.renderOrder = 2;
   if (ctx.scene) { ctx.scene.add(group); ctx.scene.add(lagoon); }
   lagoon.visible = false;
 
@@ -95,7 +98,7 @@ export function createIslands(ctx) {
   let nodeCount = 0;
 
   // ---------- scratch (no per-frame allocation) ----------
-  const vO = new T.Vector3(), vD = new T.Vector3(), vP = new T.Vector3(), vS = new T.Vector3(), vN = new T.Vector3();
+  const vO = new T.Vector3(), vC = new T.Vector3(), vD = new T.Vector3(), vP = new T.Vector3(), vS = new T.Vector3(), vN = new T.Vector3();
   const qA = new T.Quaternion(), qB = new T.Quaternion(), mtx = new T.Matrix4(), col = new T.Color();
   const ZERO = new T.Matrix4().makeScale(0, 0, 0);
   const UP = new T.Vector3(0, 1, 0);
@@ -175,15 +178,25 @@ export function createIslands(ctx) {
     if (path.phase === 'gone') { shown = false; group.visible = lagoon.visible = false; return; }
     cx = isl.side * isl.off; cz = path.z;
     const b = baseY();
-    gy = b + (waveAt(cx, cz) - b) * .25 - path.sink;
+    gy = b + (waveAt(cx, cz) - b) * .25;
     group.position.set(cx, gy, cz);
-    // While rising or sinking, plants shrink with the sink so palm crowns never poke out of open sea.
-    const grow = 1 - path.sink / ISLAND.SINK;
-    for (let i = 0; i < veg.length; i++) veg[i].scale.setScalar(grow < 1e-3 ? 1e-3 : grow);
+    // Full height and size from spawn to despawn: only distance fog fades it, fully fogged just short of
+    // the camera far plane (or VIEW, if the far plane ever moves out past the spawn distance).
+    const cam = ctx.camera, far = cam && cam.far > 0 ? Math.min(cam.far, VIEW.CAMERA_FAR) : VIEW.CAMERA_FAR;
+    models.fogFar.value = Math.min(far, VIEW.FOG_FAR) - VIEW.FOG_MARGIN;
     lagoon.position.set(cx, b + .1, cz); // 10 cm up: clears the ocean mesh's ~4 cm interpolation error at grazing angles
     models.lagoonUniforms.uCentre.value.set(cx, cz);
-    models.lagoonUniforms.uOpacity.value = 1 - path.sink / ISLAND.SINK;
-    shown = group.visible = lagoon.visible = true;
+    // The lagoon already fades into the sky colour with the ocean (uFadeFar); past the ocean plane there is
+    // no sea under it, so it also thins out to nothing over the last fifth of that distance.
+    let lag = 1;
+    if (cam) {
+      cam.getWorldPosition(vC);
+      const fadeFar = models.lagoonUniforms.uFadeFar.value, d = Math.hypot(cx - vC.x, cz - vC.z);
+      lag = fadeFar > 0 ? Math.min(1, Math.max(0, (fadeFar - d) / (fadeFar * .2))) : 1;
+    }
+    models.lagoonUniforms.uOpacity.value = lag;
+    lagoon.visible = lag > 0;
+    shown = group.visible = true;
   }
   function groundAt(x, z) { // world y of the sand, or NaN
     if (!shown) return NaN;
@@ -500,7 +513,7 @@ export function createIslands(ctx) {
     },
     drain() { if (!st.isl) return false; st.isl.used.forEach((_, k) => { st.isl.used[k] = layout.nodes[k].max; writeNode(k); }); return true; },
     clear() { st.isl = null; st.next = st.clock + ISLAND.CALM_MIN; relayout(); place(); return debug.phase(); },
-    state: () => ({ onSand: sandState.onSand, shown, cx, cz, gy, hover: hoverNode }),
+    state: () => ({ onSand: sandState.onSand, shown, cx, cz, gy, hover: hoverNode, fogFar: models.fogFar.value, R: layout ? layout.R : 0 }),
     pick: () => pickNode(null), // node under the camera centre, or -1
     groundAt,
   };
