@@ -46,6 +46,10 @@ export function createIslands(ctx) {
   const st = DEFAULTS();              // {v, clock, next, isl}
   let layout = null;                  // layoutFor(st.isl.seed)
   let warned = false;
+  // The 'drifting this way' notice waits until the island is close enough to show through the fog
+  // (it is born ~240 m out, past the draw distance).
+  const ANNOUNCE_Z = -150;
+  let announced = true;
   const cool = { host: 0, guest: 0 };
   const gatherState = { isl: null, layout: null, cx: 0, cz: 0, clock: 0, cool };
   const out = { v: 1, clock: 0, next: 0, isl: null }; // cached serialize() object
@@ -202,7 +206,12 @@ export function createIslands(ctx) {
     const { side, off } = dockOffset(ctx.world && ctx.world.tiles, lay);
     st.isl = { tl: TIMELINE, seed, born: st.clock - Math.max(0, t), dock: ISLAND.DOCK, side, off, used: lay.nodes.map(() => 0) };
     relayout(); place();
-    if (t < ISLAND.APPROACH) emitAll('An island is drifting this way. Swim over and take a look!');
+    announced = !(t < ISLAND.APPROACH);
+    announce();
+  }
+  function announce() {
+    if (announced || path.phase !== 'approach' || path.z < ANNOUNCE_Z) return;
+    announced = true; emitAll('An island is drifting this way. Swim over and take a look!');
   }
   function emitAll(text) { try { ctx.emit({ kind: 'notice', text }, 'all'); } catch {} }
 
@@ -229,6 +238,7 @@ export function createIslands(ctx) {
         if (st.clock >= st.next) spawn();
       } else if (layout) {
         pathAt(st.clock - isl.born, isl.dock, layout.dockZ, path);
+        announce();
         if (path.phase === 'gone') {
           st.isl = null; st.next = st.clock + nextDelay(isl.seed); relayout();
         } else if (path.phase === 'docked') {
@@ -310,6 +320,7 @@ export function createIslands(ctx) {
     }
     pathAt(st.clock - st.isl.born, st.isl.dock, layout.dockZ, path);
     warned = path.phase === 'depart' || (path.phase === 'docked' && path.left <= ISLAND.WARN);
+    announced = path.phase !== 'approach' || path.z >= ANNOUNCE_Z;
     place();
   }
 

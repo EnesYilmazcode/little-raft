@@ -189,3 +189,20 @@ test('island draws after the sky dome; its fog ends FOG_MARGIN short of the (nea
   assert.equal(w.mod.debug.state().fogFar, Math.min(VIEW.CAMERA_FAR, VIEW.FOG_FAR) - VIEW.FOG_MARGIN, 'never past VIEW (the spawn distance assumes it)');
   w.mod.dispose();
 });
+
+test('the "drifting this way" notice waits until the island can show through the fog', () => {
+  const w = world(), said = [];
+  w.ctx.emit = e => { if (e && /drifting this way/.test(e.text)) said.push(w.mod.debug.phase().z); };
+  w.mod.debug.spawnNear(1234, 0); w.mod.update(0);
+  assert.equal(said.length, 0, 'not while it is past the draw distance');
+  while (!said.length && w.mod.debug.phase().phase === 'approach') w.mod.update(0.1);
+  // a save made mid-approach, after it was said, does not say it again when loaded
+  const s = JSON.parse(JSON.stringify(w.mod.serialize()));
+  for (let i = 0; i < ISLAND.APPROACH * 10; i++) w.mod.update(0.1);
+  assert.equal(said.length, 1, 'once');
+  assert.ok(said[0] >= -150 && said[0] < -140, `said at z ${said[0]}`);
+  const v = world(); let again = 0; v.ctx.emit = e => { if (e && /drifting this way/.test(e.text)) again++; };
+  v.mod.load(s); for (let i = 0; i < 20; i++) v.mod.update(0.1);
+  assert.equal(again, 0);
+  w.mod.dispose(); v.mod.dispose();
+});
