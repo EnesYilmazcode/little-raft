@@ -79,7 +79,9 @@ inventory-state.js are unchanged, and no new hook was needed.
   the 50 m safety radius players stay inside (`VIEW` and `SPAWN_DIST` in `islands-layout.js`). The
   scene fog runs past the far plane, so the lit island materials end their fog at `islandFogFar`
   (camera far, capped at `VIEW`, minus 10 m): the island is fully fogged before it can reach the far
-  plane and fades in and out from fog alone. The island group draws after the sky dome
+  plane and fades in and out from fog alone. That fog runs on straight-line distance, not view
+  depth, so it also holds at the sides of the view, where an island 250 m out is only ~160 m deep
+  (inside the far plane). The island group draws after the sky dome
   (renderOrder 2), which would otherwise paint over anything past its 150 m radius. The lagoon fades
   its alpha out with the ocean's far-sea fade. Checked by
   `tests/island-arrival.test.mjs` and `check_island_arrival.py` (live camera frustum and fog).

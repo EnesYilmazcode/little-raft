@@ -115,7 +115,7 @@ function run(ex, ez) {
         if (first) { sphere.copy(tmp); first = false; } else sphere.union(tmp);
       }
       f.inView = frustum.intersectsSphere(sphere);
-      f.depth = w.camera.position.distanceTo(sphere.center) - sphere.radius; // nearest view depth (looking at the centre)
+      f.depth = w.camera.position.distanceTo(sphere.center) - sphere.radius; // nearest distance (island fog runs on distance)
     }
     frames.push(f);
     if (ph.phase === 'calm' && i * dt > ISLAND.APPROACH) break;
@@ -152,10 +152,14 @@ for (const [ex, ez] of [[0, 0], [5, -5], [-5, 5]]) {
 test('island materials end their fog inside camera.far; lagoon fades out with the far sea', () => {
   const m = createIslandModels(T, null);
   for (const k of ['dome', 'palm', 'palmSpent', 'nuts', 'bush', 'rock', 'sand']) {
-    const sh = { uniforms: {}, fragmentShader: '#include <fog_pars_fragment>\nvoid main() {\n#include <fog_fragment>\n}' };
+    const sh = { uniforms: {}, vertexShader: T.ShaderLib.standard.vertexShader, fragmentShader: T.ShaderLib.standard.fragmentShader };
     m.mats[k].onBeforeCompile(sh);
     assert.equal(sh.uniforms.islandFogFar, m.fogClip, k);
-    assert.match(sh.fragmentShader, /min\( fogFar, islandFogFar \)/, k);
+    assert.match(sh.fragmentShader, /min\( fogFar, islandFogFar \) \), vIslandFogDist \)/, k);
+    // straight-line distance, not view depth: off to the side of the view, depth is well short of the
+    // distance, so an island past the draw distance would sit inside the far plane only part fogged
+    assert.match(sh.vertexShader, /#include <fog_vertex>\n\tvIslandFogDist = length\( mvPosition\.xyz \);/, k);
+    assert.ok(!/smoothstep\( fogNear, fogFar, vFogDepth \)/.test(sh.fragmentShader), k);
   }
   assert.equal(m.mats.dome.onBeforeCompile, m.mats.rock.onBeforeCompile, 'one shared patch (shared programs)');
   assert.match(m.mats.lagoon.fragmentShader, /gl_FragColor\.a \*= 1\.0 - fade/);

@@ -306,13 +306,16 @@ export function createIslandModels(T, ocean) {
   };
   // Distance fog on the lit island parts ends at islandFogFar (fogClip: camera far minus a margin, set by
   // islands.js), so an island drifting in from out of sight fades in from full fog instead of popping at
-  // the far plane. In clear weather the scene fog ends at 260 m, past the 200 m camera far. Shared code,
-  // so the lit materials still share programs.
+  // the far plane. In clear weather the scene fog ends at 260 m, past the 200 m camera far. The fog runs on
+  // straight-line distance, not view depth: at the side of the view an island 250 m away is only ~160 m
+  // deep (inside the far plane), and depth fog would show it there part fogged. Shared code, so the lit
+  // materials still share programs.
   const fogClip = { value: Math.min(VIEW.CAMERA_FAR, VIEW.FOG_FAR) - VIEW.FOG_MARGIN };
   const clipFog = sh => {
     sh.uniforms.islandFogFar = fogClip;
-    sh.fragmentShader = 'uniform float islandFogFar;\n' + sh.fragmentShader.replace('#include <fog_fragment>',
-      T.ShaderChunk.fog_fragment.replace('smoothstep( fogNear, fogFar, vFogDepth )', 'smoothstep( fogNear, max( fogNear + 1.0, min( fogFar, islandFogFar ) ), vFogDepth )'));
+    sh.vertexShader = 'varying float vIslandFogDist;\n' + sh.vertexShader.replace('#include <fog_vertex>', '#include <fog_vertex>\n\tvIslandFogDist = length( mvPosition.xyz );');
+    sh.fragmentShader = 'uniform float islandFogFar;\nvarying float vIslandFogDist;\n' + sh.fragmentShader.replace('#include <fog_fragment>',
+      T.ShaderChunk.fog_fragment.replace('smoothstep( fogNear, fogFar, vFogDepth )', 'smoothstep( fogNear, max( fogNear + 1.0, min( fogFar, islandFogFar ) ), vIslandFogDist )'));
   };
   for (const k in mats) if (k !== 'lagoon') mats[k].onBeforeCompile = clipFog;
   return {
