@@ -47,7 +47,7 @@ export function createIslands(ctx) {
   let layout = null;                  // layoutFor(st.isl.seed)
   let warned = false;
   // The 'drifting this way' notice waits until the island is close enough to show through the fog
-  // (it is born ~240 m out, past the draw distance).
+  // (it is born ~260 m out, out of sight).
   const ANNOUNCE_Z = -150;
   let announced = true;
   const cool = { host: 0, guest: 0 };
