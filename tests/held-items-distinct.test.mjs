@@ -49,6 +49,31 @@ test('every inventory kind has its own held model (no two ids share one)', () =>
   assert.deepEqual(clashes, [], 'item ids sharing one held mesh');
 });
 
+// Ids whose held meshes have the same shape (counts and positions) must differ in colour by a margin a player
+// sees (paint pots, juice cups, ores, ingots), not by a colour jitter that only passes the fingerprint.
+test('same-shape held models differ by a visible colour', () => {
+  const parts = (root) => {
+    root.updateMatrixWorld(true);
+    return fingerprint(root).split('|').map((p) => { const i = p.lastIndexOf(':'); return [p.slice(0, i), p.slice(i + 1)]; });
+  };
+  const rgb = (hex) => { const c = new T.Color('#' + hex).convertLinearToSRGB(); return [c.r, c.g, c.b].map((x) => x * 255); };
+  const byShape = new Map(), weak = [];
+  for (const kind of ITEM_KINDS) {
+    const p = parts(buildItemModel(T, kind, factory)), shape = p.map(([g]) => g).join('|');
+    for (const [other, q] of byShape.get(shape) || []) {
+      let best = 0;
+      p.forEach(([, a], i) => a.split('/').forEach((h, j) => {
+        const b = q[i][1].split('/')[j];
+        if (h !== '-' && b && b !== '-') best = Math.max(best, Math.hypot(...rgb(h).map((x, k) => x - rgb(b)[k])));
+      }));
+      if (best < 40 && !allowed(other, kind)) weak.push(`${other} ~ ${kind} (${best.toFixed(0)})`);
+    }
+    if (!byShape.has(shape)) byShape.set(shape, []);
+    byShape.get(shape).push([kind, p]);
+  }
+  assert.deepEqual(weak, [], 'same-shape held models whose colours barely differ');
+});
+
 test('no inventory kind falls back to the generic bundle', () => {
   const shape = (m) => fingerprint(m).split('|').map((p) => p.replace(/:[^:]*:/, ':')).join('|'); // counts + colours, any scale
   const bundle = shape(buildItemModel(T, 'not-a-real-kind', factory));
