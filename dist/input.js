@@ -100,7 +100,8 @@ export function createInput({
   });
   on(target, 'mouseup', e => { held.delete('Mouse' + e.button); });
   on(doc, 'mousemove', e => {
-    if (!locked() || isBlocked()) return;
+    const lk = locked(); lookFilter.lock(lk); // lock seen here first when this move beats 'pointerlockchange'
+    if (!lk || isBlocked()) return;
     // spike filter: drops the first sample after lock (the jump to centre) and isolated pointer-lock
     // glitches, but a big fast flick that continues the motion still turns the camera
     const [x, y] = lookFilter.filter(e.movementX || 0, e.movementY || 0);
@@ -116,8 +117,9 @@ export function createInput({
     api.activeDevice = 'kbm';
   }, { passive: false });
   on(doc, 'pointerlockchange', () => {
-    if (doc.pointerLockElement && (!element || doc.pointerLockElement === element)) lookFilter.reset({ dropFirst: true });
-    else { releaseMouse(); mouseX = mouseY = 0; lookFilter.reset(); }
+    const lk = !!doc.pointerLockElement && (!element || doc.pointerLockElement === element);
+    lookFilter.lock(lk); // gaining the lock drops its first move (the jump to centre)
+    if (!lk) { releaseMouse(); mouseX = mouseY = 0; }
   });
 
   // ---------- focus ----------

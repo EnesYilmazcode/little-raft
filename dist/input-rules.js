@@ -7,23 +7,28 @@ export function keyDecision({inField = false, blocked = false} = {}) {
 }
 
 // Mouse look: a spike filter instead of a hard clamp. A move much larger than the running average
-// is held for one event; it is applied together with the next event if that one continues the
-// motion (a real flick), and dropped otherwise (an isolated pointer-lock spike).
-// reset({dropFirst:true}) also discards the very first move after the lock is gained.
-export function createLookFilter({floor = 400, ratio = 4, keep = .25} = {}) {
-  let held = null, avg = 0, dropNext = false;
+// (and above floor counts) is held for one event; it is applied together with the next event if that one
+// continues the motion and is at least keep of its size (a real flick), and dropped otherwise (an isolated
+// pointer-lock spike). Vertical counts weigh yWeight times more: pitch has only ~155 degrees of travel, so a
+// 200-count vertical spike throws the view to a clamp, while big one-event flicks are horizontal turns.
+// lock(on) tracks the pointer lock: gaining it discards the very first move (the jump to centre), even when
+// that move arrives before 'pointerlockchange'. reset() (panel open, blur) never cancels that pending drop.
+// reset({dropFirst:true}) arms the drop by hand.
+export function createLookFilter({floor = 400, ratio = 4, keep = .34, yWeight = 2.5} = {}) {
+  let held = null, avg = 0, dropNext = false, locked = false;
   function filter(dx, dy) {
     dx = Number.isFinite(dx) ? dx : 0; dy = Number.isFinite(dy) ? dy : 0;
     if (dropNext) { dropNext = false; return [0, 0]; }
-    const m = Math.hypot(dx, dy);
+    const m = Math.hypot(dx, dy * yWeight);
     if (!held && m > Math.max(floor, ratio * avg)) { held = {dx, dy, m}; return [0, 0]; }
     let ox = dx, oy = dy;
     if (held) { const h = held; held = null; if (dx * h.dx + dy * h.dy > 0 && m >= h.m * keep) { ox += h.dx; oy += h.dy; } }
-    avg = avg * .6 + Math.hypot(ox, oy) * .4;
+    avg = avg * .6 + Math.hypot(ox, oy * yWeight) * .4;
     return [ox, oy];
   }
-  function reset({dropFirst = false} = {}) { held = null; avg = 0; dropNext = !!dropFirst; }
-  return {filter, reset};
+  function reset({dropFirst = false} = {}) { held = null; avg = 0; if (dropFirst) dropNext = true; }
+  function lock(on) { on = !!on; if (on !== locked) reset({dropFirst:on}); if (!on) dropNext = false; locked = on; }
+  return {filter, reset, lock};
 }
 
 // Frame stepping: split a real frame time into n equal steps of at most maxStep seconds,
