@@ -21,8 +21,9 @@ export const PLAYER_CONSTANTS = Object.freeze({
   WATER_EXIT_HYST: 0.2,      // extra height needed to stop swimming
   SWIM_EYE_ABOVE_WATER: 0.45,
   SWIM_RISE_BONUS: 0.35,     // target lift while jump is held
-  BUOY_SPRING: 30,
-  BUOY_DAMP: 7,
+  BUOY_SPRING: 60,
+  BUOY_DAMP: 12,             // ~0.8 of critical: rides the swell closely, settles with one small overshoot
+  BUOY_STEP: 1 / 240,        // s, buoyancy integration substep
   SPLASH_DAMP: 0.45,
   // Auto clamber
   CLAMBER_REACH: 0.8,        // body edge distance to a tile
@@ -193,15 +194,20 @@ export class PlayerPhysics {
       }
       const prevFeet = this.y - C.EYE_OFFSET, vy0 = this.vy;
       if (this.swimming) {
+        // Buoyancy spring in fixed small substeps so the surface bob and splash dunk match at any fps.
         const target = waterY + C.SWIM_EYE_ABOVE_WATER + (jump ? C.SWIM_RISE_BONUS : 0);
-        const ay = C.BUOY_SPRING * (target - this.y) - C.BUOY_DAMP * this.vy;
-        this.vy += ay * dt;
+        const n = Math.ceil(dt / C.BUOY_STEP - 1e-9), h = dt / n;
+        for (let i = 0; i < n; i++) {
+          this.vy += (C.BUOY_SPRING * (target - this.y) - C.BUOY_DAMP * this.vy) * h;
+          this.vy = clamp(this.vy, -C.MAX_FALL_SPEED, C.MAX_FALL_SPEED);
+          this.y += this.vy * h;
+        }
       } else {
         this.vy -= C.GRAVITY * dt;
+        this.vy = clamp(this.vy, -C.MAX_FALL_SPEED, C.MAX_FALL_SPEED);
+        // Falling uses the mean velocity over the step (exact for constant gravity), so jump height is the same at any fps.
+        this.y += (vy0 + this.vy) / 2 * dt;
       }
-      this.vy = clamp(this.vy, -C.MAX_FALL_SPEED, C.MAX_FALL_SPEED);
-      // Falling uses the mean velocity over the step (exact for constant gravity), so jump height is the same at any fps.
-      this.y += (this.swimming ? this.vy : (vy0 + this.vy) / 2) * dt;
       const feet = this.y - C.EYE_OFFSET;
 
       // Land on deck only when falling and feet cross the deck plane over a tile.
