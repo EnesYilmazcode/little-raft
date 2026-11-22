@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
-const { BuildGrid, cleanPieces, toRec, PIECES, PIECE_ORDER, STATEFUL, LEVEL_H, FLOOR_THICK, DIR, RAIL_H } = await import(new URL('building-pieces.js', base));
+const { BuildGrid, cleanPieces, toRec, PIECES, PIECE_ORDER, STATEFUL, LEVEL_H, FLOOR_THICK, DIR, RAIL_H, RAIL_GUARD } = await import(new URL('building-pieces.js', base));
 const { PlayerPhysics, PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base));
 const { MoveFeel } = await import(new URL('move-feel.js', base));
 const paint = await import(new URL('paint.js', base));
@@ -72,7 +72,9 @@ test('pack pieces: catalogue, appended order, stateful set', () => {
   assert.equal(PIECES.railing.slot, 'edge'); assert.equal(PIECES.gate.slot, 'edge');
   assert.equal(PIECES.hatch.slot, 'cell'); assert.equal(PIECES.ladder.slot, 'cell');
   for (const t of ['railing', 'hatch', 'ladder', 'gate']) assert.equal(PIECES[t].full, false);
-  assert.ok(RAIL_H > PC.JUMP_IMPULSE ** 2 / (2 * PC.GRAVITY), 'railing is above the jump height');
+  // The guard box, not the visible rail, stops jumps: it clears the jump apex plus ~0.25 m of deck bob.
+  assert.ok(RAIL_GUARD >= PC.JUMP_IMPULSE ** 2 / (2 * PC.GRAVITY) + 0.25, 'railing guard is above the jump height');
+  assert.ok(RAIL_GUARD <= LEVEL_H + 0.55, 'guard stays within a step of the storey above');
   assert.deepEqual(Object.keys(STATEFUL).sort(), ['gate', 'hatch']);
 });
 

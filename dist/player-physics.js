@@ -8,8 +8,11 @@ export const PLAYER_CONSTANTS = Object.freeze({
   WALK_SPEED: 2.6,
   SPRINT_SPEED: 4,
   SWIM_SPEED: 2.1,
-  JUMP_IMPULSE: 4.6,
-  GRAVITY: 12,
+  // Jump: apex = JUMP_IMPULSE^2 / (2 * GRAVITY) = 2.445 m, a bit over one wall (building-pieces LEVEL_H 2.2 m),
+  // so a player can hop up onto a one-storey floor. Falling pulls harder than rising (snappy, ~0.9 s airtime).
+  JUMP_IMPULSE: 9.89,
+  GRAVITY: 20,               // rising (vy > 0)
+  FALL_GRAVITY: 30,          // falling (vy <= 0)
   EYE_OFFSET: 1.6,
   BODY_RADIUS: 0.25,
   TILE_SIZE: 2,
@@ -171,17 +174,14 @@ export class PlayerPhysics {
     }
 
     if (!this.grounded) {
-      const prevFeet = this.y - C.EYE_OFFSET, vy0 = this.vy;
+      const prevFeet = this.y - C.EYE_OFFSET;
       if (this.swimming) {
         const target = waterY + C.SWIM_EYE_ABOVE_WATER + (jump ? C.SWIM_RISE_BONUS : 0);
         const ay = C.BUOY_SPRING * (target - this.y) - C.BUOY_DAMP * this.vy;
         this.vy += ay * dt;
-      } else {
-        this.vy -= C.GRAVITY * dt;
-      }
-      this.vy = clamp(this.vy, -C.MAX_FALL_SPEED, C.MAX_FALL_SPEED);
-      // Falling uses the mean velocity over the step (exact for constant gravity), so jump height is the same at any fps.
-      this.y += (this.swimming ? this.vy : (vy0 + this.vy) / 2) * dt;
+        this.vy = clamp(this.vy, -C.MAX_FALL_SPEED, C.MAX_FALL_SPEED);
+        this.y += this.vy * dt;
+      } else this._fall();
       const feet = this.y - C.EYE_OFFSET;
 
       // Land on deck only when falling and feet cross the deck plane over a tile.
@@ -212,6 +212,24 @@ export class PlayerPhysics {
   }
 
   // ---------- internals ----------
+
+  // Airborne vertical step: GRAVITY while rising, FALL_GRAVITY while falling. Exact per piece (mean velocity,
+  // split at the apex when vy crosses zero mid-step), so the jump height and airtime match at any fps.
+  _fall() {
+    const dt = this._dt;
+    const vy0 = this.vy;
+    let dy;
+    if (vy0 > 0 && vy0 < C.GRAVITY * dt) {
+      const t1 = vy0 / C.GRAVITY, t2 = dt - t1;
+      this.vy = -C.FALL_GRAVITY * t2;
+      dy = vy0 * t1 / 2 + this.vy * t2 / 2;
+    } else {
+      this.vy -= (vy0 > 0 ? C.GRAVITY : C.FALL_GRAVITY) * dt;
+      dy = (vy0 + this.vy) / 2 * dt;
+    }
+    this.vy = clamp(this.vy, -C.MAX_FALL_SPEED, C.MAX_FALL_SPEED);
+    this.y += dy;
+  }
 
   _sanitize(tiles) {
     const deckY = this._deckY;

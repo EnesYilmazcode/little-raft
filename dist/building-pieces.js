@@ -32,12 +32,14 @@ export const PIECES = Object.freeze({
 export const PIECE_ORDER = Object.freeze(['foundation', 'floor', 'wall', 'halfwall', 'window', 'door', 'pillar', 'stairs', 'roof', 'railing', 'hatch', 'ladder', 'gate']);
 // Stateful pieces carry `o: 1` only while open; a closed record is the plain {t,i,j,l,r}.
 export const STATEFUL = Object.freeze(Object.assign(Object.create(null), {hatch: 1, gate: 1}));
-// Railing/gate height (above the 0.88 m jump), gate opening, open hatch leaf height, ladder box (u from the
+// Railing/gate height, gate opening, open hatch leaf height, ladder box (u from the
 // cell centre along DIR[r], metres) and its half width.
 export const RAIL_H = 0.95, GATE_GAP = 1.2, LEAF_H = 1.0, LAD_IN = 0.86, LAD_OUT = 0.96, LAD_HALF = 0.45;
 // RAIL_GUARD: railing / gate collision height. A jump from a deck that is bobbing down rises up to ~0.25 m more
-// relative to the deck than the 0.88 m still-deck jump, so the solid box reaches above the visible rail.
-const RAIL_GUARD = RAIL_H + 0.25, LEAF_T = 0.06, LAD_PIN = LAD_IN - BODY_R - 0.02;
+// relative to the deck than the 2.445 m still-deck jump (PlayerPhysics), so the solid box reaches far above the
+// visible rail. It stays within STEP_UP of the next storey's floor, so grounded walkers upstairs never hit it.
+export const RAIL_GUARD = 2.7;
+const LEAF_T = 0.06, LAD_PIN = LAD_IN - BODY_R - 0.02;
 
 // Null-prototype lookups: `t in SLOT_OF` must not accept 'constructor' / '__proto__' / 'toString' from saves or guests.
 const SLOT_OF = Object.assign(Object.create(null), {floor: 0, roof: 0, stairs: 1, wall: 2, halfwall: 2, window: 2, door: 2, pillar: 3,
