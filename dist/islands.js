@@ -3,7 +3,7 @@
 // Design and notes: docs/features/islands.md. Pure logic lives in islands-layout.js (unit tested).
 import {
   ISLAND, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
-  applyGather, standOnSand, DEFAULTS, CHOP, isAxe,
+  applyGather, standOnSand, DEFAULTS, CHOP, isAxe, TIMELINE,
 } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 import { createIslandModels, PALM_H, PALM_BEND } from './islands-models.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
@@ -49,8 +49,8 @@ export function createIslands(ctx) {
   const cool = { host: 0, guest: 0 };
   const gatherState = { isl: null, layout: null, cx: 0, cz: 0, clock: 0, cool };
   const out = { v: 1, clock: 0, next: 0, isl: null }; // cached serialize() object
-  const outIsl = { seed: 0, born: 0, dock: 0, side: 1, off: 0, used: null };
-  const path = { phase: 'gone', z: 0, left: 0, sink: 0 };
+  const outIsl = { tl: TIMELINE, seed: 0, born: 0, dock: 0, side: 1, off: 0, used: null };
+  const path = { phase: 'gone', z: 0, left: 0 };
 
   // Live placement, refreshed in update().
   let shown = false, cx = 0, cz = 0, gy = 0, carryX = NaN, carryZ = NaN;
@@ -84,7 +84,7 @@ export function createIslands(ctx) {
     return m;
   });
   const [palmSpent, nuts] = extra;
-  const veg = [...meshes, ...extra]; // scaled down while the island rises or sinks
+  const veg = [...meshes, ...extra];
   group.add(dome, ...veg);
   if (ctx.scene) { ctx.scene.add(group); ctx.scene.add(lagoon); }
   lagoon.visible = false;
@@ -175,14 +175,12 @@ export function createIslands(ctx) {
     if (path.phase === 'gone') { shown = false; group.visible = lagoon.visible = false; return; }
     cx = isl.side * isl.off; cz = path.z;
     const b = baseY();
-    gy = b + (waveAt(cx, cz) - b) * .25 - path.sink;
+    // Always at full height: islands drift in from past the draw distance (fog hides them there).
+    gy = b + (waveAt(cx, cz) - b) * .25;
     group.position.set(cx, gy, cz);
-    // While rising or sinking, plants shrink with the sink so palm crowns never poke out of open sea.
-    const grow = 1 - path.sink / ISLAND.SINK;
-    for (let i = 0; i < veg.length; i++) veg[i].scale.setScalar(grow < 1e-3 ? 1e-3 : grow);
+    if (ctx.camera && ctx.camera.far > 0) models.fogClip.value = ctx.camera.far;
     lagoon.position.set(cx, b + .1, cz); // 10 cm up: clears the ocean mesh's ~4 cm interpolation error at grazing angles
     models.lagoonUniforms.uCentre.value.set(cx, cz);
-    models.lagoonUniforms.uOpacity.value = 1 - path.sink / ISLAND.SINK;
     shown = group.visible = lagoon.visible = true;
   }
   function groundAt(x, z) { // world y of the sand, or NaN
@@ -196,7 +194,7 @@ export function createIslands(ctx) {
     seed = (Number.isInteger(seed) && seed >= 0 && seed < 4294967296) ? seed : (Math.random() * 4294967296) >>> 0;
     const lay = layoutFor(seed);
     const { side, off } = dockOffset(ctx.world && ctx.world.tiles, lay);
-    st.isl = { seed, born: st.clock - Math.max(0, t), dock: ISLAND.DOCK, side, off, used: lay.nodes.map(() => 0) };
+    st.isl = { tl: TIMELINE, seed, born: st.clock - Math.max(0, t), dock: ISLAND.DOCK, side, off, used: lay.nodes.map(() => 0) };
     relayout(); place();
     if (t < ISLAND.APPROACH) emitAll('An island is drifting this way. Swim over and take a look!');
   }

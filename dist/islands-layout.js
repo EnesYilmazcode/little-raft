@@ -3,12 +3,16 @@
 import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { toolRole, wearPerUse } from './items.js?build=v3-survival-ae77fa84ac2b';
 
+// Draw distance: camera.far in game.js (new T.PerspectiveCamera(..., .05, 200)). Islands are fully
+// fogged by then (islands-models.js caps their fog there), so they appear and leave past this range.
+const VIEW = 200;
 export const ISLAND = Object.freeze({
   FIRST: 90,            // first island in a fresh world (s)
   CALM_MIN: 150, CALM_MAX: 240,
-  APPROACH: 25, DOCK: 180, DOCK_CAP: 600, DEPART: 30, WARN: 30,
-  START_Z: -60, END_Z: 60,
-  RISE: 4, SINK: 3,     // seconds and metres the island rises out of / sinks into the sea at each end
+  APPROACH: 100, DOCK: 180, DOCK_CAP: 600, DEPART: 100, WARN: 30,
+  VIEW,                 // camera far (m); a test checks it against game.js
+  START_Z: -(VIEW + 40), END_Z: VIEW + 40, // spawn and removal past the draw distance (with room for the raft), full height
+  EASE: 30,             // metres of easing into the dock (and out of it); the rest is a steady ~2.7 m/s drift
   TOP: 0.9,             // dome top above the group origin (mean water)
   FALL: 1.8,            // TOP - FALL * u^4: shoreline at u ~ 0.84, -0.9 m at the rim
   RIM: 1.15,            // the sand mesh (and ground) stop here, in units of R
@@ -121,29 +125,45 @@ export function layoutFor(seed) {
   return out;
 }
 
-const easeOut = u => 1 - (1 - u) * (1 - u) * (1 - u);
-const easeIn = u => u * u * u;
+// Distance covered after fraction u of a leg of length d: a steady drift, then a stop over the last
+// EASE metres with no jump in speed (EASE / (d + EASE) of the time is spent easing).
+function leg(u, d) {
+  const e = Math.min(ISLAND.EASE, d), k = d + e, s = clamp(u, 0, 1) * k;
+  if (s <= d - e || e <= 0) return Math.min(s, d);
+  const r = (k - s) / (2 * e);
+  return d - e * r * r;
+}
 // Where the island is t seconds after it was born. Writes into out (pass one to avoid allocating).
-// out.left: seconds left in this phase. out.sink: metres below its normal height (rising/sinking).
+// out.left: seconds left in this phase. The island never moves vertically: it drifts in from past the
+// draw distance and drifts back out past it.
 export function pathAt(t, dock, dockZ = 0, out = {}) {
   const A = ISLAND.APPROACH, D = fin(dock) ? Math.max(0, dock) : ISLAND.DOCK, P = ISLAND.DEPART;
   if (!fin(t) || t < 0) t = 0;
-  out.sink = 0;
   if (t < A) {
     out.phase = 'approach'; out.left = A - t;
-    out.z = ISLAND.START_Z + (dockZ - ISLAND.START_Z) * easeOut(t / A);
-    if (t < ISLAND.RISE) { const k = 1 - t / ISLAND.RISE; out.sink = ISLAND.SINK * k * k; }
+    out.z = ISLAND.START_Z + leg(t / A, dockZ - ISLAND.START_Z);
   } else if (t < A + D) {
     out.phase = 'docked'; out.left = A + D - t; out.z = dockZ;
   } else if (t < A + D + P) {
-    const u = (t - A - D) / P;
+    const d = ISLAND.END_Z - dockZ;
     out.phase = 'depart'; out.left = A + D + P - t;
-    out.z = dockZ + (ISLAND.END_Z - dockZ) * easeIn(u);
-    if (out.left < ISLAND.RISE) { const k = 1 - out.left / ISLAND.RISE; out.sink = ISLAND.SINK * k * k; }
+    out.z = dockZ + d - leg(1 - (t - A - D) / P, d);
   } else {
-    out.phase = 'gone'; out.left = 0; out.z = ISLAND.END_Z; out.sink = ISLAND.SINK;
+    out.phase = 'gone'; out.left = 0; out.z = ISLAND.END_Z;
   }
   return out;
+}
+
+// Saves made before islands drifted in from the draw distance (no isl.tl) used a 25 s approach, which
+// started by rising out of the sea, and a 30 s departure, which ended by sinking. Map such an age to the
+// same phase and progress now (a mid-rise island comes back far out in the fog, at full height).
+const OLD_APPROACH = 25, OLD_DEPART = 30;
+export function oldAge(t, dock) {
+  if (!fin(t) || t < 0) t = 0;
+  if (t < OLD_APPROACH) return t / OLD_APPROACH * ISLAND.APPROACH;
+  if (t < OLD_APPROACH + dock) return ISLAND.APPROACH + t - OLD_APPROACH;
+  if (t < OLD_APPROACH + dock + OLD_DEPART) return ISLAND.APPROACH + dock + (t - OLD_APPROACH - dock) / OLD_DEPART * ISLAND.DEPART;
+  return ISLAND.APPROACH + dock + ISLAND.DEPART;
 }
 
 // Seconds of calm before the next island (seeded so it is reproducible in tests).
@@ -167,6 +187,8 @@ export function dockOffset(tiles, layout) {
   return { side, off };
 }
 
+// isl.tl: timeline version. Missing means a save from before the drift-in timeline (see oldAge).
+export const TIMELINE = 2;
 export const DEFAULTS = () => ({ v: 1, clock: 0, next: ISLAND.FIRST, isl: null });
 
 // Validate a save / net slice. Never throws; always returns a fresh valid object.
@@ -181,11 +203,12 @@ export function clean(data, layoutOf = layoutFor) {
     if (!i || typeof i !== 'object' || Array.isArray(i)) return out;
     if (!isSeed(i.seed) || !fin(i.born) || !fin(i.dock) || !fin(i.off) || (i.side !== 1 && i.side !== -1) || !Array.isArray(i.used)) return out;
     const lay = layoutOf(i.seed);
-    const born = clamp(i.born, out.clock - (ISLAND.APPROACH + ISLAND.DOCK_CAP + ISLAND.DEPART), out.clock);
     const dock = clamp(i.dock, 0, ISLAND.DOCK_CAP);
+    const raw = i.tl === TIMELINE ? i.born : out.clock - oldAge(out.clock - i.born, dock);
+    const born = clamp(raw, out.clock - (ISLAND.APPROACH + ISLAND.DOCK_CAP + ISLAND.DEPART), out.clock);
     if (pathAt(out.clock - born, dock, lay.dockZ, {}).phase === 'gone') return out;
     const used = lay.nodes.map((n, k) => { const v = i.used[k]; return Number.isInteger(v) ? clamp(v, 0, n.max) : 0; });
-    out.isl = { seed: i.seed, born, dock, side: i.side, off: clamp(i.off, ISLAND.OFF_MIN, ISLAND.OFF_MAX), used };
+    out.isl = { tl: TIMELINE, seed: i.seed, born, dock, side: i.side, off: clamp(i.off, ISLAND.OFF_MIN, ISLAND.OFF_MAX), used };
   } catch { return DEFAULTS(); }
   return out;
 }
