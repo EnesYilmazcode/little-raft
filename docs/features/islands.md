@@ -53,7 +53,8 @@ inventory-state.js are unchanged, and no new hook was needed.
   then) and places the island before carrying the player.
 - **Waiting and the warning.** While someone is within `R + 6` m, the island holds with 31 s left
   (up to the 600 s cap). The warning "The island is starting to drift away" goes to everyone
-  (`emit(..., 'all')`) once, when the 30 s countdown really starts. On spawn everyone also gets
+  (`emit(..., 'all')`) once, when the 30 s countdown really starts. When the approaching island comes within 150 m
+  (z >= -150, where it shows through the fog) everyone also gets, once,
   "An island is drifting this way. Swim over and take a look!".
 - **Placement.** `off` = raft x-edge + gap (10 to 13 m, seeded) + shore radius, on the side where the
   raft extends less (ties use the seed's parity). `clean` clamps `off` to 8..60 instead of 8..38,
