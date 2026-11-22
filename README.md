@@ -1,6 +1,60 @@
 # Little Raft
 
-A small original 3D cooperative raft sandbox. No hunger or damage: hook supplies, extend the raft, craft decorations and automatic collection nets, and fish.
+A small original 3D cooperative raft survival sandbox. Hook supplies, extend the raft, craft decorations and automatic collection nets, fish, grow palms, and keep an eye on the shark.
+
+![A built-up raft seen from the water](docs/media/raft-from-water.jpg)
+
+## A look around
+
+You start on four planks with nothing but a hook. Throw it, reel in whatever drifts past, and the raft grows from there.
+
+| | |
+|---|---|
+| ![Title screen](docs/media/title.jpg) | ![First moments on a fresh raft](docs/media/spawn.jpg) |
+| The title screen floats over a live ocean. | A fresh game: one hook, open water, supplies drifting by. |
+
+### Hooking supplies
+
+Hold to charge, release to throw, hold again to reel. Every catch lands in the pickup feed in the bottom-left corner.
+
+![Throwing and reeling the hook](docs/media/hook.gif)
+
+### Crafting and the bag
+
+| | |
+|---|---|
+| ![Inventory and crafting](docs/media/inventory.jpg) | ![Pause menu](docs/media/pause.jpg) |
+| Tab opens the bag and the recipe book. Locked recipes show what to study first. | Escape pauses. Settings, co-op, your look and the photo album live here. |
+
+### Building
+
+Pick up the hammer to extend the floor, or hold any decoration to place it freely with a pointing finger.
+
+| | |
+|---|---|
+| ![Hammer showing where a foundation can go](docs/media/build-ghost.jpg) | ![Placing a crate on the deck](docs/media/place-decor.jpg) |
+| The hammer shows the foundation cost and where it fits. Note the fin in the water. | Decorations do not snap to the grid. |
+
+### Life on deck
+
+Palms in planters, a purifier, a rain barrel, a cooking pot, a hammock, lanterns, a sail and a signal receiver, all on one raft.
+
+![Looking around a built-up raft](docs/media/deck-pan.gif)
+
+### Day, night and weather
+
+The sun sets, lanterns matter, and rain rolls in now and then.
+
+![Day turning into night](docs/media/daynight.gif)
+
+| | |
+|---|---|
+| ![Raft in the rain](docs/media/rain.jpg) | ![Raft at night](docs/media/night.jpg) |
+| Rain fills the rain barrels. | Night on open water. |
+
+Every shot above is a real capture of the game from `dist/`, taken with [tools/shoot_readme.py](tools/shoot_readme.py).
+
+## Running it
 
 Run `python -m http.server 8766 --directory dist`, then open http://localhost:8766. Serve over HTTPS for remote play. Built with Three.js 0.170.0 and PeerJS 1.5.4, vendored under `dist/vendor`. Their upstream MIT licenses apply. Google Fonts are optional; system fonts are the fallback.
 
