@@ -197,9 +197,9 @@ export const ITEM_TEXT = Object.freeze({
   meal_fishbowl: { desc: 'Grilled fish on palm leaf with toasted seeds.', use: 'Eat it: Steady Reel, reel 30% faster for 3 min.' },
   meal_custard:  { desc: 'A sweet, wobbly custard.', use: 'Eat it: Night Owl, nights look brighter for 4 min.' },
   meal_stew:     { desc: 'A hearty stew of fish, egg and seaweed.', use: 'Eat it: Cosy Glow, a little better at everything for 5 min.' },
-  shell:      { desc: 'A bright, sun-bleached shell.', use: 'Pim takes these as coin at his trading barge.' },
+  shell:      { desc: 'A bright, sun-bleached shell.', use: 'Coin at the island trading posts.' },
   shellwreath:{ desc: 'A rope wreath set with bright shells.', use: 'Decorates the raft; place it on a tile.' },
-  glassfloat: { desc: 'A blue glass float in a rope net.', use: 'A rare keepsake from Pim; place it on a tile.' },
+  glassfloat: { desc: 'A blue glass float in a rope net.', use: 'A rare keepsake from a trading post; place it on a tile.' },
 
   // [recycler] floating junk + Sorting Tub
   oldboot:    { desc: 'A soggy old boot fished from the sea.', use: 'Sort it in a Sorting Tub for 2 plastic.' },
@@ -479,9 +479,9 @@ export const ITEM_SOURCE = Object.freeze({
   cookedpotato: Object.freeze({ tag: 'grill', how: 'Grill a potato.' }), // [crops]
   beet:        Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow beets in a crop plot.' }), // [crops]
   potato:      Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow potatoes in a crop plot.' }), // [crops]
-  // Pim's trading barge (trader.js)
-  shell:       Object.freeze({ tag: 'trader', how: 'Trade fish or puff eggs to Pim at his trading barge.' }),
-  glassfloat:  Object.freeze({ tag: 'trader', how: 'A rare offer at Pim\u2019s trading barge; pay in Bright Shells.' }),
+  // island trading posts (trader.js)
+  shell:       Object.freeze({ tag: 'trader', how: 'Trade fish or puff eggs at a trading post on a large island.' }),
+  glassfloat:  Object.freeze({ tag: 'trader', how: 'A rare offer at island trading posts; pay in Bright Shells.' }),
   // cooking pot (cookpot.js): meals are cooked, never crafted
   meal_chowder:  Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: fish + seaweed + fresh water; collect with a bowl.' }),
   meal_omelette: Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: 2 puff eggs + palm leaf; collect with a bowl.' }),
