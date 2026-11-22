@@ -307,7 +307,7 @@ export function mount(transfer = null) {
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
-  let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : 0;
+  let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? clamp(X.pitch, -PITCH_LIMIT, PITCH_LIMIT) : 0;
   let walking = false, walkPhase = Number.isFinite(X?.walkPhase) ? X.walkPhase : 0, swing = 0;
   const pointer = new T.Vector2(), ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), -.22);
   let ghostHold = null; // just-placed spot: the ghost stays hidden there until the aim moves off it
@@ -1884,7 +1884,7 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    lookFilter.reset({dropFirst:isLocked()}); // the first move after lock is often a bogus jump
+    lookFilter.lock(isLocked()); // the first move after lock is often a bogus jump
     if (isLocked()) { lockFallback = false; lockFailures = 0; lockNoGesture = false; pageLock.gained(performance.now()); lockedAtBlur = false; retryCheck = cancelTimer(retryCheck); }
     else { if (charging && charging.x === null) charging = null; reeling = false; if (!lockFallback) fc?.releaseInput(); if (building?.menu.isOpen) wheelLostAt = performance.now(); lockLost(!!building?.menu.isOpen); } // [fishing-cooking] its pointerup may never come
     if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
@@ -1892,6 +1892,7 @@ export function mount(transfer = null) {
   });
   on(document, 'pointerlockerror', lockFailed);
   on(document, 'mousemove', e => {
+    lookFilter.lock(isLocked()); // a move can arrive before 'pointerlockchange'
     if (building?.menu.isOpen) { if (isLocked()) building.menu.move(e.movementX, e.movementY); else building.menu.hoverAt(e.clientX, e.clientY); return; } // building-pieces lane hook
     if (controls || !isLocked() || uiBlocked()) return; // controls lane: input.js owns mouse look
     const [dx, dy] = lookFilter.filter(e.movementX, e.movementY);
