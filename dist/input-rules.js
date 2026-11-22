@@ -13,17 +13,19 @@ export function keyDecision({inField = false, blocked = false} = {}) {
 // 200-count vertical spike throws the view to a clamp, while big one-event flicks are horizontal turns.
 // lock(on) tracks the pointer lock: gaining it discards the very first move (the jump to centre), even when
 // that move arrives before 'pointerlockchange'. reset() (panel open, blur) never cancels that pending drop.
-// reset({dropFirst:true}) arms the drop by hand.
+// reset({dropFirst:true}) arms the drop by hand. scale (the look sensitivity, 1 = default) makes floor a turn
+// size, not a count: at 3x a 150-count spike would reach the clamp, at 0.2x a 600-count flick is a small look.
 export function createLookFilter({floor = 400, ratio = 4, keep = .34, yWeight = 2.5} = {}) {
   let held = null, avg = 0, dropNext = false, locked = false;
-  function filter(dx, dy) {
+  function filter(dx, dy, scale = 1) {
     dx = Number.isFinite(dx) ? dx : 0; dy = Number.isFinite(dy) ? dy : 0;
     if (dropNext) { dropNext = false; return [0, 0]; }
-    const m = Math.hypot(dx, dy * yWeight);
+    const s = Number.isFinite(scale) && scale > .05 ? scale : scale > 0 ? .05 : 1;
+    const m = Math.hypot(dx, dy * yWeight) * s;
     if (!held && m > Math.max(floor, ratio * avg)) { held = {dx, dy, m}; return [0, 0]; }
     let ox = dx, oy = dy;
     if (held) { const h = held; held = null; if (dx * h.dx + dy * h.dy > 0 && m >= h.m * keep) { ox += h.dx; oy += h.dy; } }
-    avg = avg * .6 + Math.hypot(ox, oy * yWeight) * .4;
+    avg = avg * .6 + Math.hypot(ox, oy * yWeight) * s * .4;
     return [ox, oy];
   }
   function reset({dropFirst = false} = {}) { held = null; avg = 0; if (dropFirst) dropNext = true; }

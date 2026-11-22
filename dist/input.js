@@ -104,7 +104,7 @@ export function createInput({
     if (!lk || isBlocked()) return;
     // spike filter: drops the first sample after lock (the jump to centre) and isolated pointer-lock
     // glitches, but a big fast flick that continues the motion still turns the camera
-    const [x, y] = lookFilter.filter(e.movementX || 0, e.movementY || 0);
+    const [x, y] = lookFilter.filter(e.movementX || 0, e.movementY || 0, sens());
     mouseX += x; mouseY += y; api.activeDevice = 'kbm';
   });
   on(element || target, 'wheel', e => {

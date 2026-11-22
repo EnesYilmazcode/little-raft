@@ -1895,7 +1895,7 @@ export function mount(transfer = null) {
     lookFilter.lock(isLocked()); // a move can arrive before 'pointerlockchange'
     if (building?.menu.isOpen) { if (isLocked()) building.menu.move(e.movementX, e.movementY); else building.menu.hoverAt(e.clientX, e.clientY); return; } // building-pieces lane hook
     if (controls || !isLocked() || uiBlocked()) return; // controls lane: input.js owns mouse look
-    const [dx, dy] = lookFilter.filter(e.movementX, e.movementY);
+    const [dx, dy] = lookFilter.filter(e.movementX, e.movementY, options.sensitivity);
     look(dx, dy, LOOK_SENSITIVITY * options.sensitivity);
   });
   on(canvas, 'pointerdown', e => {

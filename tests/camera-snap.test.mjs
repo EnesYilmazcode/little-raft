@@ -114,3 +114,25 @@ test('camera-snap: only respawn, reload and test helpers assign pitch outside lo
   const sets = gameSrc.split('\n').filter(l => /[^.\w]pitch = (?!Number\.isFinite\(X)/.test(l));
   for (const l of sets) assert.match(l, /look\(dx|pitch = -\.28|PITCH_LIMIT, PITCH_LIMIT\); (return|yaw)|function look|yaw -= dx/, l.trim().slice(0, 120));
 });
+
+test('camera-snap: spike limit follows the look sensitivity (a turn size, not a raw count)', () => {
+  // at 3x, a 150-count vertical spike is about 1 rad: from level straight to the clamp
+  for (const spike of [-150, 150, -100, 100]) {
+    const r = rig(3);
+    r.lock(); r.move(1);
+    for (let i = 0; i < 20; i++) r.move(2);
+    const before = r.pitch; r.resetStep();
+    r.move(spike); for (let i = 0; i < 5; i++) r.move(2);
+    assert.ok(Math.abs(r.pitch - before) < .15, `sens 3 spike ${spike} moved ${r.pitch - before}`);
+  }
+  // at 0.2x (high-DPI mouse, low in-game setting) a quick two-frame flick is a small real look: keep all of it
+  for (const [sens, seq] of [[.2, [600, 150]], [.5, [300, 90]], [.3, [-500, -400, -120]]]) {
+    const r = rig(sens);
+    r.lock(); r.move(1); r.move(2); r.move(2);
+    const before = r.pitch;
+    for (const c of seq) r.move(c);
+    r.frame();
+    const want = -seq.reduce((a, b) => a + b) * .0022 * sens;
+    assert.ok(Math.abs(r.pitch - before - want) < 1e-9, `sens ${sens} ${seq}: ${r.pitch - before} vs ${want}`);
+  }
+});

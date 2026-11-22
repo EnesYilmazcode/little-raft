@@ -66,7 +66,7 @@ test('INPUT-2: the first move after the lock is gained is discarded', () => {
 
 test('INPUT-2: game.js no longer clamps movementX and does not ask for unadjustedMovement', () => {
   assert.doesNotMatch(gameSrc, /clamp\(e\.movement[XY]/);
-  assert.match(gameSrc, /lookFilter\.filter\(e\.movementX, e\.movementY\)/);
+  assert.match(gameSrc, /lookFilter\.filter\(e\.movementX, e\.movementY[,)]/);
   assert.doesNotMatch(gameSrc, /unadjustedMovement/);
 });
 
