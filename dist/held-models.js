@@ -58,7 +58,7 @@ const WORLD = {
 const SHARED = new Set(['maptable', 'recycler', 'driftboard', 'photoframe']);
 // Icon-model kinds that are placed on the raft (the rest are hand items: ores, ingots, food, parts).
 const ICON_PLACED = ['smelter', 'researchtable', 'grill', 'research', 'receiver', 'antenna', 'purifier', 'rainbarrel', 'sprinkler'];
-export const HELD_PLACEABLE = Object.freeze([...Object.keys(WORLD).filter((k) => k !== 'driftboard'), ...ICON_PLACED]);
+export const HELD_PLACEABLE = Object.freeze([...Object.keys(WORLD).filter((k) => k !== 'driftboard'), 'rug', 'flagpole', ...ICON_PLACED]); // rug, flagpole: placed props
 
 // ---------------------------------------------------------------- low-poly props (match the inventory icons)
 function kit(T) {
@@ -336,7 +336,6 @@ export const HELD_SPEC = Object.freeze({
   ...Object.fromEntries(ICON_MODEL_KINDS.filter((k) => !ICON_PLACED.includes(k)).map((k) => [k, LUMP(0.11)])),
   saltcup: WATER, freshcup: WATER,
   binoculars: { size: 0.13, grip: [0.3, 0, 0], hold: { hand: 'right', pose: 'grip', rx: -0.2, ry: 1.5 } },
-  metalhook: { size: 0.12, grip: [0, 0.1, 0], hold: { hand: 'right', pose: 'grip', rz: 0.3 } }, // fist on the shank, eye above, bend below
   cookedfish: { size: 0.2, grip: [0.4, 0, 0], hold: { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.06, 0] } },
   honeyfish: { size: 0.2, grip: [0.4, 0, 0], hold: { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.06, 0] } },
 });

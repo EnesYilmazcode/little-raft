@@ -22,6 +22,7 @@
 import { buildItemModel, holdFor, isPlaceable, PLACEABLE_KINDS, surfaceTextures } from './held-items.js?build=v3-survival-ae77fa84ac2b';
 export { buildItemModel, isPlaceable, PLACEABLE_KINDS };
 const POSES = ['point', 'throw', 'grip', 'open'];
+const HOOKS = ['hook', 'metalhook']; // kinds thrown on the rope (the metal hook is the same tool, a steel model)
 
 // Merges meshes (all below `owner`) into one indexed geometry in owner space, keeping the attributes every
 // part has. tint(mesh) -> Color bakes a per-vertex colour, so parts with different flat materials can
@@ -434,7 +435,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     if (prev) prev.pivot.visible = false;
     st.shown = st.target;
     const next = st.shown && mountFor(st.shown);
-    if (next) next.pivot.visible = st.shown !== 'hook' || st.outW < 0.5;
+    if (next) next.pivot.visible = !HOOKS.includes(st.shown) || st.outW < 0.5;
     st.poseOverride = st.pendingPose;  // the new item comes up in its own pose
     st.raise = 0; st.lowering = false;
   }
@@ -478,7 +479,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     // Own fixed 60 degree projection: undo the world camera's FOV in camera-space x/y (depth untouched), so
     // the FOV setting never resizes the hands and they frame the same on every setting.
     if (Number.isFinite(params.fov) && params.fov > 0) { const s = Math.tan(params.fov * DEG / 2) / VM_TAN; root.scale.set(s, s, 1); }
-    const isHook = st.shown === 'hook', hasHookOut = st.hookOut = isHook && !!params.hasHookOut;
+    const isHook = HOOKS.includes(st.shown), hasHookOut = st.hookOut = isHook && !!params.hasHookOut;
     const leftRope = hasHookOut && st.reelW > 0.35;              // both fists on the line while reeling
     const pose = poseOf(st.shown), pointer = applyFingers(pose, hasHookOut, leftRope);
     const charge = pose === 'throw' ? 1 : isHook ? charge0 : 0;
@@ -583,7 +584,7 @@ export function createHands(T, { modelFactory = null } = {}) {
       spool.rotation.z = st.spool;
       const swing = 0.25 * pull * rW + 0.12 * wA * Math.sin(ph + Math.PI) + 0.10 * ce - 0.15 * a + 0.03 * amp * Math.sin(t * 1.3);
       coil.quaternion.copy(qLeftUp).multiply(qSwing.setFromAxisAngle(AX, swing));
-      const hm = mounts.get('hook');
+      const hm = mounts.get(st.shown);
       if (hm) hm.pivot.visible = !hasHookOut;
     }
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
