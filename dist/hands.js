@@ -109,11 +109,49 @@ export function createHands(T, { modelFactory = null } = {}) {
     m.customProgramCacheKey = () => 'vmKeyShade';
     return m;
   };
+  // [held-items] Skin: the same key fall-off, but shadows turn warm and red (light scattered under the skin) and a
+  // faint rim lifts the silhouette edge, so hands read as skin rather than wax.
+  const skinShade = (m) => {
+    m.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        float vmKey = clamp(dot(normal, normalize(vec3(-0.45, 0.75, 0.5))) * 0.5 + 0.5, 0.0, 1.0);
+        float vmLit = vmKey * vmKey * (3.0 - 2.0 * vmKey);
+        diffuseColor.rgb *= mix(0.46, 1.08, vmLit) * mix(vec3(1.0, 0.87, 0.82), vec3(1.0), vmLit);
+        float vmRim = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0);`).replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance += diffuseColor.rgb * vec3(0.30, 0.20, 0.16) * vmRim;`);
+    };
+    m.customProgramCacheKey = () => 'vmSkinShade';
+    return m;
+  };
+  // Fine skin detail (built once, 128 px, no image files): soft blotches, pores and faint creases running across
+  // the lathe UVs (rings round each finger read as knuckle wrinkles). Near white: it modulates the skin colour
+  // and doubles as a bump map.
+  const skinDetail = (() => {
+    const N = 128, d = new Uint8Array(N * N * 4);
+    const h = (x, y, k) => { const v = Math.sin(x * 127.1 + y * 311.7 + k * 74.7) * 43758.5453; return v - Math.floor(v); };
+    const vn = (u, v, c, k) => { // tiling value noise
+      const x = u * c, y = v * c, xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+      const g = (i, j) => h((xi + i) % c, (yi + j) % c, k);
+      return (g(0, 0) * (1 - sx) + g(1, 0) * sx) * (1 - sy) + (g(0, 1) * (1 - sx) + g(1, 1) * sx) * sy;
+    };
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const u = x / N, v = y / N, i = (y * N + x) * 4;
+      const blotch = 0.55 * vn(u, v, 4, 1) + 0.3 * vn(u, v, 8, 2) + 0.15 * vn(u, v, 16, 3);
+      const pore = h(x, y, 9) > 0.93 ? 0.94 : 1;
+      const crease = 1 - 0.05 * Math.pow(Math.abs(Math.sin(Math.PI * (v * 6 + 0.35 * vn(u, v, 4, 5)))), 24);
+      const k = (0.9 + 0.1 * blotch) * pore * crease, red = 0.035 * (vn(u, v, 6, 4) - 0.5);
+      d[i] = Math.round(Math.min(1, k + red) * 255); d[i + 1] = Math.round(Math.min(1, k - red * 0.6) * 255); d[i + 2] = Math.round(Math.min(1, k - red * 0.4) * 255); d[i + 3] = 255;
+    }
+    const t = new T.DataTexture(d, N, N, T.RGBAFormat);
+    t.wrapS = t.wrapT = T.RepeatWrapping; t.magFilter = T.LinearFilter; t.minFilter = T.LinearMipmapLinearFilter;
+    t.generateMipmaps = true; t.colorSpace = T.SRGBColorSpace; t.repeat.set(2, 1); t.needsUpdate = true;
+    return t;
+  })();
   const skin = keyShade(mat(0xc89068, 0.6, { emissive: 0x1c0e06, map: tx.skin }));
   const skinPalm = keyShade(mat(0xc08562, 0.64, { emissive: 0x1c0e06, map: tx.skin }));
   const skinTip = keyShade(mat(0xcc8e6c, 0.6, { emissive: 0x1c0e06, map: tx.skin })); // finger ends a touch pinker: fingers read as fingers
   const nail = keyShade(mat(0xe0b294, 0.38, { emissive: 0x120806 }));
-  const crease = mat(0x8e5a3c, 0.8);
+  const crease = mat(0x9c6446, 0.8); // [held-items] softer: reads as a skin fold, not a speck
   const sleeveMat = keyShade(mat(0x5a7462, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
   const cuffMat = keyShade(mat(0x465c4e, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
   const ropeMat = mat(0xc4a46c, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
@@ -126,7 +164,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   const toneOf = (m) => { const c = m.color.clone(); return new T.Color(c.r / BODY_SKIN.r, c.g / BODY_SKIN.g, c.b / BODY_SKIN.b); };
   const skinTones = [skin, skinPalm, skinTip, nail, crease].map((m) => [m, toneOf(m)]);
   const SLEEVE_BASE = sleeveMat.color.clone();
-  const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin })); skinV.color.copy(BODY_SKIN);
+  const skinV = skinShade(mat(0xffffff, 0.68, { emissive: 0x160805, vertexColors: true, map: skinDetail, bumpMap: skinDetail, bumpScale: 0.5 })); skinV.color.copy(BODY_SKIN);
   const clothV = keyShade(mat(0xffffff, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); clothV.color.copy(SLEEVE_BASE);
   const ropeV = mat(0xffffff, 1.0, { vertexColors: true, map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   const tint = (m) => m.material.color;
@@ -162,13 +200,46 @@ export function createHands(T, { modelFactory = null } = {}) {
     const mesh = new T.Mesh(taperGeo(r0, r1, L, radial), m);
     mesh.position.copy(a).addScaledVector(d, 0.5);
     mesh.quaternion.setFromUnitVectors(UP, d.normalize());
+    mesh.userData.cap = { a: a.clone(), b: b.clone(), r0, r1 };   // [held-items] occluder for the baked contact shading
     parent.add(mesh); return mesh;
   };
   const sphereGeo = G(new T.SphereGeometry(1, 16, 12));
   const ellipsoid = (parent, m, p, rx, ry, rz, rotY = 0) => {
     const mesh = new T.Mesh(sphereGeo, m);
     mesh.position.copy(p); mesh.scale.set(rx, ry, rz); mesh.rotation.y = rotY;
+    mesh.userData.ell = { c: p.clone(), rx, ry, rz };
     parent.add(mesh); return mesh;
+  };
+  // [held-items] Nail plate on the back of a finger tip: tip = end point, dir = finger direction (base -> tip),
+  // out = the side the nail faces. Built as a thin ellipsoid in that frame.
+  const nailM = new T.Matrix4(), nailX = V(), nailY = V(), nailZ = V();
+  const nailAt = (parent, tip, dir, out, r) => {
+    nailZ.copy(dir).normalize(); nailX.copy(out).addScaledVector(nailZ, -out.dot(nailZ)).normalize(); nailY.crossVectors(nailZ, nailX);
+    const mesh = new T.Mesh(sphereGeo, nail);
+    mesh.position.copy(tip).addScaledVector(nailZ, -r * 0.55).addScaledVector(nailX, r * 0.62);
+    mesh.quaternion.setFromRotationMatrix(nailM.makeBasis(nailX, nailY, nailZ));
+    mesh.scale.set(r * 0.32, r * 0.66, r * 0.95);
+    parent.add(mesh); return mesh;
+  };
+  // [held-items] Baked contact shading: vertices that sit close to ANOTHER part of the hand (between fingers, where
+  // fingers fold onto the palm, round the thumb root) are darkened and warmed. Runs once per baked pose mesh.
+  const occluders = (meshes) => meshes.map((m) => m.userData.cap || m.userData.ell).filter((o) => o && (o.r0 ?? o.rx) > 0.004);
+  const segDist = (v, o) => {
+    if (o.c) { const qx = (v.x - o.c.x) / o.rx, qy = (v.y - o.c.y) / o.ry, qz = (v.z - o.c.z) / o.rz; return (Math.hypot(qx, qy, qz) - 1) * Math.min(o.rx, o.ry, o.rz); }
+    const abx = o.b.x - o.a.x, aby = o.b.y - o.a.y, abz = o.b.z - o.a.z, L2 = abx * abx + aby * aby + abz * abz || 1;
+    const t = clamp01(((v.x - o.a.x) * abx + (v.y - o.a.y) * aby + (v.z - o.a.z) * abz) / L2);
+    return Math.hypot(v.x - o.a.x - abx * t, v.y - o.a.y - aby * t, v.z - o.a.z - abz * t) - (o.r0 + (o.r1 - o.r0) * t);
+  };
+  const contactShade = (mesh, occ) => {
+    const pos = mesh.geometry.attributes.position, col = mesh.geometry.attributes.color, v = V();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      let sum = 0, max = 0;
+      for (const o of occ) { const c = clamp01(1 - segDist(v, o) / 0.009); sum += c; if (c > max) max = c; }
+      const ao = clamp01(sum - max), k = 1 - 0.22 * ao, kg = k * (1 - 0.05 * ao);
+      col.setXYZ(i, col.getX(i) * k, col.getY(i) * kg, col.getZ(i) * kg);
+    }
+    col.needsUpdate = true;
   };
 
   // ---------------- hand (right-hand layout; mirrored for left) ----------------
@@ -196,6 +267,7 @@ export function createHands(T, { modelFactory = null } = {}) {
       // slightly slimmer than the finger spacing, so a thin shadow line separates the fingers
       seg(curl, skin, mcp, pip, f.r * 0.97, f.r * 0.90);
       seg(curl, skinTip, pip, tip, f.r * 0.90, f.r * 0.74);
+      nailAt(curl, tip, tip.clone().sub(pip), V(tip.x, 0, tip.z), f.r * 0.74);
       if (i < 3) {
         const c = P(f.a1 + 15, R + f.r * 0.8, f.y);
         seg(curl, crease, c.clone().setY(f.y - 0.0052), c.clone().setY(f.y + 0.0052), 0.0013, 0.0013, 6);
@@ -205,6 +277,7 @@ export function createHands(T, { modelFactory = null } = {}) {
       seg(tight, skin, mcp, k0.lerp(k1, 0.5), f.r * 1.05, f.r);
       seg(tight, skin, k0, k1, f.r, f.r * 0.92);
       seg(tight, skinTip, k1, k2, f.r * 0.92, f.r * 0.78);
+      nailAt(tight, k2, k2.clone().sub(k1), V(k2.x, 0, k2.z), f.r * 0.78);
       // straight finger: slight natural curl toward the palm, small fan spread
       const e1 = mcp.clone().add(V(-0.010, f.spread * 0.6, -f.len * 0.52));
       const e2 = e1.clone().add(V(-0.012, f.spread * 0.4, -f.len * 0.46));
@@ -223,12 +296,14 @@ export function createHands(T, { modelFactory = null } = {}) {
     seg(thumbCurl, skin, t0, tA, 0.0128, 0.0108);
     seg(thumbCurl, skin, tA, tB, 0.0104, 0.0094);
     seg(thumbCurl, skinTip, tB, tC, 0.0094, 0.0078);
+    nailAt(thumbCurl, tC, tC.clone().sub(tB), V(tC.x, 0.4 * Rt, tC.z), 0.0082);
     const u1 = V(-0.026 * k, 0.062, 0.030 * k), u2 = V(-0.040 * k, 0.083, 0.004 * k);
     seg(thumbExt, skin, t0, u1, 0.0135, 0.0118);
     seg(thumbExt, skinTip, u1, u2, 0.0118, 0.0094);
     const w1 = V(-0.024 * k, 0.030, 0.026 * k), w2 = V(-0.026 * k, 0.012, 0.004 * k);   // tucked over the curled middle finger
     seg(thumbTuck, skin, t0, w1, 0.0135, 0.0118);
     seg(thumbTuck, skinTip, w1, w2, 0.0118, 0.0094);
+    nailAt(thumbTuck, w2, w2.clone().sub(w1), V(-1, 0, 0.3), 0.0094);
     parent.add(thumbCurl, thumbExt, thumbTuck);
     // Each pose is baked into one mesh (palm + its finger and thumb variants): one draw call per hand.
     const poses = {
@@ -238,7 +313,11 @@ export function createHands(T, { modelFactory = null } = {}) {
       fist: [fingers.map((f) => f.tight), thumbTuck],                       // rope grip: closed round a thin line
     };
     const parts = [...parent.children];
-    for (const p in poses) poses[p] = bake(parent, [...palm, ...poses[p][0], poses[p][1]], skinV);
+    for (const p in poses) {
+      const objs = [...palm, ...poses[p][0], poses[p][1]];
+      poses[p] = bake(parent, objs, skinV);
+      contactShade(poses[p], occluders(meshesOf(...objs)));
+    }
     for (const o of parts) o.removeFromParent();
     return { wristPt: V(0.018 * k, -0.006, 0.084 * k), poses };
   }
@@ -579,6 +658,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const extra = new Set();
     dropMounts();
     for (const x of [...geos, ...mats]) x.dispose();
+    skinDetail.dispose();
     geos.length = 0; mats.length = 0;
   }
   // Frees every cached held model (factory models share cached geometry, so those are only detached).
