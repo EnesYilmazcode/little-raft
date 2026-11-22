@@ -1,10 +1,9 @@
-// Pim's Barge trade dialog (DOM only, docs/specs/trader.md §6). One <dialog id="lrTrader">. It reads state through the
+// Trading post dialog (DOM only, docs/specs/trader.md §6). One <dialog id="lrTrader">. It reads state through the
 // small `api` from trader.js and changes nothing itself: every Trade click becomes ctx.action({kind:'trader.trade'}).
 // tick() runs per frame while open; it compares a few numbers and repaints only on change.
 import { iconSVG, itemName } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
-const mmss = s => { const n = Math.max(0, Math.ceil(s)); const m = Math.floor(n / 60), r = n % 60; return m + ':' + (r < 10 ? '0' : '') + r; };
 
 const CSS = `
 #lrTrader.lr-tr{padding:0;margin:auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#fff2cc;width:min(520px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
@@ -15,7 +14,6 @@ const CSS = `
 #lrTrader .lr-tr-hicon{display:grid;place-items:center;flex:0 0 auto;width:40px;height:40px;border-radius:4px;background:#3a2716eb;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544}
 #lrTrader .lr-tr-hicon .sv-icon{width:30px;height:30px;filter:drop-shadow(0 1px 1px #0008)}
 #lrTrader .lr-tr-title{margin:0;font:800 19px/1.1 ${FONT};letter-spacing:.2px;color:#2a1b0e;text-shadow:0 1px 0 #d6b67e88}
-#lrTrader .lr-tr-sub{display:block;margin-top:2px;font:700 12px/1.2 ${FONT};color:#3e2a17cc}
 #lrTrader .lr-tr-x{margin-left:auto;flex:0 0 auto;width:32px;height:32px;padding:0;border:0;border-radius:4px;background:#3a2716eb;color:#fff2cc;font:700 18px/1 ${FONT};box-shadow:inset 0 0 0 1px #d4b07a55;cursor:pointer;transform:none}
 #lrTrader .lr-tr-x:hover{box-shadow:inset 0 0 0 1px #ffe3a6}
 #lrTrader .lr-tr-list{display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:4px;background:#3a2716eb;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544}
@@ -58,24 +56,24 @@ export function createTraderUI(api) {
   const esc = s => api.esc(String(s ?? ''));
   const dlg = document.createElement('dialog');
   dlg.id = 'lrTrader'; dlg.className = 'lr-tr';
-  dlg.setAttribute('aria-label', 'Pim’s Barge');
+  dlg.setAttribute('aria-label', 'Trading Post');
   dlg.innerHTML = `<div class="lr-tr-wrap" tabindex="-1">
-    <div class="lr-tr-head"><span class="lr-tr-hicon">${iconSVG('shell')}</span><div><h2 class="lr-tr-title"></h2><span class="lr-tr-sub"></span></div>
+    <div class="lr-tr-head"><span class="lr-tr-hicon">${iconSVG('shell')}</span><div><h2 class="lr-tr-title"></h2></div>
       <button type="button" class="lr-tr-x" aria-label="Close">✕</button></div>
     <div class="lr-tr-list" role="list"></div>
     <div class="lr-tr-foot"><span class="lr-tr-shells">${iconSVG('shell')}<span class="lr-tr-count"></span></span><span class="lr-tr-hint"><kbd>E</kbd> or <kbd>Esc</kbd> to close</span></div>
   </div>`;
   document.body.append(dlg);
   const $ = s => dlg.querySelector(s);
-  const title = $('.lr-tr-title'), sub = $('.lr-tr-sub'), list = $('.lr-tr-list'), count = $('.lr-tr-count');
-  title.textContent = 'Pim’s Barge';
+  const title = $('.lr-tr-title'), list = $('.lr-tr-list'), count = $('.lr-tr-count');
+  title.textContent = 'Trading Post';
   let isOpen = false, rowsSeed = null, rows = [];
 
   const chip = (k, n, short) => `<span class="lr-tr-chip${short ? ' lr-tr-short' : ''}" title="${esc(itemName(k))}">${iconSVG(k)}${esc(n)}</span>`;
   function build() {
     const offers = api.offers();
     rowsSeed = api.visitSeed();
-    if (!offers.length) { list.innerHTML = '<p class="lr-tr-empty">Pim has nothing to trade right now.</p>'; rows = []; return; }
+    if (!offers.length) { list.innerHTML = '<p class="lr-tr-empty">Nothing to trade right now.</p>'; rows = []; return; }
     let html = '';
     offers.forEach((o, i) => {
       const gets = o.plan ? `<span class="lr-tr-chip">${iconSVG(o.plan)}Plan</span>` : Object.entries(o.get).map(([k, n]) => chip(k, n)).join('');
@@ -88,7 +86,6 @@ export function createTraderUI(api) {
   function paint() {
     if (api.visitSeed() !== rowsSeed) build();
     const offers = api.offers(), stock = api.stock(), bag = api.bag();
-    sub.textContent = 'casts off in ' + mmss(api.left());
     count.textContent = 'Your shells: ' + (bag ? bag.count('shell') : 0);
     for (let i = 0; i < rows.length && i < offers.length; i++) {
       const o = offers[i], r = rows[i], left = stock[i] | 0;
@@ -101,12 +98,12 @@ export function createTraderUI(api) {
       r.el.classList.toggle('lr-tr-out', left <= 0);
     }
   }
-  let sRev = NaN, sVer = NaN, sSec = NaN, sSeed, sBag; // last painted inputs: numbers only, so tick() allocates nothing
+  let sRev = NaN, sVer = NaN, sSeed, sBag; // last painted inputs: numbers only, so tick() allocates nothing
   function tick() {
     if (!isOpen) return;
-    const bag = api.bag(), rev = api.rev(), ver = bag ? bag.version : -1, sec = Math.ceil(api.left()), seed = api.visitSeed();
-    if (rev === sRev && ver === sVer && sec === sSec && seed === sSeed && bag === sBag) return;
-    sRev = rev; sVer = ver; sSec = sec; sSeed = seed; sBag = bag; paint();
+    const bag = api.bag(), rev = api.rev(), ver = bag ? bag.version : -1, seed = api.visitSeed();
+    if (rev === sRev && ver === sVer && seed === sSeed && bag === sBag) return;
+    sRev = rev; sVer = ver; sSeed = seed; sBag = bag; paint();
   }
   function open() {
     sRev = NaN; rowsSeed = undefined; paint(); sRev = NaN;

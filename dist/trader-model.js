@@ -1,4 +1,4 @@
-// Pim's Barge, Shell Wreath and Glass Float models (docs/specs/trader.md §5).
+// Trading post stall, Shell Wreath and Glass Float models (docs/specs/trader.md §5).
 // Geometry and materials are built ONCE and shared; decor instance() returns a cheap Group of new Meshes.
 // game.js rebuildRaft() disposes children it removes, so shared dispose() calls are no-ops here;
 // the module's dispose() frees them for real. Decor origin = centre of the floor tile top (y = .22).
@@ -48,96 +48,55 @@ function shareable(T, list) {
   return () => { for (const x of list) (x.isMaterial ? realMat : realGeo).call(x); };
 }
 
-const WOOD = 0x7a5634, HULL = 0x6f4a2c, PLANK = 0xb98b55, TRIM = 0xe9d3a0;
+const WOOD = 0x7a5634, PLANK = 0xb98b55;
+
+const THATCH = 0xc9a35c, THATCH_D = 0xa8843f, SHELL = 0xf7d9c4;
 
 /**
- * Pim's trading barge: ~4 m along x, 1.8 m across z, the counter on the +z side (facing the raft).
- * Origin at the waterline-ish deck base (the module sets y). 5 draw calls.
+ * Trading post stall: a small open wooden hut, ~2.2 m wide along x, 1.4 m deep, the counter on the +z side, on a
+ * 3.5 x 1.6 m deck (trader-core.js FOOT_X / FOOT_Z). Origin: the centre of the deck underside. One merged vertex-colour mesh (1 draw call).
  */
-export function buildBarge(T) {
-  // (1) hull, deck, crates, mast, counter, posts: one merged vertex-colour mesh, the only shadow caster
+export function buildStall(T) {
   const { parts, add } = painter(T, 23);
-  add(new T.BoxGeometry(3.2, .5, 1.8), HULL, 0, .05, 0, 0, 0, 0, .06);
-  for (const s of [-1, 1]) add(new T.CylinderGeometry(.9, .9, .5, 14, 1, false, 0, Math.PI), HULL, s * 1.6, .05, 0, 0, s > 0 ? 0 : Math.PI, 0, .06, [.45, 1, 1]);
-  add(new T.BoxGeometry(3.3, .07, 1.86), TRIM, 0, .3, 0, 0, 0, 0, .04);
-  add(new T.BoxGeometry(3.1, .04, 1.62), PLANK, 0, .32, 0, 0, 0, 0, .1);
-  for (let i = 0; i < 6; i++) add(new T.BoxGeometry(.02, .045, 1.6), 0x8a6238, -1.3 + i * .52, .325, 0, 0, 0, 0, .05);
-  // cargo: crates and a barrel at the stern (-x) and along the back
-  add(new T.BoxGeometry(.5, .45, .5), 0xa87a45, -1.25, .565, -.4, 0, .1, 0, .08);
-  add(new T.BoxGeometry(.38, .34, .38), 0xb98a52, -1.2, .96, -.42, 0, -.25, 0, .08);
-  add(new T.BoxGeometry(.44, .4, .44), 0x9c6e3d, -.65, .54, -.5, 0, .3, 0, .08);
-  add(new T.CylinderGeometry(.2, .2, .5, 12), 0x8d5f36, -1.35, .59, .35, 0, 0, 0, .06);
-  add(new T.CylinderGeometry(.21, .21, .04, 12), 0x55606a, -1.35, .75, .35, 0, 0, 0, .03);
-  add(new T.CylinderGeometry(.21, .21, .04, 12), 0x55606a, -1.35, .43, .35, 0, 0, 0, .03);
-  // mast at the bow (+x)
-  add(new T.CylinderGeometry(.05, .06, 2.7, 8), WOOD, 1.15, 1.67, -.35, 0, 0, 0, .05);
-  add(new T.CylinderGeometry(.025, .025, 1.2, 6), WOOD, 1.15, 2.55, -.35, 0, 0, Math.PI / 2, .05);
-  // counter (stall) on the +z side, top at y .9
-  add(new T.BoxGeometry(1.4, .54, .28), 0x9a6b3c, 0, .61, .68, 0, 0, 0, .07);
-  add(new T.BoxGeometry(1.56, .05, .42), 0xd9b27a, 0, .9, .7, 0, 0, 0, .05);
-  for (const [x, c] of [[-.45, 0xf7d9c4], [-.3, 0xfff0dc], [.42, 0xf2a98f]]) add(new T.SphereGeometry(.05, 8, 6), c, x, .94, .78, 0, 0, 0, .04, [1, .5, 1.1]);
-  // awning posts
-  for (const [x, z] of [[-.78, .86], [.78, .86], [-.78, -.05], [.78, -.05]]) add(new T.CylinderGeometry(.035, .035, 1.62, 6), WOOD, x, 1.13, z, 0, 0, 0, .05);
-  // lantern bracket + frame on the front-right post
-  add(new T.BoxGeometry(.24, .03, .03), 0x4a4f52, .9, 1.78, .86, 0, 0, 0, .03);
-  add(new T.BoxGeometry(.13, .02, .13), 0x3e4245, 1.0, 1.57, .86, 0, 0, 0, .03);
-  add(new T.ConeGeometry(.1, .08, 4), 0x3e4245, 1.0, 1.73, .86, 0, Math.PI / 4, 0, .03);
-  const hullGeo = mergeParts(T, parts);
-  const hullMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, metalness: 0 }); hullMat.name = 'bargeHull';
-
-  // (2) awning and sail cloth, DoubleSide
-  const cloth = painter(T, 7);
-  for (let i = 0; i < 6; i++) cloth.add(new T.PlaneGeometry(.29, 1.15), i % 2 ? 0xf7ecd5 : 0xe86b4f, -.725 + i * .29, 2.0, .4, -Math.PI / 2 + .22, 0, 0, .03);
-  for (let i = 0; i < 6; i++) cloth.add(new T.PlaneGeometry(.29, .16), i % 2 ? 0xf7ecd5 : 0xe86b4f, -.725 + i * .29, 1.82, .99, 0, 0, 0, .03);
-  cloth.add(new T.PlaneGeometry(1.0, 1.55), 0xf2e6c8, 1.15, 1.72, -.33, 0, 0, 0, .04);
-  cloth.add(new T.PlaneGeometry(.94, .1), 0x3fa7a0, 1.15, 1.2, -.325, 0, 0, 0, .03);
-  const clothGeo = mergeParts(T, cloth.parts);
-  const clothMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: .95, side: T.DoubleSide }); clothMat.name = 'bargeCloth';
-
-  // (3) Pim the sea otter, origin at his feet, facing +z
-  const otter = painter(T, 3);
-  const FUR = 0x8b5e3c, PALE = 0xe2c49a, DARK = 0x2a1b12;
-  otter.add(new T.SphereGeometry(.26, 14, 10), FUR, 0, .42, 0, 0, 0, 0, .05, [1, 1.55, .9]);
-  otter.add(new T.SphereGeometry(.2, 12, 8), PALE, 0, .45, .09, 0, 0, 0, .04, [1, 1.5, .7]);
-  otter.add(new T.SphereGeometry(.19, 14, 10), FUR, 0, .92, 0, 0, 0, 0, .05, [1.18, .86, 1]);
-  otter.add(new T.SphereGeometry(.13, 12, 8), PALE, 0, .87, .12, 0, 0, 0, .03, [1.45, .78, .85]);
-  otter.add(new T.SphereGeometry(.035, 8, 6), DARK, 0, .91, .23, 0, 0, 0, .02);
-  for (const s of [-1, 1]) {
-    otter.add(new T.SphereGeometry(.026, 8, 6), DARK, s * .085, .965, .165, 0, 0, 0, .02);
-    otter.add(new T.SphereGeometry(.032, 8, 6), 0x6e4a2e, s * .2, .99, -.03, 0, 0, 0, .04, [1, 1, .6]);
-    otter.add(new T.CapsuleGeometry(.05, .2, 4, 8), FUR, s * .2, .55, .2, -1.1, 0, s * .25, .05);
-    otter.add(new T.SphereGeometry(.055, 8, 6), 0x6e4a2e, s * .2, .55, .32, 0, 0, 0, .04);
-  }
-  for (let i = 0; i < 4; i++) { const s = i < 2 ? -1 : 1; otter.add(new T.CylinderGeometry(.004, .004, .16, 4), 0xf5eadc, s * .14, .875 - (i % 2) * .025, .2, 0, 0, Math.PI / 2 + s * (i % 2 ? -.15 : .1), 0); }
-  otter.add(new T.CylinderGeometry(.2, .22, .03, 16), 0xe2c072, 0, 1.08, 0, -.08, 0, 0, .08);
-  otter.add(new T.CylinderGeometry(.1, .12, .09, 14), 0xd8b462, 0, 1.13, -.01, -.08, 0, 0, .08);
-  otter.add(new T.CylinderGeometry(.122, .122, .025, 14), 0x3fa7a0, 0, 1.1, -.005, -.08, 0, 0, .03);
-  otter.add(new T.CapsuleGeometry(.06, .28, 4, 8), FUR, 0, .14, -.24, .9, 0, 0, .05);
-  const pimGeo = mergeParts(T, otter.parts);
-  const pimMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: .85 }); pimMat.name = 'pimFur';
-
-  // (4) lantern glow
-  const glowGeo = new T.SphereGeometry(.055, 12, 8); glowGeo.translate(1.0, 1.65, .86);
-  const glowMat = new T.MeshStandardMaterial({ color: 0xfff0c8, emissive: 0xffb050, emissiveIntensity: 2.0, roughness: 1 }); glowMat.name = 'lanternGlow';
-
-  // (5) pennant: a triangle whose hinge is at the mast top, so rotation.y sways it
-  const penGeo = new T.BufferGeometry();
-  penGeo.setAttribute('position', new T.BufferAttribute(new Float32Array([0, .09, 0, 0, -.09, 0, -.55, 0, 0]), 3));
-  penGeo.computeVertexNormals();
-  const penMat = new T.MeshStandardMaterial({ color: 0x3fa7a0, roughness: .9, side: T.DoubleSide }); penMat.name = 'bargePennant';
-
-  const group = new T.Group(); group.name = 'trader_barge';
-  const hull = new T.Mesh(hullGeo, hullMat); hull.name = 'bargeHull'; hull.castShadow = true; hull.receiveShadow = true;
-  const clothMesh = new T.Mesh(clothGeo, clothMat); clothMesh.name = 'bargeCloth';
-  const pim = new T.Mesh(pimGeo, pimMat); pim.name = 'pim'; pim.position.set(0, .34, .3);
-  const glow = new T.Mesh(glowGeo, glowMat); glow.name = 'lanternGlow';
-  const pennant = new T.Mesh(penGeo, penMat); pennant.name = 'bargePennant'; pennant.position.set(1.15, 2.95, -.35);
-  group.add(hull, clothMesh, pim, glow, pennant);
+  // floor planks and four corner posts
+  add(new T.BoxGeometry(3.5, .08, 1.6), PLANK, 0, .04, 0, 0, 0, 0, .1); // deck under the stall, crates and barrel
+  add(new T.BoxGeometry(3.44, .8, 1.54), 0x6a4a2c, 0, -.4, 0, 0, 0, 0, .08); // footing: fills the gap to the downhill sand
+  for (const [x, z, h] of [[-1, .62, 2.05], [1, .62, 2.05], [-1, -.62, 2.35], [1, -.62, 2.35]]) add(new T.CylinderGeometry(.065, .075, h, 7), WOOD, x, h / 2, z, 0, 0, 0, .06);
+  // counter: plank front, top board, a few shells on show
+  for (let i = 0; i < 5; i++) add(new T.BoxGeometry(.4, .86, .05), i % 2 ? 0x9a6b3c : 0x8d5f36, -.84 + i * .42, .47, .72, 0, 0, (i - 2) * .012, .07);
+  add(new T.BoxGeometry(2.3, .06, .5), 0xd9b27a, 0, .93, .62, 0, 0, 0, .05);
+  for (const [x, c] of [[-.7, SHELL], [-.55, 0xfff0dc], [.5, 0xf2a98f], [.66, SHELL]]) add(new T.SphereGeometry(.055, 8, 6), c, x, .98, .66, 0, 0, 0, .04, [1, .5, 1.1]);
+  // back wall of planks and a shelf with jars and a crate
+  for (let i = 0; i < 6; i++) add(new T.BoxGeometry(.36, 2.2, .05), i % 2 ? 0x8a6238 : 0x7f5832, -.9 + i * .36, 1.12, -.66, 0, 0, 0, .07);
+  add(new T.BoxGeometry(2.0, .05, .3), PLANK, 0, 1.35, -.5, 0, 0, 0, .06);
+  add(new T.CylinderGeometry(.08, .08, .2, 10), 0x5fb4d9, -.5, 1.48, -.5, 0, 0, 0, .05);
+  add(new T.CylinderGeometry(.07, .07, .16, 10), 0x3fa7a0, -.3, 1.46, -.5, 0, 0, 0, .05);
+  add(new T.BoxGeometry(.32, .26, .26), 0xa87a45, .45, 1.5, -.5, 0, .2, 0, .08);
+  // sloped roof: plank deck under a thatch layer, with a ragged leaf fringe at the front
+  add(new T.BoxGeometry(2.7, .06, 1.9), WOOD, 0, 2.24, 0, -.16, 0, 0, .06);
+  add(new T.BoxGeometry(2.8, .14, 2.0), THATCH, 0, 2.33, 0, -.16, 0, 0, .12);
+  for (let i = 0; i < 9; i++) add(new T.BoxGeometry(.32, .22, .04), i % 2 ? THATCH_D : THATCH, -1.28 + i * .32, 2.08, 1.0, -.3, 0, (i % 3 - 1) * .1, .1);
+  // hanging shell sign under the front eave: the post's icon, no text
+  add(new T.BoxGeometry(.04, .3, .04), 0x8a6238, -.18, 1.92, .74, 0, 0, 0, .04);
+  add(new T.BoxGeometry(.04, .3, .04), 0x8a6238, .18, 1.92, .74, 0, 0, 0, .04);
+  add(new T.BoxGeometry(.56, .34, .05), PLANK, 0, 1.64, .76, 0, 0, 0, .08);
+  add(new T.SphereGeometry(.11, 10, 8), SHELL, 0, 1.64, .8, 0, 0, 0, .04, [1.1, 1, .45]);
+  for (let i = 0; i < 5; i++) add(new T.BoxGeometry(.018, .16, .01), 0xe8b39a, (i - 2) * .04, 1.66, .85, 0, 0, (i - 2) * .32, .03);
+  // crates and a barrel beside the stall
+  add(new T.BoxGeometry(.5, .45, .5), 0xa87a45, 1.45, .225, .3, 0, .25, 0, .08);
+  add(new T.BoxGeometry(.38, .34, .38), 0xb98a52, 1.42, .62, .28, 0, -.2, 0, .08);
+  add(new T.CylinderGeometry(.22, .22, .55, 12), 0x8d5f36, -1.42, .275, .25, 0, 0, 0, .06);
+  add(new T.CylinderGeometry(.23, .23, .04, 12), 0x55606a, -1.42, .45, .25, 0, 0, 0, .03);
+  add(new T.CylinderGeometry(.23, .23, .04, 12), 0x55606a, -1.42, .1, .25, 0, 0, 0, .03);
+  const geo = mergeParts(T, parts);
+  const mat = new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, metalness: 0 }); mat.name = 'tradingPost';
+  const group = new T.Group(); group.name = 'trading_post';
+  const mesh = new T.Mesh(geo, mat); mesh.name = 'tradingPost'; mesh.castShadow = true; mesh.receiveShadow = true;
+  group.add(mesh);
   group.visible = false;
-  const geos = [hullGeo, clothGeo, pimGeo, glowGeo, penGeo], mats = [hullMat, clothMat, pimMat, glowMat, penMat];
   return {
-    group, pim, pennant, pimY: pim.position.y,
-    dispose() { group.removeFromParent(); for (const g of geos) g.dispose(); for (const m of mats) m.dispose(); },
+    group,
+    dispose() { group.removeFromParent(); geo.dispose(); mat.dispose(); },
   };
 }
 

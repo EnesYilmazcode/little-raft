@@ -51,7 +51,7 @@ export const CONTENT_ITEMS = Object.freeze({
   airjug:  Object.freeze({ kind: 'airjug',  name: 'Breath Jug',        icon: 'icon-airjug',  maxStack: 1, tool: false, placeholder: false }),
   goggles: Object.freeze({ kind: 'goggles', name: 'Seaglass Goggles',  icon: 'icon-goggles', maxStack: 1, tool: false, placeholder: false }),
   scraper: Object.freeze({ kind: 'scraper', name: 'Tide Scraper',      icon: 'icon-scraper', maxStack: 1, tool: false, placeholder: false }),
-  // Pim's trading barge (trader.js); the Glass Float is trade-only (no recipe)
+  // island trading posts (trader.js); the Glass Float is trade-only (no recipe)
   shell:      item('shell',      'Bright Shell', 'icon-shell',  false),
   shellwreath: item('shellwreath', 'Shell Wreath', 'icon-wreath', false),
   glassfloat: item('glassfloat', 'Glass Float',  'icon-float',  false),
@@ -124,7 +124,7 @@ export const CONTENT_RECIPES = Object.freeze({
   airjug:  recipe('airjug',  'Breath Jug',        1, { plastic: 3, metalingot: 1, rope: 1 }),
   goggles: recipe('goggles', 'Seaglass Goggles',  1, { glass: 2, rope: 1, leaf: 1 }),
   scraper: recipe('scraper', 'Tide Scraper',      1, { metalingot: 1, scrap: 2, wood: 1 }),
-  // Pim's trading barge (trader.js); gated by the Shell Wreath plan (trader craftLocked)
+  // island trading posts (trader.js); gated by the Shell Wreath plan (trader craftLocked)
   shellwreath: recipe('shellwreath', 'Shell Wreath', 1, { shell: 3, rope: 2, leaf: 2 }),
   // cooking pot (cookpot.js)
   cookpot: recipe('cookpot', 'Cooking Pot', 1, { clay: 3, stone: 2, scrap: 1 }),
