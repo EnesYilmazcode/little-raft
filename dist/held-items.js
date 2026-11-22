@@ -25,12 +25,13 @@ import { createRocket } from './fireworks-model.js?build=v3-survival-ae77fa84ac2
 import { createScarecrow3D } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
 import { createHive, createFlowerBox, createCandle } from './bees-model.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createSpyglassModel } from './spyglass-model.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
+import { buildHeldModel, HELD_SPEC, HELD_PLACEABLE } from './held-models.js?build=v3-survival-ae77fa84ac2b'; // [held-items] every other bag kind
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
 // Placeable decor from other lanes, held as a small copy of its own world model (MODEL_KINDS below).
 const LANE_DECOR = ['skyrocket', 'scarecrow', 'glidepost', 'glidestep', 'candle', 'beehive', 'flowerbox'];
-export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds', ...LANE_DECOR]);
+export const PLACEABLE_KINDS = Object.freeze([...new Set(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds', ...LANE_DECOR, ...HELD_PLACEABLE])]);
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
 const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'brush', 'spear', 'metalspear', 'paddle', 'axe'];
 const HOOK_SCALE = 0.4;                     // compact: the held hook stays in the lower-right corner
@@ -58,15 +59,15 @@ export const HOLD = Object.freeze({
   plastic:    { hand: 'right', pose: 'grip', rx: 0.1, ry: 1.2, rz: 0.1 },
   rope:       { hand: 'right', pose: 'grip', ry: 0.4, arm: [-0.01, 0.05, 0] },     // coil hangs off the fist, in front of the palm
   fish:       { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.06, 0] },      // by the tail, body across the view
-  cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
-  water:      { hand: 'right', pose: 'grip', ry: 0.3 },
+  cup:        { hand: 'right', pose: 'grip', rx: 0.6, ry: 0.3 }, // tipped toward the eye so the brim (and the water in it) shows
+  water:      { hand: 'right', pose: 'grip', rx: 0.6, ry: 0.3 },
   drum: { hand: 'right', pose: 'grip', rx: 0.75 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'right', pose: 'grip', rx: 1.2, rz: 0.1 }, // [instruments] right fist, clear of the hotbar
   camera: { hand: 'right', pose: 'grip', rx: 0.1, rz: -1 }, // [camera] lens faces forward; tilted up so the body clears the hotbar
   glidehandle: { hand: 'right', pose: 'grip', rx: -0.2, rz: 1.57 }, // [zipline] bar sideways in the fist
   ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
-export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
+export const holdFor = (kind) => HOLD[kind] || HELD_SPEC[kind]?.hold || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
 
 // Left-fist (placeable) models are capped to a small carried size so they never fill the lower left.
 export const HELD_LEFT_MAX = 0.11;
@@ -327,7 +328,18 @@ export function buildItemModel(T, kind, factory = null) {
   }
   if (!root && kind === 'camera') { const cm = buildCameraModel(T), gf = cm.userData.gripFrac; root = fit(T, cm, SIZE.camera, (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z)); } // [camera]
   if (!root) { const ins = buildInstrument(T, kind), gf = ins?.userData.gripFrac; if (ins) root = fit(T, ins, SIZE[kind], gf ? (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z) : null); } // [instruments]
-  if (!root) root = fit(T, buildBundle(T), left ? HELD_LEFT_MAX : 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
+  let key = null; // [held-items] which mesh this is (tests/held-distinct.test.mjs: no two kinds share one)
+  if (!root) { // [held-items] placed gear, icon-model items and props drawn to match their icons (held-models.js)
+    const h = buildHeldModel(T, kind), sp = HELD_SPEC[kind];
+    if (h) {
+      const gf = left ? [0, -0.5, 0] : sp?.grip || [0, -0.3, 0];
+      root = fit(T, h.model, left ? HELD_LEFT_MAX : sp?.size || 0.12, (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z));
+      if (h.shared) root.userData.shared = true;
+      key = h.key;
+    }
+  }
+  if (!root) { root = fit(T, buildBundle(T), left ? HELD_LEFT_MAX : 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0)); key = 'bundle'; }
+  root.userData.heldKey = key || (root.userData.shared ? 'factory:' : 'own:') + kind;
   root.name = 'item_' + kind;
   root.userData.kind = kind;
   root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
