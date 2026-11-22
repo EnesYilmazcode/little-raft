@@ -22,7 +22,7 @@ test('ramp is monotonic and reaches full in ~0.1-0.2s', () => {
   for (let k = 1; k <= 120; k++) {
     const v = f.shapeInput(dt, {forward: 1}).forward;
     assert.ok(v >= prev - 1e-12, 'monotonic');
-    if (k * dt < 0.03) assert.ok(v < 0.15, 'weighty start');
+    if (k * dt < 0.02) assert.ok(v < 0.15, 'eased start');
     if (tFull === null && v >= 0.999) tFull = k * dt;
     prev = v;
   }

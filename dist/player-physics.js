@@ -6,7 +6,7 @@
 
 export const PLAYER_CONSTANTS = Object.freeze({
   WALK_SPEED: 2.6,
-  SPRINT_SPEED: 4,
+  SPRINT_SPEED: 4.3,
   SWIM_SPEED: 2.1,
   JUMP_IMPULSE: 4.6,
   GRAVITY: 12,
@@ -30,9 +30,13 @@ export const PLAYER_CONSTANTS = Object.freeze({
   CLAMBER_INSET: 0.45,
   // A jump press this long before landing still jumps on landing (s).
   JUMP_BUFFER: 0.12,
+  // Walked off a ledge this recently (s): a jump press still jumps and steering stays grounded.
+  COYOTE: 0.1,
   // Horizontal response rates (1/s)
-  GROUND_ACCEL: 14,
-  AIR_ACCEL: 3.5,
+  GROUND_ACCEL: 20,
+  GROUND_DECEL: 22,          // slowing down or stopping on the ground (crisp stop, little slide)
+  GROUND_FRICTION: 6,        // m/s^2 constant part of the ground response
+  AIR_ACCEL: 1.2,
   WATER_ACCEL: 4.5,
   // Safety
   MAX_RAFT_DISTANCE: 50,
@@ -71,6 +75,7 @@ export class PlayerPhysics {
     this._climb = null;
     this._prevJump = false;
     this._jumpBuffer = 0;
+    this._coyote = 0; // s left to still jump after walking off a ledge
     // Reused result of _nearest() (consumed immediately by its callers; never escapes).
     this._dt = 0.01; this._deckY = 0.2; this._nx = 0.5; this._nz = 0.5; // per-update scratch (see _moveHorizontal)
     this._near = {tx: 0, tz: 0, px: 0.5, pz: 0.5, cx: 0.5, cz: 0.5, dist: 0.5};
@@ -110,6 +115,7 @@ export class PlayerPhysics {
     const jumpPressed = jump && !this._prevJump;
     this._prevJump = jump;
     this._jumpBuffer = jumpPressed ? C.JUMP_BUFFER : Math.max(0, this._jumpBuffer - dt);
+    if (this._coyote > 0) this._coyote = Math.max(0, this._coyote - dt);
 
     this._sanitize(tiles);
 
@@ -144,14 +150,24 @@ export class PlayerPhysics {
     const dirZ = -c * forward - s * strafe;
     let speed, rate;
     if (this.swimming) { speed = C.SWIM_SPEED * MOVE_MUL.swim; rate = C.WATER_ACCEL; }
-    else if (this.grounded) { speed = (sprint ? C.SPRINT_SPEED : C.WALK_SPEED) * MOVE_MUL.walk; rate = C.GROUND_ACCEL; }
-    else { speed = (sprint ? C.SPRINT_SPEED : C.WALK_SPEED) * MOVE_MUL.walk; rate = C.AIR_ACCEL; }
+    else if (this.grounded) {
+      speed = (sprint ? C.SPRINT_SPEED : C.WALK_SPEED) * MOVE_MUL.walk;
+      const gx = dirX * speed, gz = dirZ * speed;
+      rate = gx * gx + gz * gz < this.vx * this.vx + this.vz * this.vz ? C.GROUND_DECEL : C.GROUND_ACCEL;
+    }
+    else { speed = (sprint ? C.SPRINT_SPEED : C.WALK_SPEED) * MOVE_MUL.walk; rate = this._coyote > 0 ? C.GROUND_ACCEL : C.AIR_ACCEL; }
     const k = 1 - Math.exp(-rate * dt);
     if (!this.grounded && !this.swimming && len < 0.01) {
       // Keep momentum in the air when there is no input.
     } else {
-      this.vx += (dirX * speed - this.vx) * k;
-      this.vz += (dirZ * speed - this.vz) * k;
+      const tx = dirX * speed, tz = dirZ * speed;
+      this.vx += (tx - this.vx) * k;
+      this.vz += (tz - this.vz) * k;
+      if (this.grounded) {
+        // Constant friction on top of the exponential blend: speed settles in finite time instead of creeping.
+        const ex = tx - this.vx, ez = tz - this.vz, e = len2(ex, ez), f = C.GROUND_FRICTION * dt;
+        if (e <= f) { this.vx = tx; this.vz = tz; } else { this.vx += ex / e * f; this.vz += ez / e * f; }
+      }
     }
 
     this._moveHorizontal(blocked);
@@ -166,11 +182,15 @@ export class PlayerPhysics {
         if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this.grounded = false; }
       } else {
         this.grounded = false; // walked off the edge
+        this._coyote = C.COYOTE;
         if (this.vy > 0) this.vy = 0;
       }
     }
 
     if (!this.grounded) {
+      if (this._coyote > 0 && this._jumpBuffer > 0 && !this.swimming) { // just walked off: the jump still counts
+        this._coyote = 0; this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump;
+      }
       const prevFeet = this.y - C.EYE_OFFSET, vy0 = this.vy;
       if (this.swimming) {
         const target = waterY + C.SWIM_EYE_ABOVE_WATER + (jump ? C.SWIM_RISE_BONUS : 0);
@@ -186,11 +206,11 @@ export class PlayerPhysics {
 
       // Land on deck only when falling and feet cross the deck plane over a tile.
       if (this.vy <= 0 && prevFeet >= deckY - 0.02 && feet <= deckY && this._supported(tiles)) {
-        this.y = deckY + C.EYE_OFFSET; this.vy = 0; this.grounded = true; out.landed = true;
+        this.y = deckY + C.EYE_OFFSET; this.vy = 0; this.grounded = true; out.landed = true; this._coyote = 0;
         if (this.swimming) { this.swimming = false; out.leftWater = true; }
         if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this.grounded = false; } // buffered jump
       } else if (!this.swimming && feet < waterY + C.WATER_ENTER) {
-        this.swimming = true; out.splashed = true;
+        this.swimming = true; out.splashed = true; this._coyote = 0;
         this.vy *= C.SPLASH_DAMP;
         this.vx *= 0.6; this.vz *= 0.6;
       } else if (this.swimming && feet > waterY + C.WATER_ENTER + C.WATER_EXIT_HYST) {

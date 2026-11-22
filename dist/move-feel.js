@@ -6,8 +6,8 @@
 import {PLAYER_CONSTANTS as PC} from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
 export const FEEL = Object.freeze({
-  START_TIME: 0.14,       // s, input engagement 0 -> 1 (smoothstep eased: weighty start)
-  STOP_TIME: 0.08,        // s, 1 -> 0 (quicker stop)
+  START_TIME: 0.11,       // s, input engagement 0 -> 1 (smoothstep eased; physics adds its own short blend)
+  STOP_TIME: 0.04,        // s, 1 -> 0 (quicker stop; ground decel and friction finish it)
   SPRINT_IN: 0.25,        // s, walk -> sprint blend
   SPRINT_OUT: 0.15,       // s, sprint -> walk blend
   CROUCH_SPEED: 0.5,      // speed multiplier while crouched
