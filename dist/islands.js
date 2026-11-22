@@ -91,8 +91,9 @@ export function createIslands(ctx) {
   const veg = [...meshes, ...extra];
   group.add(dome, ...veg);
   // Draw after the sky dome (renderOrder 1, radius 150, no depth write), which would otherwise paint over
-  // an island past 150 m: the island fades out in its own fog (models.fogClip) instead.
-  group.renderOrder = 2;
+  // an island past 150 m: the island fades out in its own fog (models.fogClip) instead. Set per mesh, not
+  // on the group (a group order would also put it after the ocean at 10 and lose the sea's early-Z).
+  for (const m of group.children) m.renderOrder = 2;
   if (ctx.scene) { ctx.scene.add(group); ctx.scene.add(lagoon); }
   lagoon.visible = false;
 

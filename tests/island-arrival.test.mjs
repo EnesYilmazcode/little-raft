@@ -180,7 +180,8 @@ test('serialize carries the timeline version so peers and saves skip the old-sav
 
 test('island draws after the sky dome; its fog ends FOG_MARGIN short of the (nearer) far plane', () => {
   const w = world();
-  assert.equal(w.group.renderOrder, 2, 'after the sky dome (renderOrder 1), which would paint over it past 150 m');
+  for (const m of w.group.children) assert.equal(m.renderOrder, 2, 'after the sky dome (renderOrder 1), which would paint over it past 150 m');
+  assert.equal(w.group.renderOrder, 0, 'no group order: the ocean (10) still draws after the island');
   w.mod.debug.spawnNear(1234, 0); w.mod.update(0);
   assert.equal(w.mod.debug.state().fogFar, Math.min(VIEW.CAMERA_FAR, VIEW.FOG_FAR) - VIEW.FOG_MARGIN);
   w.camera.far = 120; w.mod.update(0);
