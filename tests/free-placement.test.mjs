@@ -167,3 +167,22 @@ test('a wall, pillar or stairs ghost turns red over a placed item, the host refu
   assert.ok(P.rectOverlap(wall, r(-1 + hd - .02)) > P.PLACE_EPS, 'a crate on the wall line');
   assert.ok(P.rectOverlap(wall, r(-1 + .07 + hd + .01)) <= P.PLACE_EPS, 'a crate flush in front of it');
 });
+
+test('no item goes through a wall or the floor of a storey: the piece in front hides the deck behind it', async () => {
+  const { BuildGrid, LEVEL_H } = await import(new URL('building-pieces.js', base));
+  const g = new BuildGrid(); g.setTiles(grid(-1, 1, -1, 1));
+  assert.ok(g.place({t:'wall', i:0, j:0, l:0, r:0}), 'wall on the -z side of cell (0, 0)');
+  const deckY = .2, eye = {x:0, y:deckY + 1.6, z:.5}, at = (x, z) => { const dx = x - eye.x, dy = deckY - eye.y, dz = z - eye.z, n = Math.hypot(dx, dy, dz); return [dx / n, dy / n, dz / n, n]; };
+  let [dx, dy, dz, far] = at(0, -2.5); // the deck behind the wall
+  assert.ok(g.hitDist(eye.x, eye.y, eye.z, dx, dy, dz, deckY, far) < far - .05, 'the wall is in front');
+  [dx, dy, dz, far] = at(.5, 1.5); // the open deck behind the player
+  assert.equal(g.hitDist(eye.x, eye.y, eye.z, dx, dy, dz, deckY, far), Infinity);
+  // Standing on a storey floor and looking down at it: the floor hides the deck below.
+  assert.ok(g.place({t:'pillar', i:1, j:1, l:0}) && g.place({t:'pillar', i:2, j:1, l:0}) && g.place({t:'pillar', i:1, j:2, l:0}) && g.place({t:'pillar', i:2, j:2, l:0}));
+  if (g.place({t:'floor', i:1, j:1, l:1})) {
+    const up = {x:2, y:deckY + LEVEL_H + 1.6, z:2.3}, dx2 = 0, dy2 = -1, dz2 = 0;
+    assert.ok(g.hitDist(up.x, up.y, up.z, dx2, dy2, dz2, deckY, up.y - deckY) < up.y - deckY - .05);
+  }
+  assert.match(gameSrc, /placementFor\(kind, kind !== 'hammer' && pieceHides\(frameAim\) \? null : frameAim\.point\)/, 'ghost');
+  assert.match(gameSrc, /placementFor\(kind, kind !== 'hammer' && pieceHides\(aim\) \? null : p\)/, 'click');
+});

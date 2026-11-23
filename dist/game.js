@@ -1170,6 +1170,12 @@ export function mount(transfer = null) {
     }
     return best;
   }
+  // Does a building piece (wall, stairs, the floor of a storey) stand between the eye and the aimed deck point?
+  function pieceHides(aim) {
+    const pt = aim?.point, d = aim?.dir, grid = building?.grid; if (!pt || !d || !grid?.hitDist) return false;
+    const c = camera.position, far = c.distanceTo(pt);
+    return grid.hitDist(c.x, c.y, c.z, d.x, d.y, d.z, deckY(), far) < far - .05;
+  }
   function nearDeck(x, z) { for (const [a, b] of NEIGHBOURS) if (hasTile(x + a, z + b)) return true; return false; }
   function placementCandidates(kind) {
     const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
@@ -1505,7 +1511,7 @@ export function mount(transfer = null) {
       const a = building.use(); if (a) { swing = 1; action(a); } else notice('Point at a green spot'); return;
     }
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
-      const v = placementFor(kind, p);
+      const v = placementFor(kind, kind !== 'hammer' && pieceHides(aim) ? null : p); // free placement: no item through a wall or an upper floor
       if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : kind === 'net' ? 'Point at the water beside the raft edge' : 'Point at an empty raft floor'); return; } // [nets]
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
       if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
@@ -1832,7 +1838,7 @@ export function mount(transfer = null) {
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
     const undecorEx = building?.removing ? building.removeExtra : null; // [undecor] red see-through ghost of the aimed decor
     if (undecorEx?.d) { const d = undecorEx.d; hover = null; ghostHold = null; ghosts.show(d.type, d.x * 2, .22, d.z * 2, d.rot || 0, false, elapsed); return; }
-    hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing && !building?.menu.isOpen ? placementFor(kind, frameAim.point) : null;
+    hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing && !building?.menu.isOpen ? placementFor(kind, kind !== 'hammer' && pieceHides(frameAim) ? null : frameAim.point) : null; // free placement: no item through a wall or an upper floor
     if (kind === 'net') { if (!hover) { ghosts.hide(); return; } ghosts.show('net', netEdgeX(hover), 0, netEdgeZ(hover), netYaw(hover.d), !hover.blocked, elapsed); return; } // [nets]
     const floor = kind === 'hammer';
     if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.rot !== (floor ? 0 : placeRot) || (floor ? hover.x !== ghostHold.x || hover.z !== ghostHold.z : Math.hypot(frameAim.point.x - ghostHold.ax, frameAim.point.z - ghostHold.az) > .3))) ghostHold = null; // free placement: decor waits for a 30 cm aim move // keep the ghost off the piece just placed until the aim moves

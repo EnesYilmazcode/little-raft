@@ -89,10 +89,10 @@ test('game.js host checks piece/unpiece reach and decor before building.apply', 
   const branch = g.slice(at, apply);
   assert.match(branch, /inReach\(who\.x, who\.z, ci, cj, PIECE_REACH \+ \(actor === 'guest' \? GUEST_REACH_SLACK/);
   assert.match(branch, /who && !inReach/); // missing guest pose is tolerated like the floor branch
-  assert.match(branch, /pieceBlock\(world\.decor, a\)/);
+  assert.match(branch, /pieceDecorWhy\(a\)/); assert.match(g, /function pieceDecorWhy\(p\) \{[^}]*pieceBlock\(world\.decor, p\)/);
   assert.match(branch, /emit\(\{kind:'notice', text:BLOCK_TEXT\[why\]\}, actor\)/);
   assert.match(g, /why = freeWhy\(spot, false\)/); // host decor branch: free placement footprint check (placement.js freeBlock)
-  assert.match(branch, /pieceRects\(\[a\]\)\.some\(decorOver\)/); // a wall, pillar or stairs never lands on a placed item
+  assert.match(g, /pieceRects\(onePiece, onePieceRects\)[^\n]*\n[^\n]*if \(decorOver\(r\)\) return 'overlap'/); // a wall, pillar or stairs never lands on a placed item
   assert.match(g, /why = decorBlock\(world\.tiles, world\.decor, x, z, world\.pieces\)/); // client placementFor
 });
 

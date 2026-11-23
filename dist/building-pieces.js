@@ -330,6 +330,18 @@ export class BuildGrid {
     return rec;
   }
 
+  // Distance along a unit ray to the nearest piece box within reach, or Infinity (free placement: a wall, stairs or
+  // the floor of a storey hides the deck behind it, so no item is placed through it).
+  hitDist(ox, oy, oz, dx, dy, dz, deckY, reach) {
+    this._rebuild();
+    let best = Infinity;
+    for (let n = 0; n < this._pickN; n++) {
+      const t = rayBox(ox, oy, oz, dx, dy, dz, this._pick, n * 6, deckY);
+      if (t >= 0 && t < best) best = t;
+    }
+    return best <= reach ? best : Infinity;
+  }
+
   aim(ox, oy, oz, dx, dy, dz, type, rot, deckY, reach, out = this._aimOut) {
     const s = SLOT_OF[type];
     const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
