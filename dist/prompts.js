@@ -5,6 +5,8 @@
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.
 // ctx = {state (full raftDebug.state, built lazily on first read), camera, T, scene}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
 
+import { itemGlyph, reqChips } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // bag icons (survival-ui registers them) for cost chips
+
 const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
 const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
 const DECOR_NAMES = {sail:'sail', palm:'palm planter', lantern:'lantern', net:'net', bench:'bench', crate:'crate'};
@@ -21,7 +23,9 @@ export function normalizePrompt(p) {
   const out = list.slice(0, 2).map(x => {
     let key = x.key == null ? '' : String(x.key).trim(), hold = !!x.hold;
     if (/^hold\s+/i.test(key)) { hold = true; key = key.replace(/^hold\s+/i, ''); }
-    return {key:key.slice(0, 12), label:x.label.trim().slice(0, 60), hold, muted:!!x.muted};
+    const row = {key:key.slice(0, 12), label:x.label.trim().slice(0, 60), hold, muted:!!x.muted};
+    if (Array.isArray(x.cost) && x.cost.length) row.cost = x.cost.slice(0, 4).map(c => ({kind:String(c.kind), need:c.need | 0, ...(c.have == null ? {} : {have:c.have | 0})}));
+    return row;
   });
   return out.length ? out : null;
 }
@@ -35,7 +39,7 @@ export function pickPrompt(candidates) {
   }
   return best ? best.prompts : null;
 }
-export const signature = list => (list ? list.map(p => `${p.hold ? 'H' : ''}${p.key}|${p.label}|${p.muted ? 1 : 0}`).join('~') : '');
+export const signature = list => (list ? list.map(p => `${p.hold ? 'H' : ''}${p.key}|${p.label}|${p.muted ? 1 : 0}${p.cost ? '|' + p.cost.map(c => `${c.kind}:${c.have ?? ''}/${c.need}`).join(',') : ''}`).join('~') : '');
 export function formatFeed(text) { return String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 90); }
 // Is a #contextPrompt text a notice worth feeding (vs a persistent prompt we already render)?
 export function isNotice(text, hasKbd) {
@@ -61,6 +65,8 @@ export function promptFromHtml(html) {
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };
 export const costText = cost => Object.entries(cost).map(([k, n]) => `${n} ${k}`).join(' · ');
+// Cost rows for count + icon chips: {kind, need} or, with a stock, {kind, need, have}.
+export const costRows = (cost, stock) => Object.entries(cost).map(([kind, need]) => (stock ? {kind, need, have:have(stock, kind)} : {kind, need}));
 export const missingText = (stock, cost) => Object.entries(cost).filter(([k, n]) => have(stock, k) < n).map(([k, n]) => `${n - have(stock, k)} ${k}`).join(' · ');
 // Horizontal distance (m) from (x, z) to the nearest raft tile's edge; 0 when over a tile, Infinity with no tiles.
 export function raftDistance(x, z, tiles) {
@@ -114,9 +120,9 @@ export function statePrompt(s, opt = {}) {
   if (held === 'hammer') {
     if (s.build?.hover?.blocked) return null; // game.js says why (BLOCK_TEXT) in #contextPrompt
     if (!s.build?.hover) return {label:'Aim at the raft edge', muted:true};
-    if (s.build.affordable) return [{key:'LMB', label:'Build floor'}, {label:costText(FLOOR_COST), muted:true}];
-    const m = missingText(s.stock, FLOOR_COST);
-    return [{label:'Needs ' + costText(FLOOR_COST), muted:true}, ...(m && m !== costText(FLOOR_COST) ? [{label:'Missing ' + m, muted:true}] : [])];
+    // Cost as count + icon chips; short on materials, one row of have/need chips (short ones red) replaces "Needs ... / Missing ...".
+    if (s.build.affordable) return [{key:'LMB', label:'Build floor'}, {label:costText(FLOOR_COST), muted:true, cost:costRows(FLOOR_COST)}];
+    return [{label:'Needs ' + costText(FLOOR_COST), muted:true, cost:costRows(FLOOR_COST, s.stock)}];
   }
   if (held === 'fishingrod') {
     if (FC_ACTIVE.has(opt.fcStage)) return fishingPrompt(opt.fcStage);
@@ -178,7 +184,10 @@ function createPrompts(win, doc) {
       if (p.hold) { const h = doc.createElement('span'); h.className = 'lr-hold'; h.textContent = 'Hold'; row.appendChild(h); }
       if (/^[LR]MB$/i.test(p.key)) { const m = doc.createElement('span'); m.className = 'lr-glyph'; m.innerHTML = MOUSE(p.key[0].toUpperCase()); row.appendChild(m); } // static SVG only
       else if (p.key) { const k = doc.createElement('kbd'); k.className = 'lr-key'; k.textContent = p.key; row.appendChild(k); }
-      const l = doc.createElement('span'); l.className = 'lr-label'; l.textContent = p.label; row.appendChild(l);
+      const l = doc.createElement('span'); l.className = 'lr-label';
+      const chips = p.cost && p.cost.every(c => itemGlyph(c.kind)) ? reqChips(p.cost, {cls:'lr-rq', title:false}) : ''; // trusted: digits and the bag's own icon markup
+      if (chips) { l.innerHTML = chips; l.setAttribute('aria-label', p.label); } else l.textContent = p.label;
+      row.appendChild(l);
       promptEl.appendChild(row);
     }
   }
