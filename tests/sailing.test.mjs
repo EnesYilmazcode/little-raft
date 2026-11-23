@@ -264,18 +264,18 @@ test('applySailAction ops and garbage', () => {
   // paddle: impulse, cooldown, clamp, ignored when anchored
   s.vx = s.vz = 0;
   applySailAction(s, { kind: 'sail', op: 'paddle', angle: Math.PI / 2 });
-  near(s.vx, 0.25); near(s.vz, 0, 1e-12);
-  applySailAction(s, { kind: 'sail', op: 'paddle', angle: Math.PI / 2 }); near(s.vx, 0.25, 1e-12, 'cooldown');
+  near(s.vx, SAIL.PADDLE_IMPULSE); near(s.vz, 0, 1e-12);
+  applySailAction(s, { kind: 'sail', op: 'paddle', angle: Math.PI / 2 }); near(s.vx, SAIL.PADDLE_IMPULSE, 1e-12, 'cooldown');
   for (let i = 0; i < 7; i++) stepSailing(s, 0.1, { nSails: 0 }, out());
   let v1 = s.vx; applySailAction(s, { kind: 'sail', op: 'paddle', angle: Math.PI / 2 }); near(s.vx, v1, 1e-12, 'still cooling at 0.7 s');
   for (let i = 0; i < 2; i++) stepSailing(s, 0.1, { nSails: 0 }, out());
-  v1 = s.vx; applySailAction(s, { kind: 'sail', op: 'paddle', angle: Math.PI / 2 }); near(s.vx, v1 + 0.25, 1e-12, 'after cooldown');
+  v1 = s.vx; applySailAction(s, { kind: 'sail', op: 'paddle', angle: Math.PI / 2 }); near(s.vx, v1 + SAIL.PADDLE_IMPULSE, 1e-12, 'after cooldown');
   for (let i = 0; i < 20; i++) { s.paddleClock = 0; applySailAction(s, { kind: 'sail', op: 'paddle', angle: 0 }); }
   assert.ok(Math.hypot(s.vx, s.vz) <= SAIL.PADDLE_CAP + 1e-9, 'paddle alone capped');
   // a fast (sailing) raft: paddling along can't add speed, paddling against slows it
   s.vx = 2; s.vz = 0; s.paddleClock = 0;
   applySailAction(s, { kind: 'sail', op: 'paddle', angle: Math.PI / 2 }); near(Math.hypot(s.vx, s.vz), 2, 1e-12);
-  s.paddleClock = 0; applySailAction(s, { kind: 'sail', op: 'paddle', angle: -Math.PI / 2 }); near(s.vx, 1.75, 1e-12);
+  s.paddleClock = 0; applySailAction(s, { kind: 'sail', op: 'paddle', angle: -Math.PI / 2 }); near(s.vx, 2 - SAIL.PADDLE_IMPULSE, 1e-12);
   s.anchored = true; s.paddleClock = 0; const vz = s.vz;
   applySailAction(s, { kind: 'sail', op: 'paddle', angle: 0 }); assert.equal(s.vz, vz, 'anchored');
   s.anchored = false; s.paddleClock = 0;
