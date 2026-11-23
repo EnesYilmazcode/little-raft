@@ -57,7 +57,7 @@ import { BED_RESPAWN } from './sleep.js?build=v3-survival-ae77fa84ac2b'; // [bed
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
-import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { createSurvivalUI, iconSVG, flatIcon } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { mergeGate } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, wheelDelta, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
@@ -163,6 +163,7 @@ export function mount(transfer = null) {
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
   const itemName = k => (ITEM_INFO[k]?.name ?? k).toLowerCase();
   const missingText = (bag, cost) => Object.entries(cost).filter(([k, n]) => bag.count(k) < n).map(([k, n]) => `${n - bag.count(k)} more ${itemName(k)}`).join(' and ');
+  const missingRows = (bag, cost) => Object.entries(cost).filter(([k, n]) => bag.count(k) < n).map(([kind, n]) => ({kind, count:n - bag.count(kind)})); // feed chips: count + icon
   function spend(bag, cost) { // atomic
     const s = new Bag(bag.snapshot());
     for (const [k, n] of Object.entries(cost)) if (!s.remove(k, n)) return false;
@@ -1160,6 +1161,7 @@ export function mount(transfer = null) {
     if (content?.effect?.(e)) return; // [fireworks] content hook: consumed effects skip the notice/sound fallthrough
     const toLog = (e.kind === 'note' || e.kind === 'achievement') && typeof logbookUI?.celebrate === 'function'; // shown once: the logbook toast
     if (e.loot && typeof e.loot === 'object') { for (const [k, n] of Object.entries(e.loot)) if (ITEM_INFO[k] && isInt(n) && n > 0) pickupFeed.add(k, n); } // pickup feed rows with icons
+    else if (Array.isArray(e.need) && pickupFeed.need(e.need)) noticeUntil = performance.now() + 400; // count + icon chips; e.text stays for older peers
     else if (typeof e.text === 'string' && e.text && !toLog) notice(e.text.slice(0, 90));
     if (toLog) logbookUI.celebrate(e);
     if (e.kind === 'loot') hintDone('loot');
@@ -1235,7 +1237,7 @@ export function mount(transfer = null) {
       const r = bag.craft(a.recipe);
       if (r.ok) emit({kind:'craft', text:`Crafted ${ITEM_INFO[r.crafted.kind]?.name ?? r.crafted.kind}`, loot:{[r.crafted.kind]:r.crafted.count}}, actor);
       else if (r.reason === 'full') emit({kind:'full', text:'Your bag is full'}, actor);
-      else if (r.reason === 'missing') emit({kind:'notice', text:'Need ' + r.missing.map(m => `${m.count} more ${itemName(m.kind)}`).join(' and ')}, actor);
+      else if (r.reason === 'missing') emit({kind:'notice', text:'Need ' + r.missing.map(m => `${m.count} more ${itemName(m.kind)}`).join(' and '), need:r.missing.map(m => ({kind:m.kind, count:m.count}))}, actor);
       if (r.ok) { award({kind:'craft', crafted:r.crafted.kind}); content?.observe({kind:'craft', item:r.crafted.kind, count:r.crafted.count}, actor); } // [tasks] observe
       return;
     }
@@ -1284,7 +1286,7 @@ export function mount(transfer = null) {
         const why = floorBlock(world.tiles, a.x, a.z) ?? (netOnCell(world.nets, a.x, a.z) ? 'net' : null); // [nets]
         if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
         if (bag.count('hammer') < 1) { emit({kind:'notice', text:'Craft a hammer first'}, actor); return; }
-        if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST)}, actor); return; }
+        if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST), need:missingRows(bag, FLOOR_COST)}, actor); return; }
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
         const why = decorBlock(world.tiles, world.decor, a.x, a.z, world.pieces);
@@ -1355,7 +1357,7 @@ export function mount(transfer = null) {
       if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
       if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
       const cost = repairCost(bag.slots[i].kind) ?? REPAIR_COST; // [progression-hook]
-      if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost)}, actor); return; }
+      if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost), need:missingRows(bag, cost)}, actor); return; }
       bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!', sound:'repair'}, actor);
       award({kind:'repair'}); content?.observe({kind:'repair'}, actor); return; // [tasks] observe
     }
@@ -1462,7 +1464,7 @@ export function mount(transfer = null) {
       const v = placementFor(kind, p);
       if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : kind === 'net' ? 'Point at the water beside the raft edge' : 'Point at an empty raft floor'); return; } // [nets]
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
-      if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
+      if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { if (!pickupFeed.need(missingRows(bag, FLOOR_COST))) notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
       if (kind === 'net') { swing = 1; action({kind:'build', recipe:'net', x:v.x, z:v.z, d:v.d}); return; } // [nets] faces outward, no free rotation
       swing = 1; ghostHold = {kind, x:v.x, z:v.z, rot:kind === 'hammer' ? 0 : placeRot}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
     }
@@ -2554,7 +2556,7 @@ export function mount(transfer = null) {
     try { lookUI = createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(pauseInput), onResume:guard(() => { if (running) requestLock(); })}); } catch (e) { console.error('look UI failed', e); lookUI = null; } // [look]
     try { albumUI = createPhotoAlbumUI({store:sharedPhotoStore({notice:s => notice(s, 3200)}), onPause:guard(pauseInput), onResume:guard(() => requestLock())}); } catch (e) { console.error('photo album failed', e); albumUI = null; } // [camera]
     if (role !== 'guest') retroAward();
-    pickupFeed.setIconProvider(k => iconURL(k) || feedSprite(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar; sprite while a render is pending
+    pickupFeed.setIconProvider(k => (flatIcon(k) ? null : iconURL(k)) || feedSprite(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar; sprite while a render is pending
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
     warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants
