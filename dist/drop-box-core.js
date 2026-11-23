@@ -212,11 +212,13 @@ export function openSide(tiles, x, z, alongX) {
   return 1;
 }
 
+const stackOut = e => { const o = { ...e }; if (o.durability !== undefined) o.durability = Math.round(o.durability * 100) / 100; return o; }; // short saves: ext is capped as a whole
+
 /** Plain, JSON-safe copy for saves and the network. */
 export function serializeSlice(slice) {
   return { v: 1, n: slice.n, boxes: slice.boxes.map(b => {
     const o = { id: b.id, x: Math.round(b.x * 1000) / 1000, z: Math.round(b.z * 1000) / 1000, s: b.s, r: Math.round(b.r * 1000) / 1000,
-      age: Math.round(b.age * 10) / 10, m: Math.round(b.m * 100) / 100, f: Math.round(b.f * 100) / 100, items: b.items.map(e => ({ ...e })) };
+      age: Math.round(b.age * 10) / 10, m: Math.round(b.m * 100) / 100, f: Math.round(b.f * 100) / 100, items: b.items.map(stackOut) };
     if (b.s === 'land') o.y = Math.round(b.y * 1000) / 1000;
     if (b.o) o.o = b.o.slice();
     return o;
