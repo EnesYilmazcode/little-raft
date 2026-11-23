@@ -4,7 +4,7 @@ with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  c=b.new_context(viewport={'width':1440,'height':900});c.add_init_script("HTMLCanvasElement.prototype.requestPointerLock=function(){return Promise.reject(new Error('QA fallback'))};")
  page=c.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
- page.goto('http://127.0.0.1:41897');page.wait_for_function('!!window.raftDebug');page.locator('#solo').click();page.wait_for_timeout(200)
+ page.goto('http://127.0.0.1:41897');page.wait_for_function('!!window.raftDebug');page.locator('.ob-item[data-act="new"]:visible, #solo:visible').first.click();page.wait_for_timeout(200)
  targets=page.evaluate('window.raftDebug.targets.filter(t=>t.screen?.visible&&t.distance<22&&t.screen.x>300&&t.screen.x<1100&&t.screen.y>250&&t.screen.y<650).sort((a,b)=>a.distance-b.distance)')
  assert targets,'No visible supplies';target=targets[0];s=target['screen']
  page.mouse.move(s['x'],s['y']);page.mouse.down();page.wait_for_timeout(950)

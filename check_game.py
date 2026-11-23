@@ -12,7 +12,7 @@ with sync_playwright() as p:
  page.on('console',lambda msg:errors.append(msg.text) if msg.type=='error' else None)
  page.on('response',lambda response:print('HTTP_ERROR',response.status,response.url) if response.status>=400 else None)
  page.goto(URL);page.wait_for_function('!!window.raftDebug')
- page.locator('#solo').click();page.wait_for_timeout(300)
+ page.locator('.ob-item[data-act="new"]:visible, #solo:visible').first.click();page.wait_for_timeout(300)
  initial=page.evaluate('window.raftDebug.state')
  assert initial['camera']['fov']>=65 and initial['camera']['y']<3,initial
  page.keyboard.down('w');page.wait_for_timeout(400);page.keyboard.up('w')
