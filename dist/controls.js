@@ -18,7 +18,7 @@ const STOP_BRAKE = 8; // 1/s, added to physics' ground rate of 14 when no move i
 function storage() { try { return globalThis.localStorage ?? null; } catch { return null; } }
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
 
-// g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
+// g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(), drop(all),
 //     inventory(), repair(back), pause(), menuBack(id) (pad closes the open menu), useDown(), useUp(), useCancel(), reelDown(), reelUp(),
 //     buildPieces? (list or () => list of {id,label}), buildPick?(id),
 //     buildWheelOpen?() (hammer build wheel open: hotbar and interact are swallowed, movement still works)}
@@ -37,6 +37,7 @@ export function createControls(g) {
     if (phase === 'down') {
       if (id === 'interact') { if (!g.buildWheelOpen?.()) call('interact'); }
       else if (id === 'inventory') call('inventory');
+      else if (id === 'drop') call('drop', input.ctrlHeld());
       else if (id === 'pause' && pad) call('pause'); // Escape on the keyboard is owned by settings.js / pointer lock
       else if (id === 'rotate') { call('repair', input.shiftHeld()); emit('little-raft-action', {id}); } // game's R = repair today
       else if (id === 'buildMenu') openRadial();

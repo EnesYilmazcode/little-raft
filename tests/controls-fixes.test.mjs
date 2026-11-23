@@ -187,15 +187,14 @@ test('CTL-4: game.js wires the radial to the hammer wheel pieces and selects the
   assert.ok(fn.indexOf('selectSlot(i)') < fn.indexOf('building.menu.setSelected(id)'), 'holds the hammer, then picks the piece');
 });
 
-test('CTL-4: the dead drop action and its Q / Back default are gone', async () => {
+test('CTL-4: drop is a real action on Q (keyboard only); the hammer keeps Q for its build wheel in game.js', async () => {
   const { ACTIONS, DEFAULT_BINDINGS } = await import(new URL('input-map.js', base));
-  assert.ok(!ACTIONS.some(a => a.id === 'drop'));
-  assert.equal(DEFAULT_BINDINGS.drop, undefined);
+  assert.ok(ACTIONS.some(a => a.id === 'drop'));
+  assert.deepEqual(DEFAULT_BINDINGS.drop, { keys: ['KeyQ'], pad: [] });
   const m = new ActionMap();
-  assert.deepEqual(m.actionFor('KeyQ'), [], 'Q stays free for the hammer build wheel');
-  assert.deepEqual(m.actionFor('Pad8'), []);
-  const stale = { getItem: () => JSON.stringify({ v: 1, bindings: { drop: { keys: ['KeyQ', null], pad: ['Pad8'] } }, settings: {} }), setItem() {} };
-  assert.equal(new ActionMap({ storage: stale }).bindingsFor('drop'), null, 'old saves load without it');
+  assert.deepEqual(m.actionFor('KeyQ'), ['drop']);
+  assert.deepEqual(m.actionFor('Pad8'), [], 'Back stays free');
+  assert.match(gameSrc, /!ctrlQ && building\?\.key\(e\.code, true, heldKind\(\) === 'hammer'/, 'plain Q with the hammer still opens its wheel');
 });
 
 // ---------------------------------------------------------------- CTL-5
