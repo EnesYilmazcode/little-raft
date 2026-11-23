@@ -226,7 +226,7 @@ test('wiring: Q action, controls, content registry, help tab', () => {
   assert.match(read('controls.js'), /id === 'drop'\) call\('drop', input\.ctrlHeld\(\)\)/);
   assert.match(read('content.js'), /createDropBox, createCookpot\]/);
   assert.match(read('content.js'), /drop: all => !!first\('drop', all\)/);
-  assert.match(read('settings.js'), /\['Q', 'Drop one item'\], \['Ctrl \+ Q', 'Drop the stack'\]/);
+  assert.match(read('settings.js'), /\['Q', 'Drop one item'\], \['Ctrl \+ Q', 'Drop the stack \(or the hammer\)'\]/);
   const game = read('game.js');
   assert.match(game, /interact, drop:dropHeld, inventory:/, 'the action map and the legacy keys share one gate');
   const gate = game.slice(game.indexOf('function dropHeld('), game.indexOf('function dropHeld(') + 400);
