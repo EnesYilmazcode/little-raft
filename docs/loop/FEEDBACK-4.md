@@ -9,12 +9,15 @@ Merged:
 
 ## Player feedback
 
-Paraphrased from the lane briefs (no verbatim quotes are kept in the repo):
+Free placement:
 
-- "Items snap to the middle of a tile. I want to put a crate where I point, right next to the other one, and
-  four candles on one tile."
-- "I can't jump onto anything. A jump should get me up onto a one-storey floor."
-- "Moving feels floaty: slow to start and stop, and the deck wobbles under me when the raft rocks."
+> "We are only able to place items centered, which makes no sense. Items should be able to cram together. When I'm
+> placing crates I should put them right next to each other instead of centered on a block. Drag them, not
+> snapping. They always snap together for some reason. They should be moved discretely (freely)."
+
+Jump:
+
+> "I should be able to jump much higher, like scale the entire wall."
 
 ## Changes per lane
 
