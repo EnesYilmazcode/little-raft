@@ -26,7 +26,7 @@ test('cooldown 0.85 s, just over the sailing core', () => {
   assert.ok(PADDLE.COOLDOWN > SAIL.PADDLE_COOLDOWN && PADDLE.COOLDOWN < SAIL.PADDLE_COOLDOWN + 0.1);
   assert.ok(canStroke(0, -Infinity));
   assert.ok(!canStroke(10.84, 10)); assert.ok(canStroke(10.85, 10)); assert.ok(canStroke(11, 10));
-  near(SAIL.PADDLE_CAP, 1.6);
+  near(SAIL.PADDLE_CAP, 1.2); assert.ok(SAIL.PADDLE_CAP < SAIL.SAIL_SPEED, "a paddle stays weaker than one full sail");
 });
 
 test('wear: 250 strokes from new to broken', () => {

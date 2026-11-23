@@ -269,7 +269,7 @@ test('applySailAction ops and garbage', () => {
   for (let i = 0; i < 7; i++) stepSailing(s, 0.1, { nSails: 0 }, out());
   let v1 = s.vx; applySailAction(s, { kind: 'sail', op: 'paddle', angle: Math.PI / 2 }); near(s.vx, v1, 1e-12, 'still cooling at 0.7 s');
   for (let i = 0; i < 2; i++) stepSailing(s, 0.1, { nSails: 0 }, out());
-  v1 = s.vx; applySailAction(s, { kind: 'sail', op: 'paddle', angle: Math.PI / 2 }); near(s.vx, v1 + SAIL.PADDLE_IMPULSE, 1e-12, 'after cooldown');
+  v1 = s.vx; applySailAction(s, { kind: 'sail', op: 'paddle', angle: Math.PI / 2 }); near(s.vx, Math.min(v1 + SAIL.PADDLE_IMPULSE, SAIL.PADDLE_CAP), 1e-12, 'after cooldown (capped)'); assert.ok(s.vx > v1 + 0.3, 'after cooldown');
   for (let i = 0; i < 20; i++) { s.paddleClock = 0; applySailAction(s, { kind: 'sail', op: 'paddle', angle: 0 }); }
   assert.ok(Math.hypot(s.vx, s.vz) <= SAIL.PADDLE_CAP + 1e-9, 'paddle alone capped');
   // a fast (sailing) raft: paddling along can't add speed, paddling against slows it
