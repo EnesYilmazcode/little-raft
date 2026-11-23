@@ -176,14 +176,13 @@ const PROPS = {
     return g;
   },
   puffegg: (T) => new T.Mesh(eggGeometry(T), vertexMaterial(T)),
-  feather: (T) => { // cream vane on a quill, a gold tip
+  feather: (T) => { // cream vane with orange barbs along a quill, like the icon's outline feather
     const { g, mat, add } = kit(T);
-    add(new T.CylinderGeometry(0.0025, 0.004, 0.2, 6), mat('#8a6a45'), [0, 0, 0]);
-    const v = new T.SphereGeometry(0.03, 12, 8); v.scale(1, 2.6, 0.2);
-    add(v, mat('#fff2cc', { side: T.DoubleSide }), [0.012, 0.025, 0], [0, 0, -0.08]);
-    const t = new T.SphereGeometry(0.018, 10, 6); t.scale(1, 1.8, 0.2);
-    add(t, mat('#ffbd66'), [0.017, 0.085, 0.002], [0, 0, -0.1]);
-    for (let i = 0; i < 4; i++) add(new T.BoxGeometry(0.03, 0.002, 0.004), mat('#e8d6a8'), [0.016, -0.02 + i * 0.025, 0.007], [0, 0, 0.5]);
+    const v = new T.Shape();
+    v.moveTo(0, 0); v.bezierCurveTo(0.09, 0.15, 0.12, 0.45, 0.02, 0.8); v.bezierCurveTo(-0.07, 0.55, -0.1, 0.25, 0, 0);
+    add(new T.ExtrudeGeometry(v, { depth: 0.008, bevelEnabled: false, curveSegments: 8 }), mat('#fff2cc', { side: T.DoubleSide }), [0, 0.12, -0.004]);
+    for (let i = 0; i < 4; i++) add(new T.BoxGeometry(0.008, 0.1, 0.012), mat('#ffbd66'), [0.025, 0.3 + i * 0.12, 0], [0, 0, -0.9]);
+    add(new T.CylinderGeometry(0.007, 0.012, 0.92, 5), mat('#bb8650'), [0.005, 0.46, 0], [0, 0, -0.02]);
     return g;
   },
   metalhook: (T) => { // the icon's steel grapple (icon-models.js), with the shaft run down into the crown of the arms
@@ -202,15 +201,16 @@ const PROPS = {
   milk: (T) => pail(T, true),
   paint_seafoam: (T) => paintTin(T, '#9fd3c1'), paint_coral: (T) => paintTin(T, '#e9a08c'),
   paint_sunshell: (T) => paintTin(T, '#f1d78d'), paint_lagoon: (T) => paintTin(T, '#86b3d6'), paint_pebble: (T) => paintTin(T, '#c9c3b8'),
-  fins: (T) => { // a pair of teal flippers with ribs and heel straps
+  fins: (T) => { // a pair of teal flippers side by side: blade, ribs and a cream foot pocket each
     const { g, mat, add } = kit(T);
-    for (const s of [-1, 1]) {
-      const f = new T.Group(); f.position.set(s * 0.04, 0, 0); f.rotation.z = s * 0.12; g.add(f);
-      const blade = new T.CylinderGeometry(0.045, 0.02, 0.2, 10, 1); blade.scale(1, 1, 0.18);
-      add(blade, mat('#2f8a8a'), [0, 0.03, 0], [0, 0, 0], null, f);
-      for (const x of [-0.02, 0, 0.02]) add(new T.BoxGeometry(0.004, 0.17, 0.012), mat('#1f6a6a'), [x, 0.04, 0], [0, 0, x * 2], null, f);
-      add(new T.TorusGeometry(0.022, 0.005, 5, 12), mat('#9fd6d0'), [0, -0.085, 0], [Math.PI / 2, 0, 0], null, f);
-    }
+    const f = new T.Shape();
+    f.moveTo(-0.08, 0); f.bezierCurveTo(-0.16, 0.3, -0.1, 0.6, 0.02, 0.8); f.bezierCurveTo(0.12, 0.62, 0.16, 0.3, 0.08, 0); f.lineTo(-0.08, 0);
+    const blade = new T.ExtrudeGeometry(f, { depth: 0.03, bevelEnabled: true, bevelSize: 0.01, bevelThickness: 0.01, bevelSegments: 1 });
+    [['#2f8f8f', -0.13], ['#54a6a4', 0.13]].forEach(([c, x], i) => {
+      add(blade, mat(c), [x, 0, i * 0.06]);
+      add(new T.SphereGeometry(0.085, 8, 6), mat('#fff2cc'), [x, 0.04, 0.03 + i * 0.06], [0, 0, 0], [1, 0.75, 0.55]);
+      for (const dx of [-0.04, 0.04]) add(new T.BoxGeometry(0.008, 0.5, 0.01), mat('#1f6b6b'), [x + dx, 0.38, 0.045 + i * 0.06]);
+    });
     return g;
   },
   airjug: (T) => { // cream round jug, teal band, cork and a rope loop
@@ -331,11 +331,11 @@ export const HELD_SPEC = Object.freeze({
   sharkmeat: { size: 0.17, grip: [0.3, -0.2, 0], hold: { hand: 'right', pose: 'grip', rx: 1.2, ry: 0.3, arm: [-0.01, 0.04, 0] } },
   cookedsharkmeat: { size: 0.17, grip: [0.3, -0.2, 0], hold: { hand: 'right', pose: 'grip', rx: 1.2, ry: 0.3, arm: [-0.01, 0.04, 0] } },
   sharkhead: { size: 0.21, grip: [-0.3, -0.35, 0], hold: { hand: 'right', pose: 'grip', ry: 3.54, arm: [-0.02, 0.05, 0] } },
-  feather: { size: 0.17, grip: [0, -0.42, 0], hold: { hand: 'right', pose: 'grip', rx: -0.3, rz: 0.4 } },
+  feather: { size: 0.16, grip: [0, -0.4, 0], hold: { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.4, rz: 0.35, arm: [-0.025, 0.07, 0] } },
   bucket: { size: 0.16, grip: [0, -0.3, 0], hold: { hand: 'right', pose: 'grip', rx: 0.35, ry: 0.4, arm: [-0.01, 0.03, 0] } },
   milk: { size: 0.16, grip: [0, -0.3, 0], hold: { hand: 'right', pose: 'grip', rx: 0.35, ry: 0.4, arm: [-0.01, 0.03, 0] } },
   paint_seafoam: TIN, paint_coral: TIN, paint_sunshell: TIN, paint_lagoon: TIN, paint_pebble: TIN,
-  fins: { size: 0.17, grip: [0, -0.4, 0], hold: { hand: 'right', pose: 'grip', rx: -0.7, ry: 0.5, rz: 0.4 } },
+  fins: { size: 0.17, grip: [0, -0.42, 0], hold: { hand: 'right', pose: 'grip', rx: -0.2, ry: 0.5, rz: 0.3, arm: [-0.025, 0.07, 0] } },
   airjug: { size: 0.13, grip: [0, -0.25, 0], hold: { hand: 'right', pose: 'grip', ry: 0.4 } },
   goggles: { size: 0.17, grip: [0.4, 0, 0], hold: { hand: 'right', pose: 'grip', ry: 0.4, arm: [-0.01, 0.05, 0] } },
   scraper: { size: 0.16, grip: [0, -0.3, 0], hold: { hand: 'right', pose: 'grip', rx: -0.4, rz: 0.3 } },
