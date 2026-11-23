@@ -54,8 +54,10 @@ const WORLD = {
   taskboard: (T) => createTaskBoard(T), photoframe: (T) => buildFrameModel(T), maptable: (T) => createMapTableModel(T),
   recycler: (T) => createRecyclerModel(T), driftboard: (T) => createDriftboard(T, flat(T)(0xc4a46c)),
 };
-// Builders that cache geometry, materials or textures module-wide: their meshes must never be disposed.
-const SHARED = new Set(['maptable', 'recycler', 'driftboard', 'photoframe']);
+// Builders that cache geometry, materials or textures module-wide: their meshes must never be disposed, and hands.js
+// gives the held copy its own material clones (so the viewmodel's material tweaks never reach the world copies).
+// smelter, researchtable, grill (smelter-model.js) and purifier (purifier-model.js) come through icon-models.js.
+const SHARED = new Set(['maptable', 'recycler', 'driftboard', 'photoframe', 'smelter', 'researchtable', 'grill', 'purifier']);
 // Icon-model kinds that are placed on the raft (the rest are hand items: ores, ingots, food, parts).
 const ICON_PLACED = ['smelter', 'researchtable', 'grill', 'research', 'receiver', 'antenna', 'purifier', 'rainbarrel', 'sprinkler'];
 export const HELD_PLACEABLE = Object.freeze([...Object.keys(WORLD).filter((k) => k !== 'driftboard'), 'rug', 'flagpole', ...ICON_PLACED]); // rug, flagpole: placed props

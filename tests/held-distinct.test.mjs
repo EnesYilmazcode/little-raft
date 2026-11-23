@@ -63,6 +63,26 @@ test('held models never carry lights, particles or sprites into the camera', () 
   }
 });
 
+// hands.js changes held materials in place (draw order, blending) and frees them with the viewmodel unless the model
+// is marked shared; so a model not marked shared must own every geometry, material and texture it uses.
+test('held models not marked shared own their resources', () => {
+  const res = (r) => {
+    const s = new Set();
+    r.traverse((o) => {
+      if (!o.isMesh) return;
+      s.add(o.geometry);
+      for (const m of [].concat(o.material)) { s.add(m); for (const k of ['map', 'bumpMap', 'normalMap', 'emissiveMap', 'alphaMap']) if (m[k]) s.add(m[k]); }
+    });
+    return s;
+  };
+  for (const kind of ITEM_KINDS) {
+    const a = buildItemModel(T, kind, (k) => getModel(k));
+    if (a.userData.shared || !/^(world|icon|prop):/.test(a.userData.heldKey)) continue; // the older own models are out of scope here
+    const ra = res(a), shared = [...res(buildItemModel(T, kind, (k) => getModel(k)))].filter((x) => ra.has(x));
+    assert.equal(shared.length, 0, `${kind}: two builds share ${shared.map((x) => x.type).join(', ')}; mark it shared in held-models.js`);
+  }
+});
+
 test('every bag kind has a hold pose for one hand', () => {
   for (const kind of ITEM_KINDS) assert.ok(['left', 'right'].includes(holdFor(kind).hand), kind);
   // renamed legacy kinds still resolve (old saves load them as their replacement)
