@@ -186,3 +186,16 @@ test('no item goes through a wall or the floor of a storey: the piece in front h
   assert.match(gameSrc, /placementFor\(kind, kind !== 'hammer' && pieceHides\(frameAim\) \? null : frameAim\.point\)/, 'ghost');
   assert.match(gameSrc, /placementFor\(kind, kind !== 'hammer' && pieceHides\(aim\) \? null : p\)/, 'click');
 });
+
+test('the edge snap never moves an item more than 6 cm per axis: it closes gaps, it is no grid', () => {
+  assert.equal(P.SNAP_GAP, .06);
+  const a = crate(0, 0), wall = {t:'wall', i:0, j:0, l:0, r:0}, e = env([a], [wall]);
+  let moved = 0, max = 0;
+  for (let x = -1.6; x <= 1.6; x += .013) for (let z = -.9; z <= 1.6; z += .017) {
+    const d = crate(x, z, 0), x0 = d.x, z0 = d.z; edgeSnap(e, d);
+    const dx = Math.abs(d.x - x0) * 2, dz = Math.abs(d.z - z0) * 2;
+    max = Math.max(max, dx, dz); if (dx || dz) moved++;
+  }
+  assert.ok(max <= .06 + .002, `largest snap ${max}`);
+  assert.ok(moved > 0, 'it does snap near the crate and the wall');
+});
