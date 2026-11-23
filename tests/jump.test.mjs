@@ -103,9 +103,11 @@ test('ceiling: jumping under a floor stops the rise at the slab and the head nev
 test('a running jump from the deck lands on top of a one-wall-high room', () => {
   for (const dt of [1 / 60, 1 / 30, 1 / 20]) for (const bob of BOBS) for (const sprint of [true, false]) {
     const g = grid(ROOM), msg = `${tag(dt, bob)} ${sprint ? 'sprint' : 'walk'}`;
-    // Run up along +x, jump a short way before the -x wall (x = -1).
+    // Run up along +x, jump a short way before the -x wall (x = -1). The walking take-off is far enough out
+    // that the body rises past the wall top before it reaches it: with the light air control (AIR_ACCEL) a
+    // walk jump that touches the wall face on the way up loses its forward speed and drops back.
     const ph = new PlayerPhysics({ x: -5, y: D0 + EYE, z: 0 }), st = { t: 0 };
-    const tr = run(g, ph, 2.5, (p) => ({ forward: p.x < 0 ? 1 : 0, yaw: yawTo(1, 0), sprint, jump: p.x > (sprint ? -2.6 : -2.1) }), dt, bob, st);
+    const tr = run(g, ph, 2.5, (p) => ({ forward: p.x < 0 ? 1 : 0, yaw: yawTo(1, 0), sprint, jump: p.x > (sprint ? -2.6 : -2.45) }), dt, bob, st);
     const end = run(g, ph, 0.5, {}, dt, bob, st).at(-1);
     assert.ok(ph.grounded, `${msg}: grounded`);
     assert.ok(Math.abs(end.feet - LEVEL_H) < 1e-6, `${msg}: standing on the room's floor top (feet ${end.feet}, x ${ph.x}, max ${Math.max(...tr.map(s => s.feet))})`);
