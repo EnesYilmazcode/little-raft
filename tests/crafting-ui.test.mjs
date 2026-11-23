@@ -114,10 +114,46 @@ test('the crafting panel is centred by the full-viewport dialog', () => {
 
 // ---------------------------------------------------------------- 1. no text selection / dragging
 test('game UI is not selectable or draggable; text fields still are', () => {
-  assert.match(ui, /html,body\{-webkit-user-select:none;user-select:none;/);
+  assert.match(ui, /html,body,dialog,\[popover\]\{-webkit-user-select:none;user-select:none;/, 'top-layer dialogs reset user-select, so they are listed');
   assert.match(ui, /const TEXT_FIELD = 'input,textarea,\[contenteditable\]:not\(\[contenteditable="false"\]\)';/);
   assert.match(ui, /\$\{TEXT_FIELD\}\{-webkit-user-select:text;user-select:text\}/);
   assert.match(ui, /const css = CSS \+ BAG_HUD \+ NO_SELECT;/);
   assert.match(ui, /document\.addEventListener\('selectstart', e => \{ if \(!inTextField\(e\.target\)\) e\.preventDefault\(\); \}, opt\);/);
   assert.match(ui, /if \(inTextField\(el\) \|\| el\?\.closest\?\.\('\[draggable="true"\]'\)\) return;\s*e\.preventDefault\(\);/, 'only bag slots drag');
+});
+
+// ---------------------------------------------------------------- 5. count + icon outside the bag
+test('tooltip "Get it" for a crafted item is count + icon chips, not "Craft it from 2 Palm Leaf"', () => {
+  const all = CB.catalogueRecipes(RECIPES, ITEMS);
+  const rope = CB.tipFacts('rope', all, k => k);
+  assert.deepEqual(rope.from, { station: null, reqs: [{ kind: 'leaf', need: 2 }] });
+  assert.equal(CB.tipFacts('wood', all).from, undefined, 'gathered items keep their sentence');
+  const tt = src('item-tooltips.js');
+  assert.match(tt, /reqChips\(f\.from\.reqs, \{ nameOf, cls: 'it-rq' \}\)/);
+});
+
+test('hammer prompt and "need more" feed lines are count + icon chips', async () => {
+  const P = await import(new URL('prompts.js', base));
+  const rows = P.normalizePrompt(P.statePrompt({ running: true, heldKind: 'hammer', stock: { plastic: 3 }, build: { hover: { x: 1, z: 0 }, affordable: false } }));
+  assert.deepEqual(rows[0].cost, [{ kind: 'wood', need: 2, have: 0 }, { kind: 'plastic', need: 2, have: 3 }]);
+  assert.match(src('prompts.js'), /reqChips\(p\.cost, \{cls:'lr-rq', title:false\}\)/, 'chips when every icon is known, else the label text');
+  const { createFeed } = await import(new URL('pickup-feed.js', base));
+  const el = tag => ({ tagName: tag, children: [], className: '', textContent: '', classList: { add() {} }, setAttribute() {}, isConnected: true,
+    append(...c) { this.children.push(...c); }, appendChild(c) { this.children.push(c); }, remove() {} });
+  const doc = { body: el('body'), getElementById: () => null, createElement: el, createElementNS: (_, t) => el(t) };
+  const feed = createFeed({ doc, timer: () => 0, clear() {} });
+  feed.setIconProvider(() => 'data:image/png;base64,x');
+  assert.equal(feed.need([]), null);
+  const row = feed.need([{ kind: 'wood', count: 2 }, { kind: 'rope', count: 1 }]);
+  const chips = row.label.children;
+  assert.deepEqual(chips.map(c => [c.children[0].textContent, c.children[1].tagName]), [['2', 'img'], ['1', 'img']], 'count then icon, no names');
+  const game = src('game.js');
+  assert.match(game, /else if \(Array\.isArray\(e\.need\) && pickupFeed\.need\(e\.need\)\)/);
+  for (const re of [/text:'Need ' \+ [^\n]*need:r\.missing\.map/, /text:'Floor needs ' \+ missingText\(bag, FLOOR_COST\), need:missingRows\(bag, FLOOR_COST\)/,
+    /text:'Repair needs ' \+ missingText\(bag, cost\), need:missingRows\(bag, cost\)/, /if \(!pickupFeed\.need\(missingRows\(bag, FLOOR_COST\)\)\) notice\('Floor needs '/]) assert.match(game, re);
+});
+
+test('rope and plank always use the flat drawing (their 3D renders are thin and pale at chip size)', () => {
+  assert.match(ui, /const FLAT_ICON = new Set\(\['rope', 'wood'\]\);/);
+  assert.match(ui, /const url = iconsLive && !FLAT_ICON\.has\(norm\(kind\)\) \? iconURL\(kind\) : null;/);
 });

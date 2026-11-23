@@ -618,6 +618,10 @@ export function tipFacts(kind, recipes, nameOf = k => k, max = 4) {
     const cost = (made.reqs || []).map(q => `${q.count} ${nameOf(q.kind)}`).join(' + ');
     get = `Make it at the ${nameOf(made.station)}${cost ? ` from ${cost}` : ''}.`;
   }
+  // Crafted items also carry the recipe as rows, so a tooltip can draw count + icon chips instead of the sentence.
+  if (made && !ITEM_SOURCE[kind] && (made.reqs || []).length) {
+    return { get, uses, from: { station: made.station || null, reqs: made.reqs.map(q => ({ kind: q.kind, need: q.count })) } };
+  }
   return { get, uses };
 }
 
