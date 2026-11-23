@@ -17,7 +17,6 @@ const grid = (x0, x1, z0, z1) => { const t = []; for (let x = x0; x <= x1; x++) 
 const deck = tiles => { const s = new Set(tiles.map(t => t[0] + ',' + t[1])); return (x, z) => s.has(x + ',' + z); };
 const env = (decor, pieces = [], tiles = grid(-1, 1, -1, 1)) => ({hasTile:deck(tiles), decor, pieceRects:pieceRects(pieces), extra:[], radii:{}});
 const crate = (xm, zm, rot = 0) => ({type:'crate', x:roundCoord(xm / 2), z:roundCoord(zm / 2), rot}); // metres in, tile units stored
-setFootprint('candle', .09, .09); // the candle's measured size (game.js measures every model once, the same on host and guest)
 const W = FOOTPRINT.crate[0] * 2; // crate width along x (.98 m)
 
 test('two crates placed flush with 0 gap are accepted', () => {
@@ -123,4 +122,20 @@ test('footprints are measured from the model below head height', () => {
   body.position.y = .25; top.position.y = 2.5; g.add(body, top); g.position.set(7, 0, 3); g.rotation.y = 1; // placement elsewhere does not matter
   assert.deepEqual(measureFootprint(T, 'testbox', g), [.3, .2]);
   assert.deepEqual(footprintOf('nothing-measured', {['nothing-measured']:.35}), [.35, .35], 'collision radius fallback');
+});
+
+test('every placeable has a fixed footprint, the same on host and guest from the first frame', async () => {
+  const { PLACEABLE_IDS } = await import(new URL('items.js', base)), { CONTENT_DECOR } = await import(new URL('content-items.js', base));
+  const base0 = gameSrc.match(/const DECOR_TYPES = Object\.freeze\(\[\.\.\.new Set\(\[([^\]]*)/)[1].match(/'([a-z]+)'/g).map(s => s.slice(1, -1));
+  assert.ok(base0.includes('crate') && base0.includes('purifier'), 'base decor list parsed');
+  for (const t of new Set([...base0, ...PLACEABLE_IDS, ...CONTENT_DECOR])) {
+    assert.ok(P.hasFootprint(t), `${t} has a fixed footprint`);
+    const f = footprintOf(t, {[t]:.05});
+    assert.ok(f[0] >= .08 && f[1] >= .08 && f[0] <= 1.4 && f[1] <= 1.4, `${t} footprint in range: ${f}`);
+  }
+  // A model measured later never changes a listed footprint (a guest that measured differently cannot disagree).
+  const before = footprintOf('candle'); setFootprint('candle', .5, .5);
+  assert.deepEqual(footprintOf('candle'), before);
+  assert.deepEqual(footprintOf('bed'), P.MODEL_FOOTPRINT.bed);
+  assert.doesNotMatch(gameSrc, /decorGroups\.push\([^\n]*ensureFootprint/, 'loading a raft builds no ghost models to measure');
 });

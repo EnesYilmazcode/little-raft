@@ -192,11 +192,30 @@ export const GRID_DECOR = Object.freeze(['nestbox', 'goatpen', 'fishtrap']);
 const FLAT = new Set(['rug']);
 export const roundCoord = v => Math.round(v * 1000) / 1000 || 0; // tile units (2 mm), never -0
 const measured = new Map(), fromRadius = new Map(); // fromRadius: cached squares, so the per-frame checks allocate nothing
+// Footprint half sizes [hw, hd] (metres) of every other placeable, measured once from its model below head height
+// (measureFootprint on the plain ghost model). A fixed table, so host and guest always test the same rectangles,
+// from the first frame on, and loading a raft builds no ghost models. tests/free-placement.test.mjs checks that
+// every placeable is listed here or in FOOTPRINT.
+export const MODEL_FOOTPRINT = Object.freeze({
+  receiver:[.35, .3], antenna:[.3, .15], purifier:[.51, .25], rainbarrel:[.34, .34], sprinkler:[.15, .16],
+  cropplot:[.92, .36], flowerbox:[.35, .17], beehive:[.28, .33], candle:[.08, .08], perch:[.33, .23],
+  juicer:[.2, .2], turbine:[.15, .16], battery:[.23, .17], stringlights:[.8, .09], lamppost:[.21, .17],
+  shelf:[.66, .22], trophystand:[.22, .22], taskboard:[.46, .17], photoframe:[.25, .23], skyrocket:[.09, .08],
+  scarecrow:[.49, .3], maptable:[.55, .4], glidepost:[.25, .25], glidestep:[.25, .25], researchtable:[.56, .34],
+  grill:[.42, .39], smelter:[.64, .66], recycler:[.44, .62], research:[.72, .43], bed:[.6, 1.01], motor:[.4, .57],
+  wheel:[.42, .2], rug:[.86, .61], pennant:[.15, .15], fern:[.65, .47], chime:[.41, .16], hammock:[.89, .89],
+  pots:[.57, .56], sign:[.45, .16], kiln:[.46, .51], glasslamp:[.42, .12], nestbox:[.37, .38], cushion:[.32, .32],
+  cookpot:[.3, .29], shellwreath:[.19, .1], glassfloat:[.22, .22], flagpole:[.2, .2], gametable:[.47, .45],
+  courseflag:[.61, .26], scoreboard:[.49, .08], goatpen:[.85, .85], stormrod:[.36, .21], stormlamp:[.16, .16],
+  stormglass:[.13, .13],
+});
+const fixedFootprint = type => FOOTPRINT[type] ?? (Object.prototype.hasOwnProperty.call(MODEL_FOOTPRINT, type) ? MODEL_FOOTPRINT[type] : undefined);
 
-// Footprint half sizes [hw, hd] in metres for a decor type: the table above, else a size measured from its
-// model (setFootprint / measureFootprint), else a square from the player collision radius, else .3.
+// Footprint half sizes [hw, hd] in metres for a decor type: the tables above, else a size measured from its
+// model (setFootprint / measureFootprint: a placeable added later and not listed yet), else a square from the
+// player collision radius, else .3.
 export function footprintOf(type, radii) {
-  const f = FOOTPRINT[type] ?? measured.get(type); if (f) return f;
+  const f = fixedFootprint(type) ?? measured.get(type); if (f) return f;
   const r = radii?.[type];
   if (Array.isArray(r)) return r;
   const h = Number.isFinite(r) && r > 0 ? Math.max(MIN_HALF, r) : .3;
@@ -205,9 +224,9 @@ export function footprintOf(type, radii) {
 }
 export function setFootprint(type, hw, hd) {
   const c = v => Math.round(Math.min(MAX_HALF, Math.max(MIN_HALF, v)) * 100) / 100;
-  if (!FOOTPRINT[type]) measured.set(type, Object.freeze([c(hw), c(hd)]));
+  if (!fixedFootprint(type)) measured.set(type, Object.freeze([c(hw), c(hd)]));
 }
-export const hasFootprint = type => !!FOOTPRINT[type] || measured.has(type);
+export const hasFootprint = type => !!fixedFootprint(type) || measured.has(type);
 // Measures a model (any object with traverse and THREE-style geometry) below head height (1.8 m), around its origin.
 export function measureFootprint(T, type, model) {
   if (!model || hasFootprint(type)) return footprintOf(type);
