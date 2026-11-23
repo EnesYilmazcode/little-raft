@@ -3,6 +3,8 @@
 // countOf(kind) -> how many the player has: each cost line is then coloured on its own (have / need).
 // nameOf(kind) -> the bag's display name (wood is 'Plank' there).
 
+import { itemGlyph } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+
 const STYLE_ID = 'lr-build-menu-style';
 const SPRITE = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
 const MAT_SPRITE = { wood: 'wood', leaf: 'leaf', scrap: 'scrap' };
@@ -56,10 +58,10 @@ const CSS = `
 .bm-mid b{display:block;margin:5px 0 7px;font:700 17px/1.1 ${FONT};color:#fff2cc}
 .bm-cost{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 8px}
 .bm-req{display:inline-flex;align-items:center;gap:3px;font:700 13px/1 ${FONT};color:#eadcbe;font-variant-numeric:tabular-nums}
-.bm-req svg{width:17px;height:17px}
+.bm-req svg,.bm-req .sv-icon{width:20px;height:20px;filter:drop-shadow(0 1px 1px #000a)}
 .bm-req em{font-style:normal;font-weight:500;font-size:11px;opacity:.8}
 .bm-req.bm-short{color:#ff9f86}
-.bm-req.bm-short svg{opacity:.5;filter:grayscale(.7)}
+.bm-req.bm-short :is(svg,.sv-icon){opacity:.6;filter:grayscale(.6)}
 .bm-free{font:600 12px/1 ${FONT};color:#d9c9a6}
 .bm-tag{position:absolute;left:50%;top:50%;padding:4px 10px;border-radius:10px;white-space:nowrap;pointer-events:none;background:#24170cf0;border:1.5px solid #ffe3a6;
   color:#fff2cc;font:700 13px/1.2 ${FONT};box-shadow:0 3px 10px #0007;transform:translate(-50%,-50%)}
@@ -115,11 +117,15 @@ export function createBuildMenu({ pieces, onPick, root = document.body, countOf 
   let open = false, hot = -1, vx = 0, vy = 0, cx = 0, cy = 0, scale = 1;
 
   // Each material is red or not on its own; with a count source it reads have/need like the bag.
+  // Count then the item's icon (the bag's, via craft-book itemGlyph); the name is only the hover title.
   const costHtml = cost => {
     const parts = costParts(cost, haveOf, nameOf, canAfford);
     if (!parts.length) return '<span class="bm-free">Free</span>';
-    return parts.map(p => `<span class="bm-req${p.short ? ' bm-short' : ''}" aria-label="${esc(p.name)}: ${p.have == null ? '' : `have ${p.have}, `}need ${p.need}">${MAT_SPRITE[p.kind]
-      ? `<svg viewBox="0 0 48 48" aria-hidden="true"><use href="${SPRITE}#icon-${MAT_SPRITE[p.kind]}"/></svg>` : ''}${p.have == null ? p.need : `${Math.min(p.have, 999)}/${p.need}`}<em>${esc(p.name)}</em></span>`).join('');
+    return parts.map(p => {
+      const icon = itemGlyph(p.kind) || (MAT_SPRITE[p.kind] ? `<svg viewBox="0 0 48 48" aria-hidden="true"><use href="${SPRITE}#icon-${MAT_SPRITE[p.kind]}"/></svg>` : '');
+      return `<span class="bm-req${p.short ? ' bm-short' : ''}" title="${esc(p.name)}" aria-label="${esc(p.name)}: ${p.have == null ? '' : `have ${p.have}, `}need ${p.need}">`
+        + `${p.have == null ? p.need : `${Math.min(p.have, 999)}/${p.need}`}${icon || `<em>${esc(p.name)}</em>`}</span>`;
+    }).join('');
   };
 
   // ---- wheel ----

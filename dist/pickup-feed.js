@@ -96,6 +96,23 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
         row.el.append(dot, row.label);
       }, () => {});
     },
+    /** What is still missing, as count + icon chips (no item names): rows [{kind, count}]. Null when there is nothing to show. */
+    need(list) {
+      const items = (Array.isArray(list) ? list : []).filter(r => r && typeof r.kind === 'string' && Number(r.count) > 0).slice(0, 4);
+      if (!items.length) return null;
+      const label = items.map(r => `${Math.floor(r.count)} ${ITEM_INFO[r.kind]?.name ?? r.kind}`).join(', ');
+      return push('n:' + label, row => {
+        row.el.classList.add('pf-note', 'pf-need'); row.el.setAttribute('aria-label', 'Need ' + label);
+        const dot = doc.createElement('i'); row.label = doc.createElement('span'); row.label.textContent = '';
+        for (const r of items) {
+          const chip = doc.createElement('span'); chip.className = 'pf-chip'; chip.title = ITEM_INFO[r.kind]?.name ?? r.kind;
+          const b = doc.createElement('b'); b.textContent = String(Math.floor(r.count));
+          const ic = icon(r.kind); chip.append(b); if (ic) chip.append(ic);
+          row.label.append(chip);
+        }
+        row.el.append(dot, row.label);
+      }, () => {});
+    },
     /** fn(kind) -> data URL | canvas | element | null (null: sprite fallback, or the bare swatch tile). */
     setIconProvider(fn) { iconProvider = typeof fn === 'function' ? fn : null; },
     /** Re-ask the provider for a live row's icon, e.g. when an async 3D icon finishes rendering. */
@@ -114,6 +131,7 @@ const feed = () => (shared ??= createFeed());
 export const pickupFeed = Object.freeze({
   add: (kind, count) => feed().add(kind, count),
   note: (text, kind) => feed().note(text, kind),
+  need: list => feed().need(list),
   setIconProvider: fn => feed().setIconProvider(fn),
   refresh: kind => shared?.refresh(kind),
   clear: () => feed().clear(),

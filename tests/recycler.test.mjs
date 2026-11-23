@@ -161,6 +161,6 @@ test('recycler: progression wiring and panel copy hooks', () => {
 });
 
 test('recycler: pickup feed rows fall back to the hotbar drawing while the 3D icon renders', () => {
-  assert.match(GAME, /pickupFeed\.setIconProvider\(k => iconURL\(k\) \|\| feedSprite\(k\)\)/);
+  assert.match(GAME, /pickupFeed\.setIconProvider\(k => (?:\(flatIcon\(k\) \? null : iconURL\(k\)\)|iconURL\(k\)) \|\| feedSprite\(k\)\)/); // rope and plank stay flat (crafting-ui)
   assert.match(GAME, /function feedSprite\(k\) \{[^\n]*iconSVG\(k\)/);
 });

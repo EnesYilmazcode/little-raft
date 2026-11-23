@@ -1,7 +1,7 @@
 // Little Raft item tooltips: one floating card for hotbar/inventory slots, crafting rows and any
 // [data-item-kind] element. Read-only view over ITEMS + bag + progression; never mutates anything.
 import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
-import { ITEM_TEXT, anchorTip, anchorVisible, catalogueRecipes, tipFacts } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
+import { ITEM_TEXT, anchorTip, anchorVisible, catalogueRecipes, tipFacts, reqChips, itemGlyph } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
 import { ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 const STYLE_ID = 'item-tooltips-style';
@@ -21,11 +21,15 @@ const CSS = `
 .it-tip .it-meta b{color:#8fd36a;font-weight:700}.it-tip .it-meta b.it-mid{color:#ffbd66}.it-tip .it-meta b.it-low{color:#e06a4a}
 .it-tip .it-txt{margin:6px 0 0;color:#eadcbe;white-space:normal}
 .it-tip .it-cost{margin-top:6px;padding-top:6px;border-top:1px solid #c9a66b55;font:600 12px/1.45 ${FONT};color:#eadcbe;font-variant-numeric:tabular-nums}
-.it-tip .it-cost span{white-space:nowrap}.it-tip .it-cost .it-short{color:#ffab8f}
+.it-tip .it-cost span{white-space:nowrap}
+.it-tip .it-rq{display:inline-flex;align-items:center;gap:2px;margin-right:9px;vertical-align:middle;font:800 12px/1 ${FONT};color:#b9e89a}
+.it-tip .it-rq.it-rq-short{color:#ffab8f}
+.it-tip .it-rq .sv-icon{width:22px;height:22px;filter:drop-shadow(0 1px 1px #000a)}
 .it-tip .it-st{display:block;color:#ffcf9a}
 .it-tip .it-facts{margin-top:6px;padding-top:6px;border-top:1px solid #c9a66b55;font:500 12px/1.4 ${FONT};color:#eadcbe}
 .it-tip .it-facts p{margin:0}.it-tip .it-facts p+p{margin-top:3px}
 .it-tip .it-facts em{font-style:normal;font-weight:700;color:#ffcf9a}
+.it-tip .it-facts .it-rq{color:#fff2cc}
 .it-tip .it-lock{margin-top:6px;padding:4px 6px;border-radius:3px;background:#5a2a1a99;color:#ffcf9a;font:600 12px/1.3 ${FONT}}
 #inventory .sv-tip{display:none!important}
 @media(prefers-reduced-motion:reduce){.it-tip{transition:none}}
@@ -94,19 +98,21 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     if (it.tip) out += `<p class="it-txt">${esc(it.tip)}</p>`;
     else if (txt) out += `<p class="it-txt">${esc(txt.desc)} ${esc(txt.use)}</p>`; // non-catalogue kinds: craft-book text
     const r = it.recipe;
-    if (r && r.cost && (recipe || !slot)) {
-      const parts = Object.entries(r.cost).map(([k, n]) => {
-        const have = countOf(bag, k);
-        return `<span class="${have < n ? 'it-short' : ''}">${esc(nameOf(k))} ${have}/${n}</span>`;
-      });
+    const costShown = !!(r && r.cost && (recipe || !slot));
+    if (costShown) {
+      // Each ingredient as have/need and its icon (craft-book reqChips); the name is in the chip's title.
+      const rows = Object.entries(r.cost).map(([kind, need]) => { const have = countOf(bag, kind); return { kind, need, have, enough: have >= need }; });
       const made = r.count > 1 ? ` <span>(makes ${r.count})</span>` : '';
       const st = r.station ? `<span class="it-st">${esc(nameOf(r.station))}${r.time ? ` · ${esc(r.time)}s each` : ''}${r.fuel ? ` · ${esc(r.fuel)} fuel` : ''}</span>` : '';
-      out += `<div class="it-cost">${st}Needs ${parts.join(', ') || 'nothing'}${made}</div>`;
+      out += `<div class="it-cost">${st}${reqChips(rows, { nameOf, cls: 'it-rq' }) || 'Free'}${made}</div>`;
     }
     // Where to get it and what it goes into (not on recipe rows: the panel beside them says that).
     if (!recipe) {
       const f = tipFacts(kind, recipesNow(), nameOf);
-      const lines = (f.get ? `<p><em>Get it:</em> ${esc(f.get)}</p>` : '') + (f.uses.length ? `<p><em>Used in:</em> ${esc(f.uses.join(', '))}</p>` : '');
+      // A crafted item shows its recipe as count + icon chips (station name first), not "Craft it from 2 Palm Leaf".
+      // (Skipped when the have/need chips above already show that recipe.)
+      const got = f.from && costShown ? '' : f.from && f.from.reqs.every(q => itemGlyph(q.kind)) ? `${f.from.station ? esc(nameOf(f.from.station)) + ' ' : ''}${reqChips(f.from.reqs, { nameOf, cls: 'it-rq' })}` : f.get ? esc(f.get) : '';
+      const lines = (got ? `<p><em>Get it:</em> ${got}</p>` : '') + (f.uses.length ? `<p><em>Used in:</em> ${esc(f.uses.join(', '))}</p>` : '');
       if (lines) out += `<div class="it-facts">${lines}</div>`;
     }
     if (Object.hasOwn(table, kind) && prog && typeof prog.isUnlocked === 'function' && call(() => prog.isUnlocked(kind)) === false) { // catalogue items only: others are not progression's ('Unknown item')

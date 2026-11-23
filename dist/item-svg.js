@@ -648,4 +648,57 @@ export const ITEM_ICONS = Object.freeze({
     <circle cx="12" cy="4" r="2.4" fill="#ffbd66"/></g>
     <g fill="none" stroke="#f1c84d" stroke-width="1.1" stroke-linecap="round"><path d="M26.5 12 V20"/><path d="M23 13.5 L24.8 20"/><path d="M30 13.5 L28.2 20"/></g>
     <path d="M16 9 C20 7.5 24 9 28 8.6" fill="none" stroke="#fff2cc" stroke-width="1.5" stroke-linecap="round"/>`, // [flags]
+  // [crafting-ui] kinds that still drew a two-letter placeholder tile.
+  seed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 15 C21 9 15 7 10 9 C14 12 19 14 24 15 Z M24 15 C27 9 33 7 38 9 C34 12 29 14 24 15 Z" fill="#6fb86a"/>
+    <path d="M24 15 C22 10 22 6 24 3 C26 6 26 10 24 15 Z" fill="#8fd36a"/>
+    <path d="M24 16 C33 16 38 24 38 31 C38 39 32 44 24 44 C16 44 10 39 10 31 C10 24 15 16 24 16 Z" fill="#a8743f"/></g>
+    <path d="M17 26 C19 22 21 20 24 19 M15 33 C16 30 17 28 19 26" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".75"/>
+    <path d="M27 24 C30 28 31 33 30 38 M22 27 C24 31 24 35 23 39" fill="none" stroke="${O}" stroke-width="1.1" stroke-opacity=".45" stroke-linecap="round"/>`,
+  rug: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M12 12 H36 L42 36 H6 Z" fill="#c9a35c"/>
+    <path d="M11 16 H37 L38 20 H10 Z M9 24 H39 L40 28 H8 Z" fill="#6fae5f" stroke-width="1.2"/>
+    <path d="M7 32 H41" fill="none" stroke="#a3321a" stroke-width="1.6"/>
+    <path d="M8 36 V41 M13 36 V41 M18 36 V41 M24 36 V41 M30 36 V41 M35 36 V41 M40 36 V41" fill="none" stroke-width="1.4"/></g>
+    <path d="M19 12 L17 36 M29 12 L31 36" fill="none" stroke="${O}" stroke-width="1" stroke-opacity=".35"/>`,
+  pennant: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M12.5 44 V5 H15.5 V44 Z" fill="#8a6a45"/>
+    <path d="M15.5 7 C24 8 32 11 42 16 C32 19 24 22 15.5 25 Z" fill="#e8553f"/>
+    <path d="M15.5 13 C21 13.6 26 15 31 16.5 C26 18 21 19.4 15.5 20 Z" fill="#fff2cc" stroke-width="1.2"/>
+    <path d="M8 44 H20" fill="none"/></g>
+    <circle cx="14" cy="4.5" r="2.4" fill="#ffbd66" stroke="${O}" stroke-width="1.6"/>`,
+  fern: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M8 44 V6 H12 V44 Z" fill="#8a6a45"/>
+    <path d="M10 8 H34 V11 H10 Z" fill="#a37a4c"/>
+    <path d="M30 11 V17" fill="none" stroke-width="1.4"/>
+    <path d="M22 17 H38 L36 26 H24 Z" fill="#c4643c"/>
+    <path d="M30 25 C24 28 21 33 21 40 M30 25 C36 28 39 33 39 40 M30 25 C29 31 29 36 30 43" fill="none" stroke="#3f8f4a" stroke-width="2.4"/>
+    <path d="M30 18 C26 14 21 14 19 16 C22 19 27 20 30 18 Z M30 18 C34 14 39 14 41 16 C38 19 33 20 30 18 Z" fill="#6fb86a" stroke-width="1.4"/></g>
+    <g fill="#6fb86a"><circle cx="22" cy="34" r="1.8"/><circle cx="38" cy="34" r="1.8"/><circle cx="29.5" cy="36" r="1.8"/><circle cx="21" cy="39.5" r="1.6"/><circle cx="39" cy="39.5" r="1.6"/></g>`,
+  hammock: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M5 44 V8 H9 V44 Z M39 44 V8 H43 V44 Z" fill="#8a6a45"/>
+    <path d="M9 14 L15 22 M39 14 L33 22" fill="none" stroke="#c99560" stroke-width="1.8"/>
+    <path d="M14 21 C20 32 28 32 34 21 L35 24 C29 37 19 37 13 24 Z" fill="#e8dcb4"/></g>
+    <path d="M17 26 C21 31 27 31 31 26 M15.5 23.5 L33 23.5" fill="none" stroke="#a3321a" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M19 29 L21 25 M24 30.5 V25 M29 29 L27 25" fill="none" stroke="${O}" stroke-width="1" stroke-opacity=".5"/>`,
+  glasslamp: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="24" cy="6" r="3" fill="none" stroke-width="2.4"/>
+    <path d="M15 15 L20 9 H28 L33 15 Z" fill="#9fb1bf"/>
+    <path d="M15 15 H33 C35 22 35 30 33 36 H15 C13 30 13 22 15 15 Z" fill="#cfeef0"/>
+    <path d="M24 19 C28.5 23.5 28.5 29 24 31.5 C19.5 29 19.5 23.5 24 19 Z" fill="#ffbd66"/>
+    <path d="M24 24.5 C25.5 26.5 25.5 28.5 24 29.5 C22.5 28.5 22.5 26.5 24 24.5 Z" fill="#fff2cc" stroke-width="1.2"/>
+    <path d="M13 36 H35 L33 42 H15 Z" fill="#9fb1bf"/></g>
+    <path d="M17.5 18 C16.5 23 16.5 29 17.5 33" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".85"/>`,
+  sinker: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="24" cy="8" r="4" fill="none" stroke-width="2.6"/>
+    <path d="M24 8 V13" fill="none" stroke-width="2.6"/>
+    <path d="M24 12 C30 18 36 26 36 33 C36 40 31 44 24 44 C17 44 12 40 12 33 C12 26 18 18 24 12 Z" fill="#6d8496"/>
+    <path d="M24 12 C30 18 36 26 36 33 C36 40 31 44 24 44 Z" fill="#9fb1bf" stroke="none"/>
+    <path d="M24 12 C30 18 36 26 36 33 C36 40 31 44 24 44 C17 44 12 40 12 33 C12 26 18 18 24 12 Z" fill="none"/></g>
+    <path d="M17 31 C17 26 19 22 22 19" fill="none" stroke="#c6d6e0" stroke-width="1.8" stroke-linecap="round"/>`,
+  water: `<path d="M13 12 H35 L32 42 C31.8 43.3 30.8 44 29.6 44 H18.4 C17.2 44 16.2 43.3 16 42 Z" fill="#e8e2d0" stroke="${O}" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M14.3 22 H33.7 L32 42 C31.8 43.3 30.8 44 29.6 44 H18.4 C17.2 44 16.2 43.3 16 42 Z" fill="#6cc6ec"/>
+    <path d="M24 26 C27 30 28 32.5 28 34.5 C28 36.8 26.2 38.5 24 38.5 C21.8 38.5 20 36.8 20 34.5 C20 32.5 21 30 24 26 Z" fill="#e9f8ff" stroke="${O}" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M13 12 H35 L32 42 C31.8 43.3 30.8 44 29.6 44 H18.4 C17.2 44 16.2 43.3 16 42 Z" fill="none" stroke="${O}" stroke-width="2" stroke-linejoin="round"/>
+    <ellipse cx="24" cy="12" rx="11" ry="2.6" fill="#fff8e6" stroke="${O}" stroke-width="2"/>`,
 });
