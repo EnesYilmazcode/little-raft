@@ -1,6 +1,6 @@
 // Water purifier, cups and palm-planter watering. Pure logic: no DOM, no THREE,
 // no clocks or randomness (harvest takes an injected rng). Only imports the item fuel table.
-// State lives in world.garden / world.purifiers, keyed "x,z" (tile ints).
+// State lives in world.garden / world.purifiers, keyed "x,z" (the decor's tile units; fractional since free placement).
 // A purifier entry is {t, ready, fuel, cup}: cup 1 while a cup sits in it, fuel = seconds of fire left.
 // The cup only boils while fuel > 0 and each boiling second burns one second of fuel (Raft: 1 plank = 50 s,
 // one cup = 60 s). Entries saved before fuel existed have no `cup` field and always held a cup.
@@ -18,7 +18,7 @@ export const purifierLit = (e) => !!e && e.cup !== 0 && !e.ready && e.fuel > 0;
 export const clockText = (sec) => { const n = Math.max(0, Math.ceil(sec)); return Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0'); };
 export const tileKey = (x, z) => x + ',' + z;
 
-const KEY_RE = /^-?\d+,-?\d+$/;
+const KEY_RE = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/; // free placement: decor x/z may be fractional
 const TEXT = Object.freeze({
   fillCup:'Scooped a cup of sea water', loadPurifier:'The purifier is bubbling away', takeWater:'+ 1 cup of fresh water',
   water:'The planter drinks it up', harvest:'+ 2 palm leaf · 1 coconut', harvestBonus:'+ 2 palm leaf · 1 coconut · 1 wood', // [juicer]
@@ -32,7 +32,7 @@ const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 function decorTypes(decor) {
   const m = new Map();
-  if (Array.isArray(decor)) for (const d of decor) if (d && Number.isInteger(d.x) && Number.isInteger(d.z) && typeof d.type === 'string') m.set(tileKey(d.x, d.z), d.type);
+  if (Array.isArray(decor)) for (const d of decor) if (d && Number.isFinite(d.x) && Number.isFinite(d.z) && typeof d.type === 'string') m.set(tileKey(d.x, d.z), d.type);
   return m;
 }
 

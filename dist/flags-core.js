@@ -46,7 +46,7 @@ export function cleanDesign(v, strict = false) {
 
 const tileTypes = decor => {
   const types = new Map();
-  for (const d of decor) if (d && isInt(d.x) && isInt(d.z)) types.set(keyOf(d.x, d.z), d.type);
+  for (const d of decor) if (d && Number.isFinite(d.x) && Number.isFinite(d.z)) types.set(keyOf(d.x, d.z), d.type);
   return types;
 };
 
@@ -85,7 +85,7 @@ export function pruneSlice(st, decor) {
 export function applyFlagAction(st, a, actor, env) {
   const no = reason => ({ ok: false, reason });
   if (!st || !isObj(st.f) || !a || typeof a !== 'object' || a.kind !== 'flag.set') return no('bad');
-  if (!isInt(a.x) || !isInt(a.z)) return no('notarget');
+  if (!Number.isFinite(a.x) || !Number.isFinite(a.z)) return no('notarget');
   let type = null;
   try { type = env?.decorAt?.(a.x, a.z) ?? null; } catch { type = null; }
   if (type !== 'flagpole') return no('notarget');

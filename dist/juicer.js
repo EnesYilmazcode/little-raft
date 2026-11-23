@@ -23,7 +23,7 @@ export const TEXT = Object.freeze({
 });
 const PROMPT = Object.freeze({ berry: '<kbd>E</kbd>Blend a berry smoothie', coconut: '<kbd>E</kbd>Blend a coconut smoothie', mixed: '<kbd>E</kbd>Blend an island smoothie' });
 
-const KEY_RE = /^-?\d+,-?\d+$/;
+const KEY_RE = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/; // free placement: decor x/z may be fractional
 const isInt = Number.isInteger;
 const own = (o, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
 export const tileKey = (x, z) => x + ',' + z;
@@ -31,7 +31,7 @@ const isKey = k => typeof k === 'string' && k.length <= 24 && KEY_RE.test(k) && 
 
 function juicerKeys(decor) {
   const out = new Set();
-  if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'juicer' && isInt(d.x) && isInt(d.z)) out.add(tileKey(d.x, d.z));
+  if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'juicer' && Number.isFinite(d.x) && Number.isFinite(d.z)) out.add(tileKey(d.x, d.z));
   return out;
 }
 const hasJuicer = (decor, x, z) => { if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'juicer' && d.x === x && d.z === z) return true; return false; };
@@ -133,7 +133,7 @@ export function createJuicer(ctx) {
     seenSt = st; seenR = st.r; seenLen = d.length;
     for (const k of seen.keys()) if (!hasJuicerKey(d, k)) { seen.delete(k); spin.delete(k); }
     for (let i = 0; i < d.length; i++) {
-      const e = d[i]; if (!e || e.type !== 'juicer' || !isInt(e.x) || !isInt(e.z)) continue;
+      const e = d[i]; if (!e || e.type !== 'juicer' || !Number.isFinite(e.x) || !Number.isFinite(e.z)) continue;
       const k = tileKey(e.x, e.z), j = oldHost() ? null : st.j[k], n = j ? j.n : 0;
       if (seen.has(k) && seen.get(k) !== n) spin.set(k, 0);
       seen.set(k, n);
@@ -149,7 +149,7 @@ export function createJuicer(ctx) {
     groups.length = 0;
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i]; if (g.name !== 'craft_juicer') continue;
-      groups.push({ g, k: tileKey(Math.round(g.position.x / 2), Math.round(g.position.z / 2)) });
+      groups.push({ g, k: tileKey(Math.round(g.position.x * 500) / 1000, Math.round(g.position.z * 500) / 1000) });
     }
   }
 
@@ -224,7 +224,7 @@ export function createJuicer(ctx) {
     },
     action(a, actor, bag) {
       if (!a || typeof a.kind !== 'string' || !a.kind.startsWith('juicer.')) return false;
-      if (a.kind !== 'juicer.blend' || !isInt(a.x) || !isInt(a.z) || !own(MIXES, a.mix) || !hasJuicer(decor(), a.x, a.z)) return true;
+      if (a.kind !== 'juicer.blend' || !Number.isFinite(a.x) || !Number.isFinite(a.z) || !own(MIXES, a.mix) || !hasJuicer(decor(), a.x, a.z)) return true;
       const pose = actor === 'guest' ? ctx.other : ctx.physics;
       if (!pose || !Number.isFinite(pose.x) || !Number.isFinite(pose.z) || Math.hypot(a.x * 2 - pose.x, a.z * 2 - pose.z) > REACH + HOST_SLACK) return true;
       const r = blend(bag, a.mix);

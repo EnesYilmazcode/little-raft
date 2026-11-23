@@ -15,19 +15,20 @@ export const ENGINE = Object.freeze({
   MAX_ENTRIES: 64,
   REACH: 2.6, OP_GAP: 250, MAX_TICK: 1, PROP_SPIN: 14,
 });
-const KEY_RE = /^-?\d+,-?\d+$/;
+const KEY_RE = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/; // free placement: decor x/z may be fractional
 const NONE = Object.freeze([]);
 const isInt = Number.isInteger;
 const fin = x => typeof x === 'number' && Number.isFinite(x);
 const KEYS = new Map(); // interned "x,z" keys: the per-frame push/burn/animation lookups allocate no strings
 const keyOf = (x, z) => {
-  if (!isInt(x) || !isInt(z) || Math.abs(x) > 500 || Math.abs(z) > 500) return x + ',' + z;
-  const n = (x + 512) * 1024 + z + 512;
+  const xi = Math.round(x * 1000), zi = Math.round(z * 1000); // free placement: fractional spots (1/1000 tile) intern too
+  if (!fin(x) || !fin(z) || Math.abs(x) > 500 || Math.abs(z) > 500 || xi / 1000 !== x || zi / 1000 !== z) return x + ',' + z;
+  const n = (xi + 600000) * 1300000 + zi + 600000;
   let k = KEYS.get(n);
   if (k === undefined) { k = x + ',' + z; if (KEYS.size < 4096) KEYS.set(n, k); }
   return k;
 };
-const okXZ = (x, z) => isInt(x) && isInt(z) && Math.abs(x) <= 25 && Math.abs(z) <= 25;
+const okXZ = (x, z) => fin(x) && fin(z) && Math.abs(x) <= 25 && Math.abs(z) <= 25;
 const NAMES = { leaf: 'leaf', wood: 'wood', plastic: 'plastic' };
 
 /** Validator: always a fresh {v:1, motors:{}} with only valid entries. Never throws. */
@@ -54,7 +55,7 @@ export function cleanEngine(v) {
 /** Sorted "x,z" keys of the motor decor. */
 export function motorKeys(decor) {
   const out = [];
-  if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'motor' && isInt(d.x) && isInt(d.z)) out.push(keyOf(d.x, d.z));
+  if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'motor' && Number.isFinite(d.x) && Number.isFinite(d.z)) out.push(keyOf(d.x, d.z));
   return out.sort();
 }
 
@@ -63,7 +64,7 @@ export function wheelSpots(decor, out = []) {
   let n = 0;
   if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) {
     const d = decor[i];
-    if (!d || d.type !== 'wheel' || !isInt(d.x) || !isInt(d.z)) continue;
+    if (!d || d.type !== 'wheel' || !Number.isFinite(d.x) || !Number.isFinite(d.z)) continue;
     const s = out[n] || (out[n] = { x: 0, z: 0 });
     s.x = d.x * 2; s.z = d.z * 2; n++;
   }
@@ -213,7 +214,7 @@ export function createEngine(ctx) {
     childCount = raft.children.length; firstChild = raft.children[0] ?? null; models.length = 0;
     for (const c of raft.children) {
       const kind = c.userData?.engine; if (!kind) continue;
-      models.push({ obj: c, kind, x: Math.round(c.position.x / 2), z: Math.round(c.position.z / 2),
+      models.push({ obj: c, kind, x: Math.round(c.position.x * 500) / 1000, z: Math.round(c.position.z * 500) / 1000, // free placement: exact decor spot
         prop: c.getObjectByName?.('engineProp') ?? null, housing: c.getObjectByName?.('engineHousing') ?? null, wheel: c.getObjectByName?.('engineWheel') ?? null });
     }
   }

@@ -70,7 +70,7 @@ test('add: 3 max, busy while cooking, nothing without the kind, fresh water retu
   // reach / missing / bad
   assert.equal(act(fresh(), { kind: 'pot.add', item: 'puffegg', x: 2 }, b4).reason, 'missing');
   assert.equal(act(fresh(), { kind: 'pot.add', item: 'puffegg' }, b4, 'host', env(potAt, { x: 9, z: 0 })).reason, 'reach');
-  assert.equal(act(fresh(), { kind: 'pot.add', item: 'puffegg', x: 1.5 }, b4).reason, 'bad');
+  assert.equal(act(fresh(), { kind: 'pot.add', item: 'puffegg', x: NaN }, b4).reason, 'bad'); // free placement: fractional x is a valid spot, only non-finite is bad
   assert.equal(act(fresh(), { kind: 'pot.add', item: 'puffegg' }, b4, 'nobody').reason, 'bad');
   assert.equal(act(fresh(), { kind: 'pot.nope' }, b4).reason, 'bad');
   // a full bag cannot take the cup back

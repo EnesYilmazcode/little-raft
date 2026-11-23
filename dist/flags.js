@@ -99,7 +99,7 @@ export function createFlags(ctx) {
     const top = (ctx.raft?.position.y ?? 0) + .22, s = w.sailing, wd = Number.isFinite(s?.windDir) ? s.windDir : 0;
     const fx = Math.sin(wd), fz = Math.cos(wd); // the cloth streams downwind
     for (let i = 0; i < w.decor.length; i++) {
-      const d = w.decor[i]; if (!d || d.type !== 'flagpole' || !isInt(d.x) || !isInt(d.z)) continue;
+      const d = w.decor[i]; if (!d || d.type !== 'flagpole' || !Number.isFinite(d.x) || !Number.isFinite(d.z)) continue;
       const cx = d.x * 2, cz = d.z * 2;
       if (Math.hypot(p.x - cx, p.z - cz) > REACH) continue;
       // mast: segment A=(cx, top+Y0, cz) .. +L along +Y
@@ -203,7 +203,7 @@ export function createFlags(ctx) {
   }
 
   function dropTile(x, z) { // a pole was picked up: its design goes with it (like sign text)
-    if (!isInt(x) || !isInt(z)) return;
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return;
     const k = keyOf(x, z);
     if (ui?.isOpen && ui.tile === k) ui.close();
     if (!isHost() || !st.f[k]) return;
@@ -239,7 +239,7 @@ export function createFlags(ctx) {
       return '<kbd>E</kbd>Design flag';
     },
     decorModel(type, d) {
-      if (type !== 'flagpole' || !T || !d || !isInt(d.x) || !isInt(d.z)) return null;
+      if (type !== 'flagpole' || !T || !d || !Number.isFinite(d.x) || !Number.isFinite(d.z)) return null;
       models ??= buildFlagModel(T);
       const k = keyOf(d.x, d.z), g = models.instance();
       g.userData.tileKey = k;

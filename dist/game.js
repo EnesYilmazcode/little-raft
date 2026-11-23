@@ -60,7 +60,7 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { mergeGate } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
-import { createGhosts, wrapRot, wheelDelta, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
+import { createGhosts, wrapRot, wheelDelta, ROT_STEP, FINE_STEP, freeBlock, edgeSnap, pieceRects, GRID_DECOR, cleanDecor, grillRect, decorRect, rectOverlap, measureFootprint, hasFootprint, cleanDecorPos, roundCoord, PLACE_EPS } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview, decor rotation and free placement (the floor grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, onIconReady, setIconRenderer } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState, BAG_OPEN_KEYS, BAG_CLOSE_KEYS, REEL_PROMPT, LOOK_DONE_RAD, WALK_DONE_S } from './hud.js?build=v3-survival-ae77fa84ac2b'; // loop-ux: saved sound toggle, drag-look sensitivity, first-run hints
@@ -217,10 +217,7 @@ export function mount(transfer = null) {
     for (const k of STOCK_KEYS) { const n = s[k]; stock[k] = isInt(n) && n >= 0 && n <= 1e6 ? n : 0; }
     const decor = [], used = new Set();
     for (const d of Array.isArray(v.decor) ? v.decor : []) {
-      if (!d || !DECOR_TYPES.includes(d.type) || !isInt(d.x) || !isInt(d.z)) continue;
-      const k = d.x + ',' + d.z; if (!seen.has(k) || used.has(k)) continue;
-      const rot = Number.isFinite(d.rot) ? Math.round(wrapRot(d.rot) * 1000) / 1000 : 0; // placement rotation (R / shift+wheel while placing)
-      used.add(k); const e = rot ? {type:d.type, x:d.x, z:d.z, rot} : {type:d.type, x:d.x, z:d.z};
+      const e = cleanDecor(d, DECOR_TYPES, (x, z) => seen.has(x + ',' + z), used); if (!e) continue; // free placement: exact tile units (fractional) + rot; old integer cells stay the tile centres
       if (d.type === 'cropplot') e.crop = cleanCrop(d.crop); // [crops] old saves: empty slots
       decor.push(e);
     }
@@ -490,7 +487,7 @@ export function mount(transfer = null) {
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
     player = makeAvatar(lookState.look); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
-    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { if (k === 'net') return createNetModel(T, mergeGeometries, {ownMaterials:true}); return prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
+    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { if (k === 'net') return createNetModel(T, mergeGeometries, {ownMaterials:true}); return prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k, {type:k, x:1000, z:1000}) ?? null); } catch { return null; } }}); // see-through real models, red when blocked; decor-pack / flag models need a spot (an off-raft placeholder: no state lives there)
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
@@ -511,6 +508,7 @@ export function mount(transfer = null) {
     try { vitalsUI = createVitalsUI(); } catch (e) { console.warn('vitals HUD unavailable', e); vitalsUI = null; } // [vitals]
     building = createBuilding(T, scene); // building-pieces lane hook
     building.setRemoveExtra(decorRemoveTarget); // [undecor] X on decor when no piece is aimed
+    building.setPlaceCheck?.(p => { const why = pieceDecorWhy(p); return why ? BLOCK_TEXT[why] : ''; }); // free placement: the piece ghost turns red over a placed item
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
@@ -564,7 +562,7 @@ export function mount(transfer = null) {
   function fcHost() {
     return {scene, raft, ocean, camera, signal, get rodModel() { return hands?.itemModel('fishingrod') ?? null; }, role:() => role, netReady:() => networkReady, send, action, notice, beep,
       selectedKind, aim:() => currentAim(), rodTip:() => handPos, player:() => ({x:physics.x, y:physics.y, z:physics.z, yaw}),
-      hasTile, decorAt:(x, z) => world.decor.some(d => d.x === x && d.z === z), bagCount:k => localBag().count(k),
+      hasTile, decorAt:(x, z) => decorOver(grillRect(x, z)), bagCount:k => localBag().count(k),
       running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging, observe:(ev, actor) => content?.observe(ev, actor)}; // [tasks] observe
   }
   function fallbackAvatar(color) {
@@ -1060,8 +1058,8 @@ export function mount(transfer = null) {
       }
     }
     if (!point) return null;
-    const x = Math.round(point.x / 2), z = Math.round(point.z / 2), d = world.decor.find(d => d.x === x && d.z === z && (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler'));
-    return d ? {key:tileKey(x, z), type:d.type, x, z} : null;
+    const d = decorNear(point, d => d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler'); // free placement: the footprint under the aim
+    return d ? {key:tileKey(d.x, d.z), type:d.type, x:d.x, z:d.z} : null;
   }
   function wateringTarget(aim) {
     if (!aim) return null;
@@ -1111,13 +1109,17 @@ export function mount(transfer = null) {
   // 'nofloor') when refused, null when it can be built. Runs every frame, so it fills one reused result (read it right away).
   const placed = {x:0, z:0, blocked:null};
   function placementFor(kind, p) {
-    if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
+    if (!p) return null; let x = Math.round(p.x / 2), z = Math.round(p.z / 2);
     let why;
     if (kind === 'net') { const v = netSpot(world.tiles, world.nets, p.x, p.z); if (v && !v.blocked && !inReach(physics.x, physics.z, netCenterX(v) / 2, netCenterZ(v) / 2)) v.blocked = 'reach'; return v; } // [nets] edge spot {x, z, d}
     if (kind === 'hammer') why = floorBlock(world.tiles, x, z) ?? (netOnCell(world.nets, x, z) ? 'net' : null); // [nets] no floor over a net
-    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z, world.pieces) || content?.placeBlock(kind, x, z) || null; } // [fishing-cooking] grill tiles // [fishtrap] placeBlock
+    else if (DECOR_TYPES.includes(kind) && freePlacement()) { // free placement: the exact aimed point (tile units), any rotation, flush neighbours
+      const d = freeSpot, grid = GRID_DECOR.includes(kind); d.type = kind; d.x = grid ? x : roundCoord(p.x / 2); d.z = grid ? z : roundCoord(p.z / 2); d.rot = placeRot; // GRID_DECOR (animal homes) keep the tile centre
+      why = freeWhy(d, !grid) || content?.placeBlock(kind, Math.round(d.x), Math.round(d.z)) || null; x = d.x; z = d.z; // [fishtrap] placeBlock takes the tile under it
+    }
+    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z, world.pieces) || content?.placeBlock(kind, x, z) || null; } // [fishing-cooking] grill tiles // [fishtrap] placeBlock (old hosts: one per tile)
     else return null;
-    if (why === 'nofloor' && !nearDeck(x, z)) return null; // just off the deck edge still shows a red ghost instead of nothing
+    if (why === 'nofloor' && !hasTile(Math.round(x), Math.round(z)) && !nearDeck(Math.round(x), Math.round(z))) return null; // just off the deck edge still shows a red ghost instead of nothing
     if (why && !BLOCK_TEXT[why]) return null;
     if (!why && !inReach(physics.x, physics.z, x, z)) why = 'reach';
     if (!why && kind !== 'hammer') { // never drop a prop on a player
@@ -1126,11 +1128,60 @@ export function mount(transfer = null) {
     }
     placed.x = x; placed.z = z; placed.blocked = why || null; return placed;
   }
+  // ---------- Free placement helpers (dist/placement.js) ----------
+  // A guest of an old host (no caps.free) keeps the old one-per-tile grid, which that host still accepts.
+  const freePlacement = () => role !== 'guest' || !!hostCaps?.free;
+  const freeSpot = {type:'', x:0, z:0, rot:0}, freeEnv = {hasTile:(x, z) => hasTile(x, z), decor:null, pieceRects:[], extra:[], radii:BLOCK_RADIUS};
+  let freePieces = null, freePieceN = -1; const grillPool = [];
+  function freeEnvNow() { // level-0 pieces as rects (rebuilt only when the pieces list changes) and grill spots
+    const ps = world.pieces;
+    if (ps !== freePieces || (ps?.length ?? 0) !== freePieceN) { pieceRects(ps, freeEnv.pieceRects); freePieces = ps; freePieceN = ps?.length ?? 0; }
+    let n = 0;
+    if (fc?.grills?.size) for (const g of fc.grills.values()) if (g?.st) { const r = grillPool[n] ??= grillRect(0, 0), q = grillRect(0, 0); r.x = g.st.x * 2; r.z = g.st.z * 2; r.hw = q.hw; r.hd = q.hd; freeEnv.extra[n++] = r; }
+    freeEnv.extra.length = n;
+    freeEnv.decor = world.decor; return freeEnv;
+  }
+  // Footprints come from the plain ghost model of each kind (the same on host and guest), measured once.
+  function ensureFootprint(kind) { if (!hasFootprint(kind) && ghosts?.model) { try { const g = ghosts.model(kind); if (g) measureFootprint(T, kind, g); } catch (e) { console.warn('footprint failed', kind, e); } } }
+  // Why decor d (tile units) can't stand there, or null. snap: first slide it flush against a near neighbour or wall.
+  function freeWhy(d, snap) {
+    ensureFootprint(d.type); const env = freeEnvNow();
+    if (snap) edgeSnap(env, d);
+    return freeBlock(env, d);
+  }
+  const overRect = {};
+  // Why a building piece can't go at deck level because of what stands there ('decor' | 'overlap'), or null. Host check and piece ghost.
+  const onePiece = [null], onePieceRects = [];
+  function pieceDecorWhy(p) {
+    if (!p || p.l !== 0) return null;
+    const why = pieceBlock(world.decor, p) || (p.t === 'stairs' && fc?.hasGrill(p.i, p.j) ? 'decor' : null); if (why) return why;
+    onePiece[0] = p; pieceRects(onePiece, onePieceRects); onePiece[0] = null;
+    for (const r of onePieceRects) if (decorOver(r)) return 'overlap';
+    return null;
+  }
+  function decorOver(r) { for (const d of world.decor) if (rectOverlap(r, decorRect(d, BLOCK_RADIUS, overRect)) > PLACE_EPS) return true; return false; } // any decor footprint over rect r (metres)
+  // The decor (matching ok) whose footprint holds raft-local point p (metres), else the nearest within .4 m of its edge.
+  function decorNear(p, ok) {
+    let best = null, bestD = .4;
+    for (const d of world.decor) {
+      if (!ok(d)) continue; const r = decorRect(d, BLOCK_RADIUS, overRect), c = Math.cos(r.rot), s = Math.sin(r.rot), dx = p.x - r.x, dz = p.z - r.z;
+      const u = Math.abs(dx * c - dz * s) - r.hw, w = Math.abs(dx * s + dz * c) - r.hd, gap = Math.hypot(Math.max(0, u), Math.max(0, w));
+      if (gap < bestD) { bestD = gap; best = d; }
+    }
+    return best;
+  }
+  // Does a building piece (wall, stairs, the floor of a storey) stand between the eye and the aimed deck point?
+  function pieceHides(aim) {
+    const pt = aim?.point, d = aim?.dir, grid = building?.grid; if (!pt || !d || !grid?.hitDist) return false;
+    const c = camera.position, far = c.distanceTo(pt);
+    return grid.hitDist(c.x, c.y, c.z, d.x, d.y, d.z, deckY(), far) < far - .05;
+  }
   function nearDeck(x, z) { for (const [a, b] of NEIGHBOURS) if (hasTile(x + a, z + b)) return true; return false; }
   function placementCandidates(kind) {
     const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
     if (kind === 'net') { for (const [tx, tz] of world.tiles) for (let d = 0; d < 4; d++) { const v = {x:tx, z:tz, d}; if (!netBlock(world.tiles, world.nets, tx, tz, d) && ok(netCenterX(v) / 2, netCenterZ(v) / 2)) out.push(v); } return out; } // [nets]
     if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && !netOnCell(world.nets, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
+    else if (DECOR_TYPES.includes(kind) && freePlacement()) for (const [x, z] of world.tiles) { const d = {type:kind, x, z, rot:placeRot}; if (!freeWhy(d, false) && !content?.placeBlock(kind, x, z) && ok(x, z)) out.push({x, z}); } // free placement: tile centres that are free (QA / pad hints)
     else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z, world.pieces) && !fc?.hasGrill(x, z) && !content?.placeBlock(kind, x, z) && ok(x, z)) out.push({x, z}); // [fishtrap] placeBlock
     return out;
   }
@@ -1194,7 +1245,7 @@ export function mount(transfer = null) {
       if (hasTile(Math.round(a.x / 2), Math.round(a.z / 2)) || Math.hypot(a.x - p.x, a.z - p.z) > FILL_REACH + HOST_SLACK) return;
       r = fillCup(world, bag);
     } else {
-      if (!isInt(a.x) || !isInt(a.z) || Math.hypot(a.x * 2 - p.x, a.z * 2 - p.z) > USE_REACH + HOST_SLACK) return;
+      if (!cleanDecorPos(a.x, a.z) || Math.hypot(a.x * 2 - p.x, a.z * 2 - p.z) > USE_REACH + HOST_SLACK) return;
       const key = tileKey(a.x, a.z);
       r = a.kind === 'loadPurifier' ? loadPurifier(world, key, bag) : a.kind === 'takeWater' ? takeWater(world, key, bag)
         : a.kind === 'fuelPurifier' ? fuelPurifier(world, key, bag, typeof a.item === 'string' ? a.item : '')
@@ -1205,7 +1256,7 @@ export function mount(transfer = null) {
   }
   function applyRain(a, actor, bag) { // rain-sprinkler: host-side validation (logic in rain.js)
     const p = actor === 'guest' ? other : physics; if (!p) return;
-    if (!isInt(a.x) || !isInt(a.z) || Math.hypot(a.x * 2 - p.x, a.z * 2 - p.z) > USE_REACH + HOST_SLACK) return;
+    if (!cleanDecorPos(a.x, a.z) || Math.hypot(a.x * 2 - p.x, a.z * 2 - p.z) > USE_REACH + HOST_SLACK) return;
     const key = tileKey(a.x, a.z), r = a.kind === 'takeRain' ? takeRain(world, key, bag) : fillSprinkler(world, key, bag);
     emit({kind:r.ok ? r.kind : (r.reason === 'full' ? 'full' : 'notice'), text:r.text}, actor);
   }
@@ -1271,7 +1322,7 @@ export function mount(transfer = null) {
     }
     if (a.kind === 'build') {
       let placedText = null;
-      if (!isInt(a.x) || !isInt(a.z)) return;
+      if (DECOR_TYPES.includes(a.recipe) && a.recipe !== 'net' ? !cleanDecorPos(a.x, a.z) : !isInt(a.x) || !isInt(a.z)) return; // free placement: decor may sit anywhere (tile units)
       const who = actor === 'guest' ? other : physics; // guest pose may be missing until its first move
       if (who && !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
       if (a.recipe === 'net') { // [nets] hangs off a tile side over open water
@@ -1287,19 +1338,20 @@ export function mount(transfer = null) {
         if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST)}, actor); return; }
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
-        const why = decorBlock(world.tiles, world.decor, a.x, a.z, world.pieces);
-        if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; } if (fc?.hasGrill(a.x, a.z)) return; // [fishing-cooking] grill tiles
+        if (GRID_DECOR.includes(a.recipe) && (!isInt(a.x) || !isInt(a.z))) return; // animal homes stay on tile centres
+        const [px, pz] = cleanDecorPos(a.x, a.z), spot = {type:a.recipe, x:px, z:pz, rot:Number.isFinite(a.rot) ? a.rot : 0}, why = freeWhy(spot, false); // free placement: footprint on deck, clear of decor, grills, walls and pillars (old guests send tile centres, which pass the same test)
+        if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
         const inWay = playerInWay(decorBlockers({type:a.recipe, x:a.x, z:a.z, rot:a.rot}, BLOCK_RADIUS), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS); // host pose, guest pose
         if (inWay >= 0) { emit({kind:'notice', text:BLOCK_TEXT[(inWay === 0) === (actor === 'host') ? 'self' : 'brother']}, actor); return; }
-        { const eb = content?.placeBlock(a.recipe, a.x, a.z); if (eb) { emit({kind:'notice', text:BLOCK_TEXT[eb] ?? 'Can’t place that here'}, actor); return; } } // [fishtrap]
+        { const eb = content?.placeBlock(a.recipe, Math.round(px), Math.round(pz)); if (eb) { emit({kind:'notice', text:BLOCK_TEXT[eb] ?? 'Can’t place that here'}, actor); return; } } // [fishtrap]
         if (a.recipe === 'receiver' && world.decor.some(d => d.type === 'receiver')) { emit({kind:'notice', text:'Your raft already has a receiver'}, actor); return; }
         const sel = bag.slots[bag.selectedIndex];
         if (sel?.kind === a.recipe) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; }
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
         const antennasBefore = countAntennas(world.decor);
         const rot = Number.isFinite(a.rot) ? Math.round(wrapRot(a.rot) * 1000) / 1000 : 0;
-        world.decor.push(rot ? {type:a.recipe, x:a.x, z:a.z, rot} : {type:a.recipe, x:a.x, z:a.z});
-        content?.placed?.(a.recipe, a.x, a.z, actor); // [bed] a new bed is its placer's wake-up spot
+        world.decor.push(rot ? {type:a.recipe, x:px, z:pz, rot} : {type:a.recipe, x:px, z:pz});
+        content?.placed?.(a.recipe, px, pz, actor); // [bed] a new bed is its placer's wake-up spot
         if (a.recipe === 'antenna') { const n = countAntennas(world.decor); placedText = n > antennasBefore ? `Antenna placed · signal ${n}/3` : antennasBefore >= 3 ? 'Antenna placed' : 'Antenna placed (put it 2+ tiles from the receiver)'; }
       } else return;
       rebuildRaft(); fitShadow(); emit({kind:'build', text:placedText ?? (a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`), sound:a.recipe === 'floor' ? 'build' : 'place'}, 'all');
@@ -1311,14 +1363,14 @@ export function mount(transfer = null) {
       if (!isInt(a.i) || !isInt(a.j)) return;
       const who = actor === 'guest' ? other : physics, [ci, cj] = pieceCell(a); // guest pose may be missing until its first move
       if (who && !inReach(who.x, who.z, ci, cj, PIECE_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
-      const why = a.kind === 'piece' && (pieceBlock(world.decor, a) || (a.l === 0 && a.t === 'stairs' && fc?.hasGrill(a.i, a.j) ? 'decor' : null));
+      const why = a.kind === 'piece' && pieceDecorWhy(a); // free placement: a wall, pillar or stairs never lands on a placed item
       if (why) { emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
       const r = building.apply(a, bag, world);
       if (r.ok) emit({kind:'build', text:r.text}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor);
       return;
     }
     if (a.kind === 'undecor') { // [undecor] pick up a placed item: item + contents back, all or nothing (docs/specs/decor-pickup.md §5)
-      if (!isInt(a.x) || !isInt(a.z)) return; const i = undecorIndex(world.decor, a.x, a.z); if (i < 0 || (a.t !== undefined && a.t !== world.decor[i].type)) return; // second remover (or a stale aim at a since re-placed item): silent
+      if (!cleanDecorPos(a.x, a.z)) return; const i = undecorIndex(world.decor, a.x, a.z); if (i < 0 || (a.t !== undefined && a.t !== world.decor[i].type)) return; // second remover (or a stale aim at a since re-placed item): silent
       const who = actor === 'guest' ? other : physics;
       if (who && !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
       if (bag.count('hammer') < 1) { emit({kind:'notice', text:UNDECOR_TEXT.hammer}, actor); return; }
@@ -1459,12 +1511,12 @@ export function mount(transfer = null) {
       const a = building.use(); if (a) { swing = 1; action(a); } else notice('Point at a green spot'); return;
     }
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
-      const v = placementFor(kind, p);
+      const v = placementFor(kind, kind !== 'hammer' && pieceHides(aim) ? null : p); // free placement: no item through a wall or an upper floor
       if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : kind === 'net' ? 'Point at the water beside the raft edge' : 'Point at an empty raft floor'); return; } // [nets]
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
       if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
       if (kind === 'net') { swing = 1; action({kind:'build', recipe:'net', x:v.x, z:v.z, d:v.d}); return; } // [nets] faces outward, no free rotation
-      swing = 1; ghostHold = {kind, x:v.x, z:v.z, rot:kind === 'hammer' ? 0 : placeRot}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
+      swing = 1; ghostHold = {kind, x:v.x, z:v.z, rot:kind === 'hammer' ? 0 : placeRot, ax:p.x, az:p.z}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
     }
     if (kind === 'fishingrod') {
       if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to fish'); return; }
@@ -1786,14 +1838,14 @@ export function mount(transfer = null) {
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
     const undecorEx = building?.removing ? building.removeExtra : null; // [undecor] red see-through ghost of the aimed decor
     if (undecorEx?.d) { const d = undecorEx.d; hover = null; ghostHold = null; ghosts.show(d.type, d.x * 2, .22, d.z * 2, d.rot || 0, false, elapsed); return; }
-    hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing && !building?.menu.isOpen ? placementFor(kind, frameAim.point) : null;
+    hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing && !building?.menu.isOpen ? placementFor(kind, kind !== 'hammer' && pieceHides(frameAim) ? null : frameAim.point) : null; // free placement: no item through a wall or an upper floor
     if (kind === 'net') { if (!hover) { ghosts.hide(); return; } ghosts.show('net', netEdgeX(hover), 0, netEdgeZ(hover), netYaw(hover.d), !hover.blocked, elapsed); return; } // [nets]
     const floor = kind === 'hammer';
-    if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.rot !== (floor ? 0 : placeRot) || hover.x !== ghostHold.x || hover.z !== ghostHold.z)) ghostHold = null; // keep the ghost off the piece just placed until the aim moves
+    if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.rot !== (floor ? 0 : placeRot) || (floor ? hover.x !== ghostHold.x || hover.z !== ghostHold.z : Math.hypot(frameAim.point.x - ghostHold.ax, frameAim.point.z - ghostHold.az) > .3))) ghostHold = null; // free placement: decor waits for a 30 cm aim move // keep the ghost off the piece just placed until the aim moves
     if (!hover || ghostHold) { ghosts.hide(); return; }
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
   }
-  const HOST_CAPS = Object.freeze({undecor:1}); // [undecor] top-level host capabilities (cleanWorld would strip them inside world); add new flags here
+  const HOST_CAPS = Object.freeze({undecor:1, free:1}); // free: decor may sit anywhere (fractional tile units); old guests ignore it // [undecor] top-level host capabilities (cleanWorld would strip them inside world); add new flags here
   function hostState() {
     const c = guestBag.counts();
     return {type:'state', v:3, ack:guestAck, caps:HOST_CAPS, bag:guestBag.snapshot(), other:pose(), held:[...ownHeldTokens()],
@@ -1967,7 +2019,7 @@ export function mount(transfer = null) {
     const wheelOpen = !!building?.menu.isOpen; // building wheel open: no hotbar swap (drops the hammer, closes the wheel) and no interact
     if (m && running && !wheelOpen) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat && !wheelOpen) interact();
-    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : e.altKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration (Shift+R in 15 degree steps, Alt+R back)
+    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : e.altKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration 15 degrees (Shift+R 5, Alt+R back)
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => {
@@ -2383,9 +2435,9 @@ export function mount(transfer = null) {
     get progression() { return prog?.debug ?? null; }, // [progression-hook]
     undecor:Object.freeze({ // [undecor] QA helpers
       target() { const ex = building?.removing ? building.removeExtra : null; return ex?.d ? {type:ex.d.type, x:ex.d.x, z:ex.d.z, text:ex.text} : null; },
-      preview(x, z) { if (!isInt(x) || !isInt(z)) return false; undecorPreview = {x, z}; return true; },
+      preview(x, z) { if (!cleanDecorPos(x, z)) return false; undecorPreview = {x, z}; return true; },
       clear() { undecorPreview = null; building?.key('KeyX', false, true); building?.removeAction(); },
-      act(x, z) { if (!isInt(x) || !isInt(z)) return false; if (role === 'guest' && !hostUndecor) { notice(UNDECOR_TEXT.oldHost); return false; } return action({kind:'undecor', x, z}); },
+      act(x, z) { if (!cleanDecorPos(x, z)) return false; if (role === 'guest' && !hostUndecor) { notice(UNDECOR_TEXT.oldHost); return false; } return action({kind:'undecor', x, z}); },
       get caps() { return role === 'guest' ? hostCaps : HOST_CAPS; },
     }),
     look:() => ({look:{...lookState.look}, unlocked:[...lookState.unlocked], open:!!lookUI?.isOpen}), // [look]
@@ -2422,6 +2474,13 @@ export function mount(transfer = null) {
       if (!raft) return [];
       const y = raft.position.y + .22;
       return placementCandidates(heldKind()).map(({x, z}) => ({x, z, world:{x:x * 2, y, z:z * 2}, screen:project(x * 2, y, z * 2)}));
+    },
+    place(x, z, rot) { // QA: aim the held placeable at raft-local metres (x, z) and click (free placement and edge snap included)
+      const kind = heldKind(); if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+      if (Number.isFinite(rot)) placeRot = Math.round(wrapRot(rot) * 1000) / 1000;
+      const v = placementFor(kind, {x, z}); if (!v) return null; const out = {x:v.x, z:v.z, blocked:v.blocked};
+      if (!v.blocked && (kind === 'hammer' || DECOR_TYPES.includes(kind))) action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})});
+      return out;
     },
   });
   const previousDebug = Object.getOwnPropertyDescriptor(window, 'raftDebug'); // restored if this mount fails

@@ -17,7 +17,7 @@ const TILE = 2, HALF = TILE / 2;
 
 // ---------- pure helpers (tested in node) ----------
 export function normalizePrompt(p) {
-  const list = (Array.isArray(p) ? p : p ? [p] : []).filter(x => x && typeof x.label === 'string' && x.label.trim());
+  const list = (Array.isArray(p) ? p : p ? [p] : []).filter(x => x && typeof x.label === 'string' && (x.label.trim() || (x.key && String(x.key).trim()))); // key-only rows: icon prompts (place mode)
   const out = list.slice(0, 2).map(x => {
     let key = x.key == null ? '' : String(x.key).trim(), hold = !!x.hold;
     if (/^hold\s+/i.test(key)) { hold = true; key = key.replace(/^hold\s+/i, ''); }
@@ -126,13 +126,20 @@ export function statePrompt(s, opt = {}) {
   if (held && s.tool === 'place') return placePrompt(s);
   return null;
 }
-// Place mode: the placement row always shows; an aim prompt (game.js aimHtml, e.g. storage's "E Open crate") stacks under it,
+// Place mode: the placement row comes first; an aim prompt (game.js aimHtml, e.g. storage's "E Open crate") stacks under it,
 // because game.js mutes its own game-aim providers while a placeable is held.
+// Free placement: icons only beside the crosshair (mouse glyph + R rotate), no words; the ghost's green / red tint says
+// whether the spot is valid. Nets keep their text hint (they hang off the raft edge, not on the floor).
+export const ROTATE_GLYPH = '\u21bb';
 export function placePrompt(s) {
-  const name = DECOR_NAMES[s.heldKind] ?? String(s.heldKind).replace(/[-_]+/g, ' ');
-  const place = s.build?.hover && s.build.hover.blocked !== 'nofloor' ? {key:'LMB', label:'Place ' + name} : {label:s.heldKind === 'net' ? 'Aim at the water by the raft edge' : 'Aim at the raft floor', muted:true}; // [nets]; nofloor: red ghost just off the deck
+  const hover = s.build?.hover, rows = [];
+  if (s.heldKind === 'net') {
+    const name = DECOR_NAMES[s.heldKind] ?? String(s.heldKind).replace(/[-_]+/g, ' ');
+    rows.push(hover && hover.blocked !== 'nofloor' ? {key:'LMB', label:'Place ' + name} : {label:'Aim at the water by the raft edge', muted:true}); // [nets]
+  } else if (hover && !hover.blocked) rows.push({key:'LMB', label:''});
   const aim = s.aimPrompt ? promptFromHtml(s.aimPrompt) : null;
-  return aim ? [place, aim] : place;
+  if (aim) rows.push(aim); else if (hover && s.heldKind !== 'net') rows.push({key:'R', label:ROTATE_GLYPH, muted:!!hover.blocked}); // the aim prompt wins the second row
+  return rows.length > 1 ? rows : rows[0] ?? null;
 }
 
 // ---------- DOM layer ----------

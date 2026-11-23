@@ -19,7 +19,7 @@ export const TEXT = Object.freeze({ stale: 'That spot just changed, try again', 
 export const TROPHY_DOWN = 'Trophy taken down. Your journal keeps the record.';
 export const SHELF_SIZE = 0.26, STAND_SIZE = 0.30; // largest dimension of a displayed item
 
-const KEY_RE = /^-?\d{1,3},-?\d{1,3}$/;
+const KEY_RE = /^-?\d{1,3}(\.\d{1,3})?,-?\d{1,3}(\.\d{1,3})?$/; // free placement: fractional decor spots
 const isInt = Number.isInteger;
 export const tileKey = (x, z) => x + ',' + z;
 const isKey = k => typeof k === 'string' && KEY_RE.test(k) && (() => { const [x, z] = k.split(',').map(Number); return tileKey(x, z) === k; })();
@@ -75,7 +75,7 @@ const hasOwnSlots = t => t === 'shelf' || t === 'trophystand';
 
 // Shared checks: the tile holds a display and `i` is one of its slots.
 function where(decor, a, needSlot = true) {
-  if (!a || !isInt(a.x) || !isInt(a.z)) return null;
+  if (!a || !Number.isFinite(a.x) || !Number.isFinite(a.z)) return null;
   const type = displayAt(decor, a.x, a.z); if (!type) return null;
   if (needSlot && !(isInt(a.i) && a.i >= 0 && a.i < SLOTS[type])) return null;
   return { type, key: tileKey(a.x, a.z) };
@@ -202,7 +202,7 @@ export function createDisplay(ctx) {
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i], type = g.name === 'craft_shelf' ? 'shelf' : g.name === 'craft_trophystand' ? 'trophystand' : null;
       if (!type) continue;
-      const x = Math.round(g.position.x / 2), z = Math.round(g.position.z / 2), anchors = [];
+      const x = Math.round(g.position.x * 500) / 1000, z = Math.round(g.position.z * 500) / 1000, anchors = [];
       for (let j = 0; j < SLOTS[type]; j++) anchors.push(g.children.find(c => c.name === 'slot' + j) ?? null);
       groups.push({ g, type, x, z, key: tileKey(x, z), anchors, dist: 0 });
     }
@@ -437,7 +437,7 @@ export function createDisplay(ctx) {
     },
     action(a, actor, bag) {
       if (!a || typeof a.kind !== 'string' || !a.kind.startsWith('display.')) return false;
-      if (!isInt(a.x) || !isInt(a.z) || (a.kind !== 'display.mount' && !isInt(a.i))) return true;
+      if (!Number.isFinite(a.x) || !Number.isFinite(a.z) || (a.kind !== 'display.mount' && !isInt(a.i))) return true;
       const pose = actor === 'guest' ? ctx.other : ctx.physics;
       if (!pose || !Number.isFinite(pose.x) || !Number.isFinite(pose.z) || Math.hypot(a.x * 2 - pose.x, a.z * 2 - pose.z) > REACH + HOST_SLACK) return true;
       const d = decor();

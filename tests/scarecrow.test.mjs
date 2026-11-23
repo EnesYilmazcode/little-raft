@@ -141,7 +141,7 @@ test('module: interact only on a pecked planter; action checks; serialize; old h
   // action: claims scarecrow.*, rejects non-int and far input without changing state
   assert.equal(m.action({ kind: 'bees.harvest', x: 0, z: 0 }, 'host'), false);
   const n = wild.shooed.length;
-  assert.equal(m.action({ kind: 'scarecrow.shoo', x: 0.5, z: 0 }, 'host'), true);
+  assert.equal(m.action({ kind: 'scarecrow.shoo', x: NaN, z: 0 }, 'host'), true); // free placement: fractional x is a valid spot
   assert.equal(m.action({ kind: 'scarecrow.shoo', x: '0', z: 0 }, 'host'), true);
   assert.equal(m.action({ kind: 'scarecrow.shoo', x: 9, z: 9 }, 'host'), true);
   assert.equal(m.action({ kind: 'scarecrow.shoo', x: 0, z: 0 }, 'guest'), true, 'no friend pose');

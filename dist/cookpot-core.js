@@ -33,7 +33,7 @@ export const TEXT = Object.freeze({
 
 const isInt = Number.isInteger;
 const intIn = (v, lo, hi) => isInt(v) && v >= lo && v <= hi;
-const KEY_RE = /^(-?\d{1,2}),(-?\d{1,2})$/;
+const KEY_RE = /^(-?\d{1,2}(?:\.\d{1,3})?),(-?\d{1,2}(?:\.\d{1,3})?)$/; // free placement: fractional decor spots
 const plain = v => !!v && typeof v === 'object' && !Array.isArray(v);
 
 export function blank() { return { i: [], f: 0, h: 0, t: 0, c: null, o: null, n: 0 }; }
@@ -189,7 +189,7 @@ export function applyPotAction(st, a, actor, bag, env) {
     return { ok: true, text: `Tummy full of ${meal.name}: ${meal.buff}`, meal: a.item };
   }
 
-  if (!isInt(a.x) || !isInt(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return no('bad');
+  if (!Number.isFinite(a.x) || !Number.isFinite(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return no('bad');
   if ((env?.decorAt?.(a.x, a.z) ?? null) !== 'cookpot') return no('missing');
   const p = env?.pos?.(actor);
   if (p && Number.isFinite(p.x) && Number.isFinite(p.z) && Math.hypot(p.x - a.x * 2, p.z - a.z * 2) > POT.REACH) return no('reach');

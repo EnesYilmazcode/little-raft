@@ -27,6 +27,7 @@ export function createBuilding(T, scene) {
   let rot = 0, version = -1, removing = false, removeTarget = null, chipText = '';
   let remRec = null, remVer = -1, remText = '';
   let removeExtraFn = null, removeExtra = null; // [undecor] game.js decor target when no piece is aimed: {text, action, d, deny?}
+  let placeCheckFn = null; // free placement: game.js veto for an otherwise valid slot (a placed item in the way) -> reason text or ''
   let curBag = null; // the local bag of the last update(); afford() is one function, not a per-frame closure
   const afford = cost => { if (!curBag) return true; for (const k in cost) if (curBag.count(k) < cost[k]) return false; return true; };
   const okColor = new T.Color(GHOST_OK), badColor = new T.Color(GHOST_BAD);
@@ -100,6 +101,7 @@ export function createBuilding(T, scene) {
         else { removeExtra = removeExtraFn ? removeExtraFn(origin, d) : null; text = removeExtra?.text ?? 'Point at a piece to remove'; } // [undecor]
       } else if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
+        if (r && r.ok && placeCheckFn) { const why = placeCheckFn(r); if (why) { r.ok = false; r.reason = why; } } // red ghost, and use() refuses it
         if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }
       }
     }
@@ -206,6 +208,7 @@ export function createBuilding(T, scene) {
   return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
     target, prompt, promptOf, interact, toggle, climb:(...a) => grid.climb(...a),
     setRemoveExtra(fn) { removeExtraFn = typeof fn === 'function' ? fn : null; }, get removeExtra() { return removeExtra; }, // [undecor]
+    setPlaceCheck(fn) { placeCheckFn = typeof fn === 'function' ? fn : null; }, // free placement
     get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
     preStep:(phys, deckY, c) => grid.preStep(phys, deckY, c), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

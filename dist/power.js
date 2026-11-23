@@ -14,7 +14,7 @@ export const POWER_TYPES = Object.freeze(['turbine', 'battery', 'stringlights', 
 const LIGHT_NAME = { stringlights: 'String Lights', lamppost: 'Lamp Post' };
 const DRAIN = { stringlights: DRAIN_STRING, lamppost: DRAIN_LAMP };
 
-const KEY_RE = /^-?\d+,-?\d+$/;
+const KEY_RE = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/; // free placement: decor x/z may be fractional
 const isInt = Number.isInteger;
 export const tileKey = (x, z) => x + ',' + z;
 const isKey = k => typeof k === 'string' && k.length <= 24 && KEY_RE.test(k) && (() => { const [x, z] = k.split(',').map(Number); return tileKey(x, z) === k; })();
@@ -24,7 +24,7 @@ const fin = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 
 function batteryKeys(decor) {
   const out = new Set();
-  if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'battery' && isInt(d.x) && isInt(d.z)) out.add(tileKey(d.x, d.z));
+  if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'battery' && Number.isFinite(d.x) && Number.isFinite(d.z)) out.add(tileKey(d.x, d.z));
   return out;
 }
 const hasBattery = (decor, x, z) => { if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'battery' && d.x === x && d.z === z) return true; return false; };
@@ -67,7 +67,7 @@ function nearest(st, decor, x, z, force) {
   if (!Array.isArray(decor)) return null;
   const b = st && st.b ? st.b : {};
   for (const d of decor) {
-    if (!d || d.type !== 'battery' || !isInt(d.x) || !isInt(d.z)) continue;
+    if (!d || d.type !== 'battery' || !Number.isFinite(d.x) || !Number.isFinite(d.z)) continue;
     const dist = cheb(d.x, d.z, x, z); if (dist > LIGHT_RANGE) continue;
     const k = tileKey(d.x, d.z);
     if (k !== force && !(b[k] > 0)) continue;
@@ -91,7 +91,7 @@ export function tickPower(st, decor, dt, wind, night) {
     const gain = [];
     for (const k of bats) { const [x, z] = k.split(',').map(Number); const g = Math.round(turbinesNear(decor, x, z) * w * GAIN); if (g > 0) gain.push(k, g); }
     const lights = [];
-    if (dark) for (const d of decor) if (d && isLight(d.type) && isInt(d.x) && isInt(d.z)) lights.push(d);
+    if (dark) for (const d of decor) if (d && isLight(d.type) && Number.isFinite(d.x) && Number.isFinite(d.z)) lights.push(d);
     for (let s = 0; s < n; s++) {
       for (let i = 0; i < gain.length; i += 2) { const k = gain[i]; st.b[k] = Math.min(CAP, (st.b[k] || 0) + gain[i + 1]); }
       for (const d of lights) {
@@ -170,7 +170,7 @@ export function createPower(ctx) {
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i], n = g.name;
       if (n !== 'craft_turbine' && n !== 'craft_battery' && n !== 'craft_stringlights' && n !== 'craft_lamppost') continue;
-      const x = Math.round(g.position.x / 2), z = Math.round(g.position.z / 2);
+      const x = Math.round(g.position.x * 500) / 1000, z = Math.round(g.position.z * 500) / 1000;
       groups.push({ g, x, z, type: n.slice(6), k: tileKey(x, z) });
     }
   }

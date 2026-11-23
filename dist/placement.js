@@ -4,12 +4,13 @@
 // Pure logic needs no THREE, so tests can import it directly. hasTile(tx, tz) takes grid cells.
 
 export const TILE = 2;
-export const ROT_STEP = Math.PI / 4, FINE_STEP = Math.PI / 12;
+export const ROT_STEP = Math.PI / 12, FINE_STEP = Math.PI / 36; // R turns decor 15 degrees, Shift+R / Shift+wheel 5
 export const DECOR_REACH = 6, FLOOR_REACH = 8;
 // [half width, half depth, share of the footprint that must rest on deck (0 = centre only)].
 // Matches each model's below-head bounds; crate, sail and lantern also collide with this rect.
 export const FOOTPRINT = Object.freeze({
   sail:[.8, .76, .8], palm:[.42, .42, .8], lantern:[.59, .37, .8], net:[.84, .84, 0], bench:[.72, .2, .8], crate:[.49, .42, .8],
+  fishtrap:[.4, .4, 0], // free placement: the deck part only; its basket hangs over the open water beside the tile
 });
 
 // Wheel travel in pixels for slot picking and fine rotation. Chromium (and macOS) turn Shift+wheel
@@ -173,5 +174,181 @@ export function createGhosts(T, scene, raft, {floor, craft}) {
     for (const g of hidden) g.visible = true;
     try { fn(); } finally { for (const g of hidden) g.visible = false; }
   }
-  return {show, hide, preload, warm, get visible() { return !!shown; }};
+  return {show, hide, preload, warm, model, get visible() { return !!shown; }}; // model(kind): the cached plain ghost (footprint measuring)
+}
+
+// ---------- Free placement (every placeable that is not a structural piece) ----------
+// Decor entries keep x, z in tile units (raft-local metres / 2) and rot in radians (three.js rotation.y). Since
+// free placement they may be fractional; older saves hold integer cells, which are exactly the tile centres, so
+// they load where they always were. Structural pieces (floors, walls, pillars, stairs, roofs) stay on the grid.
+export const PLACE_EPS = .004; // metres two footprints may overlap: flush neighbours (0 gap) pass after rounding
+export const SNAP_GAP = .06;   // edge snap: a gap to a parallel neighbour or wall below this closes to 0
+const DECK_SLACK = .03, MIN_HALF = .08, MAX_HALF = 1.4, WALL_HALF = .07, PILLAR_HALF = .11, GRILL_HALF = .45;
+const EDGE_T = new Set(['wall', 'halfwall', 'window', 'door', 'railing', 'gate']), CELL_T = new Set(['stairs', 'ladder', 'hatch', 'floor', 'roof']);
+// Placeables whose systems live on tile cells (animal homes and walk graph) still sit on a tile centre.
+// Fish traps too: the basket hangs off the edge of the tile they sit on.
+export const GRID_DECOR = Object.freeze(['nestbox', 'goatpen', 'fishtrap']);
+// Flat decor (rugs) lies under everything: it needs deck, but other items may stand on it.
+const FLAT = new Set(['rug']);
+export const roundCoord = v => Math.round(v * 1000) / 1000 || 0; // tile units (2 mm), never -0
+const measured = new Map(), fromRadius = new Map(); // fromRadius: cached squares, so the per-frame checks allocate nothing
+// Footprint half sizes [hw, hd] (metres) of every other placeable, measured once from its model below head height
+// (measureFootprint on the plain ghost model). A fixed table, so host and guest always test the same rectangles,
+// from the first frame on, and loading a raft builds no ghost models. tests/free-placement.test.mjs checks that
+// every placeable is listed here or in FOOTPRINT.
+export const MODEL_FOOTPRINT = Object.freeze({
+  receiver:[.35, .3], antenna:[.3, .15], purifier:[.51, .25], rainbarrel:[.34, .34], sprinkler:[.15, .16],
+  cropplot:[.92, .36], flowerbox:[.35, .17], beehive:[.28, .33], candle:[.08, .08], perch:[.33, .23],
+  juicer:[.2, .2], turbine:[.15, .16], battery:[.23, .17], stringlights:[.8, .09], lamppost:[.21, .17],
+  shelf:[.66, .22], trophystand:[.22, .22], taskboard:[.46, .17], photoframe:[.25, .23], skyrocket:[.09, .08],
+  scarecrow:[.49, .3], maptable:[.55, .4], glidepost:[.25, .25], glidestep:[.25, .25], researchtable:[.56, .34],
+  grill:[.42, .39], smelter:[.64, .66], recycler:[.44, .62], research:[.72, .43], bed:[.6, 1.01], motor:[.4, .57],
+  wheel:[.42, .2], rug:[.86, .61], pennant:[.15, .15], fern:[.65, .47], chime:[.41, .16], hammock:[.89, .89],
+  pots:[.57, .56], sign:[.45, .16], kiln:[.46, .51], glasslamp:[.42, .12], nestbox:[.37, .38], cushion:[.32, .32],
+  cookpot:[.3, .29], shellwreath:[.19, .1], glassfloat:[.22, .22], flagpole:[.2, .2], gametable:[.47, .45],
+  courseflag:[.61, .26], scoreboard:[.49, .08], goatpen:[.85, .85], stormrod:[.36, .21], stormlamp:[.16, .16],
+  stormglass:[.13, .13],
+});
+const fixedFootprint = type => FOOTPRINT[type] ?? (Object.prototype.hasOwnProperty.call(MODEL_FOOTPRINT, type) ? MODEL_FOOTPRINT[type] : undefined);
+
+// Footprint half sizes [hw, hd] in metres for a decor type: the tables above, else a size measured from its
+// model (setFootprint / measureFootprint: a placeable added later and not listed yet), else a square from the
+// player collision radius, else .3.
+export function footprintOf(type, radii) {
+  const f = fixedFootprint(type) ?? measured.get(type); if (f) return f;
+  const r = radii?.[type];
+  if (Array.isArray(r)) return r;
+  const h = Number.isFinite(r) && r > 0 ? Math.max(MIN_HALF, r) : .3;
+  let sq = fromRadius.get(h); if (!sq) fromRadius.set(h, sq = Object.freeze([h, h]));
+  return sq;
+}
+export function setFootprint(type, hw, hd) {
+  const c = v => Math.round(Math.min(MAX_HALF, Math.max(MIN_HALF, v)) * 100) / 100;
+  if (!fixedFootprint(type)) measured.set(type, Object.freeze([c(hw), c(hd)]));
+}
+export const hasFootprint = type => !!fixedFootprint(type) || measured.has(type);
+// Measures a model (any object with traverse and THREE-style geometry) below head height (1.8 m), around its origin.
+export function measureFootprint(T, type, model) {
+  if (!model || hasFootprint(type)) return footprintOf(type);
+  model.updateMatrixWorld(true);
+  const inv = new T.Matrix4().copy(model.matrixWorld).invert(), m = new T.Matrix4(), v = new T.Vector3();
+  let hx = 0, hz = 0, any = false;
+  model.traverse(o => {
+    const p = o.isMesh && o.geometry?.attributes?.position; if (!p) return;
+    m.multiplyMatrices(inv, o.matrixWorld);
+    for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(m); if (v.y > 1.8) continue; any = true; hx = Math.max(hx, Math.abs(v.x)); hz = Math.max(hz, Math.abs(v.z)); }
+  });
+  if (any) setFootprint(type, hx, hz);
+  return footprintOf(type);
+}
+
+// Oriented rectangle of a decor entry (x, z tile units) in metres. Writes into out (reused, no allocation).
+export function decorRect(d, radii, out = {}) {
+  const f = footprintOf(d.type, radii);
+  out.x = d.x * TILE; out.z = d.z * TILE; out.rot = Number.isFinite(d.rot) ? d.rot : 0; out.hw = f[0]; out.hd = f[1];
+  return out;
+}
+function rectExtent(r, ax, az) { const c = Math.cos(r.rot), s = Math.sin(r.rot); return r.hw * Math.abs(c * ax - s * az) + r.hd * Math.abs(s * ax + c * az); }
+// Overlap depth of two oriented rectangles (> 0 means they intersect), separating-axis test on the 4 axes.
+export function rectOverlap(a, b) {
+  const dx = a.x - b.x, dz = a.z - b.z, ra = Math.hypot(a.hw, a.hd), rb = Math.hypot(b.hw, b.hd);
+  if (dx * dx + dz * dz >= (ra + rb) * (ra + rb)) return -1; // bounding circles apart: cheap reject
+  let depth = Infinity;
+  for (let i = 0; i < 4; i++) {
+    const r = (i < 2 ? a.rot : b.rot) + (i & 1) * Math.PI / 2, ax = Math.cos(r), az = -Math.sin(r);
+    const d = rectExtent(a, ax, az) + rectExtent(b, ax, az) - Math.abs(dx * ax + dz * az);
+    if (d < depth) depth = d;
+    if (depth <= 0) return depth;
+  }
+  return depth;
+}
+
+// Level-0 building pieces as rectangles (metres): edge pieces are thin walls along a cell side, pillars sit
+// on a corner, cell pieces (stairs, ladder, hatch) fill their cell. Fills and returns out.
+export function pieceRects(pieces, out = []) {
+  out.length = 0;
+  if (Array.isArray(pieces)) for (const p of pieces) {
+    if (!p || p.l !== 0) continue;
+    if (EDGE_T.has(p.t)) out.push(p.r ? {x:p.i * TILE - 1, z:p.j * TILE, rot:0, hw:WALL_HALF, hd:1 + PILLAR_HALF} : {x:p.i * TILE, z:p.j * TILE - 1, rot:0, hw:1 + PILLAR_HALF, hd:WALL_HALF});
+    else if (p.t === 'pillar') out.push({x:p.i * TILE - 1, z:p.j * TILE - 1, rot:0, hw:PILLAR_HALF, hd:PILLAR_HALF});
+    else if (CELL_T.has(p.t)) out.push({x:p.i * TILE, z:p.j * TILE, rot:0, hw:1, hd:1});
+  }
+  return out;
+}
+export const grillRect = (x, z) => ({x:x * TILE, z:z * TILE, rot:0, hw:GRILL_HALF, hd:GRILL_HALF});
+
+const tmpA = {}, tmpB = {};
+// Is every part of rect r over a raft tile? Samples corners, edge midpoints and the centre (tiles are 2 m and
+// footprints at most 2.8 m long, so no missing tile can hide between two samples).
+function onDeck(hasTile, r) {
+  const c = Math.cos(r.rot), s = Math.sin(r.rot), hw = Math.max(0, r.hw - DECK_SLACK), hd = Math.max(0, r.hd - DECK_SLACK);
+  for (let i = -1; i <= 1; i++) for (let k = -1; k <= 1; k++) {
+    const u = i * hw, w = k * hd, x = r.x + c * u + s * w, z = r.z - s * u + c * w;
+    if (!hasTile(Math.round(x / TILE), Math.round(z / TILE))) return false;
+  }
+  return true;
+}
+
+// Why decor d ({type, x, z, rot}, tile units) can't stand there, or null when it can:
+// 'nofloor' (part of it off the deck) | 'overlap' (overlaps other decor, a grill, a wall,
+// a pillar or stairs). env: {hasTile(tx, tz), decor, pieceRects (from pieceRects), extra (more rects), radii}.
+// Linear in the decor count with a bounding-circle reject first, so it is cheap enough to run every frame.
+export function freeBlock(env, d) {
+  if (!d || !Number.isFinite(d.x) || !Number.isFinite(d.z)) return 'invalid';
+  const r = decorRect(d, env.radii, tmpA);
+  if (!onDeck(env.hasTile, r)) return 'nofloor';
+  for (const o of env.pieceRects || []) if (rectOverlap(r, o) > PLACE_EPS) return 'overlap';
+  for (const o of env.extra || []) if (rectOverlap(r, o) > PLACE_EPS) return 'overlap';
+  if (FLAT.has(d.type)) return null;
+  for (const o of env.decor || []) if (o !== d && o && !FLAT.has(o.type) && rectOverlap(r, decorRect(o, env.radii, tmpB)) > PLACE_EPS) return 'overlap';
+  return null;
+}
+
+// Edge snap: slides d (in place) so that a small gap or overlap (under SNAP_GAP) with a parallel neighbour, wall or
+// pillar becomes exactly 0, one axis at a time: aiming a few cm short of or into a crate puts the new one flush
+// against it. Only axis-parallel pairs snap (rot equal mod 90 degrees); there is no grid.
+const QUARTER = Math.PI / 2, SNAP0 = {gap:0, sign:0, ax:0, az:0}, SNAP1 = {gap:0, sign:0, ax:0, az:0};
+let best0 = null, best1 = null; // per own axis: the smallest gap (scratch objects, no allocation per frame)
+function snapConsider(r, o) {
+  if (Math.abs(r.x - o.x) > r.hw + r.hd + o.hw + o.hd + SNAP_GAP || Math.abs(r.z - o.z) > r.hw + r.hd + o.hw + o.hd + SNAP_GAP) return;
+  let q = (o.rot - r.rot) / QUARTER; q -= Math.round(q); if (Math.abs(q) > .01) return; // not parallel
+  for (let i = 0; i < 2; i++) {
+    const a = r.rot + i * QUARTER, ax = Math.cos(a), az = -Math.sin(a), bx = -az, bz = ax;
+    const dx = o.x - r.x, dz = o.z - r.z, along = dx * ax + dz * az, side = dx * bx + dz * bz;
+    const gap = Math.abs(along) - rectExtent(r, ax, az) - rectExtent(o, ax, az);
+    if (gap === 0 || Math.abs(gap) >= SNAP_GAP) continue;
+    if (Math.abs(side) >= rectExtent(r, bx, bz) + rectExtent(o, bx, bz) - .01) continue; // not facing each other
+    const best = i ? best1 : best0;
+    if (!best || Math.abs(gap) < Math.abs(best.gap)) { const v = i ? SNAP1 : SNAP0; v.gap = gap; v.sign = Math.sign(along) || 1; v.ax = ax; v.az = az; if (i) best1 = v; else best0 = v; }
+  }
+}
+export function edgeSnap(env, d) {
+  const r = decorRect(d, env.radii, tmpA);
+  best0 = best1 = null;
+  for (const o of env.pieceRects || []) snapConsider(r, o);
+  for (const o of env.decor || []) if (o !== d && o && !FLAT.has(o.type)) snapConsider(r, decorRect(o, env.radii, tmpB));
+  if (best0 && best1 && best0.gap < 0 && best1.gap < 0) { if (Math.abs(best0.gap) <= Math.abs(best1.gap)) best1 = null; else best0 = null; } // a corner overlap: push out along one axis only
+  let x = r.x, z = r.z;
+  if (best0) { x += best0.ax * best0.gap * best0.sign; z += best0.az * best0.gap * best0.sign; }
+  if (best1) { x += best1.ax * best1.gap * best1.sign; z += best1.az * best1.gap * best1.sign; }
+  d.x = roundCoord(x / TILE); d.z = roundCoord(z / TILE);
+  return d;
+}
+
+// Validates one saved or received decor position: finite tile units within the world bound, rounded to 2 mm.
+// Integer cells from old saves come back unchanged (the tile centre).
+export function cleanDecorPos(x, z) {
+  if (!Number.isFinite(x) || !Number.isFinite(z) || Math.abs(x) > 26 || Math.abs(z) > 26) return null;
+  return [roundCoord(x), roundCoord(z)];
+}
+// One saved / received decor entry -> {type, x, z, rot?} or null (game.js cleanWorld). types: allowed decor types;
+// hasTile(tx, tz): its centre must stand on a raft tile; used: Set of "x,z" already taken (two entries never share
+// an exact spot). Old saves (integer cells, maybe no rot) come back exactly as they were: the tile centre.
+export function cleanDecor(d, types, hasTile, used) {
+  const pos = d && types.includes(d.type) ? cleanDecorPos(d.x, d.z) : null; if (!pos) return null;
+  const [x, z] = pos, k = x + ',' + z;
+  if (!hasTile(Math.round(x), Math.round(z)) || used?.has(k)) return null;
+  used?.add(k);
+  const rot = Number.isFinite(d.rot) ? Math.round(wrapRot(d.rot) * 1000) / 1000 : 0;
+  return rot ? {type:d.type, x, z, rot} : {type:d.type, x, z};
 }

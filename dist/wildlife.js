@@ -71,17 +71,22 @@ export function layoutHash(tiles, decor) {
 export function perchesFrom(tiles, decor) {
   const out = [];
   if (!Array.isArray(tiles)) return out;
+  // Free placement: each tile goes by the decor standing on it (centre on that tile; one exactly at the tile centre
+  // first), and a raised perch sits on that decor where it really stands, so no gull lands inside an off-centre crate.
   const held = new Map();
-  if (Array.isArray(decor)) for (const d of decor) if (d && fin(d.x) && fin(d.z)) held.set(d.x + ',' + d.z, d.type);
+  if (Array.isArray(decor)) for (const d of decor) if (d && fin(d.x) && fin(d.z)) {
+    const tk = Math.round(d.x) + ',' + Math.round(d.z), prev = held.get(tk);
+    if (!prev || !(prev.x === Math.round(prev.x) && prev.z === Math.round(prev.z)) || (d.x === Math.round(d.x) && d.z === Math.round(d.z))) held.set(tk, d);
+  }
   const seen = new Set(), guarded = protectedPalms(decor); // [scarecrow] palms near a scarecrow give no perch
   for (const t of tiles) {
     if (!Array.isArray(t) || !fin(t[0]) || !fin(t[1])) continue;
     const key = t[0] + ',' + t[1];
     if (seen.has(key)) continue; seen.add(key);
-    const type = held.get(key);
+    const d = held.get(key), type = d?.type;
     if (type === undefined) out.push({ x: t[0] * 2, y: FLOOR_Y, z: t[1] * 2, key, tx: t[0], tz: t[1], kind: 'deck' });
-    else if (type === 'palm') { if (!guarded.has(key)) { const r = rimSpot(t[0], t[1]); out.push({ x: t[0] * 2 + r.dx, y: DECOR_Y + PALM_RIM, z: t[1] * 2 + r.dz, key, tx: t[0], tz: t[1], kind: 'palm' }); } } // [scarecrow] pot rim
-    else if (PERCH_TOP[type] !== undefined) out.push({ x: t[0] * 2, y: DECOR_Y + PERCH_TOP[type], z: t[1] * 2, key, tx: t[0], tz: t[1], kind: type });
+    else if (type === 'palm') { const pk = d.x + ',' + d.z; if (!guarded.has(pk)) { const r = rimSpot(t[0], t[1]); out.push({ x: d.x * 2 + r.dx, y: DECOR_Y + PALM_RIM, z: d.z * 2 + r.dz, key: pk, tx: t[0], tz: t[1], kind: 'palm', cx: d.x * 2, cz: d.z * 2 }); } } // [scarecrow] pot rim; key: the palm's own (garden) key
+    else if (PERCH_TOP[type] !== undefined) out.push({ x: d.x * 2, y: DECOR_Y + PERCH_TOP[type], z: d.z * 2, key, tx: t[0], tz: t[1], kind: type });
   }
   out.sort((a, b) => a.tx - b.tx || a.tz - b.tz);
   for (const p of out) { delete p.tx; delete p.tz; }
@@ -170,7 +175,7 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
   // [scarecrow] on a pot rim the body lies along the rim (tangent), the head turned a little toward the trunk,
   // so neither body nor wings reach into the palm; hops only rock it either way instead of turning it round.
   const rim = !!p && p.kind === 'palm';
-  const baseYaw = rim ? Math.atan2(p.x - 2 * Math.round(p.x / 2), p.z - 2 * Math.round(p.z / 2)) + Math.PI / 2 + RIM_HEAD : v.yaw;
+  const baseYaw = rim ? Math.atan2(p.x - (fin(p.cx) ? p.cx : 2 * Math.round(p.x / 2)), p.z - (fin(p.cz) ? p.cz : 2 * Math.round(p.z / 2))) + Math.PI / 2 + RIM_HEAD : v.yaw; // cx, cz: the planter's centre (free placement)
   if (state === 'perched') {
     const k = (t - v.start - GULL_DESCEND) / 2.3, f = k - Math.floor(k), hops = Math.floor(k + 0.2);
     out.yaw = rim ? baseYaw + (hops & 1 ? -0.2 : 0.2) : baseYaw + hops * 0.9; // a little turn with every hop
@@ -302,8 +307,8 @@ export function createWildlife(ctx) {
   let spookX = 0, spookZ = 0;
   // Per gull: the scheduled visit of the current slot and the perch latched when it began (kept for the visit).
   const vis = [], lat = [];
-  for (let i = 0; i < GULL_MAX; i++) { vis.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0, palm: false }); lat.push({ slot: -1, done: false, on: false, key: '', x: 0, y: 0, z: 0, kind: '' }); } // [scarecrow] + palm, kind
-  const forced = []; for (let i = 0; i < GULL_MAX; i++) forced.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0, scare: false, key: '', x: 0, y: 0, z: 0, kind: '' });
+  for (let i = 0; i < GULL_MAX; i++) { vis.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0, palm: false }); lat.push({ slot: -1, done: false, on: false, key: '', x: 0, y: 0, z: 0, kind: '', cx: NaN, cz: NaN }); } // [scarecrow] + palm, kind
+  const forced = []; for (let i = 0; i < GULL_MAX; i++) forced.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0, scare: false, key: '', x: 0, y: 0, z: 0, kind: '', cx: NaN, cz: NaN });
   const palmPool = []; for (let i = 0; i < GULL_MAX; i++) palmPool.push({ i, key: '' }); // [scarecrow] reused onPalm() entries
   const forceC = { kind: null, start: 0, a0: 0, r: 10, speed: 2.6, dir: 1, laps: 1, dur: 0, arrive: false };
   const pinned = []; for (let i = 0; i < SCHOOL_MAX; i++) pinned.push({ on: false, x: 0, z: 0, heading: 0 });
@@ -436,12 +441,12 @@ export function createWildlife(ctx) {
           if (V.palm && i < PALM_GULLS) for (let k = 0; k < n; k++) { // [scarecrow] a peckish visit takes the first free planter rim
             const j = (V.perch + k) % n, p = perches[j];
             if (p.kind !== 'palm' || !perchFree(p, i, slot, nG)) continue;
-            V.perch = j; L.on = true; L.key = p.key; L.x = p.x; L.y = p.y; L.z = p.z; L.kind = p.kind; break;
+            V.perch = j; L.on = true; L.key = p.key; L.x = p.x; L.y = p.y; L.z = p.z; L.kind = p.kind; L.cx = p.cx ?? NaN; L.cz = p.cz ?? NaN; break;
           }
           if (!L.on) for (let k = 0; k < n; k++) {
             const j = (V.perch + k) % n, p = perches[j];
             if (p.kind === 'palm' || !perchFree(p, i, slot, nG)) continue; // [scarecrow] planters only on a peckish visit
-            V.perch = j; L.on = true; L.key = p.key; L.x = p.x; L.y = p.y; L.z = p.z; L.kind = p.kind; break;
+            V.perch = j; L.on = true; L.key = p.key; L.x = p.x; L.y = p.y; L.z = p.z; L.kind = p.kind; L.cx = p.cx ?? NaN; L.cz = p.cz ?? NaN; break;
           }
         }
       }
@@ -668,7 +673,7 @@ export function createWildlife(ctx) {
       }
       if (Number.isInteger(opts.perch) && opts.perch >= 0 && opts.perch < perches.length) best = opts.perch;
       const p = perches[best];
-      Object.assign(forced[i], { key: p.key, x: p.x, y: p.y, z: p.z, on: true, start: now() - (opts.instant ? GULL_DESCEND : 0), stay: fin(opts.stay) ? opts.stay : 15, perch: best, yaw: fin(opts.yaw) ? opts.yaw : TAU * Math.random(), scare: !!opts.scare, kind: p.kind ?? '' }); // [scarecrow] + kind
+      Object.assign(forced[i], { key: p.key, x: p.x, y: p.y, z: p.z, on: true, start: now() - (opts.instant ? GULL_DESCEND : 0), stay: fin(opts.stay) ? opts.stay : 15, perch: best, yaw: fin(opts.yaw) ? opts.yaw : TAU * Math.random(), scare: !!opts.scare, kind: p.kind ?? '', cx: p.cx ?? NaN, cz: p.cz ?? NaN }); // [scarecrow] + kind; cx, cz: planter centre
       scareAt[i] = -Infinity;
       return { ...perches[best] };
     },

@@ -192,7 +192,8 @@ test('refusals leave everything unchanged: expect mismatch, bad slots, bad x, mi
     [{ kind: 'storage.put', x: 1, z: 0, from: 0, amount: 0.5, expect: { kind: 'wood', count: 3 } }, 'bad'],
     [{ kind: 'storage.take', x: 1, z: 0, from: -1, expect: { kind: 'wood', count: 4 } }, 'bad'],
     [{ kind: 'storage.take', x: 1, z: 0, from: 5, expect: { kind: 'wood', count: 4 } }, 'empty'],
-    [{ kind: 'storage.take', x: 1.5, z: 0, from: 0, expect: { kind: 'wood', count: 4 } }, 'bad'],
+    [{ kind: 'storage.take', x: 1.5, z: 0, from: 0, expect: { kind: 'wood', count: 4 } }, 'missing'], // free placement: a fractional spot is valid, no crate there
+    [{ kind: 'storage.take', x: NaN, z: 0, from: 0, expect: { kind: 'wood', count: 4 } }, 'bad'],
     [{ kind: 'storage.take', x: '1', z: 0, from: 0, expect: { kind: 'wood', count: 4 } }, 'bad'],
     [{ kind: 'storage.take', x: 5, z: 5, from: 0, expect: { kind: 'scrap', count: 2 } }, 'missing'],
     [{ kind: 'storage.take', x: 0, z: 1, from: 0, expect: { kind: 'wood', count: 4 } }, 'missing'], // a research table is not a chest

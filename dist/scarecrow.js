@@ -11,7 +11,7 @@ export const PALM_RIM = 0.5, RIM_OFFSET = 0.4, HAT_TOP = HAT_TOP_Y; // local hei
 export const OLD_HOST = 'Your friend’s gulls are not peckish yet';
 const GROW_SECONDS = 90, SWAY_DIST = 20;
 
-const KEY_RE = /^-?\d+,-?\d+$/;
+const KEY_RE = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/; // free placement: decor x/z may be fractional
 const isInt = Number.isInteger;
 export const tileKey = (x, z) => x + ',' + z;
 const isKey = k => typeof k === 'string' && k.length <= 24 && KEY_RE.test(k) && (() => { const [x, z] = k.split(',').map(Number); return tileKey(x, z) === k; })();
@@ -21,12 +21,12 @@ export function protectedPalms(decor) {
   const out = new Set();
   if (!Array.isArray(decor)) return out;
   let any = false;
-  for (const d of decor) if (d && d.type === 'scarecrow' && isInt(d.x) && isInt(d.z)) { any = true; break; }
+  for (const d of decor) if (d && d.type === 'scarecrow' && Number.isFinite(d.x) && Number.isFinite(d.z)) { any = true; break; }
   if (!any) return out;
   for (const p of decor) {
-    if (!p || p.type !== 'palm' || !isInt(p.x) || !isInt(p.z)) continue;
+    if (!p || p.type !== 'palm' || !Number.isFinite(p.x) || !Number.isFinite(p.z)) continue;
     for (const s of decor) {
-      if (!s || s.type !== 'scarecrow' || !isInt(s.x) || !isInt(s.z)) continue;
+      if (!s || s.type !== 'scarecrow' || !Number.isFinite(s.x) || !Number.isFinite(s.z)) continue;
       if (Math.hypot((p.x - s.x) * 2, (p.z - s.z) * 2) <= SCARECROW_RADIUS) { out.add(tileKey(p.x, p.z)); break; }
     }
   }
@@ -115,7 +115,7 @@ export function createScarecrow(ctx, peer) {
     const w = ctx.world, p = ctx.physics; if (!w || !p || !Array.isArray(w.decor)) return null;
     if (aim && typeof aim === 'object' && 'decor' in aim) {
       const d = aim.decor;
-      if (!d || d.type !== 'palm' || !isInt(d.x) || !isInt(d.z) || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return null;
+      if (!d || d.type !== 'palm' || !Number.isFinite(d.x) || !Number.isFinite(d.z) || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return null;
       if (Math.hypot(p.x - d.x * 2, p.z - d.z * 2) > REACH) return null;
       return { x: d.x, z: d.z, key: tileKey(d.x, d.z) };
     }
@@ -149,7 +149,7 @@ export function createScarecrow(ctx, peer) {
     crows.clear();
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i]; if (g.name !== 'craft_scarecrow') continue;
-      crows.set(tileKey(Math.round(g.position.x / 2), Math.round(g.position.z / 2)), g);
+      crows.set(tileKey(Math.round(g.position.x * 500) / 1000, Math.round(g.position.z * 500) / 1000), g);
     }
   }
 
@@ -231,7 +231,7 @@ export function createScarecrow(ctx, peer) {
     },
     action(a, actor) {
       if (!a || typeof a.kind !== 'string' || !a.kind.startsWith('scarecrow.')) return false;
-      if (a.kind !== 'scarecrow.shoo' || !isInt(a.x) || !isInt(a.z)) return true;
+      if (a.kind !== 'scarecrow.shoo' || !Number.isFinite(a.x) || !Number.isFinite(a.z)) return true;
       const pose = actor === 'guest' ? ctx.other : ctx.physics;
       if (!pose || !Number.isFinite(pose.x) || !Number.isFinite(pose.z) || Math.hypot(a.x * 2 - pose.x, a.z * 2 - pose.z) > REACH + HOST_SLACK) return true;
       if (guest()) return true;
