@@ -109,7 +109,7 @@ export const ITEM_TEXT = Object.freeze({
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
   spear:      { desc: 'A driftwood pole with a lashed flint point.', use: 'Click to jab: 5 damage, wears only when it lands.' },
   metalspear: { desc: 'A sturdy shaft with a steel point.', use: 'Click to jab: 10 damage, lasts twice as long.' },
-  paddle:     { desc: 'A plank blade lashed to a driftwood shaft.', use: 'At the raft edge, click to push the raft the way you face (60 strokes).' },
+  paddle:     { desc: 'A plank blade lashed to a driftwood shaft.', use: 'At the raft edge, click to push the raft the way you face (250 strokes).' },
   axe:        { desc: 'A chipped stone head lashed to a wooden handle.', use: 'Click an island palm to chop: 5 chops fell it for 5 planks and 2 leaves.' },
   coconut:    { desc: 'A hairy nut from an island palm.', use: 'Eat it for a little food and a good drink (+5 food, +20 water), or blend it in a juicer.' }, // [axe] [juicer]
   binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold right click to zoom in; also points to the nearest barrel.' }, // [spyglass]
