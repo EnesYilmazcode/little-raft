@@ -98,7 +98,8 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     if (it.tip) out += `<p class="it-txt">${esc(it.tip)}</p>`;
     else if (txt) out += `<p class="it-txt">${esc(txt.desc)} ${esc(txt.use)}</p>`; // non-catalogue kinds: craft-book text
     const r = it.recipe;
-    if (r && r.cost && (recipe || !slot)) {
+    const costShown = !!(r && r.cost && (recipe || !slot));
+    if (costShown) {
       // Each ingredient as have/need and its icon (craft-book reqChips); the name is in the chip's title.
       const rows = Object.entries(r.cost).map(([kind, need]) => { const have = countOf(bag, kind); return { kind, need, have, enough: have >= need }; });
       const made = r.count > 1 ? ` <span>(makes ${r.count})</span>` : '';
@@ -109,7 +110,8 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     if (!recipe) {
       const f = tipFacts(kind, recipesNow(), nameOf);
       // A crafted item shows its recipe as count + icon chips (station name first), not "Craft it from 2 Palm Leaf".
-      const got = f.from && f.from.reqs.every(q => itemGlyph(q.kind)) ? `${f.from.station ? esc(nameOf(f.from.station)) + ' ' : ''}${reqChips(f.from.reqs, { nameOf, cls: 'it-rq' })}` : f.get ? esc(f.get) : '';
+      // (Skipped when the have/need chips above already show that recipe.)
+      const got = f.from && costShown ? '' : f.from && f.from.reqs.every(q => itemGlyph(q.kind)) ? `${f.from.station ? esc(nameOf(f.from.station)) + ' ' : ''}${reqChips(f.from.reqs, { nameOf, cls: 'it-rq' })}` : f.get ? esc(f.get) : '';
       const lines = (got ? `<p><em>Get it:</em> ${got}</p>` : '') + (f.uses.length ? `<p><em>Used in:</em> ${esc(f.uses.join(', '))}</p>` : '');
       if (lines) out += `<div class="it-facts">${lines}</div>`;
     }
