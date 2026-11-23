@@ -104,8 +104,9 @@ test('sprinting and bunny-hopping on stairs never sinks into the ramp and ends o
   for (const v of VARIANTS) {
     const g = grid(tilesSq(3), [P('stairs', 0, 0, 0, 0), P('floor', 0, 1, 1), P('wall', 0, 2, 1, 0)]);
     const ph = new PlayerPhysics({ x: 0, y: eyeAt(0), z: -2.5 }), st = { t: 0 };
-    // Hops stop on the landing: a jump there would clear the one-storey wall upstairs (by design).
-    const tr = run(g, ph, 2.5, (p, n) => ({ forward: 1, yaw: yawTo(0, 1), sprint: true, jump: n % 9 < 3 && p.z < 1 }), v, st);
+    // Hops stop before the top of the ramp: a jump from the top step or the landing clears the one-storey wall
+    // upstairs (by design; the apex is above LEVEL_H).
+    const tr = run(g, ph, 2.5, (p, n) => ({ forward: 1, yaw: yawTo(0, 1), sprint: true, jump: n % 9 < 3 && p.z < 0.5 }), v, st);
     const sink = maxOf(tr.filter(s => Math.abs(s.x) < 1 && s.z > -1 && s.z < 1), s => rampAt(0, 0, 0, 0, s.x, s.z) - s.feet);
     assert.ok(sink < 0.3, `${tag(v)}: feet below the ramp by ${sink}`);
     run(g, ph, 1, {}, v, st);
