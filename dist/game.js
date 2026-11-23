@@ -508,6 +508,7 @@ export function mount(transfer = null) {
     try { vitalsUI = createVitalsUI(); } catch (e) { console.warn('vitals HUD unavailable', e); vitalsUI = null; } // [vitals]
     building = createBuilding(T, scene); // building-pieces lane hook
     building.setRemoveExtra(decorRemoveTarget); // [undecor] X on decor when no piece is aimed
+    building.setPlaceCheck?.(p => { const why = pieceDecorWhy(p); return why ? BLOCK_TEXT[why] : ''; }); // free placement: the piece ghost turns red over a placed item
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
@@ -1149,6 +1150,15 @@ export function mount(transfer = null) {
     return freeBlock(env, d);
   }
   const overRect = {};
+  // Why a building piece can't go at deck level because of what stands there ('decor' | 'overlap'), or null. Host check and piece ghost.
+  const onePiece = [null], onePieceRects = [];
+  function pieceDecorWhy(p) {
+    if (!p || p.l !== 0) return null;
+    const why = pieceBlock(world.decor, p) || (p.t === 'stairs' && fc?.hasGrill(p.i, p.j) ? 'decor' : null); if (why) return why;
+    onePiece[0] = p; pieceRects(onePiece, onePieceRects); onePiece[0] = null;
+    for (const r of onePieceRects) if (decorOver(r)) return 'overlap';
+    return null;
+  }
   function decorOver(r) { for (const d of world.decor) if (rectOverlap(r, decorRect(d, BLOCK_RADIUS, overRect)) > PLACE_EPS) return true; return false; } // any decor footprint over rect r (metres)
   // The decor (matching ok) whose footprint holds raft-local point p (metres), else the nearest within .4 m of its edge.
   function decorNear(p, ok) {
@@ -1347,7 +1357,7 @@ export function mount(transfer = null) {
       if (!isInt(a.i) || !isInt(a.j)) return;
       const who = actor === 'guest' ? other : physics, [ci, cj] = pieceCell(a); // guest pose may be missing until its first move
       if (who && !inReach(who.x, who.z, ci, cj, PIECE_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
-      const why = a.kind === 'piece' && (pieceBlock(world.decor, a) || (a.l === 0 && a.t === 'stairs' && fc?.hasGrill(a.i, a.j) ? 'decor' : null) || (a.l === 0 && pieceRects([a]).some(decorOver) ? 'decor' : null)); // free placement: a wall, pillar or stairs never lands on a placed item
+      const why = a.kind === 'piece' && pieceDecorWhy(a); // free placement: a wall, pillar or stairs never lands on a placed item
       if (why) { emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
       const r = building.apply(a, bag, world);
       if (r.ok) emit({kind:'build', text:r.text}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor);

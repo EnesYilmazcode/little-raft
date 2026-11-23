@@ -139,3 +139,31 @@ test('every placeable has a fixed footprint, the same on host and guest from the
   assert.deepEqual(footprintOf('bed'), P.MODEL_FOOTPRINT.bed);
   assert.doesNotMatch(gameSrc, /decorGroups\.push\([^\n]*ensureFootprint/, 'loading a raft builds no ghost models to measure');
 });
+
+test('gulls perch on off-centre items where they stand, never inside them', async () => {
+  const { perchesFrom } = await import(new URL('wildlife.js', base));
+  const tiles = grid(-1, 1, -1, 1);
+  const p = perchesFrom(tiles, [{type:'crate', x:.1, z:-.9}, {type:'candle', x:1.2, z:1.2}, {type:'palm', x:-.8, z:.3}]);
+  const crate = p.find(q => q.kind === 'crate');
+  assert.deepEqual([crate.x, crate.z], [.2, -1.8], 'on top of the crate, not at the tile centre (0, -2) m');
+  assert.ok(!p.some(q => q.kind === 'deck' && q.key === '0,-1'), 'no deck perch inside the crate');
+  assert.ok(!p.some(q => q.key === '1,1'), 'no deck perch on the candle tile');
+  const palm = p.find(q => q.kind === 'palm');
+  assert.equal(palm.key, '-0.8,0.3', 'the planter key (garden, pecking)');
+  assert.ok(Math.abs(Math.hypot(palm.x - palm.cx, palm.z - palm.cz) - .4) < 1e-9 && palm.cx === -1.6 && palm.cz === .6, 'on the rim of the planter');
+  // Old tile-centred rafts keep exactly the old perches.
+  const old = perchesFrom(tiles, [{type:'crate', x:1, z:1}, {type:'crate', x:.6, z:1.3}]);
+  assert.deepEqual(old.find(q => q.key === '1,1'), {x:2, y:.22 + .85, z:2, key:'1,1', kind:'crate'}, 'the centred crate wins its tile');
+});
+
+test('a wall, pillar or stairs ghost turns red over a placed item, the host refuses it too', () => {
+  const bsrc = readFileSync(new URL('building.js', base), 'utf8');
+  assert.match(bsrc, /if \(r && r\.ok && placeCheckFn\) \{ const why = placeCheckFn\(r\); if \(why\) \{ r\.ok = false; r\.reason = why; \} \}/, 'piece ghost veto');
+  assert.match(gameSrc, /building\.setPlaceCheck\?\.\(p => \{ const why = pieceDecorWhy\(p\);/, 'wired to the same check');
+  assert.match(gameSrc, /const why = a\.kind === 'piece' && pieceDecorWhy\(a\);/, 'host uses the same check');
+  // The rectangles it tests: a crate flush against the cell side holds the wall back, one 1 cm off does not.
+  const hd = FOOTPRINT.crate[1], wall = pieceRects([{t:'wall', i:0, j:0, l:0, r:0}])[0];
+  const r = (zm) => P.decorRect(crate(0, zm), {});
+  assert.ok(P.rectOverlap(wall, r(-1 + hd - .02)) > P.PLACE_EPS, 'a crate on the wall line');
+  assert.ok(P.rectOverlap(wall, r(-1 + .07 + hd + .01)) <= P.PLACE_EPS, 'a crate flush in front of it');
+});
