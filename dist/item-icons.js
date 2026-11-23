@@ -18,6 +18,7 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { buildIconModel } from './icon-models.js?build=v3-survival-ae77fa84ac2b';
 import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84ac2b';
+import { buildHeldModel } from './held-models.js?build=v3-survival-ae77fa84ac2b'; // [held-items]
 
 const SIZE = 128;
 // Every bag item kind; warmIcons(ICON_KINDS) renders the full set ahead of the first bag open.
@@ -62,6 +63,10 @@ const FRAME = {
   net: { view: [0.3, 0.45, 1], exp: 1.3 },
   coconut: { view: [0.3, 1, 0.55], exp: 1.25 },                             // from above, so the three eyes read (else a brown rock)
 };
+
+// [held-items] Kinds with neither a model above nor an icon drawing (their slot would show lettered initials):
+// render the same model the hand holds.
+const HELD_ICON = ['rug', 'pennant', 'fern', 'hammock', 'glasslamp', 'sinker'];
 
 // ---------- fallback models ----------
 const mats = new Map(), shared = new Set();
@@ -166,6 +171,7 @@ export function resolveIconModel(kind) {
   model = buildIconModel(T, kind); // progression and content items: ores, ingots, parts, stations, gear
   if (model) return { model, own: true };
   try { model = getLibraryModel(kind); } catch (e) { console.warn('item icon library model failed', kind, e); }
+  if (!model && HELD_ICON.includes(kind)) { const h = buildHeldModel(T, kind); if (h) return { model: h.model, own: !h.shared }; } // [held-items]
   return { model: model || null, own: false };   // getModel clones share cached geometry: never free
 }
 

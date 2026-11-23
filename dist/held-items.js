@@ -25,14 +25,15 @@ import { createRocket } from './fireworks-model.js?build=v3-survival-ae77fa84ac2
 import { createScarecrow3D } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
 import { createHive, createFlowerBox, createCandle } from './bees-model.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createSpyglassModel } from './spyglass-model.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
+import { buildHeldModel, HELD_SPEC, HELD_PLACEABLE } from './held-models.js?build=v3-survival-ae77fa84ac2b'; // [held-items] every other bag kind
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
 // Placeable decor from other lanes, held as a small copy of its own world model (MODEL_KINDS below).
 const LANE_DECOR = ['skyrocket', 'scarecrow', 'glidepost', 'glidestep', 'candle', 'beehive', 'flowerbox'];
-export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds', ...LANE_DECOR]);
+export const PLACEABLE_KINDS = Object.freeze([...new Set(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds', ...LANE_DECOR, ...HELD_PLACEABLE])]);
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
-const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'brush', 'spear', 'metalspear', 'paddle', 'axe'];
+const TOOL_KINDS = ['hook', 'metalhook', 'hammer', 'fishingrod', 'brush', 'spear', 'metalspear', 'paddle', 'axe'];
 const HOOK_SCALE = 0.4;                     // compact: the held hook stays in the lower-right corner
 // Right-hand kinds that still prefer the shared models.js mesh (so the held cup matches its icon and the world).
 const FACTORY_FIRST = ['cup', 'water'];
@@ -58,15 +59,15 @@ export const HOLD = Object.freeze({
   plastic:    { hand: 'right', pose: 'grip', rx: 0.1, ry: 1.2, rz: 0.1 },
   rope:       { hand: 'right', pose: 'grip', ry: 0.4, arm: [-0.01, 0.05, 0] },     // coil hangs off the fist, in front of the palm
   fish:       { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.06, 0] },      // by the tail, body across the view
-  cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
-  water:      { hand: 'right', pose: 'grip', ry: 0.3 },
+  cup:        { hand: 'right', pose: 'grip', rx: 0.6, ry: 0.3 }, // tipped toward the eye so the brim (and the water in it) shows
+  water:      { hand: 'right', pose: 'grip', rx: 0.6, ry: 0.3 },
   drum: { hand: 'right', pose: 'grip', rx: 0.75 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'right', pose: 'grip', rx: 1.2, rz: 0.1 }, // [instruments] right fist, clear of the hotbar
   camera: { hand: 'right', pose: 'grip', rx: 0.1, rz: -1 }, // [camera] lens faces forward; tilted up so the body clears the hotbar
   glidehandle: { hand: 'right', pose: 'grip', rx: -0.2, rz: 1.57 }, // [zipline] bar sideways in the fist
   ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
-export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
+export const holdFor = (kind) => HOLD[kind] || HELD_SPEC[kind]?.hold || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
 
 // Left-fist (placeable) models are capped to a small carried size so they never fill the lower left.
 export const HELD_LEFT_MAX = 0.11;
@@ -101,12 +102,11 @@ function fit(T, model, maxDim, gripFn) {
 }
 
 // Small tiling surface textures (procedural DataTextures, built once per THREE instance and shared,
-// never disposed): 'skin' mottle, 'weave' canvas cloth, 'rope' twisted fibres. Values are near white so
+// never disposed): 'skin' mottle (+ 'skinBump' pores and creases), 'weave' canvas cloth, 'rope' twisted fibres. Values are near white so
 // they modulate a material's colour; the same texture doubles as a bump map.
 const TEX = new WeakMap();
 export function surfaceTextures(T) {
   if (TEX.has(T)) return TEX.get(T);
-  const N = 64;
   const hash = (x, y, s) => { const h = Math.sin(x * 127.1 + y * 311.7 + s * 74.7) * 43758.5453; return h - Math.floor(h); };
   // tiling value noise, `c` cells across the tile
   const noise = (u, v, c, s) => {
@@ -115,7 +115,7 @@ export function surfaceTextures(T) {
     const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
     return (g(0, 0) * (1 - sx) + g(1, 0) * sx) * (1 - sy) + (g(0, 1) * (1 - sx) + g(1, 1) * sx) * sy;
   };
-  const make = (fn) => {
+  const make = (fn, N = 64) => {
     const d = new Uint8Array(N * N * 4);
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const [r, g, b] = fn(x / N, y / N, x, y), i = (y * N + x) * 4;
@@ -126,11 +126,21 @@ export function surfaceTextures(T) {
     t.generateMipmaps = true; t.colorSpace = T.SRGBColorSpace; t.needsUpdate = true;
     return t;
   };
-  const skin = make((u, v) => {
+  // skin (128 px): soft mottle, faint blotchy redness, fine pores and a criss-cross of tiny creases; skinBump is
+  // the same relief as a height map (pores and creases sink), so the hands catch light like skin, not wax.
+  const relief = (u, v, x, y) => {
+    const pore = hash(x, y, 9) > 0.86 ? 0.55 + 0.45 * hash(x, y, 10) : 1;            // tiny dark pits
+    const a = u * 0.8 + v * 0.6, b = u * 0.6 - v * 0.8;                                // two crossing crease sets
+    const w = noise(u, v, 8, 11);
+    const crease = Math.min(1, 0.55 + 2.2 * Math.abs(Math.sin((a * 22 + w * 2.5) * Math.PI)) ) * Math.min(1, 0.6 + 2.2 * Math.abs(Math.sin((b * 18 + w * 2) * Math.PI)));
+    return pore * (0.82 + 0.18 * crease);
+  };
+  const skin = make((u, v, x, y) => {
     const m = 0.5 * noise(u, v, 4, 1) + 0.3 * noise(u, v, 8, 2) + 0.2 * noise(u, v, 32, 3);
-    const k = 0.9 + 0.1 * m, red = 0.03 * (noise(u, v, 6, 4) - 0.5);     // faint blotchy redness
+    const k = (0.9 + 0.1 * m) * (0.94 + 0.06 * relief(u, v, x, y)), red = 0.035 * (noise(u, v, 6, 4) - 0.5); // faint blotchy redness
     return [k + red, k - red * 0.5, k - red * 0.3];
-  });
+  }, 128);
+  const skinBump = make((u, v, x, y) => { const k = 0.55 + 0.45 * relief(u, v, x, y) * (0.85 + 0.15 * noise(u, v, 16, 12)); return [k, k, k]; }, 128);
   const weave = make((u, v, x, y) => {
     const P = 8, cx = Math.floor(x / P), cy = Math.floor(y / P), over = (cx + cy) % 2 === 0;
     const fu = (x % P + 0.5) / P, fv = (y % P + 0.5) / P;
@@ -145,8 +155,9 @@ export function surfaceTextures(T) {
     const k = 0.55 + 0.32 * Math.pow(strand, 0.6) + 0.13 * fibre + 0.05 * (hash(x, y, 8) - 0.5);
     return [k, k, k];
   });
-  skin.repeat.set(3, 2); weave.repeat.set(10, 12); rope.repeat.set(8, 1);
-  const set = { skin, weave, rope };
+  skin.repeat.set(3, 2); skinBump.repeat.set(3, 2); weave.repeat.set(10, 12); rope.repeat.set(8, 1);
+  skinBump.colorSpace = T.NoColorSpace;
+  const set = { skin, skinBump, weave, rope };
   TEX.set(T, set);
   return set;
 }
@@ -317,7 +328,18 @@ export function buildItemModel(T, kind, factory = null) {
   }
   if (!root && kind === 'camera') { const cm = buildCameraModel(T), gf = cm.userData.gripFrac; root = fit(T, cm, SIZE.camera, (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z)); } // [camera]
   if (!root) { const ins = buildInstrument(T, kind), gf = ins?.userData.gripFrac; if (ins) root = fit(T, ins, SIZE[kind], gf ? (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z) : null); } // [instruments]
-  if (!root) root = fit(T, buildBundle(T), left ? HELD_LEFT_MAX : 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
+  let key = null; // [held-items] which mesh this is (tests/held-distinct.test.mjs: no two kinds share one)
+  if (!root) { // [held-items] placed gear, icon-model items and props drawn to match their icons (held-models.js)
+    const h = buildHeldModel(T, kind), sp = HELD_SPEC[kind];
+    if (h) {
+      const gf = left ? [0, -0.5, 0] : sp?.grip || [0, -0.3, 0];
+      root = fit(T, h.model, left ? HELD_LEFT_MAX : sp?.size || 0.12, (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z));
+      if (h.shared) root.userData.shared = true;
+      key = h.key;
+    }
+  }
+  if (!root) { root = fit(T, buildBundle(T), left ? HELD_LEFT_MAX : 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0)); key = 'bundle'; }
+  root.userData.heldKey = key || (root.userData.shared ? 'factory:' : 'own:') + kind;
   root.name = 'item_' + kind;
   root.userData.kind = kind;
   root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });

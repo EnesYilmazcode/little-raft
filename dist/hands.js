@@ -22,6 +22,7 @@
 import { buildItemModel, holdFor, isPlaceable, PLACEABLE_KINDS, surfaceTextures } from './held-items.js?build=v3-survival-ae77fa84ac2b';
 export { buildItemModel, isPlaceable, PLACEABLE_KINDS };
 const POSES = ['point', 'throw', 'grip', 'open'];
+const HOOKS = ['hook', 'metalhook']; // kinds thrown on the rope (the metal hook is the same tool, a steel model)
 
 // Merges meshes (all below `owner`) into one indexed geometry in owner space, keeping the attributes every
 // part has. tint(mesh) -> Color bakes a per-vertex colour, so parts with different flat materials can
@@ -99,19 +100,24 @@ export function createHands(T, { modelFactory = null } = {}) {
   // happens to be, so a fixed view-space key term (upper left, toward the eye) adds a soft light-to-shadow
   // fall-off across forearms and round each finger instead of the flat, evenly lit wax look.
   const tx = surfaceTextures(T);
-  const keyShade = (m) => {
+  // Skin also gets a warm under-skin glow where light turns to shadow, and a faint sky rim on edges seen side-on.
+  const keyShade = (m, skinLit = false) => {
     m.onBeforeCompile = (sh) => {
       sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         float vmKey = clamp(dot(normal, normalize(vec3(-0.45, 0.75, 0.5))) * 0.5 + 0.5, 0.0, 1.0);
-        diffuseColor.rgb *= mix(0.42, 1.1, vmKey * vmKey * (3.0 - 2.0 * vmKey));`);
+        float vmK = vmKey * vmKey * (3.0 - 2.0 * vmKey);
+        vec3 vmShade = vec3(mix(0.42, 1.1, vmK));` + (skinLit ? `
+        vmShade *= mix(vec3(1.0), vec3(1.14, 0.9, 0.8), clamp(vmK * (1.0 - vmK) * 4.0, 0.0, 1.0) * 0.8);
+        vmShade += vec3(0.1, 0.1, 0.12) * pow(1.0 - clamp(normal.z, 0.0, 1.0), 3.0);` : '') + `
+        diffuseColor.rgb *= vmShade;`);
     };
-    m.customProgramCacheKey = () => 'vmKeyShade';
+    m.customProgramCacheKey = () => (skinLit ? 'vmKeyShadeSkin' : 'vmKeyShade');
     return m;
   };
   const skin = keyShade(mat(0xc89068, 0.6, { emissive: 0x1c0e06, map: tx.skin }));
   const skinPalm = keyShade(mat(0xc08562, 0.64, { emissive: 0x1c0e06, map: tx.skin }));
   const skinTip = keyShade(mat(0xcc8e6c, 0.6, { emissive: 0x1c0e06, map: tx.skin })); // finger ends a touch pinker: fingers read as fingers
-  const nail = keyShade(mat(0xe0b294, 0.38, { emissive: 0x120806 }));
+  const nail = keyShade(mat(0xd8a48c, 0.38, { emissive: 0x120806 }));
   const crease = mat(0x8e5a3c, 0.8);
   const sleeveMat = keyShade(mat(0x5a7462, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
   const cuffMat = keyShade(mat(0x465c4e, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
@@ -125,7 +131,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   const toneOf = (m) => { const c = m.color.clone(); return new T.Color(c.r / BODY_SKIN.r, c.g / BODY_SKIN.g, c.b / BODY_SKIN.b); };
   const skinTones = [skin, skinPalm, skinTip, nail, crease].map((m) => [m, toneOf(m)]);
   const SLEEVE_BASE = sleeveMat.color.clone();
-  const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin })); skinV.color.copy(BODY_SKIN);
+  const skinV = keyShade(mat(0xffffff, 0.58, { emissive: 0x160805, vertexColors: true, map: tx.skin, bumpMap: tx.skinBump, bumpScale: 0.35 }), true); skinV.color.copy(BODY_SKIN);
   const clothV = keyShade(mat(0xffffff, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); clothV.color.copy(SLEEVE_BASE);
   const ropeV = mat(0xffffff, 1.0, { vertexColors: true, map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   const tint = (m) => m.material.color;
@@ -170,6 +176,20 @@ export function createHands(T, { modelFactory = null } = {}) {
     parent.add(mesh); return mesh;
   };
 
+  // Fingernail on a finger segment a -> b (b = fingertip): a flat ellipsoid on the side facing `out` (a point the
+  // nail faces away from, e.g. the grip axis), set back from the tip. r = finger radius at the tip, w = nail width scale.
+  const nailBasis = new T.Matrix4();
+  const nailAt = (parent, a, b, from, r, w) => {
+    const z = b.clone().sub(a).normalize(), c = b.clone().addScaledVector(z, -r * 1.05);
+    const x = c.clone().sub(from); x.addScaledVector(z, -x.dot(z)).normalize();
+    const y = V().crossVectors(z, x);
+    const mesh = new T.Mesh(sphereGeo, nail);
+    mesh.quaternion.setFromRotationMatrix(nailBasis.makeBasis(x, y, z));
+    mesh.position.copy(c).addScaledVector(x, r * 0.78);
+    mesh.scale.set(r * 0.3, w * 0.55, r * 1.1);
+    parent.add(mesh); return mesh;
+  };
+
   // ---------------- hand (right-hand layout; mirrored for left) ----------------
   // Grip axis = local Y through origin, gripR = radius of the gripped object. Back of hand +X, palm -X,
   // wrist +Z, so straight fingers point -Z. Each finger and the thumb are built twice (curled round
@@ -178,7 +198,8 @@ export function createHands(T, { modelFactory = null } = {}) {
     const k = (gripR + 0.010) / 0.042;
     const P = (aDeg, R, y) => V(R * Math.cos(aDeg * DEG), y, -R * Math.sin(aDeg * DEG));
     const palm = [
-      ellipsoid(parent, skin, V(0.016 * k, -0.004, 0.047 * k), 0.030 * k, 0.050, 0.040 * k, -0.22),
+      ellipsoid(parent, skin, V(0.016 * k, -0.004, 0.047 * k), 0.028 * k, 0.050, 0.040 * k, -0.22),
+      seg(parent, skin, V(0.018 * k, -0.007, 0.086 * k), V(0.012 * k, -0.005, 0.058 * k), 0.027, 0.023), // wrist: palm runs smoothly into the forearm
       ellipsoid(parent, skinPalm, V(-0.002 * k, 0.022, 0.054 * k), 0.015 * k, 0.019, 0.026 * k, 0.3),   // thenar: kept flat so the thumb root does not balloon
     ];
     const defs = [
@@ -195,6 +216,7 @@ export function createHands(T, { modelFactory = null } = {}) {
       // slightly slimmer than the finger spacing, so a thin shadow line separates the fingers
       seg(curl, skin, mcp, pip, f.r * 0.97, f.r * 0.90);
       seg(curl, skinTip, pip, tip, f.r * 0.90, f.r * 0.74);
+      nailAt(curl, pip, tip, V(0, tip.y, 0), f.r * 0.74, f.r);       // nail on the outside of the curled fingertip
       if (i < 3) {
         const c = P(f.a1 + 15, R + f.r * 0.8, f.y);
         seg(curl, crease, c.clone().setY(f.y - 0.0052), c.clone().setY(f.y + 0.0052), 0.0013, 0.0013, 6);
@@ -204,6 +226,7 @@ export function createHands(T, { modelFactory = null } = {}) {
       seg(tight, skin, mcp, k0.lerp(k1, 0.5), f.r * 1.05, f.r);
       seg(tight, skin, k0, k1, f.r, f.r * 0.92);
       seg(tight, skinTip, k1, k2, f.r * 0.92, f.r * 0.78);
+      nailAt(tight, k1, k2, V(0, k2.y, 0), f.r * 0.78, f.r);
       // straight finger: slight natural curl toward the palm, small fan spread
       const e1 = mcp.clone().add(V(-0.010, f.spread * 0.6, -f.len * 0.52));
       const e2 = e1.clone().add(V(-0.012, f.spread * 0.4, -f.len * 0.46));
@@ -222,6 +245,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     seg(thumbCurl, skin, t0, tA, 0.0128, 0.0108);
     seg(thumbCurl, skin, tA, tB, 0.0104, 0.0094);
     seg(thumbCurl, skinTip, tB, tC, 0.0094, 0.0078);
+    nailAt(thumbCurl, tB, tC, V(0, tC.y, 0), 0.0078, 0.0105);
     const u1 = V(-0.026 * k, 0.062, 0.030 * k), u2 = V(-0.040 * k, 0.083, 0.004 * k);
     seg(thumbExt, skin, t0, u1, 0.0135, 0.0118);
     seg(thumbExt, skinTip, u1, u2, 0.0118, 0.0094);
@@ -266,7 +290,7 @@ export function createHands(T, { modelFactory = null } = {}) {
 
     const Fl = toLocal(F).normalize();
     const at = (s) => W.clone().addScaledVector(Fl, s);
-    const forearm = seg(frame, skin, at(0), at(0.24), 0.031, 0.042, 12);
+    const forearm = seg(frame, skin, at(-0.006), at(0.24), 0.027, 0.042, 12); // slimmer at the wrist, tucked into the hand
     const cuff = seg(frame, cuffMat, at(0.19), at(0.225), 0.047, 0.050, 14);    // rolled cuff
     const sleeve = seg(frame, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 14); // sleeve (runs off-screen)
     const fa = bake(frame, [forearm], skinV); bake(frame, [cuff, sleeve], clothV);
@@ -411,7 +435,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     if (prev) prev.pivot.visible = false;
     st.shown = st.target;
     const next = st.shown && mountFor(st.shown);
-    if (next) next.pivot.visible = st.shown !== 'hook' || st.outW < 0.5;
+    if (next) next.pivot.visible = !HOOKS.includes(st.shown) || st.outW < 0.5;
     st.poseOverride = st.pendingPose;  // the new item comes up in its own pose
     st.raise = 0; st.lowering = false;
   }
@@ -455,7 +479,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     // Own fixed 60 degree projection: undo the world camera's FOV in camera-space x/y (depth untouched), so
     // the FOV setting never resizes the hands and they frame the same on every setting.
     if (Number.isFinite(params.fov) && params.fov > 0) { const s = Math.tan(params.fov * DEG / 2) / VM_TAN; root.scale.set(s, s, 1); }
-    const isHook = st.shown === 'hook', hasHookOut = st.hookOut = isHook && !!params.hasHookOut;
+    const isHook = HOOKS.includes(st.shown), hasHookOut = st.hookOut = isHook && !!params.hasHookOut;
     const leftRope = hasHookOut && st.reelW > 0.35;              // both fists on the line while reeling
     const pose = poseOf(st.shown), pointer = applyFingers(pose, hasHookOut, leftRope);
     const charge = pose === 'throw' ? 1 : isHook ? charge0 : 0;
@@ -560,7 +584,7 @@ export function createHands(T, { modelFactory = null } = {}) {
       spool.rotation.z = st.spool;
       const swing = 0.25 * pull * rW + 0.12 * wA * Math.sin(ph + Math.PI) + 0.10 * ce - 0.15 * a + 0.03 * amp * Math.sin(t * 1.3);
       coil.quaternion.copy(qLeftUp).multiply(qSwing.setFromAxisAngle(AX, swing));
-      const hm = mounts.get('hook');
+      const hm = mounts.get(st.shown);
       if (hm) hm.pivot.visible = !hasHookOut;
     }
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
