@@ -228,7 +228,10 @@ test('wiring: Q action, controls, content registry, help tab', () => {
   assert.match(read('content.js'), /drop: all => !!first\('drop', all\)/);
   assert.match(read('settings.js'), /\['Q', 'Drop one item'\], \['Ctrl \+ Q', 'Drop the stack'\]/);
   const game = read('game.js');
-  assert.match(game, /drop:all => \{ if \(running && !building\?\.menu\.isOpen\) content\?\.drop\(all\); \}/);
+  assert.match(game, /interact, drop:dropHeld, inventory:/, 'the action map and the legacy keys share one gate');
+  const gate = game.slice(game.indexOf('function dropHeld('), game.indexOf('function dropHeld(') + 400);
+  for (const g of ['!running', 'uiBlocked()', 'building?.menu.isOpen', 'diving?.state.diving', 'fainted >= 0']) assert.ok(gate.includes(g), 'dropHeld refuses: ' + g);
+  assert.match(gate, /content\?\.drop\(all\)\) charging = null/);
   assert.match(game, /if \(ctrlQ && running\) e\.preventDefault\(\)/);
   assert.match(game, /get sailFlow\(\) \{ return sailFlow; \}/);
 });

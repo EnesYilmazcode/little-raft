@@ -31,7 +31,7 @@ export function createDropBox(ctx) {
   function drop(all) {
     if (!ctx.running || ctx.uiOpen?.()) return false;
     const p = ctx.physics, bag = ctx.localBag?.();
-    if (!p || p.diving || !bag) return false;
+    if (!p || !bag) return false; // game.js dropHeld() already refuses under water, passed out and with the build wheel open
     const i = bag.selectedIndex, s = bag.slots?.[i];
     if (!s) return true; // empty hand: nothing to drop
     if (!host() && hostOld) { notice(OLD_HOST); return true; }

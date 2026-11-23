@@ -1408,6 +1408,10 @@ export function mount(transfer = null) {
     const locked = content?.craftLocked(recipe, myActor()); if (locked) { notice(String(locked)); return false; }
     return action({kind:'craft', recipe}) !== false;
   }
+  function dropHeld(all) { // [dropbox] Q / Ctrl+Q: not with the build wheel open, under water or passed out (like E)
+    if (!running || uiBlocked() || building?.menu.isOpen || diving?.state.diving || fainted >= 0) return;
+    if (content?.drop(all)) charging = null; // a throw being charged must not fire from the emptied hand
+  }
   function repair() { if (!running) return; const bag = localBag();
     const sel = bag.slots[bag.selectedIndex]; if (sel?.kind === 'spade') { action({kind:'treasure.repair'}); return; } // [treasure-hook] R on a held spade
     action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH, isHookSlot)}); }
@@ -1970,7 +1974,7 @@ export function mount(transfer = null) {
     const wheelOpen = !!building?.menu.isOpen; // building wheel open: no hotbar swap (drops the hammer, closes the wheel) and no interact
     if (m && running && !wheelOpen) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat && !wheelOpen) interact();
-    if (e.code === 'KeyQ' && !e.repeat && !wheelOpen && running) content?.drop(e.ctrlKey); // [dropbox]
+    if (e.code === 'KeyQ' && !e.repeat && !wheelOpen) dropHeld(e.ctrlKey); // [dropbox]
     if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : e.altKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration (Shift+R in 15 degree steps, Alt+R back)
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
@@ -1995,7 +1999,7 @@ export function mount(transfer = null) {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
-      interact, drop:all => { if (running && !building?.menu.isOpen) content?.drop(all); }, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
+      interact, drop:dropHeld, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
       pause:() => settingsController?.open(), buildWheelOpen:() => !!building?.menu.isOpen, // hotbar + interact are swallowed while the build wheel is open
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
       menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard
