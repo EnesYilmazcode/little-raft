@@ -8,7 +8,8 @@ export const PADDLE = Object.freeze({
   COOLDOWN: 0.85,    // seconds between strokes (a little over SAIL.PADDLE_COOLDOWN so a lagged stroke is never dropped)
   STROKE_TIME: 0.6,  // seconds of the visible stroke
   TILE: 2,           // raft tile size (metres)
-  SPLASH_OUT: 1.3,   // metres in front of the player where the blade hits the water
+  SPLASH_OUT: 1.3,   // metres in front of the player where the blade hits the water (at least)
+  SPLASH_MAX: 4,     // look this far ahead for the deck edge; past it the splash falls back to SPLASH_OUT
 });
 
 export const isPaddle = (kind) => toolRole(kind) === 'paddle';
@@ -35,6 +36,18 @@ export function onEdgeTile(tiles, x, z) {
     else if ((dx === 0 && (dz === 1 || dz === -1)) || (dz === 0 && (dx === 1 || dx === -1))) sides++;
   }
   return here && sides < 4;
+}
+
+/** Metres along (fx,fz) from (x,z) to just past the raft edge (open water), at least SPLASH_OUT. No allocations. */
+export function waterAhead(tiles, x, z, fx, fz) {
+  if (!Array.isArray(tiles) || ![x, z, fx, fz].every(Number.isFinite)) return PADDLE.SPLASH_OUT;
+  for (let d = 0; d <= PADDLE.SPLASH_MAX; d += 0.25) {
+    const tx = Math.round((x + fx * d) / PADDLE.TILE), tz = Math.round((z + fz * d) / PADDLE.TILE);
+    let deck = false;
+    for (let i = 0; i < tiles.length && !deck; i++) { const t = tiles[i]; deck = !!t && t[0] === tx && t[1] === tz; }
+    if (!deck) return Math.max(PADDLE.SPLASH_OUT, d + 0.35);
+  }
+  return PADDLE.SPLASH_OUT;
 }
 
 /** One stroke of wear on a bag slot (mutates slot.durability, 0..100). Returns {before, after, broke} or null. */
@@ -68,7 +81,7 @@ export const paddlePrompt = (s) => PROMPTS[strokeBlock(s)] ?? null;
  * splash(x, z, strength) (at the water surface), sound(name), other(), sailReady(), sailApply(a, actor), emit(e, to).
  */
 export function attachPaddle(ctx) {
-  let lastStroke = -Infinity, stroke = 0, pinned = -1, unprovide = null;
+  let lastStroke = -Infinity, stroke = 0, pinned = -1, unprovide = null, queued = false;
   const look = { durability: 0, swimming: false, onEdge: false, anchored: false }; // reused: no per-frame allocation
   const heldSlot = () => { const b = ctx.localBag(); const s = b?.slots[b.selectedIndex]; return s && isPaddle(s.kind) ? s : null; };
   function sample(slot) {
@@ -82,14 +95,15 @@ export function attachPaddle(ctx) {
   function use() {
     const slot = heldSlot(); if (!slot) return false;
     const now = ctx.elapsed();
-    if (!canStroke(now, lastStroke)) return true;
+    if (!canStroke(now, lastStroke)) { queued = true; return true; } // a click mid-stroke strokes again as soon as it can
     const why = strokeBlock(sample(slot));
     if (why) { ctx.notice(PROMPTS[why].label); return true; }
     lastStroke = now; stroke = 1;
     const yaw = ctx.yaw(), p = ctx.physics(), b = ctx.localBag();
     ctx.action({ kind: 'sail', op: 'paddle', angle: strokeAngle(yaw), slot: b.selectedIndex });
     ctx.sound?.('swim');
-    ctx.splash?.(p.x - Math.sin(yaw) * PADDLE.SPLASH_OUT, p.z - Math.cos(yaw) * PADDLE.SPLASH_OUT, 0.8);
+    const d = waterAhead(ctx.tiles(), p.x, p.z, -Math.sin(yaw), -Math.cos(yaw)); // the blade bites the water past the deck edge
+    ctx.splash?.(p.x - Math.sin(yaw) * d, p.z - Math.cos(yaw) * d, 1.3);
     return true;
   }
 
@@ -114,6 +128,7 @@ export function attachPaddle(ctx) {
 
   /** 1 -> 0 over a stroke (hands.update({paddle})). Call once per frame. */
   function update(dt) {
+    if (queued && (!heldSlot() || canStroke(ctx.elapsed(), lastStroke))) { queued = false; use(); }
     if (pinned >= 0) stroke = pinned;
     else if (stroke > 0) stroke = Math.max(0, stroke - (dt > 0 ? dt : 0) / PADDLE.STROKE_TIME);
     if (!unprovide) provide();
