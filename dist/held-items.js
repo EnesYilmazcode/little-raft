@@ -25,6 +25,7 @@ import { createRocket } from './fireworks-model.js?build=v3-survival-ae77fa84ac2
 import { createScarecrow3D } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
 import { createHive, createFlowerBox, createCandle } from './bees-model.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createSpyglassModel } from './spyglass-model.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
+import { buildHeldModel, HELD_HOLD } from './held-models.js?build=v3-survival-ae77fa84ac2b'; // [held-items] every other kind: its own model
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
@@ -40,6 +41,7 @@ const FACTORY_FIRST = ['cup', 'water'];
 const SEED_KINDS = ['seed', 'seeds'];
 
 export const HOLD = Object.freeze({
+  ...HELD_HOLD, // [held-items] defaults for content, progression and lane kinds (entries below win)
   // arm: [dx, dy, dz] camera-space nudge of the right arm at rest for this kind.
   hook:       { hand: 'right', pose: 'grip', arm: [0.03, -0.025, 0] },          // hook tip stays right of the screen centre
   hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.06, 0], tilt: 0.55 }, // tilt: head leans forward
@@ -317,6 +319,11 @@ export function buildItemModel(T, kind, factory = null) {
   }
   if (!root && kind === 'camera') { const cm = buildCameraModel(T), gf = cm.userData.gripFrac; root = fit(T, cm, SIZE.camera, (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z)); } // [camera]
   if (!root) { const ins = buildInstrument(T, kind), gf = ins?.userData.gripFrac; if (ins) root = fit(T, ins, SIZE[kind], gf ? (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z) : null); } // [instruments]
+  if (!root) { // [held-items] its own world model (placeables) or a small model matching its icon
+    const h = buildHeldModel(T, kind), gf = HELD_HOLD[kind]?.grip;
+    if (h) root = fit(T, h.model, dim(kind, HELD_HOLD[kind]?.size || 0.12), gf ? (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z) : (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
+    if (h?.shared) root.userData.shared = true;
+  }
   if (!root) root = fit(T, buildBundle(T), left ? HELD_LEFT_MAX : 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
   root.name = 'item_' + kind;
   root.userData.kind = kind;
