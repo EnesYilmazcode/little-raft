@@ -60,7 +60,7 @@ test('groundHeight: dome top, shoreline, rim', () => {
 test('pathAt phases in order with continuous z', () => {
   const dock = 180, dz = -3, order = [];
   let lastZ = pathAt(0, dock, dz).z;
-  for (let t = 0; t <= 25 + dock + 30 + 2; t += 0.05) {
+  for (let t = 0; t <= ISLAND.APPROACH + dock + ISLAND.DEPART + 2; t += 0.05) {
     const p = pathAt(t, dock, dz);
     if (order.at(-1) !== p.phase) order.push(p.phase);
     assert.ok(Math.abs(p.z - lastZ) < 0.5, `z jump at t=${t}`);
@@ -68,7 +68,7 @@ test('pathAt phases in order with continuous z', () => {
   }
   assert.deepEqual(order, ['approach', 'docked', 'depart', 'gone']);
   assert.equal(pathAt(0, dock, dz).z, ISLAND.START_Z);
-  assert.equal(pathAt(100, dock, dz).z, dz);
+  assert.equal(pathAt(ISLAND.APPROACH, dock, dz).z, dz);
 });
 
 test('docked island sits a short swim from a 3x3 raft', () => {
@@ -316,7 +316,7 @@ test('full cycle: calm, first island at 90 s, gone, calm again', () => {
   for (let i = 0; i < 2 * 10; i++) w.mod.update(0.1);
   assert.equal(w.mod.debug.phase().phase, 'approach');
   const seen = new Set();
-  for (let i = 0; i < 300 * 10; i++) { w.mod.update(0.1); seen.add(w.mod.debug.phase().phase); }
+  for (let i = 0; i < (ISLAND.APPROACH + ISLAND.DOCK + ISLAND.DEPART + 20) * 10; i++) { w.mod.update(0.1); seen.add(w.mod.debug.phase().phase); }
   assert.ok(seen.has('docked') && seen.has('depart') && seen.has('calm'));
   const ph = w.mod.debug.phase();
   assert.ok(ph.next - ph.clock >= 0 && ph.next - ph.clock <= 240);
@@ -442,7 +442,7 @@ test('departing island slides out from under the player (no 50 m ride)', () => {
 
 test('rider moves with the approaching island in the same frame', () => {
   const w = stubWorld();
-  w.mod.debug.spawnNear(1234, 5); w.mod.update(0);
+  w.mod.debug.spawnNear(1234, ISLAND.APPROACH - 20); w.mod.update(0); // still gliding in, inside the 50 m safety radius
   assert.equal(w.mod.debug.teleportAshore(1, 1), true);
   const off = () => w.physics.z - w.mod.debug.state().cz;
   step(w, 1); // settle (a palm or rock may nudge us on the first frame)

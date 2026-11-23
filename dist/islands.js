@@ -2,8 +2,8 @@
 // gather leaves, seeds, stone and sand with E, and chop palms for wood with a Stone Axe. Host-authoritative; saved in world.ext.islands.
 // Design and notes: docs/features/islands.md. Pure logic lives in islands-layout.js (unit tested).
 import {
-  ISLAND, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
-  applyGather, standOnSand, DEFAULTS, CHOP, isAxe,
+  ISLAND, VIEW, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
+  applyGather, standOnSand, DEFAULTS, CHOP, isAxe, TIMELINE,
 } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 import { createIslandModels, PALM_H, PALM_BEND } from './islands-models.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
@@ -46,11 +46,15 @@ export function createIslands(ctx) {
   const st = DEFAULTS();              // {v, clock, next, isl}
   let layout = null;                  // layoutFor(st.isl.seed)
   let warned = false;
+  // The 'drifting this way' notice waits until the island is close enough to show through the fog
+  // (it is born ~260 m out, out of sight).
+  const ANNOUNCE_Z = -150;
+  let announced = true;
   const cool = { host: 0, guest: 0 };
   const gatherState = { isl: null, layout: null, cx: 0, cz: 0, clock: 0, cool };
   const out = { v: 1, clock: 0, next: 0, isl: null }; // cached serialize() object
-  const outIsl = { seed: 0, born: 0, dock: 0, side: 1, off: 0, used: null };
-  const path = { phase: 'gone', z: 0, left: 0, sink: 0 };
+  const outIsl = { tl: TIMELINE, seed: 0, born: 0, dock: 0, side: 1, off: 0, used: null };
+  const path = { phase: 'gone', z: 0, left: 0 };
 
   // Live placement, refreshed in update().
   let shown = false, cx = 0, cz = 0, gy = 0, carryX = NaN, carryZ = NaN;
@@ -84,8 +88,12 @@ export function createIslands(ctx) {
     return m;
   });
   const [palmSpent, nuts] = extra;
-  const veg = [...meshes, ...extra]; // scaled down while the island rises or sinks
+  const veg = [...meshes, ...extra];
   group.add(dome, ...veg);
+  // Draw after the sky dome (renderOrder 1, radius 150, no depth write), which would otherwise paint over
+  // an island past 150 m: the island fades out in its own fog (models.fogClip) instead. Set per mesh, not
+  // on the group (a group order would also put it after the ocean at 10 and lose the sea's early-Z).
+  for (const m of group.children) m.renderOrder = 2;
   if (ctx.scene) { ctx.scene.add(group); ctx.scene.add(lagoon); }
   lagoon.visible = false;
 
@@ -175,14 +183,15 @@ export function createIslands(ctx) {
     if (path.phase === 'gone') { shown = false; group.visible = lagoon.visible = false; return; }
     cx = isl.side * isl.off; cz = path.z;
     const b = baseY();
-    gy = b + (waveAt(cx, cz) - b) * .25 - path.sink;
+    // Always at full height: islands drift in from past the draw distance (fog hides them there).
+    gy = b + (waveAt(cx, cz) - b) * .25;
     group.position.set(cx, gy, cz);
-    // While rising or sinking, plants shrink with the sink so palm crowns never poke out of open sea.
-    const grow = 1 - path.sink / ISLAND.SINK;
-    for (let i = 0; i < veg.length; i++) veg[i].scale.setScalar(grow < 1e-3 ? 1e-3 : grow);
+    // Fully fogged just short of the camera far plane (or of VIEW, if the far plane ever moves out past
+    // the spawn distance).
+    const far = ctx.camera && ctx.camera.far > 0 ? Math.min(ctx.camera.far, VIEW.CAMERA_FAR) : VIEW.CAMERA_FAR;
+    models.fogClip.value = Math.min(far, VIEW.FOG_FAR) - VIEW.FOG_MARGIN;
     lagoon.position.set(cx, b + .1, cz); // 10 cm up: clears the ocean mesh's ~4 cm interpolation error at grazing angles
     models.lagoonUniforms.uCentre.value.set(cx, cz);
-    models.lagoonUniforms.uOpacity.value = 1 - path.sink / ISLAND.SINK;
     shown = group.visible = lagoon.visible = true;
   }
   function groundAt(x, z) { // world y of the sand, or NaN
@@ -196,9 +205,14 @@ export function createIslands(ctx) {
     seed = (Number.isInteger(seed) && seed >= 0 && seed < 4294967296) ? seed : (Math.random() * 4294967296) >>> 0;
     const lay = layoutFor(seed);
     const { side, off } = dockOffset(ctx.world && ctx.world.tiles, lay);
-    st.isl = { seed, born: st.clock - Math.max(0, t), dock: ISLAND.DOCK, side, off, used: lay.nodes.map(() => 0) };
+    st.isl = { tl: TIMELINE, seed, born: st.clock - Math.max(0, t), dock: ISLAND.DOCK, side, off, used: lay.nodes.map(() => 0) };
     relayout(); place();
-    if (t < ISLAND.APPROACH) emitAll('An island is drifting this way. Swim over and take a look!');
+    announced = !(t < ISLAND.APPROACH);
+    announce();
+  }
+  function announce() {
+    if (announced || path.phase !== 'approach' || path.z < ANNOUNCE_Z) return;
+    announced = true; emitAll('An island is drifting this way. Swim over and take a look!');
   }
   function emitAll(text) { try { ctx.emit({ kind: 'notice', text }, 'all'); } catch {} }
 
@@ -225,6 +239,7 @@ export function createIslands(ctx) {
         if (st.clock >= st.next) spawn();
       } else if (layout) {
         pathAt(st.clock - isl.born, isl.dock, layout.dockZ, path);
+        announce();
         if (path.phase === 'gone') {
           st.isl = null; st.next = st.clock + nextDelay(isl.seed); relayout();
         } else if (path.phase === 'docked') {
@@ -306,6 +321,7 @@ export function createIslands(ctx) {
     }
     pathAt(st.clock - st.isl.born, st.isl.dock, layout.dockZ, path);
     warned = path.phase === 'depart' || (path.phase === 'docked' && path.left <= ISLAND.WARN);
+    announced = path.phase !== 'approach' || path.z >= ANNOUNCE_Z;
     place();
   }
 
@@ -500,7 +516,7 @@ export function createIslands(ctx) {
     },
     drain() { if (!st.isl) return false; st.isl.used.forEach((_, k) => { st.isl.used[k] = layout.nodes[k].max; writeNode(k); }); return true; },
     clear() { st.isl = null; st.next = st.clock + ISLAND.CALM_MIN; relayout(); place(); return debug.phase(); },
-    state: () => ({ onSand: sandState.onSand, shown, cx, cz, gy, hover: hoverNode }),
+    state: () => ({ onSand: sandState.onSand, shown, cx, cz, gy, hover: hoverNode, fogFar: models.fogClip.value, R: layout ? layout.R : 0 }),
     pick: () => pickNode(null), // node under the camera centre, or -1
     groundAt,
   };
