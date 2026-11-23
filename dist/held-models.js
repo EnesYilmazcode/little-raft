@@ -311,7 +311,7 @@ const UP = [-0.025, 0.07, 0];
 const S = (size, rx, ry, rz, gy = -0.42, extra = {}) => R(size, [0, gy, 0], rx, ry, rz, { arm: UP, ...extra });
 const PLACE = { hand: 'left', pose: 'point' };
 const LUMP = S(0.09, 0.3, 0.6, 0.2, -0.3);                          // ores, stone, clay: a lump in the fist
-const FOOD_BOWL = S(0.14, 0.35, 0, -0.05, -0.5);                    // bowl sits on the fist, rim tipped toward the eye
+const FOOD_BOWL = S(0.14, 0.35, 0, -0.05, -1.3);                    // bowl sits on the fist, rim tipped toward the eye
 const CUP = S(0.11, 0.15, 0.3, 0, -0.35);
 const POT = S(0.1, 0.2, 0.5, 0, -0.4);
 export const HELD_HOLD = Object.freeze({
@@ -335,7 +335,7 @@ export const HELD_HOLD = Object.freeze({
   puffegg: S(0.07, 0.15, 0, 0.1, -0.45),
   // food and drink
   cookedfish: R(0.2, [0.36, 0, 0], 0.1, 0.35, 0.25, { arm: [-0.02, 0.06, 0] }), honeyfish: R(0.2, [0.36, 0, 0], 0.1, 0.35, 0.25, { arm: [-0.02, 0.06, 0] }),
-  sharkmeat: S(0.13, 0.5, 0.4, 0.15, -0.45), cookedsharkmeat: S(0.13, 0.5, 0.4, 0.15, -0.45),
+  sharkmeat: S(0.13, 0.5, 0.4, 0.15, -1.2), cookedsharkmeat: S(0.13, 0.5, 0.4, 0.15, -1.2),
   sharkhead: R(0.18, [0.3, -0.2, 0], 0.2, 0.6, 0.1, { arm: UP }),
   berries: S(0.09, 0.2, 0.4, 0.1, -0.45), cookedbeet: S(0.09, 0.15, 0.4, 0.1, -0.4), cookedpotato: S(0.1, 0.3, 0.4, 0.1, -0.4),
   saltcup: CUP, freshcup: CUP, berrycup: CUP, coconutcup: CUP, mixcup: CUP,
