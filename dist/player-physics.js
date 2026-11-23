@@ -6,7 +6,7 @@
 
 export const PLAYER_CONSTANTS = Object.freeze({
   WALK_SPEED: 2.6,
-  SPRINT_SPEED: 4,
+  SPRINT_SPEED: 4.3,
   SWIM_SPEED: 2.1,
   // Jump: apex = JUMP_IMPULSE^2 / (2 * GRAVITY) = 2.445 m, a bit over one wall (building-pieces LEVEL_H 2.2 m),
   // so a player can hop up onto a one-storey floor. Falling pulls harder than rising (snappy, ~0.9 s airtime).
@@ -24,8 +24,9 @@ export const PLAYER_CONSTANTS = Object.freeze({
   WATER_EXIT_HYST: 0.2,      // extra height needed to stop swimming
   SWIM_EYE_ABOVE_WATER: 0.45,
   SWIM_RISE_BONUS: 0.35,     // target lift while jump is held
-  BUOY_SPRING: 30,
-  BUOY_DAMP: 7,
+  BUOY_SPRING: 60,
+  BUOY_DAMP: 12,             // ~0.8 of critical: rides the swell closely, settles with one small overshoot
+  BUOY_STEP: 1 / 240,        // s, buoyancy integration substep
   SPLASH_DAMP: 0.45,
   // Auto clamber
   CLAMBER_REACH: 0.8,        // body edge distance to a tile
@@ -33,9 +34,13 @@ export const PLAYER_CONSTANTS = Object.freeze({
   CLAMBER_INSET: 0.45,
   // A jump press this long before landing still jumps on landing (s).
   JUMP_BUFFER: 0.12,
+  // Walked off a ledge this recently (s): a jump press still jumps and steering stays grounded.
+  COYOTE: 0.1,
   // Horizontal response rates (1/s)
-  GROUND_ACCEL: 14,
-  AIR_ACCEL: 3.5,
+  GROUND_ACCEL: 20,
+  GROUND_DECEL: 22,          // slowing down or stopping on the ground (crisp stop, little slide)
+  GROUND_FRICTION: 6,        // m/s^2 constant part of the ground response
+  AIR_ACCEL: 1.2,
   WATER_ACCEL: 4.5,
   // Safety
   MAX_RAFT_DISTANCE: 50,
@@ -74,6 +79,7 @@ export class PlayerPhysics {
     this._climb = null;
     this._prevJump = false;
     this._jumpBuffer = 0;
+    this._coyote = 0; // s left to still jump after walking off a ledge
     // Reused result of _nearest() (consumed immediately by its callers; never escapes).
     this._dt = 0.01; this._deckY = 0.2; this._nx = 0.5; this._nz = 0.5; // per-update scratch (see _moveHorizontal)
     this._near = {tx: 0, tz: 0, px: 0.5, pz: 0.5, cx: 0.5, cz: 0.5, dist: 0.5};
@@ -113,6 +119,7 @@ export class PlayerPhysics {
     const jumpPressed = jump && !this._prevJump;
     this._prevJump = jump;
     this._jumpBuffer = jumpPressed ? C.JUMP_BUFFER : Math.max(0, this._jumpBuffer - dt);
+    if (this._coyote > 0) this._coyote = Math.max(0, this._coyote - dt);
 
     this._sanitize(tiles);
 
@@ -147,14 +154,24 @@ export class PlayerPhysics {
     const dirZ = -c * forward - s * strafe;
     let speed, rate;
     if (this.swimming) { speed = C.SWIM_SPEED * MOVE_MUL.swim; rate = C.WATER_ACCEL; }
-    else if (this.grounded) { speed = (sprint ? C.SPRINT_SPEED : C.WALK_SPEED) * MOVE_MUL.walk; rate = C.GROUND_ACCEL; }
-    else { speed = (sprint ? C.SPRINT_SPEED : C.WALK_SPEED) * MOVE_MUL.walk; rate = C.AIR_ACCEL; }
+    else if (this.grounded) {
+      speed = (sprint ? C.SPRINT_SPEED : C.WALK_SPEED) * MOVE_MUL.walk;
+      const gx = dirX * speed, gz = dirZ * speed;
+      rate = gx * gx + gz * gz < this.vx * this.vx + this.vz * this.vz ? C.GROUND_DECEL : C.GROUND_ACCEL;
+    }
+    else { speed = (sprint ? C.SPRINT_SPEED : C.WALK_SPEED) * MOVE_MUL.walk; rate = this._coyote > 0 ? C.GROUND_ACCEL : C.AIR_ACCEL; }
     const k = 1 - Math.exp(-rate * dt);
     if (!this.grounded && !this.swimming && len < 0.01) {
       // Keep momentum in the air when there is no input.
     } else {
-      this.vx += (dirX * speed - this.vx) * k;
-      this.vz += (dirZ * speed - this.vz) * k;
+      const tx = dirX * speed, tz = dirZ * speed;
+      this.vx += (tx - this.vx) * k;
+      this.vz += (tz - this.vz) * k;
+      if (this.grounded) {
+        // Constant friction on top of the exponential blend: speed settles in finite time instead of creeping.
+        const ex = tx - this.vx, ez = tz - this.vz, e = len2(ex, ez), f = C.GROUND_FRICTION * dt;
+        if (e <= f) { this.vx = tx; this.vz = tz; } else { this.vx += ex / e * f; this.vz += ez / e * f; }
+      }
     }
 
     this._moveHorizontal(blocked);
@@ -169,28 +186,35 @@ export class PlayerPhysics {
         if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this.grounded = false; }
       } else {
         this.grounded = false; // walked off the edge
+        this._coyote = C.COYOTE;
         if (this.vy > 0) this.vy = 0;
       }
     }
 
     if (!this.grounded) {
+      if (this._coyote > 0 && this._jumpBuffer > 0 && !this.swimming) { // just walked off: the jump still counts
+        this._coyote = 0; this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump;
+      }
       const prevFeet = this.y - C.EYE_OFFSET;
       if (this.swimming) {
+        // Buoyancy spring in fixed small substeps so the surface bob and splash dunk match at any fps.
         const target = waterY + C.SWIM_EYE_ABOVE_WATER + (jump ? C.SWIM_RISE_BONUS : 0);
-        const ay = C.BUOY_SPRING * (target - this.y) - C.BUOY_DAMP * this.vy;
-        this.vy += ay * dt;
-        this.vy = clamp(this.vy, -C.MAX_FALL_SPEED, C.MAX_FALL_SPEED);
-        this.y += this.vy * dt;
+        const n = Math.ceil(dt / C.BUOY_STEP - 1e-9), h = dt / n;
+        for (let i = 0; i < n; i++) {
+          this.vy += (C.BUOY_SPRING * (target - this.y) - C.BUOY_DAMP * this.vy) * h;
+          this.vy = clamp(this.vy, -C.MAX_FALL_SPEED, C.MAX_FALL_SPEED);
+          this.y += this.vy * h;
+        }
       } else this._fall();
       const feet = this.y - C.EYE_OFFSET;
 
       // Land on deck only when falling and feet cross the deck plane over a tile.
       if (this.vy <= 0 && prevFeet >= deckY - 0.02 && feet <= deckY && this._supported(tiles)) {
-        this.y = deckY + C.EYE_OFFSET; this.vy = 0; this.grounded = true; out.landed = true;
+        this.y = deckY + C.EYE_OFFSET; this.vy = 0; this.grounded = true; out.landed = true; this._coyote = 0;
         if (this.swimming) { this.swimming = false; out.leftWater = true; }
         if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this.grounded = false; } // buffered jump
       } else if (!this.swimming && feet < waterY + C.WATER_ENTER) {
-        this.swimming = true; out.splashed = true;
+        this.swimming = true; out.splashed = true; this._coyote = 0;
         this.vy *= C.SPLASH_DAMP;
         this.vx *= 0.6; this.vz *= 0.6;
       } else if (this.swimming && feet > waterY + C.WATER_ENTER + C.WATER_EXIT_HYST) {
@@ -394,6 +418,68 @@ export class PlayerPhysics {
       out.landed = true;
     }
   }
+}
+
+// ---------- Riding the raft's tilt ----------
+// PlayerPhysics works on a flat deck plane at deckY (the raft never moves in x/z, it only heaves,
+// pitches and rolls). The deck mesh tilts, so a player standing away from the raft centre would see
+// the deck swell up and sink under the camera. RaftRide gives the offset that carries the camera
+// with the raft's pitch and roll, so the player lives in the raft's local frame while aboard.
+// The offset blends in and out (WEIGHT_RATE) so stepping off into the water never pops the view.
+// game.js: raftRide.update(dt, physics, raft.position.y, raft.rotation.x, raft.rotation.z, world.tiles, FLOOR_Y, rideOff),
+// then add rideOff to the camera position.
+
+export const RIDE = Object.freeze({
+  WEIGHT_RATE: 10,   // 1/s, blend toward aboard / not aboard
+  FOOT_MARGIN: 0.4,  // m, feet up to this far past a tile edge still ride (ledge, mid-jump over the edge)
+  BELOW: 0.35,       // m, feet this far under the deck plane (in the water) no longer ride
+});
+
+// Offset (world minus local) of the raft-local point (x, y, z) under rotation Euler XYZ (rx, 0, rz),
+// which is how three.js composes raft.rotation (R = Rx * Rz). Writes out.x/y/z and returns out.
+export function tiltOffset(rx, rz, x, y, z, out) {
+  const cz = Math.cos(rz), sz = Math.sin(rz), cx = Math.cos(rx), sx = Math.sin(rx);
+  const x1 = x * cz - y * sz, y1 = x * sz + y * cz;   // Rz
+  const y2 = y1 * cx - z * sx, z2 = y1 * sx + z * cx; // Rx
+  out.x = x1 - x; out.y = y2 - y; out.z = z2 - z;
+  return out;
+}
+
+function overRaft(tiles, x, z) {
+  if (!Array.isArray(tiles)) return false;
+  const h = C.TILE_SIZE / 2 + RIDE.FOOT_MARGIN;
+  for (let i = 0; i < tiles.length; i++) {
+    const t = tiles[i];
+    if (!Array.isArray(t)) continue;
+    if (Math.abs(x - t[0] * C.TILE_SIZE) <= h && Math.abs(z - t[1] * C.TILE_SIZE) <= h) return true;
+  }
+  return false;
+}
+
+export class RaftRide {
+  constructor() { this.weight = 0; this._first = true; }
+
+  // Is the player riding the raft right now (on deck, on a raised floor, mid-jump above it, clambering)?
+  aboard(p, raftY, tiles, floorY) {
+    if (!p || p.swimming) return false;
+    const feet = fin(p.y, 0) - C.EYE_OFFSET;
+    return feet >= raftY + floorY - RIDE.BELOW && overRaft(tiles, fin(p.x, 0), fin(p.z, 0));
+  }
+
+  update(dt, p, raftY, rx, rz, tiles, floorY, out) {
+    dt = Math.max(0, fin(dt, 0)); raftY = fin(raftY, 0); rx = fin(rx, 0); rz = fin(rz, 0); floorY = fin(floorY, 0.2);
+    const target = this.aboard(p, raftY, tiles, floorY) ? 1 : 0;
+    if (this._first) { this.weight = target; this._first = false; }
+    else this.weight = target + (this.weight - target) * Math.exp(-RIDE.WEIGHT_RATE * Math.min(dt, 0.1));
+    if (this.weight < 1e-4) this.weight = 0;
+    if (!p || this.weight === 0) { out.x = 0; out.y = 0; out.z = 0; return out; }
+    // Rotate the feet point about the raft origin; the eye stays straight above the feet.
+    tiltOffset(rx, rz, fin(p.x, 0), fin(p.y, 0) - C.EYE_OFFSET - raftY, fin(p.z, 0), out);
+    out.x *= this.weight; out.y *= this.weight; out.z *= this.weight;
+    return out;
+  }
+
+  reset() { this.weight = 0; this._first = true; }
 }
 
 export default PlayerPhysics;

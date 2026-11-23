@@ -12,7 +12,7 @@ import { createDebris, createItemBatch } from './debris.js?build=v3-survival-ae7
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { PlayerPhysics, PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
+import { PlayerPhysics, PLAYER_CONSTANTS, RaftRide } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, decorBlock, pieceBlock, pieceCell, inReach, BUILD_REACH, PIECE_REACH, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createContent, cleanExt, promptParts } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
@@ -1670,7 +1670,7 @@ export function mount(transfer = null) {
   const TITLE_FOCUS = new T.Vector3(-5, 0, 2), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
   const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [], ropeScratch = [];
   const handParams = {dt:0, time:0, charge:0, reeling:false, casting:0, paddle:0, walking:false, hasHookOut:false, motion:0, yaw:0, pitch:0, riding:false};
-  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
+  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), tmpRide = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
   const hookParams = {hand:handPos, items:freeItems, reeling:false, time:0}; // freeItems is already filtered for pending items
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() + .06 : null);
@@ -1690,12 +1690,20 @@ export function mount(transfer = null) {
     raft.rotation.x += (-s.sz * .35 - raft.rotation.x) * kr;
     raft.rotation.z += (s.sx * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
   }
+  const raftRide = new RaftRide(), rideOff = new T.Vector3(); // camera offset that keeps the player on the tilting deck
+  // The partner stands on the same tilting deck: carry their avatar with it too (physics poses are deck-flat).
+  const friendRide = new RaftRide(), coopRide = new RaftRide(), friendRideP = {x:0, y:0, z:0, swimming:false}; // one blend state per avatar
+  function friendRideOffset(dt, x, y, z, swimming, out, ride = friendRide) {
+    friendRideP.x = x; friendRideP.y = y; friendRideP.z = z; friendRideP.swimming = !!swimming;
+    return raft ? ride.update(dt, friendRideP, raft.position.y, raft.rotation.x, raft.rotation.z, world.tiles, FLOOR_Y, out) : (out.x = out.y = out.z = 0, out);
+  }
   function updateCamera(dt) {
     viewZoom = running ? content?.zoom() ?? 1 : 1; const damp = 1 / viewZoom; const fov = running ? options.fov / viewZoom : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); } // [spyglass] zoomed FOV
     if (running) {
       const cf = controls?.camera(yaw); // controls lane: replaces the old sine bob with footstep bob + crouch + landing dip
       const bob = (cf ? cf.y : walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0) * damp; // [spyglass] damp
       camera.position.set(physics.x + (cf?.x ?? 0) * damp, physics.y + bob, physics.z + (cf?.z ?? 0) * damp); // [spyglass] damp
+      raftRide.update(dt, physics, raft.position.y, raft.rotation.x, raft.rotation.z, world.tiles, FLOOR_Y, rideOff); camera.position.add(rideOff); // aboard: ride the deck's pitch and roll (raft-local frame)
       camera.rotation.set(pitch, yaw, ((physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0) + (cf?.roll ?? 0)) * damp, 'YXZ'); // [spyglass] damp
       if (eating) { const k = Math.sin(Math.min(1, eating.t / EAT_SECONDS) * Math.PI); camera.rotation.x -= k * .09; camera.position.y -= k * .035; } // [vitals] hand-to-mouth nod
       if (shakeAmp > .002) { const k = shakeAmp * (.4 + options.cameraMotion) * damp; /* [spyglass] */ camera.position.x += (Math.random() - .5) * k; camera.position.y += (Math.random() - .5) * k; camera.rotation.z += (Math.random() - .5) * k * .3; shakeAmp *= Math.exp(-dt * 7); } else shakeAmp = 0; // shark lane: bite shake
@@ -1728,6 +1736,7 @@ export function mount(transfer = null) {
     friend.visible = !!other;
     if (other) {
       friendTarget.set(other.x, other.y !== null ? other.y - EYE_OFFSET : deckY(), other.z);
+      if (other.y !== null) friendTarget.add(friendRideOffset(dt, other.x, other.y, other.z, other.swimming, tmpRide)); // ride the deck tilt
       const before = tmpV.copy(friend.position);
       friend.rotation.y = (other.yaw ?? 0) + Math.PI;
       if (friend.position.distanceTo(friendTarget) > 3) friend.position.copy(friendTarget); else friend.position.lerp(friendTarget, Math.min(1, dt * 12));
@@ -2245,6 +2254,7 @@ export function mount(transfer = null) {
     local:() => { const k = heldKind(); return {x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, grounded:physics.grounded, seated:!!content?.seated?.(), /* [sit] */ held:k, riding:!!(content?.hanging ?? content?.riding)?.(), /* [zipline] hanging pose; not the driftboard */charge:charging ? chargeValue() : 0, reeling:reeling && !!castOut(),
       hook:hookMesh.visible && hook ? {stage:hook.fishing ? 'fishing' : hook.stage, ...(hook.fishing ? {x:hookMesh.position.x, y:.05, z:hookMesh.position.z} : {x:hook.position.x, y:hook.position.y, z:hook.position.z})} : null, // physics height; remote maps it onto waves
       ghost:hover ? {x:hover.x, z:hover.z, kind:k, ok:k !== 'hammer' || canAfford(localBag(), FLOOR_COST)} : null}; },
+    rideOffset:(dt, x, y, z, swimming, out) => friendRideOffset(dt, x, y, z, swimming, out, coopRide), // remote avatar rides the deck tilt like our camera
     look:() => lookState.look, // [look] coop.js sends the in-memory look (localStorage may be blocked)
     reconnect:coopRejoin, giveUp:() => { closeConnection(); setStatus('Host disconnected. Rejoin when their tab is open.'); }});
   // PeerJS (~93 KB) is only fetched on the first host/join; solo play never loads it. Shared across hot-swapped engines.
