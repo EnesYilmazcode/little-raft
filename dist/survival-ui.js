@@ -132,8 +132,11 @@ function durFrac(s) {
 // Rendered 3D icon when ready, flat sprite until then. data-icon lets a late render swap it in place.
 // 3D icons need a second WebGL context, so none are requested on the title screen (see liveIcons).
 let iconsLive = false;
+// Thin, pale 3D renders that read poorly at chip and tile size: these always use the flat drawing.
+const FLAT_ICON = new Set(['rope', 'wood']);
+const flatIcon = kind => FLAT_ICON.has(norm(kind));
 function iconHTML(kind) {
-  const url = iconsLive ? iconURL(kind) : null;
+  const url = iconsLive && !FLAT_ICON.has(norm(kind)) ? iconURL(kind) : null;
   if (url) return `<img class="sv-icon sv-3d" data-icon="${esc(kind)}" src="${url}" alt="" draggable="false">`;
   return iconSVG(kind).replace('<svg ', `<svg data-icon="${esc(kind)}" `);
 }
@@ -187,8 +190,9 @@ const UI_ICON = {
 const uiIcon = id => `<svg class="sv-ui" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${UI_ICON[id] || ''}</svg>`;
 
 // Game UI is never selectable or draggable: only real text fields (chat, names, sign text) are.
+// Chrome resets user-select to text in the top layer (modal dialogs, popovers), so those are listed too.
 const TEXT_FIELD = 'input,textarea,[contenteditable]:not([contenteditable="false"])';
-const NO_SELECT = `html,body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+const NO_SELECT = `html,body,dialog,[popover]{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 img,svg,a{-webkit-user-drag:none}
 ${TEXT_FIELD}{-webkit-user-select:text;user-select:text}`;
 const elOf = t => (t && t.nodeType === 1 ? t : t?.parentElement) || null;
@@ -1441,4 +1445,4 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 }
 
 export default createSurvivalUI;
-export { iconSVG, slotSig, paintSlot, itemName }; // content hook (storage-research)
+export { iconSVG, slotSig, paintSlot, itemName, flatIcon }; // content hook (storage-research)
