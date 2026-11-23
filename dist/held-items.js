@@ -43,7 +43,6 @@ const SEED_KINDS = ['seed', 'seeds'];
 export const HOLD = Object.freeze({
   // arm: [dx, dy, dz] camera-space nudge of the right arm at rest for this kind.
   hook:       { hand: 'right', pose: 'grip', arm: [0.03, -0.025, 0] },          // hook tip stays right of the screen centre
-  metalhook:  { hand: 'right', pose: 'grip', arm: [0.03, -0.025, 0] },
   hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.06, 0], tilt: 0.55 }, // tilt: head leans forward
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
   spade:      { hand: 'right', pose: 'grip', rx: 0.2, rz: 0.35 },
@@ -178,19 +177,6 @@ function finishMaterials(T, root) {
   });
 }
 
-// [held-items] Metal Hook: the hook tool in steel with a dark leather grip (its icon is the steel hook).
-function steelHook(T, root) {
-  const steel = new T.MeshStandardMaterial({ color: 0xb8c4ce, metalness: 0.45, roughness: 0.38 });
-  const leather = new T.MeshStandardMaterial({ color: 0x5b4a40, roughness: 0.8 });
-  root.traverse((o) => {
-    const c = o.isMesh && o.material.vertexColors && o.geometry.attributes.color;
-    if (!c) return;
-    let r = 0, g = 0, b = 0; for (let i = 0; i < c.count; i++) { r += c.getX(i); g += c.getY(i); b += c.getZ(i); }
-    if (r > 1.5 * g && r > 1.5 * b) o.material = steel;                     // the orange prongs and the wooden shaft
-    else if (o.material.color.getHex() === 0xe8e6dc) o.material = leather;   // the pale grip tape
-  });
-}
-
 function matCache(T) {
   const c = new Map();
   return (color) => {
@@ -282,8 +268,8 @@ export function buildItemModel(T, kind, factory = null) {
       root.userData.shared = true;
     }
   }
-  if (root) { /* factory model */ } else if (kind === 'hook' || kind === 'metalhook') {
-    const k = HOOK_SCALE, m = createHook(T); m.scale.setScalar(k); if (kind === 'metalhook') steelHook(T, m); finishMaterials(T, m);
+  if (root) { /* factory model */ } else if (kind === 'hook') {
+    const k = HOOK_SCALE, m = createHook(T); m.scale.setScalar(k); finishMaterials(T, m);
     // handle axis sits at x=.2, y≈-.27 in createHook's inner group (inner is re-centred)
     const inner = m.children[0], gp = new T.Vector3(0.2, -0.272, 0).add(inner.position).multiplyScalar(k);
     root = new T.Group(); root.add(m);

@@ -186,6 +186,18 @@ const PROPS = {
     for (let i = 0; i < 4; i++) add(new T.BoxGeometry(0.03, 0.002, 0.004), mat('#e8d6a8'), [0.016, -0.02 + i * 0.025, 0.007], [0, 0, 0.5]);
     return g;
   },
+  metalhook: (T) => { // the icon's steel grapple (icon-models.js), with the shaft run down into the crown of the arms
+    const { g, mat, add } = kit(T);
+    const m = mat('#9fb1bf', { metalness: 0.7, roughness: 0.3, flatShading: false });
+    add(new T.CylinderGeometry(0.05, 0.05, 1.22, 10), m, [0, -0.11, 0]);
+    add(new T.TorusGeometry(0.12, 0.035, 8, 16), m, [0, 0.6, 0]);
+    add(new T.TorusGeometry(0.32, 0.045, 8, 20, Math.PI), m, [0, -0.36, 0], [0, 0, Math.PI]);
+    add(new T.ConeGeometry(0.08, 0.18, 6), m, [-0.32, -0.28, 0], [0, 0, 0.3]);
+    add(new T.ConeGeometry(0.08, 0.18, 6), m, [0.32, -0.28, 0], [0, 0, -0.3]);
+    add(new T.TorusGeometry(0.1, 0.03, 6, 12), mat('#c99a5c'), [0, 0.6, 0.12], [Math.PI / 2, 0, 0]);
+    add(new T.CylinderGeometry(0.058, 0.058, 0.3, 10), mat('#5b4a40', { roughness: 0.85 }), [0, 0.3, 0]); // leather grip under the fist
+    return g;
+  },
   bucket: (T) => pail(T, false),
   milk: (T) => pail(T, true),
   paint_seafoam: (T) => paintTin(T, '#9fd3c1'), paint_coral: (T) => paintTin(T, '#e9a08c'),
@@ -335,6 +347,8 @@ export const HELD_SPEC = Object.freeze({
   // icon-model hand items (ores, ingots, food, parts): grip low on the lump so it sits in the fist
   ...Object.fromEntries(ICON_MODEL_KINDS.filter((k) => !ICON_PLACED.includes(k)).map((k) => [k, LUMP(0.11)])),
   saltcup: WATER, freshcup: WATER,
+  // the steel grapple of its icon, held like the hook: fist on the shaft below the ring, arms up and forward
+  metalhook: { size: 0.22, grip: [0, 0.2, 0], hold: { hand: 'right', pose: 'grip', rx: Math.PI - 0.35, arm: [0.03, -0.025, 0] } },
   binoculars: { size: 0.13, grip: [0.3, 0, 0], hold: { hand: 'right', pose: 'grip', rx: -0.2, ry: 1.5 } },
   cookedfish: { size: 0.2, grip: [0.4, 0, 0], hold: { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.06, 0] } },
   honeyfish: { size: 0.2, grip: [0.4, 0, 0], hold: { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.06, 0] } },
