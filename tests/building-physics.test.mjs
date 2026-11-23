@@ -284,7 +284,7 @@ test('roof: walk up from an upper floor, off the high end and off the side (fall
     noPen(ta, tag(v));
     const b = new PlayerPhysics({ x: 0, y: eyeAt(LEVEL_H), z: -2 }), sb = { t: 0 };
     run(g, b, 1.1, { forward: 1, yaw: yawTo(0, 1) }, v, sb);
-    const tb = run(g, b, 2, { forward: 1, yaw: yawTo(1, 0) }, v, sb);
+    const tb = run(g, b, 1.8, { forward: 1, yaw: yawTo(1, 0) }, v, sb); // off the side, landing well before the raft edge
     assert.ok(b.grounded && Math.abs(b.y - EYE - sb.deck) < 1e-6 && b.x > 1, `${tag(v)}: fell off the side`);
     noPen(tb, tag(v));
     // Jumping under the roof bonks on its slab.

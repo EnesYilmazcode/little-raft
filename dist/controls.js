@@ -13,7 +13,7 @@ const BUILD_PIECES = [
   {id:'lantern', label:'Lantern'}, {id:'net', label:'Net'}, {id:'bench', label:'Bench'}, {id:'crate', label:'Crate'},
 ];
 
-const STOP_BRAKE = 8; // 1/s, added to physics' ground rate of 14 when no move input
+const STOP_BRAKE = 8; // 1/s, added to physics' GROUND_DECEL (22) and friction when no move input
 
 function storage() { try { return globalThis.localStorage ?? null; } catch { return null; } }
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
@@ -85,7 +85,7 @@ export function createControls(g) {
   }
   // Call after physics.update(); ev is its return value.
   function afterMove(dt, physics, ev) {
-    // Raft-style crisp stop: extra ground braking on top of physics' GROUND_ACCEL once the stick/keys are released.
+    // Raft-style crisp stop: extra ground braking on top of physics' GROUND_DECEL once the stick/keys are released.
     if (idle && physics.grounded && !physics.swimming) { const k = Math.exp(-STOP_BRAKE * Math.min(dt, .05)); physics.vx *= k; physics.vz *= k; }
     feel.setMotionScale(g.motion?.() ?? 1);
     fx = feel.step(dt, {speed:Math.hypot(physics.vx, physics.vz), grounded:physics.grounded, swimming:physics.swimming,
