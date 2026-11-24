@@ -166,12 +166,13 @@ test('doorway lets you through (walking, sprint-jumping, slightly off centre); w
       for (const z0 of [0, 0.2]) {
         for (const mode of ['walk', 'sprint-jump']) {
           const ph = new PlayerPhysics({ x: -1, y: eyeAt(0), z: z0 });
-          const tr = run(g, ph, 1.6, (p, n) => ({ forward: 1, yaw: yawTo(1, 0), sprint: mode !== 'walk', jump: mode !== 'walk' && n % 40 < 10 }), v);
+          // Sprint-jumping: a hop whose head meets the lintel is stopped by it (like a wall), so give it time to land and walk on.
+          const tr = run(g, ph, mode === 'walk' ? 1.6 : 2.4, (p, n) => ({ forward: 1, yaw: yawTo(1, 0), sprint: mode !== 'walk', jump: mode !== 'walk' && n % 40 < 10 }), v);
           const msg = `${t} z=${z0} ${mode} ${tag(v)}`;
           noPen(tr, msg);
           if (t === 'door') assert.ok(ph.x > 2, `${msg}: passed (x ${ph.x})`);
           else if (mode === 'walk') assert.ok(maxOf(tr, s => s.x) <= 1 - 0.07 - R + 1e-6, `${msg}: blocked (x ${maxOf(tr, s => s.x)})`);
-          // A running jump may clear a one-storey edge piece (the jump apex is above LEVEL_H); noPen covers it.
+          // A running jump clears or lands on a half wall (the jump apex 1.37 m is above its 1.1 m); noPen covers it.
         }
       }
     }
@@ -224,7 +225,7 @@ test('half wall blocks walking; a running jump clears it cleanly', () => {
     assert.ok(maxOf(tw, s => s.x) <= 1 - 0.07 - R + 1e-6, `${tag(v)}: blocked`);
     noPen(tw, tag(v));
     const ph = new PlayerPhysics({ x: -1.5, y: eyeAt(0), z: 0 });
-    const tr = run(g, ph, 2, (p, n) => ({ forward: 1, yaw: yawTo(1, 0), sprint: true, jump: n % 50 < 25 }), v);
+    const tr = run(g, ph, 2, (p, n) => ({ forward: 1, yaw: yawTo(1, 0), sprint: true, jump: p.x > -0.35 }), v);
     assert.ok(ph.x > 1 + 0.07 + R, `${tag(v)}: jumped over (x ${ph.x})`);
     noPen(tr, tag(v));
   }
@@ -264,11 +265,21 @@ test('walking off an upper floor edge falls and lands; standing under a floor ed
       assert.ok(maxOf(tr, s => -s.dy) < 0.6, `${tag(v)}: no teleport (${maxOf(tr, s => -s.dy)})`);
       noPen(tr, tag(v));
     }
-    // Body overlapping the slab edge from outside the cell (x = 1.1): the head still stops at the slab.
-    for (const x of [0, 0.95, 1.1, 1.2]) {
+    // Body centre under the slab: the head stops at it.
+    for (const x of [0, 0.95]) {
       const ph = new PlayerPhysics({ x, y: eyeAt(0), z: 0 });
       const tr = run(g, ph, 1.2, { jump: true }, v);
       assert.ok(maxOf(tr, s => s.y + 0.15 - s.deckY) <= LEVEL_H - FLOOR_THICK + 1e-6, `${tag(v)} x=${x}: head under the slab`);
+      assert.ok(ph.grounded);
+    }
+    // Body only overlapping the slab edge from outside the cell (x = 1.1, 1.2): pushed out sideways as the head comes
+    // up to it, so the jump rises past the edge (no 0.33 m cap) and the head is never inside the slab.
+    for (const x of [1.1, 1.2]) {
+      const ph = new PlayerPhysics({ x, y: eyeAt(0), z: 0 });
+      const tr = run(g, ph, 1.2, { jump: true }, v);
+      const inside = tr.filter(s => s.y + 0.15 - s.deckY > LEVEL_H - FLOOR_THICK + 1e-6 && s.feet < LEVEL_H);
+      assert.ok(inside.every(s => s.x >= 1 + R - 1e-6), `${tag(v)} x=${x}: beside the slab while the head is above its bottom`);
+      assert.ok(maxOf(tr, s => s.feet) > 1.2, `${tag(v)} x=${x}: full jump (${maxOf(tr, s => s.feet)})`);
       assert.ok(ph.grounded);
     }
     // Running jump into the slab edge from the open: no head poking through the floor.

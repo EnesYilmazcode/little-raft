@@ -72,9 +72,9 @@ test('pack pieces: catalogue, appended order, stateful set', () => {
   assert.equal(PIECES.railing.slot, 'edge'); assert.equal(PIECES.gate.slot, 'edge');
   assert.equal(PIECES.hatch.slot, 'cell'); assert.equal(PIECES.ladder.slot, 'cell');
   for (const t of ['railing', 'hatch', 'ladder', 'gate']) assert.equal(PIECES[t].full, false);
-  // The guard box, not the visible rail, stops jumps: it clears the cookpot-buffed jump apex (x1.15 impulse,
-  // cookpot.js cap) plus ~0.25 m of deck bob. Under a floor one storey up it stops at LEVEL_H (jump.test.mjs).
-  assert.ok(RAIL_GUARD >= (1.15 * PC.JUMP_IMPULSE) ** 2 / (2 * PC.GRAVITY) + 0.25, 'railing guard is above the jump height');
+  // Railings collide with their visible height (Raft style: jump onto the rail and balance on it).
+  assert.equal(RAIL_GUARD, RAIL_H);
+  { const g = new BuildGrid(); g.setTiles(tilesSq(1)); g.place(P('railing', 0, 0, 0, 0)); g._rebuild(); assert.equal(g._solid[4], RAIL_H, 'rail box top = rail'); }
   assert.deepEqual(Object.keys(STATEFUL).sort(), ['gate', 'hatch']);
 });
 
@@ -176,7 +176,7 @@ test('occupied(): closing on a body is detected; outside bodies are not', () => 
 
 // ============================================================ physics
 
-test('railing on the deck edge: walking, a running jump and a swimmer clamber never cross it', () => {
+test('railing on the deck edge: walking and a swimmer clamber never cross it; a running jump goes onto or over it, not through', () => {
   for (const v of VARIANTS) {
     const g = grid(tilesSq(1), [P('railing', -1, 2, 0, 0), P('railing', 0, 2, 0, 0), P('railing', 1, 2, 0, 0)]); // +z raft edge z = 3
     let ph = new PlayerPhysics({ x: 0.3, y: eyeAt(0), z: 0 });
@@ -184,9 +184,15 @@ test('railing on the deck edge: walking, a running jump and a swimmer clamber ne
     noPen(tr, `walk ${tag(v)}`);
     assert.ok(maxOf(tr, s => s.z) < 3 - 0.07 - R + 1e-6, `walk ${tag(v)}: stopped (z ${maxOf(tr, s => s.z)})`);
     ph = new PlayerPhysics({ x: 0.3, y: eyeAt(0), z: -2.5 });
-    tr = run(g, ph, 2.5, (p, n) => ({ forward: 1, sprint: true, yaw: yawTo(0, 1), jump: p.z > 1.6 }), v);
+    tr = run(g, ph, 2.5, (p, n) => ({ forward: p.z < 2.95 ? 1 : 0, sprint: true, yaw: yawTo(0, 1), jump: p.z > 1.6 }), v);
     noPen(tr, `jump ${tag(v)}`);
-    assert.ok(maxOf(tr, s => s.z) < 3 - 0.07 - R + 1e-6, `jump ${tag(v)}: did not clear it (z ${maxOf(tr, s => s.z)})`);
+    const crossing = tr.filter(s => Math.abs(s.z - 3) < 0.07 + R - 1e-6);
+    assert.ok(crossing.length && crossing.every(s => s.feet >= RAIL_H - 0.04 - 1e-6), `jump ${tag(v)}: over the rail only above its top`);
+    // A standing hop at the rail (forward until over it) lands on the rail top and stays there.
+    ph = new PlayerPhysics({ x: 0.3, y: eyeAt(0), z: 3 - 0.07 - R - 0.05 });
+    tr = run(g, ph, 1.5, (p, n) => ({ forward: p.grounded && p.y - EYE - D0 > 0.5 || p.z > 3 ? 0 : 1, yaw: yawTo(0, 1), jump: n < 3 }), v);
+    noPen(tr, `hop ${tag(v)}`);
+    assert.ok(ph.grounded && Math.abs(tr.at(-1).feet - RAIL_H) < 1e-6 && Math.abs(ph.z - 3) < 0.07 + 0.2, `hop ${tag(v)}: on the rail (feet ${tr.at(-1).feet}, z ${ph.z})`);
     ph = new PlayerPhysics({ x: 0, y: WATER + 0.45, z: 3.5, swimming: true });
     tr = run(g, ph, 2, { jump: true }, v);
     noPen(tr, `clamber ${tag(v)}`);

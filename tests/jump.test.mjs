@@ -1,5 +1,5 @@
-// Jump tuning: a jump clears one wall (LEVEL_H) so a player can hop up onto a one-storey structure, with
-// stronger gravity falling than rising, and ceilings stop the rise. Drives PlayerPhysics + BuildGrid the way
+// Jump tuning: a Raft-like jump (apex about 1.37 m) clears railings, half walls, chests and tables; a full wall or a
+// one-storey floor edge is reached with the ledge clamber. Stronger gravity falling than rising, ceilings stop the rise. Drives PlayerPhysics + BuildGrid the way
 // game.js does: preStep, PlayerPhysics.update in equal substeps (<= 0.05 s, frame capped at 0.25 s), postStep.
 // Run: node --test tests/jump.test.mjs
 import test from 'node:test';
@@ -38,9 +38,9 @@ function run(g, ph, seconds, input, dt, bob = 0, st = { t: 0 }) {
     const deckY = D0 + bob * Math.sin(st.t * 2 * Math.PI / 2.5);
     const inp = typeof input === 'function' ? input(ph, f) : input;
     const surf = g ? g.preStep(ph, deckY) : { tiles: tilesSq(3), deckY };
-    for (let i = 0; i < n; i++) ph.update(step, { ...inp, tiles: surf.tiles, deckY: surf.deckY, waterY: WATER });
+    for (let i = 0; i < n; i++) ph.update(step, { ...inp, tiles: surf.tiles, deckY: surf.deckY, waterY: WATER, baseY: deckY, ledge: g });
     if (g) g.postStep(ph, deckY);
-    out.push({ x: ph.x, z: ph.z, feet: ph.y - EYE - deckY, head: ph.y + HEAD - deckY, vy: ph.vy, grounded: ph.grounded });
+    out.push({ x: ph.x, z: ph.z, feet: ph.y - EYE - deckY, head: ph.y + HEAD - deckY, vy: ph.vy, grounded: ph.grounded, climbing: ph.climbing });
   }
   return out;
 }
@@ -60,15 +60,16 @@ function probe(dt) {
   return { apex, tApex, air };
 }
 
-test('jump probe: apex clears a wall by a margin but not absurdly, airtime about 0.9 s, at any fps', () => {
+test('jump probe: Raft-like apex 1.3 to 1.4 m (clears a half wall by 0.2 m, far under a wall), airtime about 0.67 s, at any fps', () => {
   const ideal = PC.JUMP_IMPULSE ** 2 / (2 * PC.GRAVITY);
-  assert.ok(ideal >= LEVEL_H + 0.15, `apex ${ideal} >= wall ${LEVEL_H} + 0.15`);
-  assert.ok(ideal < LEVEL_H + 0.6, `apex ${ideal} < wall ${LEVEL_H} + 0.6`);
+  assert.ok(ideal >= 1.3 && ideal <= 1.4, `apex ${ideal} in 1.3 .. 1.4`);
+  assert.ok(ideal >= LEVEL_H / 2 + 0.2, `apex ${ideal} clears a half wall ${LEVEL_H / 2} + 0.2`);
+  assert.ok(ideal + PC.LEDGE_REACH >= LEVEL_H + 0.3, 'a wall top is within the clamber reach from the apex');
   for (const dt of [1 / 30, 1 / 60, 1 / 144]) {
     const { apex, tApex, air } = probe(dt);
     assert.ok(Math.abs(apex - ideal) < 0.01, `${tag(dt, 0)}: apex ${apex} vs ${ideal}`);
     assert.ok(Math.abs(tApex - PC.JUMP_IMPULSE / PC.GRAVITY) < dt + 1e-9, `${tag(dt, 0)}: time to apex ${tApex}`);
-    assert.ok(air >= 0.8 && air <= 1.0, `${tag(dt, 0)}: airtime ${air}`);
+    assert.ok(air >= 0.6 && air <= 0.75, `${tag(dt, 0)}: airtime ${air}`);
   }
 });
 
@@ -100,14 +101,14 @@ test('ceiling: jumping under a floor stops the rise at the slab and the head nev
   }
 });
 
-test('a running jump from the deck lands on top of a one-wall-high room', () => {
+test('a running jump at a one-wall-high room clambers up onto its roof', () => {
   for (const dt of [1 / 60, 1 / 30, 1 / 20]) for (const bob of BOBS) for (const sprint of [true, false]) {
     const g = grid(ROOM), msg = `${tag(dt, bob)} ${sprint ? 'sprint' : 'walk'}`;
-    // Run up along +x, jump a short way before the -x wall (x = -1). The walking take-off is far enough out
-    // that the body rises past the wall top before it reaches it: with the light air control (AIR_ACCEL) a
-    // walk jump that touches the wall face on the way up loses its forward speed and drops back.
+    // Run up along +x and jump just before the -x wall (x = -1): near the apex the hands reach the wall top and the
+    // ledge clamber pulls the body over it onto the floor.
     const ph = new PlayerPhysics({ x: -5, y: D0 + EYE, z: 0 }), st = { t: 0 };
-    const tr = run(g, ph, 2.5, (p) => ({ forward: p.x < 0 ? 1 : 0, yaw: yawTo(1, 0), sprint, jump: p.x > (sprint ? -2.6 : -2.45) }), dt, bob, st);
+    const tr = run(g, ph, 2.5, (p) => ({ forward: p.x < 0 ? 1 : 0, yaw: yawTo(1, 0), sprint, jump: p.x > (sprint ? -2.3 : -1.9) }), dt, bob, st);
+    assert.ok(tr.some(s => s.climbing), `${msg}: clambered`);
     const end = run(g, ph, 0.5, {}, dt, bob, st).at(-1);
     assert.ok(ph.grounded, `${msg}: grounded`);
     assert.ok(Math.abs(end.feet - LEVEL_H) < 1e-6, `${msg}: standing on the room's floor top (feet ${end.feet}, x ${ph.x}, max ${Math.max(...tr.map(s => s.feet))})`);
@@ -131,7 +132,7 @@ const RING = [];
 for (let k = -1; k <= 1; k++) RING.push(P('railing', 2, k, 0, 1), P('railing', -1, k, 0, 1), P('railing', k, 2, 0, 0), P('railing', k, -1, 0, 0));
 const ringGrid = () => { const g = new BuildGrid(); g.setTiles(tilesSq(1)); for (const p of RING) assert.ok(g.place(p)); return g; };
 
-test('railings keep sprint jumps on the raft, with the cookpot jump buff too', () => {
+test('railings: a sprint jump goes onto or over the rail, never through it, with the cookpot jump buff too', () => {
   assert.ok(COOK_JUMP >= 1 && COOK_JUMP < 2, `cookpot jump cap ${COOK_JUMP}`);
   try {
     for (const mul of [1, COOK_JUMP]) for (const dt of [1 / 60, 1 / 20]) for (const bob of BOBS) for (const jx of [0.5, 1, 1.5, 2]) for (const t0 of [0, 0.4, 0.8]) {
@@ -139,8 +140,9 @@ test('railings keep sprint jumps on the raft, with the cookpot jump buff too', (
       const g = ringGrid(), ph = new PlayerPhysics({ x: -1, y: D0 + EYE, z: 0 }), st = { t: t0 };
       const tr = run(g, ph, 3, (p) => ({ forward: 1, yaw: yawTo(1, 0), sprint: true, jump: p.x > jx }), dt, bob, st);
       const msg = `mul ${mul} ${tag(dt, bob)} jump at x ${jx} t0 ${t0}`;
-      assert.ok(tr.some(s => s.feet > 2), `${msg}: jumped high`);
-      assert.ok(Math.max(...tr.map(s => s.x)) <= 3 - 0.07 - PC.BODY_RADIUS + 1e-6 && !ph.swimming, `${msg}: stayed aboard (x ${ph.x})`);
+      assert.ok(tr.some(s => s.feet > 1), `${msg}: jumped`);
+      const at = tr.filter(s => Math.abs(s.x - 3) < 0.07 + PC.BODY_RADIUS - 1e-6);
+      assert.ok(at.every(s => s.feet >= 0.95 - 0.04 - 0.025), `${msg}: crossed the rail line only above the rail (deck bob: 2.5 cm)`);
     }
   } finally { MOVE_MUL.jump = 1; }
 });
