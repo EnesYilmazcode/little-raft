@@ -1,4 +1,4 @@
-// Held Stone Axe model (first-person). Original procedural low-poly meshes, no textures. ES module.
+// Held Stone Axe / Metal Axe model (first-person); createAxe(T, {metal:true}) gives the steel head and metal collar. Original procedural low-poly meshes, no textures. ES module.
 // Usage: import { createAxe } from './axe-model.js?build=v3-survival-ae77fa84ac2b'; const g = createAxe(THREE);
 // Orientation: handle along +Y, butt at -Y, head at +Y. The stone blade sticks out along -Z (forward,
 // like the hammer's striking face), the lashing wraps the handle top. Length ~0.62.
@@ -7,9 +7,9 @@
 // userData.edge  Vector3: middle of the cutting edge, in root space.
 // No mesh casts shadows (viewmodel only). 5 meshes, ~200 triangles.
 
-export function createAxe(T) {
+export function createAxe(T, { metal = false } = {}) {
   const root = new T.Group();
-  root.name = 'stoneAxe';
+  root.name = metal ? 'metalAxe' : 'stoneAxe';
   const mats = [], geos = [];
   const mat = (color, roughness, metalness = 0, flat = false) => { const m = new T.MeshStandardMaterial({ color, roughness, metalness, flatShading: flat }); mats.push(m); return m; };
   const add = (geo, m, x = 0, y = 0, z = 0) => {
@@ -20,7 +20,7 @@ export function createAxe(T) {
   };
 
   const L = 0.62, r = 0.02;
-  const wood = mat(0xa87a4c, 0.88), lash = mat(0xcdb27a, 0.95), stone = mat(0xffffff, 0.75, 0.02, true);
+  const wood = mat(metal ? 0x7a5634 : 0xa87a4c, 0.88), lash = metal ? mat(0x5d6b78, 0.45, 0.6) : mat(0xcdb27a, 0.95), stone = mat(0xffffff, metal ? 0.4 : 0.75, metal ? 0.45 : 0.02, true);
   stone.vertexColors = true; // per-facet tones, see the head below
   stone.side = T.DoubleSide; // hand-wound wedge: flat shading lights it from screen derivatives either way
 
@@ -54,9 +54,9 @@ export function createAxe(T) {
   head.setAttribute('position', new T.BufferAttribute(p, 3)); head.computeVertexNormals();
   // Knapped-flint look: each facet a slightly different grey-brown, the worked cutting edge paler. One flat
   // grey read as a steel cleaver.
-  const col = new Float32Array(p.length), base = new T.Color(0x8a8e88), edgeC = new T.Color(0xc4c8bf), c = new T.Color();
+  const col = new Float32Array(p.length), base = new T.Color(metal ? 0x8fa1ae : 0x8a8e88), edgeC = new T.Color(metal ? 0xe3e9ec : 0xc4c8bf), c = new T.Color();
   f.forEach((t, i) => {
-    const k = 0.84 + ((i * 7919) % 13) / 13 * 0.3;
+    const k = metal ? 0.92 + ((i * 7919) % 13) / 13 * 0.12 : 0.84 + ((i * 7919) % 13) / 13 * 0.3; // forged steel: even facets
     t.forEach((vi, j) => { c.copy(base).multiplyScalar(k); if (v[vi][2] < -0.15) c.lerp(edgeC, 0.75); col.set([c.r, c.g, c.b], i * 9 + j * 3); });
   });
   head.setAttribute('color', new T.BufferAttribute(col, 3));

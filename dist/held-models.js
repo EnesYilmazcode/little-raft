@@ -286,6 +286,40 @@ function driftboard(T) {
   return g;
 }
 
+// Headlamp: a teal strap loop, a slate lamp body and a warm lens (matches the icon).
+function headlamp(T) {
+  const { g, add } = kit(T);
+  add(new T.TorusGeometry(0.3, 0.03, 5, 20), '#54a6a4', [0, 0, 0], [Math.PI / 2, 0, 0], [1, 0.75, 1]);
+  add(new T.BoxGeometry(0.22, 0.17, 0.1), '#4a5a6a', [0, 0, 0.24], [0, 0, 0], null, { roughness: 0.5 });
+  add(new T.CylinderGeometry(0.065, 0.075, 0.04, 14), '#ffd27a', [0, 0, 0.3], [Math.PI / 2, 0, 0], null, { emissive: 0xffb84a, emissiveIntensity: 0.5, flatShading: false });
+  add(new T.TorusGeometry(0.075, 0.012, 4, 14), '#c6d6e0', [0, 0, 0.32], [0, 0, 0], null, { metalness: 0.5, roughness: 0.35 });
+  add(new T.BoxGeometry(0.05, 0.03, 0.06), '#2f8f8f', [0.12, 0.08, 0.22]); // switch
+  return g;
+}
+
+/**
+ * Held machete (first-person), shaped like createSpear/createAxe: grip along +Y, butt at -Y, blade up +Y with
+ * its edge forward (-Z). userData.grip (Vector3, root space), userData.size {x,y,z}. Length ~0.7.
+ * spear-repair-hooks.js slides it along +Y for the jab, like the spears.
+ */
+export function createMachete(T) {
+  const { g, add, mat } = kit(T);
+  g.name = 'machete';
+  const steel = mat('#a9b8c4', { metalness: 0.55, roughness: 0.35 }), edge = mat('#e3e9ec', { metalness: 0.6, roughness: 0.25 });
+  const s = new T.Shape(); // blade outline in (z, y): back straight, edge bellies forward and sweeps to the tip
+  s.moveTo(0.02, 0); s.lineTo(0.02, 0.4); s.quadraticCurveTo(0.0, 0.5, -0.05, 0.52); s.quadraticCurveTo(-0.085, 0.3, -0.06, 0); s.lineTo(0.02, 0);
+  const blade = add(new T.ExtrudeGeometry(s, { depth: 0.008, bevelEnabled: false, curveSegments: 6 }), steel, [0.004, -0.05, 0], [0, -Math.PI / 2, 0]);
+  blade.castShadow = false;
+  add(new T.BoxGeometry(0.006, 0.44, 0.012), edge, [0, 0.17, -0.072], [-0.04, 0, 0]);             // bright edge
+  add(new T.BoxGeometry(0.03, 0.025, 0.12), '#6d8496', [0, -0.06, -0.02], [0, 0, 0], null, { metalness: 0.5, roughness: 0.4 }); // guard
+  add(new T.CylinderGeometry(0.019, 0.022, 0.17, 8), '#8a5e34', [0, -0.16, -0.02]);              // grip
+  for (const y of [-0.12, -0.17, -0.22]) add(new T.TorusGeometry(0.022, 0.005, 4, 10), '#d9c38c', [0, y, -0.02], [Math.PI / 2, 0, 0]);
+  add(new T.SphereGeometry(0.024, 8, 6), '#c6d6e0', [0, -0.255, -0.02], [0, 0, 0], null, { metalness: 0.5 }); // pommel
+  g.userData.grip = new T.Vector3(0, -0.17, -0.02);
+  g.userData.size = { x: 0.05, y: 0.73, z: 0.13 };
+  return g;
+}
+
 const MEAL = { // matches cookpot-model.js STEW_TINT plus a few bits so each bowl reads differently
   meal_chowder: ['#f3e2b8', [['#fff6e0', -0.12, 0.06, 0.05], ['#e9c27a', 0.1, -0.08, 0.045], ['#fff6e0', 0.05, 0.14, 0.04]]],
   meal_omelette: ['#f5cf4a', [['#5f9a57', 0.1, 0.05, 0.03], ['#5f9a57', -0.08, -0.06, 0.025]], 0.05],
@@ -297,7 +331,7 @@ const MEAL = { // matches cookpot-model.js STEW_TINT plus a few bits so each bow
 const PAINT = { paint_seafoam: '#9fd3c1', paint_coral: '#e9a08c', paint_sunshell: '#f1d78d', paint_lagoon: '#86b3d6', paint_pebble: '#c9c3b8' };
 const OWN = {
   bowl: (T) => bowl(T), bucket: (T) => pail(T, false), milk: (T) => pail(T, true),
-  puffegg: egg, feather, shell, fins, airjug, goggles, scraper, sinker, stormshard, berries, cookedbeet, cookedpotato, armor, driftboard, sharkhead,
+  puffegg: egg, feather, shell, fins, airjug, goggles, scraper, headlamp, sinker, stormshard, berries, cookedbeet, cookedpotato, armor, driftboard, sharkhead,
   sharkmeat: (T) => steak(T, false), cookedsharkmeat: (T) => steak(T, true),
   berrycup: (T) => juice(T, '#c2335a', '#ff7aa2'), coconutcup: (T) => juice(T, '#f1e8d6', '#54a6a4'), mixcup: (T) => juice(T, '#e9835f', '#ffbd66'),
   ...Object.fromEntries(Object.entries(MEAL).map(([k, [c, bits, dome]]) => [k, (T) => bowl(T, c, bits, dome || 0)])),
@@ -346,7 +380,7 @@ export const HELD_HOLD = Object.freeze({
   metalhook: R(0.2, [0, 0.3, 0], Math.PI - 0.35, 0, 0, { arm: [0.03, -0.025, 0] }),     // the hook's place; fist below the ring, grapple head up and forward
   binoculars: S(0.12, -1.2, 0, 0.2, 0),
   scraper: R(0.17, [0, 0.22, 0], 2.7, 0, 0.3, { arm: UP }),                            // fist on the handle, blade up and forward
-  airjug: S(0.12, 0.15, 0.3, 0, -0.3), goggles: S(0.14, 0.2, 0.3, 0.1, -0.5),
+  airjug: S(0.12, 0.15, 0.3, 0, -0.3), goggles: S(0.14, 0.2, 0.3, 0.1, -0.5), headlamp: S(0.13, 0.35, 0.4, 0.1, -0.5),
   fins: S(0.17, -0.2, 0.5, 0.3, -0.42),
   armor: S(0.14, 0.2, 0.3, 0.05, -0.45), driftboard: { hand: 'left', pose: 'grip', size: 0.2, grip: [0, -0.5, 0] },
 });

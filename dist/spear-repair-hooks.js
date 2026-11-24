@@ -23,17 +23,18 @@ export function attachSpearRepair(ctx) {
   // hands controller; this file only animates the jab on top of it.
   const SPEAR_SCALE = 0.62; // matches the held-items.js spear scale: the slide is in the hand's item space
   const rawKind = () => { const b = ctx.localBag(); return b.slots[b.selectedIndex]?.kind ?? null; };
-  /** Held model kind for the tool role `kind`: 'spear' | 'metalspear', or null when it is not a spear. */
+  /** Held model kind for the tool role `kind`: the selected spear-role item ('spear' | 'metalspear' | 'machete'), or null when it is not a spear. */
   function viewmodelFor(kind) {
     if (kind !== 'spear') return null;
-    return rawKind() === 'metalspear' ? 'metalspear' : 'spear';
+    const raw = rawKind();
+    return raw && isSpear(raw) ? raw : 'spear';
   }
   let lunging = false;
   /** Per-frame jab (no allocations): the arm lunges a little and the spear slides forward through the fist.
    *  `hands` = game.js hands controller, `held` = the kind it holds. Returns true while a spear is held. */
   function updateViewmodel(hands, held, dt) {
     if (!hands) return false;
-    if (held !== 'spear' && held !== 'metalspear') {
+    if (!held || !isSpear(held)) {
       if (lunging) { hands.group.position.set(0, 0, 0); lunging = false; }
       return false;
     }
@@ -43,7 +44,7 @@ export function attachSpearRepair(ctx) {
     const e = jab * jab * (3 - 2 * jab);
     hands.group.position.set(-0.008 * e, 0.012 * e, -0.035 * e); lunging = true; // slight arm lunge (more reveals the sleeves)
     const spear = hands.itemModel(held);
-    if (spear) spear.position.y = 0.5 * SPEAR_SCALE * e; // spear shoots forward through the grip (shaft = model +Y)
+    if (spear) spear.position.y = (spear.userData.jab ?? 0.5 * SPEAR_SCALE) * e; // spear shoots forward through the grip (shaft = model +Y); the machete jabs shorter
     return true;
   }
 

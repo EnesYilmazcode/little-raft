@@ -1721,7 +1721,8 @@ export function mount(transfer = null) {
     swing = Math.max(0, swing - dt * 3);
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
-    const vmKind = running ? spearRep?.viewmodelFor(kind) ?? (kind === 'hook' && localBag().slots[localBag().selectedIndex]?.kind === 'metalhook' ? 'metalhook' : kind) : null; // [spear-repair] spear vs metal spear model; [held-items] metal hook model
+    const rawHeld = localBag().slots[localBag().selectedIndex]?.kind;
+    const vmKind = running ? spearRep?.viewmodelFor(kind) ?? (rawHeld && rawHeld !== kind && toolRole(rawHeld) === kind ? rawHeld : kind) : null; // [spear-repair] spear vs metal spear model; [held-items] tier models (metal hook, metal axe) show their own mesh
     hands.setHeld(vmKind);
     const paddleStroke = paddle?.update(dt) ?? 0; // [paddle] 1 -> 0 over a stroke
     const jab = spearRep?.updateViewmodel(hands, vmKind, dt) ?? false; // [spear-repair] lunge + spear slide; no hook-cast swing while jabbing

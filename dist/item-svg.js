@@ -197,6 +197,38 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M23 30 V36 M25 39 V43" fill="none" stroke-width="1" stroke-opacity=".45"/>
     <path d="M22.8 27 V43" fill="none" stroke="#c99560" stroke-width="1.2" stroke-linecap="round"/></g>`,
 
+  // Metal axe: dark wooden handle, a forged steel head with a bright cutting edge and a riveted collar.
+  metalaxe: `<g transform="rotate(25 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M22 8 L21.2 45 Q24 47 26.8 45 L26 8 Z" fill="#8a5e34"/>
+    <path d="M22.5 11 L14 7 C9 7 5 9 3.5 12 C3 17 3.5 22 5.5 26 C9 26 13 25 15 23 L22.5 20 Z" fill="#9fb1bf"/>
+    <path d="M5.5 26 C3.5 22 3 17 3.5 12 L7 13 C6.5 17 7 21 8.5 24.5 Z" fill="#e3e9ec" stroke-width="1.2"/>
+    <path d="M11 11 L18 13" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-opacity=".8"/>
+    <rect x="20" y="8" width="8" height="15" rx="1.5" fill="#6d8496"/>
+    <g fill="#c6d6e0" stroke-width="1.2"><circle cx="24" cy="12" r="1.3"/><circle cx="24" cy="19" r="1.3"/></g>
+    <path d="M23 30 V36 M25 39 V43" fill="none" stroke-width="1" stroke-opacity=".45"/>
+    <path d="M22.8 26 V43" fill="none" stroke="#bb8650" stroke-width="1.2" stroke-linecap="round"/></g>`,
+
+  // Machete: a long, slightly curved steel blade with a pale edge on a wrapped wooden grip.
+  machete: `<g transform="rotate(40 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M21 1 C26 0 29.5 3 29 9 L28 33 H20.5 L20.8 4 Z" fill="#9fb1bf"/>
+    <path d="M28 33 L29 9 C29.5 3 26 0 24.5 0.5 C27 3 27.4 8 26.7 13 L25.5 33 Z" fill="#e3e9ec" stroke-width="1.2"/>
+    <path d="M22.8 6 V28" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-opacity=".7"/>
+    <rect x="17.5" y="32" width="13" height="4" rx="1.5" fill="#6d8496"/>
+    <path d="M21 36 H27.5 L27 47 Q24.2 49 21.5 47 Z" fill="#8a5e34"/>
+    <g fill="none" stroke="#d9c38c" stroke-width="1.6"><path d="M21.2 39.5 L27.3 38.5"/><path d="M21.3 43 L27.1 42"/></g>
+    <circle cx="24.2" cy="47" r="1.3" fill="#c6d6e0" stroke-width="1"/></g>`,
+
+  // Headlamp: a teal strap loop with a round lamp, warm lens and a beam.
+  headlamp: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <ellipse cx="24" cy="30" rx="18" ry="10" fill="none" stroke-width="5.5"/>
+    <ellipse cx="24" cy="30" rx="18" ry="10" fill="none" stroke="#54a6a4" stroke-width="2.6"/>
+    <path d="M9 33 C14 38 34 38 39 33" fill="none" stroke="#2f8f8f" stroke-width="1.4"/>
+    <rect x="14" y="26" width="20" height="15" rx="4" fill="#4a5a6a"/>
+    <circle cx="24" cy="33.5" r="5.5" fill="#ffd27a"/>
+    <circle cx="24" cy="33.5" r="2.6" fill="#fff6dc" stroke-width="1.2"/></g>
+    <path d="M17 28.5 H22" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".5"/>
+    <g stroke="#ffbd66" stroke-width="1.8" stroke-linecap="round"><path d="M24 22 V15"/><path d="M17 23 L13 17"/><path d="M31 23 L35 17"/></g>`,
+
   // Coconut: hairy brown husk with three dark eyes and a highlight.
   coconut: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M24 7 C35 7 42 15 42 26 C42 36 34 42 24 42 C14 42 6 36 6 26 C6 15 13 7 24 7 Z" fill="#7a5130"/>
