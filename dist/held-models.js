@@ -320,6 +320,28 @@ export function createMachete(T) {
   return g;
 }
 
+/**
+ * Held titanium sword (first-person), the same frame as createMachete: grip along +Y, blade up +Y with its edges
+ * to the sides, userData.grip / userData.size. A straight double-edged blade with a fuller and a cross guard.
+ */
+export function createSword(T) {
+  const { g, add, mat } = kit(T);
+  g.name = 'titaniumSword';
+  const steel = mat('#c3cbe0', { metalness: 0.55, roughness: 0.3 }), fuller = mat('#9aa3c0', { metalness: 0.5, roughness: 0.35 });
+  const s = new T.Shape(); // blade outline in (z, y): straight sides, a short point
+  s.moveTo(-0.032, 0); s.lineTo(-0.032, 0.44); s.lineTo(0, 0.52); s.lineTo(0.032, 0.44); s.lineTo(0.032, 0); s.lineTo(-0.032, 0);
+  const blade = add(new T.ExtrudeGeometry(s, { depth: 0.01, bevelEnabled: false, curveSegments: 2 }), steel, [0.005, -0.05, 0], [0, -Math.PI / 2, 0]);
+  blade.castShadow = false;
+  add(new T.BoxGeometry(0.014, 0.38, 0.012), fuller, [0, 0.16, 0]);                                       // fuller down the middle
+  add(new T.BoxGeometry(0.035, 0.028, 0.16), '#9aa3c0', [0, -0.06, 0], [0, 0, 0], null, { metalness: 0.5, roughness: 0.4 }); // cross guard
+  add(new T.CylinderGeometry(0.018, 0.021, 0.15, 8), '#3b4a66', [0, -0.15, 0]);                          // navy grip
+  for (const y of [-0.11, -0.15, -0.19]) add(new T.TorusGeometry(0.021, 0.005, 4, 10), '#b3a9d9', [0, y, 0], [Math.PI / 2, 0, 0]);
+  add(new T.SphereGeometry(0.026, 8, 6), '#b3a9d9', [0, -0.24, 0], [0, 0, 0], null, { metalness: 0.5 }); // pommel
+  g.userData.grip = new T.Vector3(0, -0.15, 0);
+  g.userData.size = { x: 0.05, y: 0.73, z: 0.16 };
+  return g;
+}
+
 const MEAL = { // matches cookpot-model.js STEW_TINT plus a few bits so each bowl reads differently
   meal_chowder: ['#f3e2b8', [['#fff6e0', -0.12, 0.06, 0.05], ['#e9c27a', 0.1, -0.08, 0.045], ['#fff6e0', 0.05, 0.14, 0.04]]],
   meal_omelette: ['#f5cf4a', [['#5f9a57', 0.1, 0.05, 0.03], ['#5f9a57', -0.08, -0.06, 0.025]], 0.05],
@@ -327,6 +349,9 @@ const MEAL = { // matches cookpot-model.js STEW_TINT plus a few bits so each bow
   meal_fishbowl: ['#c77b3c', [['#f0c79a', -0.06, 0.03, 0.1, 0.45], ['#3a2414', 0.1, -0.08, 0.03]]],
   meal_custard: ['#f7e7a8', [['#a0612e', 0, 0, 0.035, 0.4]], 0.04],
   meal_stew: ['#b5542c', [['#f09a3e', -0.12, 0.06, 0.05], ['#fff2cc', 0.11, -0.04, 0.045], ['#5f9a57', 0.02, -0.13, 0.04], ['#8a4a2a', 0.04, 0.13, 0.05]]],
+  meal_gardensoup: ['#d0623f', [['#8e1f3f', -0.1, 0.05, 0.06], ['#e9c27a', 0.1, -0.06, 0.055], ['#5f9a57', 0.03, 0.13, 0.03]]],
+  meal_hotpot: ['#e2b765', [['#f0c79a', -0.08, 0.02, 0.09, 0.45], ['#8e1f3f', 0.12, 0.06, 0.045], ['#c9a067', 0.06, -0.12, 0.05]]],
+  meal_sharkroast: ['#9a5a3e', [['#d97a7a', 0, 0, 0.12, 0.5], ['#8e1f3f', -0.14, -0.08, 0.045], ['#c9a067', 0.14, 0.09, 0.05]], 0.03],
 };
 const PAINT = { paint_seafoam: '#9fd3c1', paint_coral: '#e9a08c', paint_sunshell: '#f1d78d', paint_lagoon: '#86b3d6', paint_pebble: '#c9c3b8' };
 const OWN = {
@@ -359,9 +384,10 @@ export const HELD_HOLD = Object.freeze({
   ...Object.fromEntries(['taskboard', 'photoframe', 'scoreboard', 'shelf'].map((k) => [k, { ...PLACE, ry: Math.PI }])),
   rug: { ...PLACE, rx: -1.0, grip: [0, -0.5, -0.45] }, bed: { ...PLACE, rx: -0.9 },
   // resources
-  stone: LUMP, clay: LUMP, metalore: LUMP, copperore: LUMP,
+  stone: LUMP, clay: LUMP, metalore: LUMP, copperore: LUMP, titaniumore: LUMP,
   sand: S(0.1, 0.3, 0.4, 0.1, -0.45),
-  brick: S(0.1, 0.3, 0.9, 0.2, -0.3), metalingot: S(0.1, 0.3, 0.9, 0.25, -0.3), copperingot: S(0.1, 0.3, 0.9, 0.25, -0.3),
+  brick: S(0.1, 0.3, 0.9, 0.2, -0.3), metalingot: S(0.1, 0.3, 0.9, 0.25, -0.3), copperingot: S(0.1, 0.3, 0.9, 0.25, -0.3), titaniumingot: S(0.1, 0.3, 0.9, 0.25, -0.3),
+  vinegoo: S(0.09, 0.3, 0.4, 0.1, -0.3), circuitboard: S(0.12, -0.9, 0.3, 0.15, 0),
   glass: S(0.1, 0.1, 0.6, 0.15, -0.4), wax: S(0.09, 0.3, 0.4, 0.1), honey: S(0.1, 0.2, 0.4, 0),
   seaweed: S(0.15, -0.2, 0.4, 0.3, -0.4), flowerseed: S(0.08, 0.3, 0.4, 0.2, -0.3),
   bolt: S(0.08, 0.1, 0.4, 0.3, -0.3), hinge: S(0.08, 0.3, 0.5, 0.2, -0.35), sinker: S(0.07, 0.15, 0, 0.2, -0.45),
@@ -374,6 +400,7 @@ export const HELD_HOLD = Object.freeze({
   berries: S(0.09, 0.2, 0.4, 0.1, -0.45), cookedbeet: S(0.09, 0.15, 0.4, 0.1, -0.4), cookedpotato: S(0.1, 0.3, 0.4, 0.1, -0.4),
   saltcup: CUP, freshcup: CUP, berrycup: CUP, coconutcup: CUP, mixcup: CUP,
   bowl: FOOD_BOWL, meal_chowder: FOOD_BOWL, meal_omelette: FOOD_BOWL, meal_broth: FOOD_BOWL, meal_fishbowl: FOOD_BOWL, meal_custard: FOOD_BOWL, meal_stew: FOOD_BOWL,
+  meal_gardensoup: FOOD_BOWL, meal_hotpot: FOOD_BOWL, meal_sharkroast: FOOD_BOWL,
   bucket: S(0.13, 0.25, 0.3, 0, -0.45), milk: S(0.13, 0.35, 0.3, 0, -0.45),
   // gear and tools
   paint_seafoam: POT, paint_coral: POT, paint_sunshell: POT, paint_lagoon: POT, paint_pebble: POT,

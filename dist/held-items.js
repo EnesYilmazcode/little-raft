@@ -25,7 +25,7 @@ import { createRocket } from './fireworks-model.js?build=v3-survival-ae77fa84ac2
 import { createScarecrow3D } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
 import { createHive, createFlowerBox, createCandle } from './bees-model.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createSpyglassModel } from './spyglass-model.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
-import { buildHeldModel, HELD_HOLD, createMachete } from './held-models.js?build=v3-survival-ae77fa84ac2b'; // [held-items] every other kind: its own model
+import { buildHeldModel, HELD_HOLD, createMachete, createSword } from './held-models.js?build=v3-survival-ae77fa84ac2b'; // [held-items] every other kind: its own model
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
@@ -33,7 +33,7 @@ export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'ben
 const LANE_DECOR = ['skyrocket', 'scarecrow', 'glidepost', 'glidestep', 'candle', 'beehive', 'flowerbox'];
 export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds', ...LANE_DECOR]);
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
-const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'brush', 'spear', 'metalspear', 'paddle', 'axe', 'metalaxe', 'machete'];
+const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'brush', 'spear', 'metalspear', 'paddle', 'axe', 'metalaxe', 'titaniumaxe', 'machete', 'titaniumsword'];
 const HOOK_SCALE = 0.4;                     // compact: the held hook stays in the lower-right corner
 // Right-hand kinds that still prefer the shared models.js mesh (so the held cup matches its icon and the world).
 const FACTORY_FIRST = ['cup', 'water'];
@@ -55,6 +55,8 @@ export const HOLD = Object.freeze({
   axe:        { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.05, 0], tilt: 0.5 }, // [axe] held like the hammer, blade leaning forward
   metalaxe:   { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.05, 0], tilt: 0.5 },
   machete:    { hand: 'right', pose: 'grip', rx: -0.55, ry: 1.1, rz: 0.3, arm: [0.01, -0.01, 0] }, // blade up and forward, flat side to the eye, ready to jab
+  titaniumaxe: { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.05, 0], tilt: 0.5 },
+  titaniumsword: { hand: 'right', pose: 'grip', rx: -0.55, ry: 1.1, rz: 0.3, arm: [0.01, -0.01, 0] }, // held like the machete
   brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
   leaf:       { hand: 'right', pose: 'grip', rx: -0.35, ry: 0.4, rz: 0.35 },
@@ -268,16 +270,16 @@ export function buildItemModel(T, kind, factory = null) {
     root = new T.Group(); root.add(m);
     root.userData.size = { x: m.userData.size.x * k, y: m.userData.size.y * k, z: m.userData.size.z * k };
     root.userData.grip = [gp.x, gp.y, gp.z];
-  } else if (kind === 'axe' || kind === 'metalaxe') { // [axe]
-    const m = createAxe(T, { metal: kind === 'metalaxe' }), s = 0.62;
+  } else if (kind === 'axe' || kind === 'metalaxe' || kind === 'titaniumaxe') { // [axe]
+    const m = createAxe(T, { metal: kind !== 'axe', titanium: kind === 'titaniumaxe' }), s = 0.62;
     m.scale.setScalar(s);
     root = new T.Group(); root.add(m);
     const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size;
     root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
     root.userData.grip = [gp.x, gp.y, gp.z];
     root.userData.model = m;
-  } else if (kind === 'machete') { // spear-repair-hooks.js slides userData.model along +Y to jab (userData.jab metres)
-    const m = createMachete(T), s = 0.72;
+  } else if (kind === 'machete' || kind === 'titaniumsword') { // spear-repair-hooks.js slides userData.model along +Y to jab (userData.jab metres)
+    const m = kind === 'machete' ? createMachete(T) : createSword(T), s = 0.72;
     m.scale.setScalar(s); m.userData.jab = 0.12;
     root = new T.Group(); root.add(m);
     const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size;

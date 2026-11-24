@@ -119,6 +119,30 @@ function ingot(T, color) {
   add(bar(), m, [0.08, 0.27, 0.06], [0, 0.35, 0]);
   return g;
 }
+// Kelp glue: a glossy green blob with two drips.
+function vinegoo(T) {
+  const { g, mat, add } = kit(T);
+  const goo = mat('#6fb34e', { roughness: 0.2, metalness: 0.05 }), shine = mat('#c8f09a', { roughness: 0.15 });
+  add(new T.SphereGeometry(0.4, 14, 10), goo, [0, 0, 0], [0, 0, 0], [1.15, 0.62, 1]);
+  add(new T.SphereGeometry(0.2, 10, 8), goo, [0.12, 0.2, -0.05], [0, 0, 0], [1, 0.8, 1]);
+  for (const [x, z, h] of [[-0.22, 0.3, 0.2], [0.25, 0.28, 0.14]]) {
+    add(new T.CylinderGeometry(0.05, 0.06, h, 8), goo, [x, -0.2 - h / 2, z]);
+    add(new T.SphereGeometry(0.075, 8, 6), goo, [x, -0.2 - h, z]);
+  }
+  add(new T.SphereGeometry(0.07, 8, 6), shine, [-0.14, 0.2, 0.22], [0, 0, 0], [1.4, 0.7, 1]);
+  return g;
+}
+// Circuit board: a green board with gold tracks, black chips and pins.
+function circuitboard(T) {
+  const { g, mat, add } = kit(T);
+  add(new T.BoxGeometry(0.9, 0.05, 0.64), mat('#3f8f5a', { roughness: 0.6 }));
+  const gold = mat('#f2c14e', { metalness: 0.6, roughness: 0.35 }), chip = mat('#2c3438', { roughness: 0.5 });
+  for (const [x, z, w, d] of [[-0.3, -0.18, 0.22, 0.03], [-0.3, 0.18, 0.18, 0.03], [0.28, 0.05, 0.03, 0.3], [0.1, 0.24, 0.3, 0.03]]) add(new T.BoxGeometry(w, 0.012, d), gold, [x, 0.03, z]);
+  add(new T.BoxGeometry(0.26, 0.06, 0.26), chip, [-0.04, 0.055, -0.02]);
+  add(new T.BoxGeometry(0.14, 0.05, 0.1), chip, [0.28, 0.05, -0.2]);
+  for (let i = 0; i < 4; i++) for (const z of [-0.17, 0.13]) add(new T.BoxGeometry(0.025, 0.02, 0.05), mat('#c6d6e0', { metalness: 0.6 }), [-0.14 + i * 0.065, 0.035, z]);
+  return g;
+}
 function glass(T) {
   const { g, mat, add } = kit(T);
   add(new T.BoxGeometry(0.8, 0.8, 0.06), mat('#8fd3e6', { transparent: true, opacity: 0.8, roughness: 0.05, metalness: 0.1 }), [0, 0, 0], [0, 0.2, 0.1]);
@@ -188,6 +212,9 @@ function cup(T, water, salt) {
 const SMALL = {
   metalore: T => ore(T, '#6f6a66', ['#c6d6e0', '#9fb1bf']),
   copperore: T => ore(T, '#6a6058', ['#4fb08a', '#d9823e']),
+  titaniumore: T => ore(T, '#8c8f99', ['#d8def0', '#b3a9d9']),
+  titaniumingot: T => ingot(T, '#d0cbe8'),
+  vinegoo, circuitboard,
   stone, sand, clay, seaweed, flowerseed, honey, wax, brick, glass, bolt, hinge, metalhook, binoculars,
   metalingot: T => ingot(T, '#a8b6c2'),
   copperingot: T => ingot(T, '#d07a45'),

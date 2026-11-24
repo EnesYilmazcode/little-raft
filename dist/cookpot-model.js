@@ -49,7 +49,8 @@ function shareable(T, list) {
   return () => { for (const x of list) (x.isMaterial ? realMat : realGeo).call(x); };
 }
 
-const STEW_TINT = { meal_chowder: 0xf3e2b8, meal_omelette: 0xf5cf4a, meal_broth: 0x5f9a57, meal_fishbowl: 0xc77b3c, meal_custard: 0xf7e7a8, meal_stew: 0xb5542c };
+const STEW_TINT = { meal_chowder: 0xf3e2b8, meal_omelette: 0xf5cf4a, meal_broth: 0x5f9a57, meal_fishbowl: 0xc77b3c, meal_custard: 0xf7e7a8, meal_stew: 0xb5542c,
+  meal_gardensoup: 0xd0623f, meal_hotpot: 0xe2b765, meal_sharkroast: 0x9a5a3e };
 const STONE_Y = .09, POT_Y = .14; // pot bottom sits on the stones
 
 export function buildCookpot(T) {

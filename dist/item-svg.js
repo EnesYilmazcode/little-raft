@@ -60,6 +60,58 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M14 30 L17 24.5 M27 24.5 L30.5 20 M29.5 36 L33 32.5" stroke="#eef6fa" stroke-width="1.6" stroke-linecap="round"/>
     <path d="M38 9 V15 M35 12 H41" stroke="#eef6fa" stroke-width="1.6" stroke-linecap="round"/>`,
 
+  // Titanium ore: a pale grey boulder with silver-lilac crystal faces and a sparkle.
+  titaniumore: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M5 37 L7 25 L15 14 L27 11 L39 16 L44 28 L40 40 H10 Z" fill="#8c8f99"/>
+    <path d="M7 25 L15 14 L27 11 L39 16 L30 20 L17 22 Z" fill="#a9adb8" stroke="none"/>
+    <g fill="#d8def0"><path d="M11 33 L15 24 L21 27 L19 35 Z"/><path d="M23 30 L27 20 L34 22 L32 31 Z"/><path d="M33 37 L36 30 L41 33 L38 39 Z"/></g>
+    <g fill="#b3a9d9" stroke-width="1.2"><path d="M15 24 L21 27 L18 28.5 Z"/><path d="M27 20 L34 22 L30 24.5 Z"/></g></g>
+    <path d="M13 32 L15.5 26.5 M25 28.5 L27.8 22.5" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M40 6 V13 M36.5 9.5 H43.5" stroke="#eef6fa" stroke-width="1.6" stroke-linecap="round"/>`,
+
+  // Titanium ingot: the bar shape in pale silver-lilac with a diamond stamp.
+  titaniumingot: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">${BAR('#c3cbe0', '#9aa3c0', '#eef1fa')}
+    <path d="M22 26.5 L25.5 29.5 L22 32.5 L18.5 29.5 Z" fill="#b3a9d9" stroke-width="1.3"/></g>
+    <path d="M14 22.5 H34" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-opacity=".9"/>
+    <path d="M10 35 L13 26" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-opacity=".7"/>`,
+
+  // Kelp glue: a glossy green blob with two drips and a shine.
+  vinegoo: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M8 34 C5 26 11 17 20 16 C24 10 33 11 36 17 C43 19 45 28 41 34 C40 38 37 40 34 39 L33 44 C32.5 46 29.5 46 29 44 L28.5 40 H19 L18.5 43 C18 45 15 45 14.5 43 L14 40 C10 40 8.5 37.5 8 34 Z" fill="#6fb34e"/>
+    <path d="M12 31 C11 25 15 21 21 20.5 C24 16 31 16 33 20 C37 21 40 25 39 29 C30 26 20 27 12 31 Z" fill="#9fd66f" stroke="none"/></g>
+    <path d="M16 22 C18 19 21 18 24 18" fill="none" stroke="#f2ffd8" stroke-width="2" stroke-linecap="round"/>
+    <g fill="#3f7a3a" fill-opacity=".55"><circle cx="24" cy="33" r="1.6"/><circle cx="31" cy="30" r="1.2"/><circle cx="18" cy="35" r="1"/></g>`,
+
+  // Circuit board: a green board with gold tracks, two black chips and corner holes.
+  circuitboard: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <rect x="5" y="10" width="38" height="28" rx="2.5" fill="#3f8f5a"/>
+    <g fill="none" stroke="#f2c14e" stroke-width="1.6" stroke-linecap="round"><path d="M9 16 H17 L20 19"/><path d="M9 32 H15 L18 29"/><path d="M30 25 H36 L39 22"/><path d="M27 33 V35"/><path d="M33 31 H39"/></g>
+    <rect x="18" y="17" width="12" height="12" rx="1.2" fill="#2c3438"/>
+    <rect x="32" y="13" width="7" height="6" rx="1" fill="#2c3438" stroke-width="1.5"/>
+    <g fill="#c6d6e0" stroke-width="1"><circle cx="8.5" cy="13.5" r="1.4"/><circle cx="39.5" cy="34.5" r="1.4"/></g></g>
+    <g stroke="#c6d6e0" stroke-width="1.2" stroke-linecap="round"><path d="M20 15 V17 M24 15 V17 M28 15 V17 M20 29 V31 M24 29 V31 M28 29 V31"/></g>
+    <path d="M8 12.5 H22" stroke="#9fe0b0" stroke-width="1.3" stroke-linecap="round" stroke-opacity=".7"/>`,
+
+  // Titanium axe: a dark handle with a navy wrap and a pale silver-lilac head with a bright edge.
+  titaniumaxe: `<g transform="rotate(25 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M22 8 L21.2 45 Q24 47 26.8 45 L26 8 Z" fill="#5a3e28"/>
+    <path d="M22.5 11 L14 7 C9 7 5 9 3.5 12 C3 17 3.5 22 5.5 26 C9 26 13 25 15 23 L22.5 20 Z" fill="#c3cbe0"/>
+    <path d="M5.5 26 C3.5 22 3 17 3.5 12 L7 13 C6.5 17 7 21 8.5 24.5 Z" fill="#f4f6fc" stroke-width="1.2"/>
+    <path d="M11 11 L18 13" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-opacity=".9"/>
+    <rect x="20" y="8" width="8" height="15" rx="1.5" fill="#3b4a66"/>
+    <path d="M21 31 L27 29.5 M21 35 L27 33.5 M21 39 L27 37.5" fill="none" stroke="#3b4a66" stroke-width="2.2"/>
+    <g fill="#b3a9d9" stroke-width="1.2"><circle cx="24" cy="12" r="1.3"/><circle cx="24" cy="19" r="1.3"/></g></g>`,
+
+  // Titanium sword: a straight pale blade with a fuller, a cross guard and a navy-wrapped grip.
+  titaniumsword: `<g transform="rotate(40 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M20.5 32 V7 L24 1.5 L27.5 7 V32 Z" fill="#c3cbe0"/>
+    <path d="M24 3.5 V30" fill="none" stroke="#9aa3c0" stroke-width="1.4"/>
+    <path d="M22.3 8 V28" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".85"/>
+    <rect x="15" y="31" width="18" height="4" rx="1.5" fill="#9aa3c0"/>
+    <path d="M21.5 35 H26.5 L26.2 44 H21.8 Z" fill="#3b4a66"/>
+    <g fill="none" stroke="#b3a9d9" stroke-width="1.4"><path d="M21.7 38 L26.4 37"/><path d="M21.8 41 L26.3 40"/></g>
+    <circle cx="24" cy="45.5" r="2" fill="#b3a9d9" stroke-width="1.2"/></g>`,
+
   nail: `<g transform="rotate(40 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M21 11 H27 V36 L24 45 L21 36 Z" fill="#9fb1bf"/>
     <rect x="13.5" y="4" width="21" height="7" rx="2.5" fill="#c6d6e0"/>
