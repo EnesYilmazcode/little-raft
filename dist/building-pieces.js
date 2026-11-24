@@ -673,13 +673,22 @@ export class BuildGrid {
       if (!phys.grounded && y0 >= this._prevHead - 0.02) {
         const px = clamp(x, b[k], b[k + 3]) - x, pz = clamp(z, b[k + 2], b[k + 5]) - z, d2 = px * px + pz * pz;
         if (d2 >= R * R) continue;
-        if (slab && d2 > 0) this._push(phys, b[k], b[k + 3], b[k + 2], b[k + 5]);
-        else if (y0 < phys.y + HEAD) { phys.y = y0 - HEAD; if (phys.vy > 0) phys.vy = 0; }
+        if (slab && d2 > 0) { // a neighbouring slab at this height over the centre is one ceiling: it bumps the head
+          if (!this._slabOver(x, z, b[k + 1])) this._push(phys, b[k], b[k + 3], b[k + 2], b[k + 5]);
+        } else if (y0 < phys.y + HEAD) { phys.y = y0 - HEAD; if (phys.vy > 0) phys.vy = 0; }
         continue;
       }
       if (b[k + 4] + deckY <= lo) continue;
       this._push(phys, b[k], b[k + 3], b[k + 2], b[k + 5]);
     }
+  }
+
+  // Does a slab with its underside at y0 (box-local, as stored) cover the point (x, z)?
+  _slabOver(x, z, y0) {
+    const b = this._slabs;
+    for (let k = 0; k < this._slabN * 6; k += 6)
+      if (Math.abs(b[k + 1] - y0) < 1e-6 && x >= b[k] && x <= b[k + 3] && z >= b[k + 2] && z <= b[k + 5]) return true;
+    return false;
   }
 
   // A long frame (lag spike: several physics substeps before one postStep) can carry the body more than its
