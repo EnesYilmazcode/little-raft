@@ -1,13 +1,16 @@
 // Little Raft item tooltips: one floating card for hotbar/inventory slots, crafting rows and any
 // [data-item-kind] element. Read-only view over ITEMS + bag + progression; never mutates anything.
 import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
-import { ITEM_TEXT, anchorTip, anchorVisible, catalogueRecipes, tipFacts, reqChips, itemGlyph } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
+import { ITEM_TEXT, anchorTip, craftTip, anchorVisible, catalogueRecipes, tipFacts, reqChips, itemGlyph } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
 import { ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 // Each installed instance owns its own <style> (class STYLE_CLASS, data-owner = its tip id) and removes only
 // that one on dispose. A live engine swap mounts the new instance before the old one is disposed, so a
 // shared, id-keyed sheet was deleted out from under the new card (the bag then flickered every frame).
 const STYLE_CLASS = 'item-tooltips-style';
+// The live instance, kept on the window like survival-ui's INST_KEY: installing a new one (a live engine swap
+// mounts the new engine first) disposes the previous one, so a missed dispose never leaves two cards.
+const INST_KEY = '__littleRaftItemTooltips';
 // Layout-critical rules as inline style on the card itself: even with no stylesheet at all it never
 // joins the layout of the dialog it is appended to.
 const TIP_INLINE = 'position:fixed;left:0;top:0;z-index:2147483000;pointer-events:none;margin:0';
@@ -47,6 +50,9 @@ const SEL = '.sv-slot[data-index],.sv-slot[data-slot],.sv-recipe[data-recipe],[d
 export function installItemTooltips({ getBag, getProgression, items, root = document } = {}) {
   const table = items || ITEMS || {};
   const doc = root.ownerDocument || root;
+  const host = doc.defaultView || (typeof window !== 'undefined' ? window : null);
+  const prev = host?.[INST_KEY];
+  if (prev && typeof prev.dispose === 'function') { try { prev.dispose(); } catch (e) { console.error(e); } }
   const ac = new AbortController();
   const on = (t, ev, fn, o) => t.addEventListener(ev, fn, { signal: ac.signal, ...o });
   const tip = doc.createElement('div');
@@ -82,6 +88,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
       const kind = table[id] ? id : (Object.values(table).find(it => it?.recipe && it.recipeId === id)?.id ?? id);
       return { kind, slot: null, el, recipe: true };
     }
+    if (el.dataset.worn != null) return null; // survival-ui: a backpack slot whose gear shows in the equipment row
     const i = Number(el.dataset.index ?? el.dataset.slot);
     const s = Number.isInteger(i) ? slotsOf(call(getBag))[i] : null;
     return s && s.kind && s.count > 0 ? { kind: s.kind, slot: s, el } : null;
@@ -130,18 +137,21 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
 
   // Anchored beside the hovered element (craft-book anchorTip: right, else left, below, above), so it
   // never trails the pointer over the craft button or drifts to the middle of the screen.
-  // Crafting rows and ingredients sit beside the whole crafting panel (never over the list or the open recipe) and slide off the Craft
-  // button. A hidden or detached anchor (tab switch, repaint) hides the card instead of pinning it top-left.
+  // Crafting rows and ingredients stay inside the crafting area (craft-book craftTip: under the open recipe card,
+  // never over the screen centre). A hidden or detached anchor (tab switch, repaint) hides the card instead of
+  // pinning it top-left. Rects are read on show only, never per frame.
   const zoomOf = () => { const z = Number(tip.currentCSSZoom); return z > 0 && Number.isFinite(z) ? z : 1; };
+  const rectOf = sel => { const el = doc.querySelector(sel); return el ? el.getBoundingClientRect() : null; };
   function place() {
     if (tip.hidden || !cur) return;
     const col = cur.el.closest?.('#inventory .sv-craft');
-    const btn = col && doc.querySelector('#inventory .sv-detail:not([hidden]) .sv-craftbtn');
     // Rects are in viewport px; inside a zoomed dialog (graphics.css --ui-scale) the card's own size and its
     // translate are in zoomed px, so the size is measured as drawn and the offset divided by the zoom.
     const z = zoomOf();
-    const p = cur.el.isConnected && anchorTip(cur.el.getBoundingClientRect(), tip.offsetWidth * z, tip.offsetHeight * z, innerWidth, innerHeight, 8, 6,
-      col ? { beside: col.getBoundingClientRect(), avoid: btn?.getBoundingClientRect() } : null);
+    const r = cur.el.isConnected && cur.el.getBoundingClientRect(), w = tip.offsetWidth * z, h = tip.offsetHeight * z;
+    const p = r && (col
+      ? craftTip(r, w, h, innerWidth, innerHeight, { list: col.getBoundingClientRect(), detail: rectOf('#inventory .sv-detail:not([hidden])'), bag: rectOf('#inventory .sv-bag') })
+      : anchorTip(r, w, h, innerWidth, innerHeight, 8, 6));
     if (!p) { hide(); return; }
     tip.style.transform = `translate(${Math.round(p.x / z)}px,${Math.round(p.y / z)}px)`;
     tip.dataset.side = p.side;
@@ -188,10 +198,15 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
 
   // Re-render the open card (e.g. after a craft/move changes counts); hides if the slot emptied.
   function refresh() { if (cur && anchorVisible(cur.el)) show(cur.el, px, py); else if (cur) hide(); }
-  return {
+  const api = {
     refresh,
-    dispose() { hide(); ac.abort(); tip.remove(); sheet.remove(); }, // only this instance's own sheet
+    dispose() { // only this instance's own sheet
+      hide(); ac.abort(); tip.remove(); sheet.remove();
+      if (host && host[INST_KEY] === api) host[INST_KEY] = null;
+    },
   };
+  if (host) host[INST_KEY] = api;
+  return api;
 }
 
 export default installItemTooltips;

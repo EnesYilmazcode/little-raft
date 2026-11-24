@@ -377,6 +377,75 @@ export function anchorTip(rect, w, h, vw, vh, gap = 8, pad = 6, opts = null) {
   return p;
 }
 
+/**
+ * Where a crafting tooltip (recipe row or ingredient tile) goes: inside the crafting area, never over the
+ * screen centre. list: the tabs + recipe list panel; detail: the open recipe card (null when none); bag: the
+ * backpack (the card stays above it where they would overlap). Rects are {left, top, right, bottom}.
+ * 1. With a recipe open: right under its card, in the card's column.
+ * 2. With none open: in that column, level with the hovered row.
+ * 3. No room: rows over the recipe card's column, ingredient tiles over the list (both level with the anchor).
+ * Any spot that covers the centre point of the screen is skipped while another one does not.
+ * Returns null when the anchor has no box, like anchorTip.
+ * @returns {{x:number, y:number, side:'below'|'right'|'over'|'list'}|null}
+ */
+export function craftTip(rect, w, h, vw, vh, { list = null, detail = null, bag = null } = {}, gap = 8, pad = 6) {
+  if (!usableRect(rect)) return null;
+  const L = usableRect(list) ? list : rect, D = usableRect(detail) ? detail : null, B = usableRect(bag) ? bag : null;
+  const clampV = (v, lo, hi) => Math.max(lo, Math.min(v, Math.max(lo, hi)));
+  const x0 = clampV(D ? D.left : L.right + gap, pad, vw - w - pad);
+  const floor = x => (B && x < B.right && x + w > B.left ? Math.min(vh - pad, B.top - gap) : vh - pad);
+  const inCard = !!D && rect.left >= D.left - 1 && rect.right <= D.right + 1 && rect.top >= D.top - 1 && rect.bottom <= D.bottom + 1;
+  const level = () => clampV(rect.top, pad, vh - h - pad);
+  const spots = [];
+  if (D) spots.push({ x: x0, y: D.bottom + gap, side: 'below', fits: D.bottom + gap + h <= floor(x0) });
+  else spots.push({ x: x0, y: clampV(rect.top, pad, floor(x0) - h), side: 'right', fits: floor(x0) - pad >= h });
+  if (inCard) spots.push({ x: clampV(L.right - w, pad, vw - w - pad), y: level(), side: 'list', fits: true });
+  else spots.push({ x: x0, y: level(), side: 'over', fits: true });
+  const cx = vw / 2, cy = vh / 2;
+  const centre = p => p.x < cx && p.x + w > cx && p.y < cy && p.y + h > cy;
+  const p = spots.find(q => q.fits && !centre(q)) || spots.find(q => !centre(q)) || spots[spots.length - 1];
+  return { x: Math.round(p.x), y: Math.round(p.y), side: p.side };
+}
+
+// ---- equipment row ----
+// Raft's 5 equipment slots, as a view over the bag (no separate storage, so saves and co-op are unchanged).
+// Gear works while it is carried; a gear stack in the backpack grid (bag index >= hb) shows in the equipment
+// row and not in the grid, so each item shows once. Gear on the hotbar stays on the hotbar.
+const kindIn = (gear, k) => (gear instanceof Set ? gear.has(k) : Array.isArray(gear) && gear.includes(k));
+const filled = s => !!s && !!s.kind && s.count > 0;
+const firstFree = (slots, hb) => { for (let i = hb; i < slots.length; i++) if (!filled(slots[i])) return i; return -1; };
+/** Bag index shown in each of the n equipment slots (-1 empty): the first n gear stacks in the grid, packed left. */
+export function equipView(slots, gear, hb, n) {
+  const out = [];
+  for (let i = hb; i < (slots?.length || 0) && out.length < n; i++) if (filled(slots[i]) && kindIn(gear, slots[i].kind)) out.push(i);
+  while (out.length < n) out.push(-1);
+  return out;
+}
+/**
+ * A stack from bag index `from` dropped on an equipment slot that shows bag index `at` (-1 empty).
+ * {to}: move it there (a swap when `at` holds gear); {none:true}: it is already worn there;
+ * {refuse}: not gear, or no free backpack slot to wear it from.
+ */
+export function equipTarget(slots, from, at, gear, hb) {
+  const s = slots?.[from];
+  if (!filled(s)) return { refuse: '' };
+  if (!kindIn(gear, s.kind)) return { refuse: 'Only gear goes there' };
+  if (at === from || (at < 0 && from >= hb)) return { none: true };
+  if (at >= 0) return { to: at };
+  const free = firstFree(slots, hb);
+  return free < 0 ? { refuse: 'Backpack full' } : { to: free };
+}
+/**
+ * A drop on backpack slot `to` whose gear shows in the equipment row (it looks empty): the gear first moves to
+ * the first free backpack slot (pre: [to, free]), so the dropped stack lands where it was dropped and the gear
+ * stays worn. With no free slot the move goes ahead as a plain swap. Other slots: {to}.
+ */
+export function gridTarget(slots, to, worn, hb) {
+  if (!worn || !worn.has(to)) return { to };
+  const free = firstFree(slots, hb);
+  return free < 0 ? { to } : { to, pre: [to, free] };
+}
+
 /** True when a box can anchor a tooltip: it is laid out (not hidden, not detached). */
 export const anchorVisible = el => !!el && el.isConnected !== false && usableRect(el.getBoundingClientRect?.());
 
