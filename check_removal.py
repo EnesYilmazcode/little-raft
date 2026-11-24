@@ -165,6 +165,16 @@ with sync_playwright() as pw:
     step('remove foundation tile with hammer X', s1['tiles'] == tiles0 - 1 and [0, -1] not in s1['tileList'], chip=chip, tiles=[tiles0, s1['tiles']],
          refund={k: s1['stock'].get(k, 0) - s0.get(k, 0) for k in ('wood', 'plastic')})
 
+    # ---- a grill on a tile (fishing-cooking.js, not world.decor): hammer X must refuse, grill and tile stay ----
+    page.evaluate('raftDebug.give("wood", 4); raftDebug.give("scrap", 2)')
+    look_at(page, -2, st(page)['raft']['y'] + .2, -2); page.keyboard.press('g'); page.wait_for_timeout(400)  # tile (-1,-1)
+    grill = page.evaluate('raftFC.state.grills.some(g => g.x === -1 && g.z === -1)')
+    t0 = st(page)['tiles']; look_at(page, -1.6, st(page)['raft']['y'] + .2, -1.6)
+    chip, removing = remove_aimed(page)
+    why = page.evaluate('document.querySelector(".bh-why")?.textContent || ""')
+    step('hammer X on a grill tile is refused', grill and st(page)['tiles'] == t0 and page.evaluate('raftFC.state.grills.some(g => g.x === -1 && g.z === -1)'),
+         grillPlaced=grill, chip=chip, tiles=[t0, st(page)['tiles']])
+
     # ---- lone wall on the deck: removable (support rules must not block it) ----
     pick_piece(page, 'wall'); look_at(page, -2, st(page)['raft']['y'] + .25, .4); click(page)
     lone = [p for p in pieces(page) if p['t'] == 'wall']
@@ -190,6 +200,12 @@ with sync_playwright() as pw:
         still = any(p['t'] == 'wall' for p in pieces(page))
         page.wait_for_timeout(1300); page.mouse.up(); page.wait_for_timeout(400)
         step('axe hold-click dismantles wall', still and not any(p['t'] == 'wall' for p in pieces(page)), ringMidway=mid, standingAt05s=still, refund=wood(page) - w1)
+    # the axe on the deck: no ring, no highlight, the tile stays (foundations come off with hammer X only)
+    t0 = st(page)['tiles']; look_at(page, .4, st(page)['raft']['y'] + .2, .4)
+    page.mouse.move(640, 360); page.mouse.down(); page.wait_for_timeout(700)
+    ring = page.evaluate('document.querySelector(".bh-ring")?.hidden !== false')
+    page.wait_for_timeout(1100); page.mouse.up(); page.wait_for_timeout(300)
+    step('axe hold on the deck removes nothing', st(page)['tiles'] == t0 and ring, tiles=[t0, st(page)['tiles']], ringHidden=ring)
     step('axe present', ai >= 0, slot=ai)
 
     # ---- coop guest (loopback transport): guest removes a host-built wall, host refunds the guest's bag ----
@@ -198,6 +214,7 @@ with sync_playwright() as pw:
     page.goto(URL.split('?')[0] + 'blank-for-save')
     page.evaluate('''raw => { const s = JSON.parse(raw); s.guestInventory = s.hostInventory;
       s.pieces = [{t:"wall", i:0, j:0, l:0, r:0}, {t:"wall", i:-1, j:-1, l:0, r:0}];
+      for (const [x, z] of [[1, 0], [0, 1], [-2, -1]]) if (!s.tiles.some(t => t[0] === x && t[1] === z)) s.tiles.push([x, z]); // leaf tiles: two by the spawn, one far off
       localStorage.setItem("little-raft-v1", JSON.stringify(s)); }''', saved)
     lb = URL + '&loopback'
     host, guest = page, ctx.new_page()
@@ -231,14 +248,23 @@ with sync_playwright() as pw:
         step('guest removes wall (host-authoritative)', not any(map(same, hp)) and not any(map(same, gp2)), chip=chip, removing=removing,
              guestRefund=wood(guest) - w1, hostPieces=hp, guestPieces=gp2, me=st(guest)['me'])
         step('guest refunded 2 wood', wood(guest) - w1 == 2, guestRefund=wood(guest) - w1)
-        # guest takes a foundation tile (0,0) off: host checks it, the guest's bag gets the refund
+        # a tile with a player on it is refused (the chip says why, nothing is sent)
+        bodies = [st(guest)['me'], st(host)['me']]
+        occ = lambda x, z: any(abs(b['x'] - 2 * x) < 1.25 and abs(b['z'] - 2 * z) < 1.25 for b in bodies)
+        on = next(((x, z) for x, z in ([1, 0], [0, 1]) if occ(x, z)), None)
+        free = next(((x, z) for x, z in ([-2, -1], [0, 1], [1, 0]) if not occ(x, z)), (-2, -1))
+        if on:
+            t0 = st(host)['tiles']; look_at(guest, on[0] * 2 + .3, st(guest)['raft']['y'] + .2, on[1] * 2 + .3)
+            chip, removing = remove_aimed(guest); guest.wait_for_timeout(500)
+            step('guest: a tile someone stands on is refused', st(host)['tiles'] == t0 and 'standing' in chip, tile=on, chip=chip, bodies=bodies)
+        # guest takes a free leaf tile off: host checks it, the guest's bag gets the refund
         t0 = st(host)['tiles']; p0 = guest.evaluate('raftDebug.state.stock.plastic || 0')
-        look_at(guest, .3, st(guest)['raft']['y'] + .2, .9)
+        look_at(guest, free[0] * 2 + .3, st(guest)['raft']['y'] + .2, free[1] * 2 + .3)
         chip, removing = remove_aimed(guest)
         try: guest.wait_for_function('n => raftDebug.state.tiles < n', arg=t0, timeout=8000)
         except Exception: pass
-        step('guest removes a foundation tile (host-authoritative)', st(host)['tiles'] == t0 - 1 and st(guest)['tiles'] == t0 - 1 and [0, 0] not in st(host)['tileList'],
-             chip=chip, tiles=[t0, st(host)['tiles'], st(guest)['tiles']], guestPlasticRefund=guest.evaluate('raftDebug.state.stock.plastic || 0') - p0)
+        step('guest removes a foundation tile (host-authoritative)', st(host)['tiles'] == t0 - 1 and st(guest)['tiles'] == t0 - 1 and list(free) not in st(host)['tileList'],
+             chip=chip, tile=free, tiles=[t0, st(host)['tiles'], st(guest)['tiles']], guestPlasticRefund=guest.evaluate('raftDebug.state.stock.plastic || 0') - p0)
     b.close()
 
 report['fail'] = fail
