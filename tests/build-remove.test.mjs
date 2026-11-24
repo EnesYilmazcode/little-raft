@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
 const { BuildGrid, PIECES, cleanPieces } = await import(new URL('building-pieces.js', base));
-const { removePiece, removeFoundation, tileRemoveWhy, toolOf } = await import(new URL('build-remove.js', base));
+const { removePiece, removeFoundation, tileRemoveWhy, toolOf, standingOn, REMOVE_TEXT } = await import(new URL('build-remove.js', base));
 const { BLOCK_TEXT } = await import(new URL('build-rules.js', base));
 const { Bag } = await import(new URL('inventory-state.js', base));
 const src = f => readFileSync(new URL(f, base), 'utf8');
@@ -100,7 +100,11 @@ test('foundation tiles come off with a full refund, unless something needs them'
   assert.equal(r.ok, true, r.text);
   assert.deepEqual(world.tiles.map(t => t.join()).sort(), ['-1,-1', '-1,0', '0,0']);
   assert.equal(bag.count('wood'), 2); assert.equal(bag.count('plastic'), 2);
+  assert.equal(bag.count('armor'), 1, 'the fitted Foundation Armor comes back too'); assert.match(r.text, /foundation armor/);
   assert.equal(world.tileHp['0,-1'], undefined); assert.equal(world.tileArmor['0,-1'], undefined);
+  const plain = {tiles:TILES(), decor:[], pieces:[], tileArmor:{}}, pb = bagWith({hammer:1});
+  assert.equal(removeFoundation(gridOf(plain.tiles, []), {kind:'untile', x:0, z:-1}, pb, plain, Bag).ok, true);
+  assert.equal(pb.count('armor'), 0, 'no armor item from an unarmored tile');
   // the raft would split / the last tile / a placed item / a net / a wall resting only on it
   const line = {tiles:[[0, 0], [1, 0], [2, 0]], decor:[], pieces:[]};
   assert.equal(tileRemoveWhy(gridOf(line.tiles, []), line, 1, 0), BLOCK_TEXT.split);
@@ -120,10 +124,10 @@ test('foundation tiles come off with a full refund, unless something needs them'
 
 test('game.js wires foundation removal and the axe through the host, with reach checks', () => {
   const g = src('game.js');
-  const at = g.indexOf("a.kind === 'untile' && building"), apply = g.indexOf('building.applyTile(a, bag, world)', at);
+  const at = g.indexOf("a.kind === 'untile' && building"), apply = g.indexOf('building.applyTile(a, bag, world', at);
   assert.ok(at > 0 && apply > at);
   assert.ok(g.slice(at, apply).includes('inReach('), 'reach checked before the host applies it');
-  assert.match(g, /kind === 'axe' && building\?\.chopStart\(/);
+  assert.match(g, /kind === 'axe' && hostHas\('axeRemove'\) && axeLive\(\) && building\?\.chopStart\(/);
   assert.match(g, /building\?\.chop\(running && kind === 'axe'/);
 });
 
@@ -131,7 +135,56 @@ test('no per-frame work without a removal tool: chop() returns before any ray, h
   const b = src('building.js');
   const chop = b.slice(b.indexOf('function chop('), b.indexOf('function chop(') + 400);
   assert.match(chop, /if \(!chopHeld\) return null;/);
-  assert.ok(chop.indexOf('if (!chopHeld) return null;') < chop.indexOf('resolve('), 'no ray before the early return');
+  assert.ok(chop.indexOf('if (!chopHeld) return null;') < chop.indexOf('axeTarget('), 'no ray before the early return');
   const h = src('build-hint.js');
   assert.match(h, /if \(m !== mode\)/); assert.match(h, /if \(q === ringP\) return;/);
+});
+
+test('an armored tile with no room for its armor item stays (all or nothing)', () => {
+  const world = {tiles:TILES(), decor:[], pieces:[], tileArmor:{'0,-1':1}}, full = new Bag();
+  for (let i = 0; i < full.slots.length; i++) full.slots[i] = {kind:'stone', count:20};
+  full.slots[0] = {kind:'hammer', count:1, durability:100}; full.slots[1] = {kind:'wood', count:1}; full.slots[2] = {kind:'plastic', count:1};
+  const r = removeFoundation(gridOf(world.tiles, []), {kind:'untile', x:0, z:-1}, full, world, Bag);
+  assert.equal(r.ok, false); assert.equal(r.text, 'Your bag is full');
+  assert.equal(world.tiles.length, 4); assert.equal(world.tileArmor['0,-1'], 1);
+  assert.equal(full.count('wood'), 1, 'nothing refunded');
+});
+
+test('a grill on a tile (not in world.decor) and a player standing on it both refuse the removal', () => {
+  const world = () => ({tiles:TILES(), decor:[], pieces:[]});
+  const w1 = world(), grill = {hasGrill:(x, z) => x === 0 && z === 0};
+  assert.equal(tileRemoveWhy(gridOf(w1.tiles, []), w1, 0, 0, grill), BLOCK_TEXT.decor);
+  assert.equal(tileRemoveWhy(gridOf(w1.tiles, []), w1, 0, -1, grill), '', 'other tiles are fine');
+  const bag = bagWith({hammer:1});
+  assert.equal(removeFoundation(gridOf(w1.tiles, []), {kind:'untile', x:0, z:0}, bag, w1, Bag, grill).text, 'Clear what stands on this floor first');
+  assert.equal(w1.tiles.length, 4); assert.equal(bag.count('wood'), 0);
+  // a body at eye height 1.6 above the deck on tile (0,0); a guest pose without y counts by x/z
+  const deckY = .2, on = {x:.3, y:deckY + 1.6, z:-.4}, near = {x:-1.1, y:deckY + 1.6, z:0}, up = {x:0, y:deckY + 2.2 + 1.6, z:0};
+  assert.equal(standingOn(on, 0, 0, deckY), true); assert.equal(standingOn(near, 0, 0, deckY), true, 'overlapping the edge');
+  assert.equal(standingOn(up, 0, 0, deckY), false, 'on the storey above'); assert.equal(standingOn({x:4, y:1.8, z:4}, 0, 0, deckY), false);
+  assert.equal(standingOn({x:0, y:null, z:0}, 0, 0, deckY), true); assert.equal(standingOn(null, 0, 0, deckY), false);
+  const w2 = world();
+  assert.equal(tileRemoveWhy(gridOf(w2.tiles, []), w2, 0, 0, {bodies:[null, on], deckY}), REMOVE_TEXT.standing);
+  assert.equal(removeFoundation(gridOf(w2.tiles, []), {kind:'untile', x:0, z:0}, bagWith({hammer:1}), w2, Bag, {bodies:[on], deckY}).text, 'Someone is standing there');
+  assert.equal(w2.tiles.length, 4);
+  assert.equal(removeFoundation(gridOf(w2.tiles, []), {kind:'untile', x:0, z:-1}, bagWith({hammer:1}), w2, Bag, {bodies:[{x:4, y:1.8, z:4}], deckY}).ok, true);
+});
+
+test('the axe never removes foundation tiles; a worn-out axe dismantles nothing', () => {
+  const w = {tiles:TILES(), decor:[], pieces:[]}, axe = bagWith({axe:1, hammer:1});
+  const r = removeFoundation(gridOf(w.tiles, []), {kind:'untile', x:0, z:0, tool:'axe'}, axe, w, Bag);
+  assert.equal(r.ok, false); assert.equal(w.tiles.length, 4);
+  const g = gridOf(TILES(), [{t:'wall', i:0, j:0, l:0, r:0}]), worn = new Bag(); worn.slots[0] = {kind:'axe', count:1, durability:0};
+  const r2 = removePiece(g, {kind:'unpiece', t:'wall', i:0, j:0, l:0, r:0, tool:'axe'}, worn, Bag);
+  assert.equal(r2.ok, false); assert.equal(r2.text, REMOVE_TEXT.worn); assert.equal(g.list.length, 1);
+});
+
+test('game.js: host caps announce untile + axeRemove; a guest on an old host is told so and the axe path is gated', () => {
+  const g = src('game.js'), b = src('building.js');
+  assert.match(g, /HOST_CAPS = Object\.freeze\(\{[^}]*untile:1[^}]*axeRemove:1/);
+  assert.match(g, /hostHas = cap => role !== 'guest' \|\| !!hostCaps\?\.\[cap\]/);
+  assert.match(g, /kind === 'axe' && hostHas\('axeRemove'\) && axeLive\(\) && building\?\.chopStart\(/);
+  assert.match(g, /building\.applyTile\(a, bag, world, tileOptsNow\(\)\)/);
+  assert.match(b, /if \(tile && capFn && !capFn\('untile'\)\) \{ oldHostFn\?\.\(\); return null; \}/);
+  assert.ok(!/kind:'untile'[^}]*tool:'axe'/.test(b), 'the axe never sends untile');
 });

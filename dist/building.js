@@ -2,13 +2,14 @@
 // game.js owns the world/bags/network; this module only turns them into pieces. See docs/cloud/building-pieces.md.
 // Usage (game.js): const building = createBuilding(T, scene); building.sync(world) after world/tiles change;
 //   building.update(raft, aim, origin, active, bag, yaw) every frame; building.preStep/postStep around physics.update.
-// Removal: hammer + hold X, release on a piece / placed item / foundation tile; or the axe: hold click on a piece or
-//   foundation (building.chopStart / chop / chopStop). The host runs build-remove.js (applyTile for foundations).
+// Removal: hammer + hold X, release on a piece / placed item / foundation tile; or the axe: hold click on a building
+//   piece only (building.chopStart / chop / chopStop; decor or the deck under the crosshair leaves the click to palm
+//   chopping). The host runs build-remove.js (applyTile for foundations).
 import { BuildGrid, PIECES, PIECE_ORDER, LEVEL_H, STATEFUL, cleanPieces, toRec } from './building-pieces.js?build=v3-survival-ae77fa84ac2b';
 import { createPieceGeometry, createPieceMaterial } from './building-models.js?build=v3-survival-ae77fa84ac2b';
 import { createBuildMenu } from './build-menu.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { removePiece, removeFoundation, tileRemoveWhy } from './build-remove.js?build=v3-survival-ae77fa84ac2b';
+import { removePiece, removeFoundation, tileRemoveWhy, REMOVE_TEXT } from './build-remove.js?build=v3-survival-ae77fa84ac2b';
 import { createBuildHint } from './build-hint.js?build=v3-survival-ae77fa84ac2b';
 
 export { cleanPieces };
@@ -36,7 +37,8 @@ export function createBuilding(T, scene) {
   let tileHit = false; const tileOut = {x:0, z:0}; // the foundation tile under the removal ray (when no piece / decor is nearer)
   let remTx = NaN, remTz = NaN, remTv = -1, remTd = null, remTn = -1, remTileText = ''; // cached tile reason per target / world change
   let lastWorld = null; // the world of the last sync(): tiles / decor / nets for the foundation removal reason
-  let chopHeld = false, chopT = 0, chopRec = null, chopTx = NaN, chopTz = NaN, chopWhy = '', axeOn = false, hammerOn = false; // axe dismantle
+  let chopHeld = false, chopT = 0, chopRec = null, chopWhy = '', axeOn = false, hammerOn = false; // axe dismantle (pieces only)
+  let tileCheckFn = null, decorDistFn = null, capFn = null, oldHostFn = null; // game.js: grill / player on a tile, nearest decor hit distance, host caps (guest)
   const hint = createBuildHint();
   let removeExtraFn = null, removeExtra = null; // [undecor] game.js decor target when no piece is aimed: {text, action, d, deny?}
   let placeCheckFn = null; // free placement: game.js veto for an otherwise valid slot (a placed item in the way) -> reason text or ''
@@ -105,7 +107,7 @@ export function createBuilding(T, scene) {
         const hit = resolve(origin, d, deckY, true);
         if (hit === 'piece') { showGhost(removeTarget, removeColor); text = pieceWhy(removeTarget) || 'Release X to remove ' + PIECES[removeTarget.t].name.toLowerCase(); }
         else if (hit === 'decor') text = removeExtra.text; // [undecor]
-        else if (hit === 'tile') { showTileGhost(tileOut.x, tileOut.z, removeColor); text = tileWhy(tileOut.x, tileOut.z) || 'Release X to remove foundation'; }
+        else if (hit === 'tile') { showTileGhost(tileOut.x, tileOut.z, removeColor); text = (capFn && !capFn('untile') ? REMOVE_TEXT.oldHost : tileWhy(tileOut.x, tileOut.z)) || 'Release X to remove foundation'; }
         else text = 'Point at a piece or foundation to remove';
       } else if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
@@ -146,20 +148,25 @@ export function createBuilding(T, scene) {
     if (x !== remTx || z !== remTz || grid.version !== remTv || w?.decor !== remTd || dn !== remTn) {
       remTx = x; remTz = z; remTv = grid.version; remTd = w?.decor; remTn = dn; remTileText = tileRemoveWhy(grid, w, x, z);
     }
-    return remTileText;
+    return remTileText || (tileCheckFn ? tileCheckFn(x, z) : ''); // grill / someone on it: uncached (players move)
   }
   function showTileGhost(x, z, color) {
     tileGhost.position.set(x * 2, FLOOR_Y - .08, z * 2); tileGhost.scale.setScalar(1.02); ghostMat.color.copy(color); tileGhost.visible = true;
   }
 
-  // ---------- axe: hold click on a piece or foundation to take it apart ----------
-  // Use-down with the axe. True when a piece or foundation is under the crosshair (the click is ours, not a palm chop).
+  // ---------- axe: hold click on a building piece to take it apart ----------
+  // The piece under the crosshair for the axe, or null when the deck or a placed item is nearer (no foundations).
+  function axeTarget(o, d, deckY) {
+    const hit = resolve(o, d, deckY, false), rec = removeTarget; removeTarget = null; tileHit = false;
+    if (hit !== 'piece') return null;
+    if (decorDistFn && decorDistFn(o, d) < grid.hitDist(o.x, o.y, o.z, d.x, d.y, d.z, deckY, REACH) - .05) return null; // a chest in front of the wall
+    return rec;
+  }
+  // Use-down with the axe. True when a building piece is under the crosshair (the click is ours, not a palm chop).
   function chopStart(aim, camPos, deckY) {
     const d = aim?.dir; if (!d || !camPos || menu.isOpen) return false;
-    const hit = resolve(camPos, d, deckY, false), rec = removeTarget, tile = tileHit; removeTarget = null; tileHit = false;
-    if (!hit) return false;
-    chopHeld = true; chopT = 0; chopRec = hit === 'piece' ? rec : null;
-    chopTx = tile ? tileOut.x : NaN; chopTz = tile ? tileOut.z : NaN; chopWhy = '';
+    const rec = axeTarget(camPos, d, deckY); if (!rec) return false;
+    chopHeld = true; chopT = 0; chopRec = rec; chopWhy = '';
     return true;
   }
   function chopStop() { if (!chopHeld && chopT === 0) return; chopHeld = false; chopT = 0; chopWhy = ''; hint.ring(-1); renderHint(''); }
@@ -169,17 +176,16 @@ export function createBuilding(T, scene) {
     if (!chopHeld) return null; // the common case: nothing to do, no ray
     const d = aim?.dir;
     if (!axeHeld || !d || !camPos) { chopStop(); return null; }
-    const hit = resolve(camPos, d, deckY, false), rec = removeTarget, tile = tileHit; removeTarget = null; tileHit = false;
-    const same = hit === 'piece' ? rec === chopRec : hit === 'tile' && tileOut.x === chopTx && tileOut.z === chopTz;
-    if (!same) { chopT = 0; chopRec = hit === 'piece' ? rec : null; chopTx = tile ? tileOut.x : NaN; chopTz = tile ? tileOut.z : NaN; } // looking away restarts
-    if (!hit) { chopWhy = ''; hint.ring(-1); renderHint(''); return null; }
-    if (hit === 'piece') showGhost(rec, removeColor); else showTileGhost(tileOut.x, tileOut.z, removeColor);
-    chopWhy = hit === 'piece' ? pieceWhy(rec) : tileWhy(tileOut.x, tileOut.z);
+    const rec = axeTarget(camPos, d, deckY);
+    if (rec !== chopRec) { chopT = 0; chopRec = rec; } // looking away restarts
+    if (!rec) { chopWhy = ''; hint.ring(-1); renderHint(''); return null; }
+    showGhost(rec, removeColor);
+    chopWhy = pieceWhy(rec);
     if (chopWhy) { chopT = 0; hint.ring(-1); renderHint(chopWhy); return null; } // blocked: say why, no fill
     chopT += Math.min(Math.max(dt, 0), .25); // real frame time: a slow frame rate must not make the hold longer
     hint.ring(chopT / CHOP_S); renderHint('');
     if (chopT < CHOP_S) return null;
-    const a = hit === 'piece' ? {kind:'unpiece', t:rec.t, i:rec.i, j:rec.j, l:rec.l, r:rec.r, tool:'axe'} : {kind:'untile', x:tileOut.x, z:tileOut.z, tool:'axe'};
+    const a = {kind:'unpiece', t:rec.t, i:rec.i, j:rec.j, l:rec.l, r:rec.r, tool:'axe'};
     chopHeld = false; chopT = 0; hint.ring(-1); renderHint(''); // one piece per hold, like a hammer release
     return a;
   }
@@ -205,6 +211,7 @@ export function createBuilding(T, scene) {
     const p = removeTarget, ex = removeExtra, tile = tileHit; removing = false; removeExtra = null; tileHit = false; renderHint(''); // [undecor]
     if (p) return {kind:'unpiece', t:p.t, i:p.i, j:p.j, l:p.l, r:p.r};
     if (ex) { if (!ex.action) ex.deny?.(); return ex.action ?? null; } // [undecor] e.g. an old host: say why on release, send nothing
+    if (tile && capFn && !capFn('untile')) { oldHostFn?.(); return null; } // a new guest on an old host: say so, send nothing
     return tile ? {kind:'untile', x:tileOut.x, z:tileOut.z} : null;
   }
 
@@ -229,9 +236,9 @@ export function createBuilding(T, scene) {
     return {ok:true, text:def.name + ' built'};
   }
   // Host-authoritative foundation removal ({kind:'untile', x, z, tool?}). The caller rebuilds the raft on ok.
-  function applyTile(a, bag, world) {
+  function applyTile(a, bag, world, opts) {
     sync(world);
-    const r = removeFoundation(grid, a, bag, world, Bag);
+    const r = removeFoundation(grid, a, bag, world, Bag, opts);
     if (r.ok) sync(world); // tiles changed (pieces never depend on a removable tile)
     return r;
   }
@@ -292,6 +299,9 @@ export function createBuilding(T, scene) {
     target, prompt, promptOf, interact, toggle, climb:(...a) => grid.climb(...a),
     setRemoveExtra(fn) { removeExtraFn = typeof fn === 'function' ? fn : null; }, get removeExtra() { return removeExtra; }, // [undecor]
     setPlaceCheck(fn) { placeCheckFn = typeof fn === 'function' ? fn : null; }, // free placement
+    setTileCheck(fn) { tileCheckFn = typeof fn === 'function' ? fn : null; }, // (x, z) -> why a tile can't go beyond world (grill, a player) or ''
+    setDecorDist(fn) { decorDistFn = typeof fn === 'function' ? fn : null; }, // (o, d) -> distance to the nearest placed item along the ray
+    setCaps(fn, deny) { capFn = typeof fn === 'function' ? fn : null; oldHostFn = typeof deny === 'function' ? deny : null; }, // guest: does the host know 'untile'?
     get removing() { return removing; }, get chopping() { return chopHeld; }, get chopProgress() { return chopT / CHOP_S; }, get piece() { return piece(); }, get rotation() { return rot; },
     preStep:(phys, deckY, c) => grid.preStep(phys, deckY, c), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

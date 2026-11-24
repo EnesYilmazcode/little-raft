@@ -13,6 +13,7 @@ import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84a
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PlayerPhysics, PLAYER_CONSTANTS, RaftRide } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
+import { tileOccupiedWhy, REMOVE_TEXT } from './build-remove.js?build=v3-survival-ae77fa84ac2b'; // building-pieces lane hook: tile removal checks beyond world
 import { floorBlock, decorBlock, pieceBlock, pieceCell, inReach, BUILD_REACH, PIECE_REACH, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createContent, cleanExt, promptParts } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
@@ -511,6 +512,7 @@ export function mount(transfer = null) {
     building = createBuilding(T, scene); // building-pieces lane hook
     building.setRemoveExtra(decorRemoveTarget); // [undecor] X on decor when no piece is aimed
     building.setPlaceCheck?.(p => { const why = pieceDecorWhy(p); return why ? BLOCK_TEXT[why] : ''; }); // free placement: the piece ghost turns red over a placed item
+    building.setTileCheck(tileBlockWhy); building.setDecorDist(decorDist); building.setCaps(hostHas, denyOldBuild); // removal: grill / player on a tile, axe vs decor, old hosts
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
@@ -1025,6 +1027,20 @@ export function mount(transfer = null) {
   // [undecor] hammer + hold X with no piece aimed: the decor under the crosshair (building.setRemoveExtra). Runs only
   // while X is held; reuses one hit array, one result object, and one chip text/action per target tile.
   const denyOldHost = () => notice(UNDECOR_TEXT.oldHost);
+  // Removal glue for building.js: a grill or a player on a foundation tile (one reused options object), the nearest
+  // placed item along the axe ray, and whether a guest's host knows a removal action (old hosts send no such cap).
+  const tileOpts = {hasGrill:(x, z) => !!fc?.hasGrill(x, z), bodies:[null, null], deckY:0};
+  const tileOptsNow = () => { tileOpts.bodies[0] = physics; tileOpts.bodies[1] = other; tileOpts.deckY = deckY(); return tileOpts; };
+  const tileBlockWhy = (x, z) => tileOccupiedWhy(x, z, tileOptsNow());
+  function decorDist(origin, dir) {
+    if (!decorGroups.length) return Infinity;
+    ray.set(origin, dir); const far = ray.far; ray.far = BUILD_REACH + 2; undecorHits.length = 0;
+    ray.intersectObjects(decorGroups, true, undecorHits); ray.far = far;
+    const t = undecorHits.length ? undecorHits[0].distance : Infinity; undecorHits.length = 0; return t;
+  }
+  const hostHas = cap => role !== 'guest' || !!hostCaps?.[cap];
+  const denyOldBuild = () => notice(REMOVE_TEXT.oldHost);
+  const axeLive = () => (localBag().slots[localBag().selectedIndex]?.durability ?? 0) > 0; // a worn axe never dismantles (islands.js chop rule)
   function decorRemoveTarget(origin, dir) {
     let d = null;
     if (undecorPreview) { const i = undecorIndex(world.decor, undecorPreview.x, undecorPreview.z); d = i >= 0 ? world.decor[i] : null; }
@@ -1376,7 +1392,7 @@ export function mount(transfer = null) {
       if (!isInt(a.x) || !isInt(a.z)) return;
       const who = actor === 'guest' ? other : physics;
       if (who && !inReach(who.x, who.z, a.x, a.z, PIECE_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
-      const r = building.applyTile(a, bag, world);
+      const r = building.applyTile(a, bag, world, tileOptsNow()); // a grill or a player on the tile refuses it
       if (r.ok) { rebuildRaft(); fitShadow(); emit({kind:'build', text:r.text}, 'all'); } else if (r.text) emit({kind:'notice', text:r.text}, actor);
       return;
     }
@@ -1515,7 +1531,7 @@ export function mount(transfer = null) {
     if (instruments?.use(kind)) { swing = .7; return; } // [instruments]
     if (kind === 'paddle' && paddle?.use()) return; // [paddle] stroke at the raft edge
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' ? spearRep?.useHammer() : kind === 'armor' && spearRep?.useArmor()) return; // [spear-repair] thrust / repair a damaged tile; [armor] fit armor
-    if (kind === 'axe' && building?.chopStart(aim, camera?.position, deckY())) { swing = 1; return; } // building-pieces lane hook: hold click on a piece / foundation
+    if (kind === 'axe' && hostHas('axeRemove') && axeLive() && building?.chopStart(aim, camera?.position, deckY())) { swing = 1; return; } // building-pieces lane hook: hold click on a piece / foundation
     if (content?.use(aim, kind)) { swing = 1; return; } // content hook, before eating: [crops] plant / water a crop plot slot; paint brush
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
@@ -1860,7 +1876,7 @@ export function mount(transfer = null) {
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
     if (undecorPreview && kind === 'hammer' && !building?.removing) building?.key('KeyX', true, true); // [undecor] QA preview holds X
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
-    const chopA = building?.chop(running && kind === 'axe' && !uiBlocked(), frameAim, camera.position, deckY(), dt); if (chopA) { swing = 1; action(chopA); } // building-pieces lane hook: axe hold-click dismantle
+    const chopA = building?.chop(running && kind === 'axe' && !uiBlocked() && hostHas('axeRemove') && axeLive(), frameAim, camera.position, deckY(), dt); if (chopA) { swing = 1; action(chopA); } // building-pieces lane hook: axe hold-click dismantle
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
     const undecorEx = building?.removing ? building.removeExtra : null; // [undecor] red see-through ghost of the aimed decor
     if (undecorEx?.d) { const d = undecorEx.d; hover = null; ghostHold = null; ghosts.show(d.type, d.x * 2, .22, d.z * 2, d.rot || 0, false, elapsed); return; }
@@ -1871,7 +1887,7 @@ export function mount(transfer = null) {
     if (!hover || ghostHold) { ghosts.hide(); return; }
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
   }
-  const HOST_CAPS = Object.freeze({undecor:1, free:1}); // free: decor may sit anywhere (fractional tile units); old guests ignore it // [undecor] top-level host capabilities (cleanWorld would strip them inside world); add new flags here
+  const HOST_CAPS = Object.freeze({undecor:1, free:1, untile:1, axeRemove:1}); // untile: hammer X on a foundation tile; axeRemove: axe hold-click on a piece // free: decor may sit anywhere (fractional tile units); old guests ignore it // [undecor] top-level host capabilities (cleanWorld would strip them inside world); add new flags here
   function hostState() {
     const c = guestBag.counts();
     return {type:'state', v:3, ack:guestAck, caps:HOST_CAPS, bag:guestBag.snapshot(), other:pose(), held:[...ownHeldTokens()],

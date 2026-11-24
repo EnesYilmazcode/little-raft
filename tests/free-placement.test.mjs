@@ -113,7 +113,7 @@ test('co-op: an exact placement goes guest -> host -> guest unchanged', () => {
   assert.deepEqual(guest, host.decor.map(d => d.rot ? d : {type:d.type, x:d.x, z:d.z}));
   assert.ok(!Number.isInteger(guest[1].x), 'an exact, off-centre spot');
   // Hosts advertise it; a guest of an old host keeps the old one-per-tile grid that host still accepts.
-  assert.match(gameSrc, /HOST_CAPS = Object\.freeze\(\{undecor:1, free:1\}\)/);
+  assert.match(gameSrc, /HOST_CAPS = Object\.freeze\(\{undecor:1, free:1[,}]/);
   assert.match(gameSrc, /const freePlacement = \(\) => role !== 'guest' \|\| !!hostCaps\?\.free;/);
 });
 
