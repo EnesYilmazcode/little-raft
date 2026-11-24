@@ -1,17 +1,17 @@
-/* Little Raft interaction prompts (prompts.js): crosshair-side key prompt + bottom-left event feed. */
+/* Little Raft interaction prompts (prompts.js): Raft-style key cap + verb just under the crosshair, white with a shadow,
+   no panel; plus the legacy bottom-left event feed. */
 #contextPrompt{display:none!important}
-#lrPrompt,#lrFeed{position:fixed;z-index:30;pointer-events:none;color:#f6ecd6;font:600 14px/1.25 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);
+#lrPrompt,#lrFeed{position:fixed;z-index:30;pointer-events:none;color:#fff;font:600 14px/1.25 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);
   text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);text-align:left;user-select:none}
-#lrPrompt{left:calc(50% + 34px);top:calc(50% + 26px);opacity:0;transform:translateY(2px);transition:opacity .18s ease,transform .18s ease;white-space:nowrap}
-#lrPrompt.lr-on{opacity:1;transform:none;transition-duration:.12s}
+#lrPrompt{left:50%;top:calc(50% + 22px);display:flex;flex-direction:column;align-items:center;opacity:0;transform:translate(-50%,2px);transition:opacity .18s ease,transform .18s ease;white-space:nowrap;text-align:center}
+#lrPrompt.lr-on{opacity:1;transform:translate(-50%,0);transition-duration:.12s}
 #lrPrompt .lr-row{display:flex;align-items:center;gap:6px;min-height:20px}
 #lrPrompt .lr-row+.lr-row{margin-top:3px}
 #lrPrompt .lr-rq{display:inline-flex;align-items:center;gap:2px;margin-right:8px;font-weight:800;font-variant-numeric:tabular-nums}#lrPrompt .lr-rq:last-child{margin-right:0}
 #lrPrompt .lr-rq.lr-rq-short{color:#ff9f86}#lrPrompt .lr-rq .sv-icon{width:20px;height:20px;filter:drop-shadow(0 1px 1px #000a)}
-#lrPrompt .lr-muted{font-weight:500;font-size:13px;color:rgba(246,236,214,.92);padding:1px 8px;margin-left:-8px;border-radius:999px;
-  background:rgba(20,16,10,.42);text-shadow:0 1px 2px rgba(0,0,0,.9);box-shadow:0 1px 3px rgba(0,0,0,.25)} /* soft dark pill: readable on bright planks */
+#lrPrompt .lr-muted{font-weight:500;font-size:13px;color:rgba(255,255,255,.88)} /* status line: same shadowed text, no pill (Raft draws no panel) */
 #lrPrompt .lr-key{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;box-sizing:border-box;border-radius:5px;
-  border:1px solid rgba(246,236,214,.75);border-bottom-width:2px;background:rgba(20,16,10,.28);font:700 11px/1 var(--ui-font,system-ui,sans-serif);text-shadow:none;
+  border:1px solid rgba(255,255,255,.85);border-bottom-width:2px;background:rgba(0,0,0,.3);font:700 11px/1 var(--ui-font,system-ui,sans-serif);text-shadow:none;
   box-shadow:0 1px 3px rgba(0,0,0,.35)}
 #lrPrompt .lr-hold{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-variant:small-caps;opacity:.85}
 #lrPrompt .lr-glyph{display:inline-flex;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.7))}
@@ -20,8 +20,8 @@
 #lrFeed .lr-line{animation:lrIn .16s ease-out;transition:opacity .4s ease,transform .4s ease;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 #lrFeed .lr-line.lr-out{opacity:0;transform:translateX(-6px)}
 @keyframes lrIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-/* Narrow windows: a long prompt wraps before it reaches the Notes column (right:16px, 248px wide) instead of running under it. */
-@media(max-width:1100px){#lrPrompt{white-space:normal;max-width:max(150px,calc(50vw - 300px))}#lrPrompt .lr-key,#lrPrompt .lr-glyph,#lrPrompt .lr-hold{flex:0 0 auto}}
+/* Narrow windows: a long prompt wraps under the crosshair instead of running towards the screen edges. */
+@media(max-width:1100px){#lrPrompt{white-space:normal;max-width:min(360px,70vw)}#lrPrompt .lr-key,#lrPrompt .lr-glyph,#lrPrompt .lr-hold{flex:0 0 auto}}
 @media(max-width:760px){#lrFeed{left:16px;bottom:336px;font-size:13px}#lrPrompt{font-size:13px}}
-@media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on,#lrFeed .lr-line{transition:none;animation:none;transform:none}}
+@media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on{transition:none;transform:translateX(-50%)}#lrFeed .lr-line{transition:none;animation:none;transform:none}}
 /* The resume hint sits at the top edge (graphics.css); the throw charge is a thin ring on the reticle (graphics.css). */
