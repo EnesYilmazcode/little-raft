@@ -4,7 +4,13 @@ import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_TEXT, anchorTip, anchorVisible, catalogueRecipes, tipFacts, reqChips, itemGlyph } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
 import { ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
-const STYLE_ID = 'item-tooltips-style';
+// Each installed instance owns its own <style> (class STYLE_CLASS, data-owner = its tip id) and removes only
+// that one on dispose. A live engine swap mounts the new instance before the old one is disposed, so a
+// shared, id-keyed sheet was deleted out from under the new card (the bag then flickered every frame).
+const STYLE_CLASS = 'item-tooltips-style';
+// Layout-critical rules as inline style on the card itself: even with no stylesheet at all it never
+// joins the layout of the dialog it is appended to.
+const TIP_INLINE = 'position:fixed;left:0;top:0;z-index:2147483000;pointer-events:none;margin:0';
 const BAG_EVENT = 'littleraft:bagchange'; // survival-ui.js BAG_EVENT (not imported: keeps this module DOM-light)
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const CATS = { material: 'Material', refined: 'Refined', tool: 'Tool', station: 'Station', build: 'Building', food: 'Food', decor: 'Decor' };
@@ -31,7 +37,6 @@ const CSS = `
 .it-tip .it-facts em{font-style:normal;font-weight:700;color:#ffcf9a}
 .it-tip .it-facts .it-rq{color:#fff2cc}
 .it-tip .it-lock{margin-top:6px;padding:4px 6px;border-radius:3px;background:#5a2a1a99;color:#ffcf9a;font:600 12px/1.3 ${FONT}}
-#inventory .sv-tip{display:none!important}
 @media(prefers-reduced-motion:reduce){.it-tip{transition:none}}
 `;
 
@@ -44,12 +49,13 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   const doc = root.ownerDocument || root;
   const ac = new AbortController();
   const on = (t, ev, fn, o) => t.addEventListener(ev, fn, { signal: ac.signal, ...o });
-  if (!doc.getElementById(STYLE_ID)) {
-    const st = doc.createElement('style'); st.id = STYLE_ID; st.textContent = CSS; doc.head.append(st);
-  }
   const tip = doc.createElement('div');
   tip.className = 'it-tip'; tip.id = 'it-tip-' + Math.random().toString(36).slice(2, 8);
   tip.setAttribute('role', 'tooltip'); tip.hidden = true;
+  tip.style.cssText = TIP_INLINE;
+  const sheet = doc.createElement('style');
+  sheet.className = STYLE_CLASS; sheet.dataset.owner = tip.id; sheet.textContent = CSS;
+  doc.head.append(sheet);
   let cur = null, px = 0, py = 0, prevDesc = null;
 
   const call = fn => { try { return fn?.() ?? null; } catch (e) { console.error(e); return null; } };
@@ -124,16 +130,20 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
 
   // Anchored beside the hovered element (craft-book anchorTip: right, else left, below, above), so it
   // never trails the pointer over the craft button or drifts to the middle of the screen.
-  // Crafting rows sit beside their whole column (recipe list / detail pane) and slide off the Craft
+  // Crafting rows and ingredients sit beside the whole crafting panel (never over the list or the open recipe) and slide off the Craft
   // button. A hidden or detached anchor (tab switch, repaint) hides the card instead of pinning it top-left.
+  const zoomOf = () => { const z = Number(tip.currentCSSZoom); return z > 0 && Number.isFinite(z) ? z : 1; };
   function place() {
     if (tip.hidden || !cur) return;
-    const col = cur.el.closest?.('#inventory .sv-rcol, #inventory .sv-detail');
+    const col = cur.el.closest?.('#inventory .sv-craft');
     const btn = col && doc.querySelector('#inventory .sv-detail:not([hidden]) .sv-craftbtn');
-    const p = cur.el.isConnected && anchorTip(cur.el.getBoundingClientRect(), tip.offsetWidth, tip.offsetHeight, innerWidth, innerHeight, 8, 6,
+    // Rects are in viewport px; inside a zoomed dialog (graphics.css --ui-scale) the card's own size and its
+    // translate are in zoomed px, so the size is measured as drawn and the offset divided by the zoom.
+    const z = zoomOf();
+    const p = cur.el.isConnected && anchorTip(cur.el.getBoundingClientRect(), tip.offsetWidth * z, tip.offsetHeight * z, innerWidth, innerHeight, 8, 6,
       col ? { beside: col.getBoundingClientRect(), avoid: btn?.getBoundingClientRect() } : null);
     if (!p) { hide(); return; }
-    tip.style.transform = `translate(${Math.round(p.x)}px,${Math.round(p.y)}px)`;
+    tip.style.transform = `translate(${Math.round(p.x / z)}px,${Math.round(p.y / z)}px)`;
     tip.dataset.side = p.side;
   }
 
@@ -180,7 +190,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   function refresh() { if (cur && anchorVisible(cur.el)) show(cur.el, px, py); else if (cur) hide(); }
   return {
     refresh,
-    dispose() { hide(); ac.abort(); tip.remove(); if (!doc.querySelector('.it-tip')) doc.getElementById(STYLE_ID)?.remove(); },
+    dispose() { hide(); ac.abort(); tip.remove(); sheet.remove(); }, // only this instance's own sheet
   };
 }
 
