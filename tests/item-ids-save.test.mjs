@@ -14,7 +14,7 @@ const { cleanDecor } = await import(new URL('placement.js', base));
 const SR = await import(new URL('storage-research.js', base));
 const DB = await import(new URL('drop-box-core.js', base));
 const DP = await import(new URL('decor-pickup.js', base));
-const { HELD } = await import(new URL('coop.js', base));
+const { HELD, LEGACY_HELD, heldIndex } = await import(new URL('coop.js', base));
 
 const NEW_IDS = ['metalaxe', 'machete', 'headlamp']; // added for Raft parity (docs/loop/raft-item-parity.md)
 // items pass 2: materials, titanium tier and cooking pot meals
@@ -109,11 +109,35 @@ test('co-op: a guest that does not know a kind never crashes', () => {
   const stock = Bag.fromCounts({ rope: 2, titaniumhook: 1, headlamp: 1, metalaxe: 1 }, { tools: ['hook', 'titaniumhook'] });
   assert.ok(stock.count('rope') === 2 && stock.count('headlamp') === 1 && stock.count('metalaxe') === 1);
   assert.equal(stock.count('titaniumhook'), 0);
-  // Held kinds travel as an index into HELD; the new tools travel as their role (axe, spear), unknown ones as null.
+  // Held kinds travel as an index into HELD. To an older peer the new tools travel as their role (axe, spear);
+  // a peer whose hello says it knows them gets the real kind; unknown kinds travel as nothing.
   assert.equal(I.toolRole('metalaxe'), 'axe'); assert.equal(I.toolRole('machete'), 'spear');
   assert.ok(HELD.includes('axe') && HELD.includes('spear'));
   assert.equal(HELD[999] ?? null, null);
-  assert.equal(Math.max(0, HELD.indexOf('headlamp')), 0, 'unknown held kind is sent as nothing');
+  assert.equal(heldIndex('headlamp', HELD.length), 0, 'unknown held kind is sent as nothing');
+  assert.equal(heldIndex(null, HELD.length), 0);
+});
+
+test('co-op: new held kinds reach new peers as themselves and old peers as their role', () => {
+  // HELD is append only: the first LEGACY_HELD entries are what older builds decode.
+  const OLD = [null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate',
+    'drum', 'pipes', 'bells', 'spade', 'finder', 'spear', 'metalspear', 'glidehandle', 'spyglass', 'paddle', 'axe'];
+  assert.equal(LEGACY_HELD, OLD.length);
+  assert.deepEqual(HELD.slice(0, LEGACY_HELD), OLD);
+  for (const k of ['metalaxe', 'titaniumaxe', 'machete', 'titaniumsword']) {
+    const i = HELD.indexOf(k);
+    assert.ok(i >= LEGACY_HELD, k);
+    assert.equal(heldIndex(k, HELD.length), i, `${k} to a new peer`);
+    const old = heldIndex(k); // no hello `held` field: an older peer
+    assert.ok(old > 0 && old < LEGACY_HELD, `${k} to an old peer`);
+    assert.equal(HELD[old], I.toolRole(k));
+    assert.equal(OLD[old] ?? null, I.toolRole(k), 'what the old peer decodes');
+  }
+  assert.equal(HELD[heldIndex('metalhook')], 'hook');
+  // an older peer decoding a newer index (should one arrive) gets nothing, never a throw
+  assert.equal(OLD[HELD.length + 5] ?? null, null);
+  for (const k of OLD) assert.equal(heldIndex(k), Math.max(0, OLD.indexOf(k)), `${k} unchanged on the wire`);
+  for (const bad of [undefined, 1.5, 'x', {}, -1, 0]) assert.equal(heldIndex('metalaxe', bad), HELD.indexOf('axe'));
 });
 
 test('crafting tabs: every recipe and catalogue recipe has one of Raft’s 8 tabs', () => {
@@ -182,7 +206,7 @@ test('items pass 2: every new id loads, saves and round-trips; every source and 
   assert.ok(TR.POOL.some((d) => d.get.titaniumore === 1));
   let dug = 0; for (let s = 0; s < 400 && !dug; s++) for (const [k] of TS.lootForSpot(s, 0, 'bundle')) if (k === 'titaniumore') dug++;
   assert.ok(dug > 0, 'buried bundles can hold titanium ore');
-  // ids are not alias keys; in co-op the titanium tools travel as their role, so older guests see an axe or a spear
+  // ids are not alias keys; in co-op the titanium tools travel as their role to older peers, so they see an axe or a spear
   for (const id of NEW_IDS_2) assert.ok(!Object.hasOwn(I.LEGACY_ALIASES, id), id);
-  assert.ok(HELD.includes(I.toolRole('titaniumaxe')) && HELD.includes(I.toolRole('titaniumsword')));
+  assert.equal(HELD[heldIndex('titaniumaxe')], 'axe'); assert.equal(HELD[heldIndex('titaniumsword')], 'spear');
 });

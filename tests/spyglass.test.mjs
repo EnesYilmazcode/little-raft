@@ -124,7 +124,7 @@ test('catalogue: spyglass item, icon, craft-book text, hold, co-op HELD index 22
   const { HELD } = await import(new URL('coop.js', base));
   assert.equal(HELD.indexOf('spyglass'), 22);
   assert.equal(HELD[21], 'glidehandle'); // after [zipline] glidehandle 21; [paddle] 23 and [axe] 24 follow
-  assert.equal(HELD.length, 25);
+  assert.ok(HELD.length >= 25); assert.equal(HELD[24], 'axe'); // append only: later kinds ([items] 25+) follow
 });
 
 test('held model: 2 meshes, grip at origin, ~0.34 m along +Y, under 900 triangles', () => {

@@ -8,7 +8,8 @@
 //   reconnect() (new Peer + connect to the same room, keep world/bag on screen), giveUp() (old behaviour: back to own raft)
 //
 // Wire protocol (only once the other side said `hello`; older clients keep the legacy messages untouched):
-//   {type:'coop', k:'hello', v, id, name, look} capability + identity (id lets the host accept a rejoin); look = dist/look.js
+//   {type:'coop', k:'hello', v, id, name, look, held} capability + identity (id lets the host accept a rejoin); look = dist/look.js;
+//                                              held = how many HELD kinds the sender decodes (absent: LEGACY_HELD)
 //   {type:'coop', k:'look', look}              the sender changed their Look mid-session (debounced by look-ui.js)
 //   {type:'coop', k:'ping', p:[x,y,z]}         'look here' marker (middle click)
 //   {type:'coop', k:'emote', e:'wave'|'point'}
@@ -23,10 +24,22 @@ import { createRemoteAvatar } from './coop-avatar.js?build=v3-survival-ae77fa84a
 import { createPings, createRemoteRope, createRemoteGhost } from './coop-fx.js?build=v3-survival-ae77fa84ac2b';
 import { createFeed } from './coop-feed.js?build=v3-survival-ae77fa84ac2b';
 import { loadLook, cleanLook, createLookGate, PARTNER_DEFAULT } from './look.js?build=v3-survival-ae77fa84ac2b';
+import { toolRole } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 export const COOP_VERSION = 1;
 export const HELD = Object.freeze([null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate',
-  'drum', 'pipes', 'bells', 'spade', 'finder', 'spear', 'metalspear', 'glidehandle', 'spyglass', 'paddle', 'axe']); // append only: index is the wire format ([instruments] 14-16, [treasure] 17-18, [spear-repair] 19-20, [zipline] 21, [spyglass] 22, [paddle] 23, [axe] 24)
+  'drum', 'pipes', 'bells', 'spade', 'finder', 'spear', 'metalspear', 'glidehandle', 'spyglass', 'paddle', 'axe', // append only: index is the wire format ([instruments] 14-16, [treasure] 17-18, [spear-repair] 19-20, [zipline] 21, [spyglass] 22, [paddle] 23, [axe] 24)
+  'metalaxe', 'titaniumaxe', 'machete', 'titaniumsword']); // [items] 25-28: sent only to peers whose hello says they know them
+// Peers older than the hello `held` field know the first 25 kinds. An older peer decodes a later index as nothing
+// (HELD[i] ?? null), so a kind it may not know is sent as its tool role (metal axe -> axe), or nothing.
+export const LEGACY_HELD = 25;
+/** Wire index of a held kind for a peer that knows the first `known` HELD entries (0 = nothing). */
+export function heldIndex(kind, known = LEGACY_HELD) {
+  const n = Number.isInteger(known) && known > 0 ? Math.min(known, HELD.length) : LEGACY_HELD;
+  let i = HELD.indexOf(kind ?? null);
+  if (i < 0 || i >= n) i = typeof kind === 'string' ? HELD.indexOf(toolRole(kind)) : -1;
+  return i > 0 && i < n ? i : 0;
+}
 const STAGES = ['flying', 'floating', 'reeling', 'done', 'fishing'];
 // Pose flags: 1 swimming | 2 grounded | 4 reeling | 8 riding a glide line [zipline] | 16 seated [sit]. Old peers ignore unknown bits.
 export const poseFlags = l => (l.swimming ? 1 : 0) | (l.grounded ? 2 : 0) | (l.reeling ? 4 : 0) | (l.riding ? 8 : 0) | (l.seated ? 16 : 0);
@@ -124,12 +137,12 @@ export function createCoop(ctx, saved = null) {
   }
   function onEvent(m) {
     if (m.k === 'hello') {
-      peer = {v:m.v, id:String(m.id ?? '')};
+      peer = {v:m.v, id:String(m.id ?? ''), held:Number.isInteger(m.held) ? m.held : LEGACY_HELD};
       const name = String(m.name ?? 'Brother').slice(0, 16) || 'Brother';
       if (avatar && name !== peerName) avatar.setName(name);
       peerName = name; ensureAvatar();
       applyPeerLook(m.look);
-      if (!m.re) event('hello', {v:COOP_VERSION, id:coopId, name:readName(), look:readLook(), re:1}); // answer every non-reply (a hot-swapped hub starts over)
+      if (!m.re) event('hello', {v:COOP_VERSION, id:coopId, name:readName(), look:readLook(), held:HELD.length, re:1}); // answer every non-reply (a hot-swapped hub starts over)
     } else if (m.k === 'look') { if (m.look && typeof m.look === 'object') applyPeerLook(m.look); }
     else if (m.k === 'kf') enc.forceKeyframe(m.kk);
     else if (m.k === 'ping' && Array.isArray(m.p) && m.p.every(Number.isFinite)) {
@@ -152,9 +165,9 @@ export function createCoop(ctx, saved = null) {
   // ---------- our pose stream ----------
   function snapshot(l) {
     const hook = l.hook ? [Math.max(0, STAGES.indexOf(l.hook.stage)), r2(l.hook.x), r2(l.hook.y), r2(l.hook.z)] : 0;
-    const g = l.ghost ? [l.ghost.x, l.ghost.z, Math.max(0, HELD.indexOf(l.ghost.kind)), l.ghost.ok ? 1 : 0] : 0;
+    const g = l.ghost ? [l.ghost.x, l.ghost.z, heldIndex(l.ghost.kind, peer?.held), l.ghost.ok ? 1 : 0] : 0;
     return {type:'cp', p:[r2(l.x), r2(l.y), r2(l.z), r3(l.yaw), r2(l.pitch)], f:poseFlags(l), /* [zipline] bit 8 = riding */
-      h:Math.max(0, HELD.indexOf(l.held ?? null)), c:Math.round((l.charge || 0) * 100), k:hook, g};
+      h:heldIndex(l.held, peer?.held), c:Math.round((l.charge || 0) * 100), k:hook, g};
   }
   function sendPose(t) {
     if (t - lastSend < SEND_MS) return; // cheap gate before building the snapshot
@@ -242,7 +255,7 @@ export function createCoop(ctx, saved = null) {
     if (errors > 20) return;
     try {
       const t = now(); track();
-      if (conn?.open && !peer && t - helloAt > 1000) { helloAt = t; event('hello', {v:COOP_VERSION, id:coopId, name:readName(), look:readLook()}); }
+      if (conn?.open && !peer && t - helloAt > 1000) { helloAt = t; event('hello', {v:COOP_VERSION, id:coopId, name:readName(), look:readLook(), held:HELD.length}); }
       if (peer && conn?.open) sendPose(t);
       const role = ctx.role();
       if (role === 'guest' && ctx.ready()) aboard = true; else if (role === 'solo') aboard = false;
