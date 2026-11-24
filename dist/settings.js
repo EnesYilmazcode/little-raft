@@ -19,7 +19,8 @@ const PRESETS = { low: { renderScale: 0.7, shadows: false }, medium: { renderSca
 const SPEC = {
   sensitivity: { tab: 'controls', label: 'Mouse sensitivity', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1, fmt: (v) => v.toFixed(2) + 'x' },
   invertY: { tab: 'controls', label: 'Invert look Y', type: 'toggle', def: false },
-  fov: { tab: 'controls', label: 'Field of view', type: 'range', min: 60, max: 100, step: 1, def: 75, fmt: (v) => Math.round(v) + '°' },
+  // 60 deg vertical (about 91 horizontal at 16:9) frames like Raft and matches the hands' own 60 deg projection (hands.js).
+  fov: { tab: 'controls', label: 'Field of view', type: 'range', min: 50, max: 100, step: 1, def: 60, fmt: (v) => Math.round(v) + '°' },
   cameraMotion: { tab: 'controls', label: 'Camera sway', type: 'range', min: 0, max: 1, step: 0.05, def: 0.35, fmt: pct },
   graphics: { tab: 'graphics', label: 'Quality preset', type: 'select', options: ['low', 'medium', 'high'], def: 'medium' },
   renderScale: { tab: 'graphics', label: 'Render scale', type: 'range', min: 0.5, max: 1, step: 0.05, def: PRESETS.medium.renderScale, fmt: pct }, // matches the default 'medium' preset
@@ -49,15 +50,24 @@ export function validateSettings(raw) {
   return out;
 }
 
+// Saves always held every key (createSettings saves on start), so a stored fov of 75 from before FOV_REV is
+// almost always the old default, not a choice: move it to the new default once. Any other value is kept.
+const FOV_REV = 2, OLD_FOV_DEFAULT = 75;
+export function migrateSettings(raw) {
+  if (!raw || typeof raw !== 'object' || raw.fovRev >= FOV_REV) return raw;
+  const { fov, ...rest } = raw;
+  return Number(fov) === OLD_FOV_DEFAULT ? rest : raw;
+}
+
 function load() {
   try {
     const text = window.localStorage.getItem(STORAGE_KEY);
-    return validateSettings(text ? JSON.parse(text) : null);
+    return validateSettings(migrateSettings(text ? JSON.parse(text) : null));
   } catch { return validateSettings(null); }
 }
 
 function save(values) {
-  try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(values)); } catch { /* storage unavailable: keep in memory */ }
+  try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...values, fovRev: FOV_REV })); } catch { /* storage unavailable: keep in memory */ }
 }
 
 const same = (a, b) => KEYS.every((k) => a[k] === b[k]);

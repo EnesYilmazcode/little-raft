@@ -533,7 +533,8 @@ export function createHands(T, { modelFactory = null } = {}) {
     const down = st.down = st.shown === null ? 1 : st.lowering ? st.dip * st.dip : 1 - easeOutBack(st.raise);
     root.visible = st.shown !== null || st.target !== null;
     // Own fixed 60 degree projection: undo the world camera's FOV in camera-space x/y (depth untouched), so
-    // the FOV setting never resizes the hands and they frame the same on every setting.
+    // the FOV setting never resizes the hands and they frame the same on every setting. At the default 60 the
+    // scale is 1, so hands and world share one projection with no stretch.
     if (Number.isFinite(params.fov) && params.fov > 0) { const s = Math.tan(params.fov * DEG / 2) / VM_TAN; root.scale.set(s, s, 1); }
     const isHook = isHookKind(st.shown), hasHookOut = st.hookOut = isHook && !!params.hasHookOut;
     const leftRope = hasHookOut && st.reelW > 0.35;              // both fists on the line while reeling
