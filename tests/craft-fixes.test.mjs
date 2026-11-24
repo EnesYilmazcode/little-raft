@@ -72,7 +72,7 @@ test('CRAFT-6: an open bag rebuilds its recipes when gates change', () => {
   const render = s.slice(s.indexOf('function render('), s.indexOf('function canOpenNow('));
   assert.match(render, /if \(isOpen && !dragging && syncGates\(performance\.now\(\)\)\) \{ force = true; lastSig = null; \}/, 'checked before the fast path');
   assert.ok(render.indexOf('syncGates(') < render.indexOf('shadowSame(bag.slots, false)'), 'not skipped by the unchanged-bag fast path');
-  assert.match(s, /buildRecipes\(\);\n\s*gateSig = gateSignature\(\);/, 'open() records the gates it built with');
+  assert.match(s, /buildRecipes\(\);\r?\n\s*gateSig = gateSignature\(\);/, 'open() records the gates it built with');
 });
 
 // ---- item-tooltips.js with a minimal fake DOM ----
