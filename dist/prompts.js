@@ -1,4 +1,4 @@
-// Little Raft interaction prompts: a small key prompt just bottom-right of the crosshair (#lrPrompt)
+// Little Raft interaction prompts: a small key cap + verb just under the crosshair (#lrPrompt)
 // plus a bottom-left event feed (#lrFeed) that takes over game.js's centred #contextPrompt notices.
 // API (window.raftPrompts): register({id, object?, test?, range, priority, prompt}) -> unregister,
 //   provide({id, priority, prompt}) -> unregister, current(), refresh(), feed(text).
@@ -11,7 +11,7 @@ const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
 const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
 const DECOR_NAMES = {sail:'sail', palm:'palm planter', lantern:'lantern', net:'net', bench:'bench', crate:'crate'};
 const FLOOR_COST = {wood:2, plastic:2};
-const SLOT_X = 34, SLOT_Y = 26; // prompt offset from the aim point (keep in sync with #lrPrompt in prompts.css)
+const SLOT_X = 0, SLOT_Y = 22; // prompt offset from the aim point: centred just under it (keep in sync with #lrPrompt in prompts.css)
 const STORE_KEY = 'little-raft-prompts-v1';
 export const THROW_TEACH = 5; // tool prompts teach, then get out of the way (Raft-style)
 const CLIMB_REACH = 1.25; // player-physics: tile-edge distance - BODY_RADIUS(.25) <= CLAMBER_REACH(.8); a little slack while swimming in
@@ -98,6 +98,14 @@ export function contextPromptOf(el) {
   const label = formatFeed(text.startsWith(raw) ? text.slice(raw.length) : text.replace(raw, ''));
   if (!label) return null;
   return {key:/^(click|lmb)$/i.test(raw) ? 'LMB' : /^(rmb|right click)$/i.test(raw) ? 'RMB' : raw, label};
+}
+// Coaching lines with no key ("Aim at the raft edge", "Waiting for a bite") are tutorial text in the middle of the
+// screen; Raft shows nothing there, the ghost tint / bobber already says it. They stay in current() data for
+// callers, but only key rows, cost chips and station status lines are drawn under the crosshair.
+export const COACH_RE = /^(Aim at|Swim to the raft edge|Waiting for a bite)/i;
+export function screenRows(list) {
+  const out = (list || []).filter(p => !(p.muted && !p.key && !p.cost && COACH_RE.test(p.label)));
+  return out.length ? out : null;
 }
 export const hasKey = p => !!normalizePrompt(p)?.some(x => x.key);
 // Built-in, state-derived prompts (replicates + extends game.js updateContext). opt.throws hides the hook's Throw tip once learned.
@@ -244,9 +252,9 @@ function createPrompts(win, doc) {
         for (const p of [cpKey && cp, spKey && sp, !cpKey && cp, !spKey && sp]) if (p) cands.push({prompts:p, priority:0, ray:false});
         list = pickPrompt(cands);
       }
-      shown = list; const s = signature(list);
-      if (s !== sig) { sig = s; if (list) render(list); }
-      const vis = !!list; if (vis !== visible) { visible = vis; promptEl.classList.toggle('lr-on', vis); }
+      shown = list; const rows = screenRows(list), s = signature(rows);
+      if (s !== sig) { sig = s; if (rows) render(rows); }
+      const vis = !!rows; if (vis !== visible) { visible = vis; promptEl.classList.toggle('lr-on', vis); }
     });
   }
   const add = (map, o, extra) => {
