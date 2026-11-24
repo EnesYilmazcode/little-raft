@@ -1,4 +1,4 @@
-// Little Raft diving HUD: oxygen pill (bottom-centre, just above the hotbar) and a
+// Little Raft diving HUD: oxygen bar (bottom-left, a fourth row on top of the vitals bars) and a
 // hold-to-gather progress ring around the crosshair. Self-contained: injects
 // <style id="divingStyle"> (shared, refcounted) + DOM (classes prefixed 'dive', no ids, so
 // several live instances never collide; each dispose removes only its own). update() only touches the DOM
@@ -7,22 +7,21 @@
 const CIRC = 2 * Math.PI * 19; // gather ring circumference (r = 19)
 
 const CSS = `
-.diveO2{position:fixed;left:50%;bottom:130px;transform:translateX(-50%);z-index:3;pointer-events:none;
-  display:flex;flex-direction:column;align-items:center;gap:4px;opacity:0;transition:opacity .5s ease 1s;
-  font:600 11px/1.2 var(--ui-font,'Segoe UI',system-ui,sans-serif);color:#fff3cf}
+.diveO2{position:fixed;left:16px;bottom:126px;z-index:3;pointer-events:none;
+  display:flex;flex-direction:column-reverse;align-items:flex-start;gap:4px;opacity:0;transition:opacity .5s ease 1s;
+  font:600 11px/1.2 var(--ui-font,'Segoe UI',system-ui,sans-serif);color:#fff}
 .diveO2.on{opacity:1;transition-delay:0s}
-.diveO2Pill{display:flex;align-items:center;gap:7px;width:220px;height:20px;padding:0 9px 0 5px;border-radius:12px;
-  background:rgba(9,20,30,.72);box-shadow:0 0 0 1px rgba(201,164,107,.45),0 4px 14px rgba(0,0,0,.35)}
-.diveO2Pill svg{width:16px;height:16px;flex:none}
-.diveO2Track{flex:1;height:7px;border-radius:5px;background:rgba(0,0,0,.5);overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.6)}
-.diveO2Fill{height:100%;width:100%;border-radius:5px;transform-origin:left center;
-  background:linear-gradient(180deg,#7ff0e6,#2fc1c4 55%,#096b82);transition:transform .15s linear,background .4s}
-.diveO2.low .diveO2Fill{background:linear-gradient(180deg,#ff9a8a,#e5493a 55%,#9c1f1a)}
-.diveO2.low .diveO2Pill{animation:divePulse 1.6s ease-in-out infinite}
+.diveO2Pill{display:grid;grid-template-columns:20px 1fr;align-items:center;gap:8px;width:clamp(190px,13vw,250px)} /* a fourth vitals row (vitals-ui.js) */
+.diveO2Pill svg{width:20px;height:20px;flex:none;filter:drop-shadow(0 1px 1.5px #000b)}
+.diveO2Track{height:8px;border-radius:2px;background:rgba(0,0,0,.5);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22),0 1px 3px rgba(0,0,0,.3)}
+.diveO2Fill{height:100%;width:100%;transform-origin:left center;
+  background:#6fd3e8;transition:transform .15s linear,background .4s}
+.diveO2.low .diveO2Fill{background:#e5493a}
+.diveO2.low .diveO2Track{animation:divePulse 1.6s ease-in-out infinite}
 .diveO2Cap{height:14px;text-shadow:0 1px 2px rgba(0,0,0,.8);letter-spacing:.4px;visibility:hidden}
 .diveO2.rising .diveO2Cap{visibility:visible;color:#ffb3a8}
-@keyframes divePulse{0%,100%{box-shadow:0 0 0 1px rgba(201,164,107,.45),0 4px 14px rgba(0,0,0,.35)}
-  50%{box-shadow:0 0 0 1px #ff6b5a,0 0 14px rgba(255,80,60,.6)}}
+@keyframes divePulse{0%,100%{box-shadow:inset 0 0 0 1px rgba(255,255,255,.22),0 1px 3px rgba(0,0,0,.3)}
+  50%{box-shadow:inset 0 0 0 1px #ff6b5a,0 0 8px rgba(255,80,60,.7)}}
 .diveRing{position:fixed;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;z-index:3;pointer-events:none;display:none}
 .diveRing.on,.diveRingLabel.on{display:block}
 .diveRing circle{fill:none;stroke-width:3.5}
@@ -34,9 +33,10 @@ const CSS = `
 .diveRingLabel{position:fixed;left:calc(50% + 34px);top:calc(50% + 52px);transform:none;z-index:3;pointer-events:none;display:none;
   color:#fff3cf;white-space:nowrap;text-align:left;text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);
   font:600 13px/1.25 var(--ui-font,'Segoe UI',system-ui,sans-serif)} /* side prompt column (prompts.css), never a centred panel */
-@media(max-width:760px){.diveO2{bottom:110px}.diveO2Pill{width:180px}}
-@media(prefers-reduced-motion:reduce){.diveO2,.diveO2Fill{transition:none}.diveO2.low .diveO2Pill{animation:none;
-  box-shadow:0 0 0 2px #ff6b5a,0 4px 14px rgba(0,0,0,.35)}}
+@media(max-width:1100px){.diveO2{bottom:178px}}
+@media(max-width:760px){.diveO2{bottom:172px}.diveO2Pill{width:140px;grid-template-columns:15px 1fr;gap:5px}.diveO2Pill svg{width:15px;height:15px}.diveO2Track{height:6px}}
+@media(prefers-reduced-motion:reduce){.diveO2,.diveO2Fill{transition:none}.diveO2.low .diveO2Track{animation:none;
+  box-shadow:inset 0 0 0 1px #ff6b5a}}
 `;
 
 // Original bubble icon: one big bubble with a highlight and two small companions.
