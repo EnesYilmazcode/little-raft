@@ -1,9 +1,10 @@
 // Diving gear: pure logic (no imports, no DOM). docs/specs/diving-gear.md
 // Gear works while it is in your bag; each kind counts once. Effects are multipliers on DiveMods
 // ({swim, oxy, fog, gather}, neutral 1) and always multiply, so they stack with other contributors.
-export const GEAR_IDS = Object.freeze(['fins', 'airjug', 'goggles', 'scraper']); // bit i = GEAR_IDS[i]
+export const GEAR_IDS = Object.freeze(['fins', 'airjug', 'goggles', 'scraper', 'headlamp']); // bit i = GEAR_IDS[i]; append only
 export const GEAR = Object.freeze({ fins: Object.freeze({ swim: 1.3 }), airjug: Object.freeze({ oxy: 75 / 45 }),
-  goggles: Object.freeze({ fog: 46 / 30 }), scraper: Object.freeze({ gather: 0.6 }) });
+  goggles: Object.freeze({ fog: 46 / 30 }), scraper: Object.freeze({ gather: 0.6 }),
+  headlamp: Object.freeze({ fog: 1.25 }) }); // headlamp: a lamp beam lifts the murk a little; stacks with goggles
 const FIELDS = Object.freeze(['swim', 'oxy', 'fog', 'gather']);
 const ALL = (1 << GEAR_IDS.length) - 1;
 

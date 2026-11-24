@@ -667,6 +667,19 @@
     <path d="M10 22 C11 20 13 19 15 19 M30 22 C31 20 33 19 35 19" fill="none" stroke="#e8fbf7" stroke-width="2" stroke-linecap="round"/>
   </symbol>
 
+  <symbol id="icon-headlamp" viewBox="0 0 48 48">
+    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <ellipse cx="24" cy="30" rx="18" ry="10" fill="none" stroke-width="5.5"/>
+      <ellipse cx="24" cy="30" rx="18" ry="10" fill="none" stroke="#54a6a4" stroke-width="2.6"/>
+      <path d="M9 33 C14 38 34 38 39 33" fill="none" stroke="#2f8f8f" stroke-width="1.4"/>
+      <rect x="14" y="26" width="20" height="15" rx="4" fill="#4a5a6a"/>
+      <circle cx="24" cy="33.5" r="5.5" fill="#ffd27a"/>
+      <circle cx="24" cy="33.5" r="2.6" fill="#fff6dc" stroke-width="1.2"/>
+    </g>
+    <path d="M17 28.5 H22" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".5"/>
+    <g stroke="#ffbd66" stroke-width="1.8" stroke-linecap="round"><path d="M24 22 V15"/><path d="M17 23 L13 17"/><path d="M31 23 L35 17"/></g>
+  </symbol>
+
   <symbol id="icon-scraper" viewBox="0 0 48 48">
     <path d="M27 21 L41 7 C43 6 44 8 43 9.5 L29 23.5 Z" fill="#bb8650" stroke="#153e49" stroke-width="2" stroke-linejoin="round"/>
     <path d="M6 34 L20 18 L32 30 L16 43 C12 44 7 40 6 34 Z" fill="#9aa6ad" stroke="#153e49" stroke-width="2" stroke-linejoin="round"/>

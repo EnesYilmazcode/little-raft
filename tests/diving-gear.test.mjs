@@ -14,7 +14,7 @@ const SR = await import(new URL('storage-research.js', base));
 const { DIVE, DiveBody, stepOxygen } = await import(new URL('diving.js', base));
 const { createContent } = await import(new URL('content.js', base));
 
-const IDS = ['fins', 'airjug', 'goggles', 'scraper'];
+const IDS = ['fins', 'airjug', 'goggles', 'scraper', 'headlamp'];
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
 const only = id => k => (k === id ? 1 : 0);
 const modsOf = count => G.applyGear(G.gearMask(count), G.blankMods());
@@ -32,13 +32,14 @@ test('no gear: mask 0 and neutral mods; bad counts give 0', () => {
   for (const bad of [NaN, -1, 1.5, 'x', null]) assert.deepEqual(G.applyGear(bad, m), { swim: 1, oxy: 1, fog: 1, gather: 1 });
 });
 
-test('each item sets only its own field; all four set all four', () => {
+test('each item sets only its own field; all of them set all four', () => {
   assert.deepEqual(modsOf(only('fins')), { swim: 1.3, oxy: 1, fog: 1, gather: 1 });
   assert.deepEqual(modsOf(only('airjug')), { swim: 1, oxy: 75 / 45, fog: 1, gather: 1 });
   assert.deepEqual(modsOf(only('goggles')), { swim: 1, oxy: 1, fog: 46 / 30, gather: 1 });
   assert.deepEqual(modsOf(only('scraper')), { swim: 1, oxy: 1, fog: 1, gather: 0.6 });
-  assert.deepEqual(modsOf(() => 1), { swim: 1.3, oxy: 75 / 45, fog: 46 / 30, gather: 0.6 });
-  assert.equal(G.gearMask(() => 1), 0b1111);
+  assert.deepEqual(modsOf(only('headlamp')), { swim: 1, oxy: 1, fog: 1.25, gather: 1 });
+  assert.deepEqual(modsOf(() => 1), { swim: 1.3, oxy: 75 / 45, fog: 46 / 30 * 1.25, gather: 0.6 });
+  assert.equal(G.gearMask(() => 1), 0b11111);
 });
 
 test('a stack of 5 equals 1; applyGear returns its argument and is repeatable', () => {
@@ -63,7 +64,7 @@ test('maskIds reuses and clears the passed array', () => {
   assert.equal(r, list);
   assert.deepEqual(list, ['fins', 'goggles']);
   assert.deepEqual(G.maskIds(0, list), []);
-  assert.deepEqual(G.maskIds(0b1111, []), IDS);
+  assert.deepEqual(G.maskIds(0b11111, []), IDS);
 });
 
 test('data: items, recipes, not decor, not progression ids', () => {
@@ -127,10 +128,10 @@ test('module: reads the local bag and contributes through the registry', async (
   const gear = c.debug.divegear;
   assert.deepEqual(gear.worn(), ['fins', 'goggles']);
   assert.deepEqual(c.diveMods({}), { swim: 1.3, oxy: 1, fog: 46 / 30, gather: 1 });
-  assert.equal(gear.give(), 4);
+  assert.equal(gear.give(), 5);
   c.update(0.016);
-  assert.equal(gear.mask(), 0b1111);
-  assert.deepEqual(gear.mods(), { swim: 1.3, oxy: 75 / 45, fog: 46 / 30, gather: 0.6 });
+  assert.equal(gear.mask(), 0b11111);
+  assert.deepEqual(gear.mods(), { swim: 1.3, oxy: 75 / 45, fog: 46 / 30 * 1.25, gather: 0.6 });
   const guest = createContent({ role: 'guest', localBag: () => null }, [createDivingGear]);
   guest.update(0.016);
   assert.equal(guest.debug.divegear.give(), 0);

@@ -8,7 +8,7 @@ const SPRITE_URL = (() => {
   try { const u = new URL('icons.svg', import.meta.url); u.search = '?build=' + encodeURIComponent(BUILD); return u.href; }
   catch { return 'icons.svg'; }
 })();
-const NAMES = Object.freeze({ fins: 'Puff-Feather Fins', airjug: 'Breath Jug', goggles: 'Seaglass Goggles', scraper: 'Tide Scraper' });
+const NAMES = Object.freeze({ fins: 'Puff-Feather Fins', airjug: 'Breath Jug', goggles: 'Seaglass Goggles', scraper: 'Tide Scraper', headlamp: 'Headlamp' });
 const GOGGLES_BIT = 1 << GEAR_IDS.indexOf('goggles');
 const CSS = `.dgGear{position:fixed;left:50%;bottom:172px;transform:translateX(-50%);z-index:3;pointer-events:none;display:flex;gap:5px;opacity:0;transition:opacity .4s}
 .dgGear.on{opacity:1}
