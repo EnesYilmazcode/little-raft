@@ -30,10 +30,16 @@ const CSS = `
   filter:drop-shadow(0 0 2px rgba(9,107,130,.9))}
 .diveRing.flash{display:block}
 .diveRing.flash circle{stroke:#bff3ea;stroke-dashoffset:0}
-.diveRingLabel{position:fixed;left:calc(50% + 34px);top:calc(50% + 52px);transform:none;z-index:3;pointer-events:none;display:none;
-  color:#fff3cf;white-space:nowrap;text-align:left;text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);
-  font:600 13px/1.25 var(--ui-font,'Segoe UI',system-ui,sans-serif)} /* side prompt column (prompts.css), never a centred panel */
+.diveRingLabel{position:fixed;left:50%;top:calc(50% + 34px);transform:translateX(-50%);z-index:3;pointer-events:none;display:none;
+  color:#fff3cf;white-space:nowrap;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);
+  font:600 13px/1.25 var(--ui-font,'Segoe UI',system-ui,sans-serif)} /* centred under the ring, like the #lrPrompt rows (prompts.css) */
 @media(max-width:1100px){.diveO2{bottom:178px}}
+/* While the oxygen row shows, the bottom-left feeds above the vitals lift by its height (html.dive-o2, set in update()). */
+html.dive-o2 #coopFeed{bottom:172px}
+html.dive-o2 #pickupFeed{bottom:calc(218px + var(--coop-feed-h, 0px))}
+@media(max-width:1100px){html.dive-o2 #coopFeed{bottom:224px}html.dive-o2 #pickupFeed{bottom:calc(232px + var(--coop-feed-h, 0px))}}
+@media(max-width:1000px){html.dive-o2 #pickupFeed[popover]{inset:auto auto calc(226px + var(--coop-feed-h, 0px)) 10px}}
+@media(max-width:760px){html.dive-o2 #coopFeed{bottom:212px}}
 @media(max-width:760px){.diveO2{bottom:172px}.diveO2Pill{width:140px;grid-template-columns:15px 1fr;gap:5px}.diveO2Pill svg{width:15px;height:15px}.diveO2Track{height:6px}}
 @media(prefers-reduced-motion:reduce){.diveO2,.diveO2Fill{transition:none}.diveO2.low .diveO2Track{animation:none;
   box-shadow:inset 0 0 0 1px #ff6b5a}}
@@ -83,7 +89,7 @@ export function createDivingUI(doc = document) {
     const ok = r && r.width > 0;
     const x = ok ? `${r.left + r.width / 2}px` : '50%', y = ok ? `${r.top + r.height / 2}px` : '50%';
     ring.style.left = x; ring.style.top = y;
-    label.style.left = `calc(${x} + 34px)`; label.style.top = `calc(${y} + 52px)`; // prompt column, under #lrPrompt
+    label.style.left = x; label.style.top = `calc(${y} + 34px)`; // centred just under the ring (translateX(-50%) in the CSS)
   }
   const onResize = () => { if (last.label) place(); };
   win?.addEventListener('resize', onResize);
@@ -100,6 +106,7 @@ export function createDivingUI(doc = document) {
       pill.setAttribute('aria-valuenow', String(o));
     }
     flag(o2, 'on', 'show', !!underwater || o < 100);
+    if (last.lift !== last.show) { last.lift = last.show; doc.documentElement?.classList.toggle('dive-o2', last.show); } // feeds clear the oxygen row
     flag(o2, 'low', 'low', !!(lowOxygen ?? o < 25));
     flag(o2, 'rising', 'rising', !!rising);
 
@@ -129,6 +136,7 @@ export function createDivingUI(doc = document) {
     clearTimeout(flashTimer);
     win?.removeEventListener('resize', onResize);
     for (const el of [o2, ring, label]) el.remove();
+    if (last.lift) doc.documentElement?.classList.remove('dive-o2');
     if (--st.refs <= 0) { st.el.remove(); styles.delete(doc); }
   }
 

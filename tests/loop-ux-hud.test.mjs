@@ -104,18 +104,32 @@ function fakeDoc() {
 }
 
 // ---------------------------------------------------------------- E2 no centred panels in play
-test('E2 dive gather label sits in the crosshair-side prompt column, not centred under it', async () => {
+test('E2 dive gather label is centred just under the crosshair ring, like the prompt rows (no panel)', async () => {
   const { createDivingUI } = await import(new URL('diving-ui.js', base));
   const doc = fakeDoc(), cross = doc.createElement('div'); cross.id = 'crosshair'; cross.rect = {left:630, top:350, width:20, height:20}; doc.body.appendChild(cross);
   const ui = createDivingUI(doc);
   ui.update({underwater:true, gatherLabel:'Hold E · Kelp', gather01:0.3});
   const label = doc.body.children.find(e => e.className === 'diveRingLabel');
   assert.equal(label.textContent, 'Hold E · Kelp');
-  assert.equal(label.style.left, 'calc(640px + 34px)');
-  assert.equal(label.style.top, 'calc(360px + 52px)');
+  assert.equal(label.style.left, '640px');
+  assert.equal(label.style.top, 'calc(360px + 34px)');
   const css = doc.getElementById('divingStyle').textContent, rule = /\.diveRingLabel\{[^}]*\}/.exec(css)[0];
-  assert.match(rule, /transform:none/); assert.doesNotMatch(rule, /background|translateX\(-50%\)/);
+  assert.match(rule, /translateX\(-50%\)/); assert.match(rule, /text-align:center/); assert.doesNotMatch(rule, /background/);
   ui.dispose();
+});
+
+test('oxygen row lifts the bottom-left feeds while it shows (html.dive-o2), and only on change', async () => {
+  const { createDivingUI } = await import(new URL('diving-ui.js', base));
+  const doc = fakeDoc(); doc.documentElement = new El('html', doc);
+  let writes = 0; const tog = doc.documentElement.classList.toggle; doc.documentElement.classList.toggle = (...a) => (writes++, tog(...a));
+  const ui = createDivingUI(doc);
+  ui.update({underwater:false, oxygen01:1}); assert.equal(doc.documentElement.classList.contains('dive-o2'), false);
+  ui.update({underwater:true, oxygen01:.9}); ui.update({underwater:true, oxygen01:.8}); assert.equal(doc.documentElement.classList.contains('dive-o2'), true);
+  assert.equal(writes, 2, 'one write per show / hide change');
+  const css = doc.getElementById('divingStyle').textContent;
+  assert.match(css, /html\.dive-o2 #pickupFeed\{bottom:calc\(218px/); assert.match(css, /html\.dive-o2 #pickupFeed\[popover\]\{inset:auto auto calc\(226px/);
+  assert.match(css, /html\.dive-o2 #coopFeed\{bottom:172px\}/);
+  ui.dispose(); assert.equal(doc.documentElement.classList.contains('dive-o2'), false);
 });
 
 test('E2 binoculars readout and reel HUD join the prompt column (no centred boxes)', () => {
