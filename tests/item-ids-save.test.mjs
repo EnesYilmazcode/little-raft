@@ -17,7 +17,10 @@ const DP = await import(new URL('decor-pickup.js', base));
 const { HELD } = await import(new URL('coop.js', base));
 
 const NEW_IDS = ['metalaxe', 'machete', 'headlamp']; // added for Raft parity (docs/loop/raft-item-parity.md)
-const FUTURE = ['titaniumaxe', 'vinegoo', 'circuitboard', 'wetbrick']; // ids a newer build might send
+// items pass 2: materials, titanium tier and cooking pot meals
+const NEW_IDS_2 = ['titaniumore', 'titaniumingot', 'vinegoo', 'circuitboard', 'titaniumaxe', 'titaniumsword', 'meal_gardensoup', 'meal_hotpot', 'meal_sharkroast'];
+const ALL_NEW = [...NEW_IDS, ...NEW_IDS_2];
+const FUTURE = ['titaniumhook', 'emptybottle', 'canteen', 'wetbrick']; // ids a newer build might send
 const JUNK = [42, null, undefined, '', '__proto__', 'constructor', 'toString', { kind: 'wood' }, ['wood']];
 
 // The way game.js snapBag loads a bag: migrate, then Bag, then salvage.
@@ -26,7 +29,7 @@ const slotsOf = (list) => { const s = new Array(SLOT_COUNT).fill(null); list.for
 const kinds = (bag) => bag.slots.filter(Boolean).map((s) => s.kind);
 
 test('new ids are real bag kinds, do not shadow aliases, and old saves simply lack them', () => {
-  for (const id of NEW_IDS) {
+  for (const id of ALL_NEW) {
     assert.ok(ITEM_INFO[id], id);
     assert.ok(!Object.hasOwn(I.LEGACY_ALIASES, id), `${id} is not an alias key`);
     assert.ok(!Object.values(I.LEGACY_ALIASES).includes(id) || I.isItem(id), `${id} alias target is an item`);
@@ -55,23 +58,23 @@ test('bag snapshots: new, legacy, renamed, future and junk ids load without a cr
   // round trip
   assert.deepEqual(kinds(load(bag.snapshot())), got);
   // a wrong-length snapshot (an older or foreign build) still loads
-  const short = load({ slots: [{ kind: 'machete', count: 1 }, { kind: 'titaniumaxe', count: 1 }], selected: 0 });
+  const short = load({ slots: [{ kind: 'machete', count: 1 }, { kind: 'titaniumhook', count: 1 }], selected: 0 });
   assert.deepEqual(kinds(short), ['machete']);
   for (const bad of [null, 'x', 5, [], { slots: 'no' }]) assert.doesNotThrow(() => load(bad), String(bad));
 });
 
 test('progression: unknown ids are dropped, new ids keep their research', () => {
   const p = new Progression({
-    discovered: ['wood', 'metalaxe', 'titaniumaxe', 'plank', 42, null],
-    researched: ['metalingot', 'axe', 'metalspear', 'vinegoo', '__proto__'],
-    learned: ['machete', 'circuitboard', 'constructor'],
+    discovered: ['wood', 'metalaxe', 'titaniumhook', 'plank', 42, null],
+    researched: ['metalingot', 'axe', 'metalspear', 'emptybottle', '__proto__'],
+    learned: ['machete', 'canteen', 'constructor'],
     stations: ['grill', 'electricsmelter'],
   });
   const s = p.snapshot();
   assert.deepEqual(s.discovered, ['metalaxe', 'wood']);
   assert.deepEqual(s.researched, ['axe', 'metalingot', 'metalspear']);
   assert.ok(s.learned.includes('machete') && s.learned.includes('metalaxe'), 'research unlocks the new tools');
-  assert.ok(!s.learned.includes('circuitboard') && !s.learned.includes('constructor'));
+  assert.ok(!s.learned.includes('canteen') && !s.learned.includes('constructor'));
   assert.deepEqual(s.stations, ['grill']);
   for (const bad of [null, 'x', [], { discovered: 'wood' }]) assert.doesNotThrow(() => new Progression(bad));
 });
@@ -85,27 +88,27 @@ test('placed decor: unknown types drop without touching the rest', () => {
 });
 
 test('world.ext slices: chests, drop boxes and pickup loot keep known kinds and drop the rest', () => {
-  const chest = [{ kind: 'machete', count: 1, durability: 30 }, { kind: 'headlamp', count: 1 }, { kind: 'titaniumaxe', count: 2 }, { kind: 'plank', count: 3 }, { kind: '__proto__', count: 1 }, 'x'];
-  const st = SR.cleanSlice({ chests: { '1,0': chest }, seen: ['metalaxe', 'vinegoo'], learned: ['headlamp', 'circuitboard'] });
+  const chest = [{ kind: 'machete', count: 1, durability: 30 }, { kind: 'headlamp', count: 1 }, { kind: 'titaniumhook', count: 2 }, { kind: 'plank', count: 3 }, { kind: '__proto__', count: 1 }, 'x'];
+  const st = SR.cleanSlice({ chests: { '1,0': chest }, seen: ['metalaxe', 'emptybottle'], learned: ['headlamp', 'canteen'] });
   const c = st.chests['1,0'];
   assert.equal(c[0].kind, 'machete'); assert.equal(c[0].durability, 30);
   assert.equal(c[1].kind, 'headlamp');
   assert.deepEqual(c.slice(2).filter(Boolean), [], 'unknown kinds in a chest are dropped (no alias step there)');
   assert.ok(Array.isArray(st.seen) && Array.isArray(st.learned));
-  const drops = DB.cleanSlice({ n: 3, boxes: [{ id: 1, x: 0, z: 0, items: [{ kind: 'metalaxe', count: 1, durability: 50 }, { kind: 'vinegoo', count: 2 }] }, { id: 2, x: 1, z: 1, items: [{ kind: 'wetbrick', count: 1 }] }] });
+  const drops = DB.cleanSlice({ n: 3, boxes: [{ id: 1, x: 0, z: 0, items: [{ kind: 'metalaxe', count: 1, durability: 50 }, { kind: 'emptybottle', count: 2 }] }, { id: 2, x: 1, z: 1, items: [{ kind: 'wetbrick', count: 1 }] }] });
   assert.equal(drops.boxes.length, 1);
   assert.deepEqual(drops.boxes[0].items.map((s) => s.kind), ['metalaxe']);
-  assert.deepEqual(DP.normLoot([['headlamp', 1], ['titaniumaxe', 1], ['machete', 1], [null, 1], 'x']), [['headlamp', 1], ['machete', 1]]);
+  assert.deepEqual(DP.normLoot([['headlamp', 1], ['titaniumhook', 1], ['machete', 1], [null, 1], 'x']), [['headlamp', 1], ['machete', 1]]);
 });
 
 test('co-op: a guest that does not know a kind never crashes', () => {
   // Host snapshots go through the same load path; a kind this build lacks is dropped, the rest of the bag stays.
-  const fromNewerHost = load({ slots: slotsOf([{ kind: 'titaniumaxe', count: 1, durability: 90 }, { kind: 'rope', count: 4 }, { kind: 'machete', count: 1 }]), selected: 2 });
+  const fromNewerHost = load({ slots: slotsOf([{ kind: 'titaniumhook', count: 1, durability: 90 }, { kind: 'rope', count: 4 }, { kind: 'machete', count: 1 }]), selected: 2 });
   assert.deepEqual(kinds(fromNewerHost), ['rope', 'machete']);
   // Counts-style stock (old hosts) ignores unknown kinds.
-  const stock = Bag.fromCounts({ rope: 2, titaniumaxe: 1, headlamp: 1, metalaxe: 1 }, { tools: ['hook', 'titaniumaxe'] });
+  const stock = Bag.fromCounts({ rope: 2, titaniumhook: 1, headlamp: 1, metalaxe: 1 }, { tools: ['hook', 'titaniumhook'] });
   assert.ok(stock.count('rope') === 2 && stock.count('headlamp') === 1 && stock.count('metalaxe') === 1);
-  assert.equal(stock.count('titaniumaxe'), 0);
+  assert.equal(stock.count('titaniumhook'), 0);
   // Held kinds travel as an index into HELD; the new tools travel as their role (axe, spear), unknown ones as null.
   assert.equal(I.toolRole('metalaxe'), 'axe'); assert.equal(I.toolRole('machete'), 'spear');
   assert.ok(HELD.includes('axe') && HELD.includes('spear'));
@@ -135,4 +138,51 @@ test('new items: hand recipes, unlocks and text are in place', () => {
   assert.ok(I.repairCost('metalaxe') && I.repairCost('machete'));
   for (const id of NEW_IDS) assert.ok(I.ITEM_TEXT_EXTRA[id]?.desc && I.ITEM_TEXT_EXTRA[id]?.use, id);
   assert.equal(I.LEGACY_ALIASES.metal_axe, 'metalaxe');
+});
+
+test('items pass 2: every new id loads, saves and round-trips; every source and text row is in place', async () => {
+  const P = await import(new URL('cookpot-core.js', base));
+  const TR = await import(new URL('trader-core.js', base));
+  const TS = await import(new URL('treasure-rules.js', base));
+  const { ITEM_ICONS } = await import(new URL('item-svg.js', base));
+  // a bag with one of each new kind survives a save and load unchanged, tools keep their durability
+  const raw = NEW_IDS_2.map((kind) => ({ kind, count: 1, ...(I.ITEMS[kind]?.tool ? { durability: 55 } : {}) }));
+  const bag = load({ slots: slotsOf(raw), selected: 0 });
+  assert.deepEqual(kinds(bag), NEW_IDS_2);
+  assert.deepEqual(kinds(load(JSON.parse(JSON.stringify(bag.snapshot())))), NEW_IDS_2);
+  assert.equal(bag.slots[NEW_IDS_2.indexOf('titaniumaxe')].durability, 55);
+  // progression keeps research on the new kinds; chests and drop boxes keep them
+  const p = new Progression({ discovered: ['titaniumore'], researched: ['titaniumingot', 'metalaxe', 'machete', 'copperingot', 'vinegoo'], learned: [], stations: [] });
+  for (const id of ['titaniumaxe', 'titaniumsword', 'circuitboard']) assert.ok(p.snapshot().learned.includes(id), `${id} learned`);
+  const st = SR.cleanSlice({ chests: { '1,0': [{ kind: 'titaniumsword', count: 1, durability: 20 }, { kind: 'meal_hotpot', count: 3 }] } });
+  assert.deepEqual(st.chests['1,0'].filter(Boolean).map((s) => s.kind), ['titaniumsword', 'meal_hotpot']);
+  // each kind: text, an icon or sprite, a tab (crafted and station-made kinds), and a source hint unless hand crafted
+  for (const id of NEW_IDS_2) {
+    assert.ok(I.ITEM_TEXT_EXTRA[id]?.desc && I.ITEM_TEXT_EXTRA[id]?.use, `${id} text`);
+    assert.ok(ITEM_ICONS[id] || ITEM_INFO[id].icon === 'icon-meal', `${id} icon`);
+    if (id !== 'titaniumore') assert.ok(I.CRAFT_TABS.includes(I.craftTabOf(id)), `${id} tab`);
+    const r = I.ITEMS[id]?.recipe;
+    if (!r || r.station) assert.ok(I.ITEM_SOURCE_EXTRA[id]?.tag && I.ITEM_SOURCE_EXTRA[id]?.how, `${id} source`);
+  }
+  // recipes and stations
+  assert.equal(I.stationRecipeFor('smelter', 'titaniumore')?.id, 'titaniumingot');
+  assert.equal(I.stationRecipeFor('smelter', 'seaweed')?.id, 'vinegoo');
+  assert.ok(I.fuelValue('seaweed') > 0, 'seaweed is still a fuel');
+  assert.deepEqual({ ...RECIPES.circuitboard.cost }, { copperingot: 2, plastic: 5, vinegoo: 1 });
+  assert.equal(I.toolRole('titaniumaxe'), 'axe'); assert.equal(I.toolRole('titaniumsword'), 'spear');
+  assert.ok(I.wearPerUse('titaniumaxe') < I.wearPerUse('metalaxe'));
+  assert.ok(I.SPEAR_DAMAGE.titaniumsword > I.SPEAR_DAMAGE.machete);
+  assert.ok(I.repairCost('titaniumaxe') && I.repairCost('titaniumsword'));
+  assert.equal(P.match(['potato', 'freshcup', 'beet']), 'meal_gardensoup');
+  assert.equal(P.match(['fish', 'potato', 'beet']), 'meal_hotpot');
+  assert.equal(P.match(['sharkmeat', 'beet', 'potato']), 'meal_sharkroast');
+  for (const m of ['meal_gardensoup', 'meal_hotpot', 'meal_sharkroast']) assert.equal(P.MEALS[m].name, ITEM_INFO[m].name, m);
+  // titanium ore sources: barrels, buried bundles and traders
+  assert.ok(I.BARREL_LOOT.some((e) => e.kind === 'titaniumore' && e.pool === 'treasure'));
+  assert.ok(TR.POOL.some((d) => d.get.titaniumore === 1));
+  let dug = 0; for (let s = 0; s < 400 && !dug; s++) for (const [k] of TS.lootForSpot(s, 0, 'bundle')) if (k === 'titaniumore') dug++;
+  assert.ok(dug > 0, 'buried bundles can hold titanium ore');
+  // ids are not alias keys; in co-op the titanium tools travel as their role, so older guests see an axe or a spear
+  for (const id of NEW_IDS_2) assert.ok(!Object.hasOwn(I.LEGACY_ALIASES, id), id);
+  assert.ok(HELD.includes(I.toolRole('titaniumaxe')) && HELD.includes(I.toolRole('titaniumsword')));
 });
