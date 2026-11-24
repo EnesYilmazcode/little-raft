@@ -156,14 +156,17 @@ test('hold to craft: a click makes exactly one; repeats start after ~800 ms, the
 test('layout: vertical category column, tall recipe list with a scroll cue, detail beside it, steady height', () => {
   const ui = src('survival-ui.js');
   assert.match(ui, /class="sv-tabs" role="tablist" aria-label="Recipe categories" aria-orientation="vertical"/);
-  assert.match(ui, /#inventory \.sv-tabs\{align-self:stretch;display:flex;flex-direction:column;/);
+  assert.match(ui, /#inventory \.sv-tabs\{align-self:start;display:flex;flex-direction:column;/);
   assert.match(ui, /e\.code === 'ArrowDown' \|\| e\.code === 'ArrowRight'/, 'up/down (and left/right) move between categories');
   assert.match(ui, /<div class="sv-rcol"><div class="sv-rlist" role="tabpanel"><\/div><\/div>/);
   assert.match(ui, /#inventory \.sv-rcol\.sv-more::after\{opacity:1\}/, 'bottom fade while more rows are below');
-  assert.match(ui, /#inventory \.sv-craft\{flex:none;width:var\(--cw\);height:min\(100%,780px\);/, 'fixed-height crafting column: tabs never resize the panel');
+  assert.match(ui, /#inventory \.sv-craft\{position:relative;flex:none;align-self:flex-start;width:var\(--pw\);height:auto;/, 'the crafting panel is as tall as its content: no empty block under it');
+  assert.match(ui, /#inventory \.sv-rcol\{align-self:start;[^}]*max-height:var\(--ch\);/, 'the list is as tall as its rows, up to the screen, then scrolls');
   const order = ['class="sv-craft"', 'class="sv-tabs"', 'class="sv-rcol"', 'class="sv-detail"', 'class="sv-side"', 'class="sv-bag"', 'class="sv-equip"', 'class="sv-hotrow"'].map(k => ui.indexOf(k));
   assert.ok(order.every((v, i) => v > 0 && (i === 0 || v > order[i - 1])), 'Raft: [tabs | list | detail] on the left, then the backpack, equipment and hotbar');
-  assert.match(ui, /grid-template-columns:var\(--tw\) var\(--lw\) var\(--dw\)/, 'the detail pane has its own column: it never covers the bag');
+  assert.match(ui, /grid-template-columns:var\(--tw\) var\(--lw\);/, 'tabs and list only: the recipe card is not a grid column');
+  assert.match(ui, /#inventory \.sv-detail\{position:absolute;left:calc\(100% \+ 8px\);top:-2px;width:var\(--dw\);max-height:var\(--dh\);/, 'the recipe is a content-height card beside the list');
+  assert.match(ui, /--dh:max\(150px,calc\(100cqh - 2 \* var\(--e\) - var\(--bh\) - 12px\)\)/, 'the card ends above the backpack');
   assert.match(ui, /<span class="sv-dlabel">Requires<\/span>/);
 });
 

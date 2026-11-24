@@ -2,17 +2,18 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, haveNeedLine, stackLabel, holdDelay, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, reqChips, reqAmount, setItemGlyph, craftButtonView, anchorVisible, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, haveNeedLine, stackLabel, holdDelay, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, reqChips, reqAmount, setItemGlyph, craftButtonView, anchorVisible, craftTip, equipView, equipTarget, gridTarget, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { GEAR_IDS } from './diving-gear-core.js?build=v3-survival-ae77fa84ac2b'; // the wearables: they work while carried, one of each kind
 
-const VERSION = 'sv7';
+const VERSION = 'sv8';
 const HB = Number(HOTBAR_SIZE) || 8;
 const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
 const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
 const EQUIP = 5; // Raft's 5 generic equipment slots
+const GEAR = new Set(GEAR_IDS || []);
 const INST_KEY = '__littleRaftSurvivalUI';
 /** Fired on document whenever the local bag's contents or selection change (item-tooltips.js listens). */
 export const BAG_EVENT = 'littleraft:bagchange';
@@ -248,20 +249,23 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
   width:auto;height:auto;min-width:0;max-width:none;max-height:none;overflow:hidden;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv[open]{display:block}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
-/* Raft layout: crafting on the left edge [category icons | recipe list | recipe detail]; the backpack to its
-   right, centred on the screen when there is room, on the bottom edge with the hotbar as its last row.
-   The right side of the screen stays clear. All sizes come from the dialog size (cqw), so this is pure CSS. */
-#inventory .sv-wrap{--e:14px;--g:5px;--tw:50px;--lw:236px;--dw:256px;--cw:calc(var(--tw) + var(--lw) + var(--dw) + 36px);
-  --s:clamp(36px,calc((100cqw - var(--cw) - 3 * var(--e) - 26px - ${HB - 1} * var(--g)) / ${HB}),56px);--bw:calc(${HB} * var(--s) + ${HB - 1} * var(--g) + 26px);
+/* Raft layout: crafting on the left edge [category icons | recipe list], sized to its content, with the open
+   recipe as a content-height card beside it; the backpack on the bottom edge (hotbar as its last row), centred
+   on the screen unless that would put it over the crafting panel, then right beside it. The recipe card always
+   ends above the backpack. The right side stays clear. All sizes come from the dialog size (cqw/cqh): pure CSS.
+   --pw: tabs + list panel width; --ch: tallest the tabs and list get; --bh: backpack height; --dh: tallest recipe card. */
+#inventory .sv-wrap{--e:14px;--g:5px;--tw:50px;--lw:236px;--dw:256px;--pw:calc(var(--tw) + var(--lw) + 28px);--cw:calc(var(--pw) + 8px + var(--dw));
+  --s:clamp(36px,calc((100cqw - var(--pw) - 3 * var(--e) - 26px - ${HB - 1} * var(--g)) / ${HB}),56px);--bw:calc(${HB} * var(--s) + ${HB - 1} * var(--g) + 26px);
+  --ch:calc(min(100cqh - 2 * var(--e),780px) - 20px);--bh:calc(3.82 * var(--s) + var(--g) + 54px);--dh:max(150px,calc(100cqh - 2 * var(--e) - var(--bh) - 12px));
   position:absolute;left:var(--e);top:var(--e);bottom:var(--e);display:flex;align-items:stretch;outline:none;pointer-events:none}
 #inventory .sv-craft,#inventory .sv-bag{pointer-events:auto;box-sizing:border-box;border-radius:6px;
   background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 21px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
   border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 10px 30px #0006}
 #inventory .sv-sr,#inventory .sv-h,#inventory .sv-dlabel{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
-#inventory .sv-craft{flex:none;width:var(--cw);height:min(100%,780px);display:flex;flex-direction:column;padding:8px}
-#inventory .sv-cbody{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:var(--tw) var(--lw) var(--dw);grid-template-rows:minmax(0,1fr);gap:8px;align-items:start}
+#inventory .sv-craft{position:relative;flex:none;align-self:flex-start;width:var(--pw);height:auto;display:flex;flex-direction:column;padding:8px}
+#inventory .sv-cbody{flex:none;display:grid;grid-template-columns:var(--tw) var(--lw);gap:8px;align-items:start}
 /* categories: a column of icon tabs on the far left; the name is the tab's tooltip and label */
-#inventory .sv-tabs{align-self:stretch;display:flex;flex-direction:column;gap:4px;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+#inventory .sv-tabs{align-self:start;display:flex;flex-direction:column;gap:4px;min-height:0;max-height:var(--ch);overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
 #inventory .sv-tab{position:relative;flex:none;display:grid;place-items:center;width:var(--tw);height:var(--tw);min-width:0;margin:0;padding:0;border:0;border-radius:4px;
   background:linear-gradient(#b8a173,#a68e60);box-shadow:inset 0 0 0 1px #7a5a34;color:#3e2a17;font:700 12px/1 ${FONT};text-transform:none;cursor:pointer;transform:none}
 #inventory .sv-tab .sv-icon{width:34px;height:34px;opacity:.78;filter:drop-shadow(0 1px 0 #3e2a1766)}
@@ -271,8 +275,8 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-tab:focus-visible{outline:2px solid #fff3d6;outline-offset:-4px}
 #inventory .sv-tbadge{position:absolute;right:2px;top:2px;min-width:15px;padding:2px 3px;border-radius:8px;background:#5f9c3a;color:#f4ffe6;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-tbadge:empty{display:none}
-/* recipe list: fills the column height, visible scrollbar, and a bottom fade while more rows are below */
-#inventory .sv-rcol{align-self:stretch;position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;padding:5px;border-radius:4px;background:#7f6039;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1755}
+/* recipe list: as tall as its rows (up to the screen), visible scrollbar, and a bottom fade while more rows are below */
+#inventory .sv-rcol{align-self:start;position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;max-height:var(--ch);box-sizing:border-box;padding:5px;border-radius:4px;background:#7f6039;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1755}
 #inventory .sv-rlist{flex:1 1 auto;min-height:48px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:flex;flex-direction:column;gap:4px;padding-right:3px;
   scrollbar-width:thin;scrollbar-color:#e0cfa5 #5e4426}
 #inventory .sv-rcol::after{content:"";position:absolute;left:5px;right:17px;bottom:5px;height:30px;border-radius:0 0 4px 4px;pointer-events:none;opacity:0;transition:opacity .15s;
@@ -305,9 +309,9 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-rq .sv-icon{width:18px;height:18px}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
 /* detail: chosen by a click and kept open; big icon, name, what it is for, ingredient tiles and the Craft button.
-   Its height follows the ingredients (as in Raft) and it sits in its own column, so it never covers the bag. */
-#inventory .sv-detail{align-self:start;box-sizing:border-box;max-height:100%;overflow-y:auto;scrollbar-width:thin;display:flex;flex-direction:column;gap:8px;padding:10px 10px 11px;border-radius:4px;
-  background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
+   A card beside the list whose height follows the ingredients (as in Raft); it ends above the backpack. */
+#inventory .sv-detail{position:absolute;left:calc(100% + 8px);top:-2px;width:var(--dw);max-height:var(--dh);pointer-events:auto;box-sizing:border-box;overflow-y:auto;scrollbar-width:thin;display:flex;flex-direction:column;gap:8px;padding:10px 10px 11px;border-radius:6px;
+  background:#e6d6adf7;border:2px solid #5e4426;box-shadow:inset 0 1px 0 #fff3d688,0 10px 30px #0006}
 #inventory .sv-detail[hidden]{display:none}
 #inventory .sv-dhead{flex:none;display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center}
 #inventory .sv-dart{display:grid;place-items:center;width:60px;height:60px;border-radius:4px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
@@ -360,22 +364,23 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-ccount{min-width:26px;padding:3px 5px;border-radius:9px;background:#14270bcc;color:#c8f7a0;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums}
 #inventory .sv-ccount:empty{display:none}
 #inventory .sv-empty-list{margin:6px;color:#f6e8c6;font-size:14px}
-/* backpack: centred on the screen when there is room, else right beside the crafting column (never under it) */
+/* backpack: centred on the screen unless that would put it over the crafting panel, then right beside it */
 #inventory .sv-side{flex:none;display:flex;flex-direction:column;justify-content:flex-end;min-height:0;min-width:0;pointer-events:none;
-  margin-left:max(var(--e),calc(50cqw - var(--bw) / 2 - var(--cw) - var(--e)))}
+  margin-left:max(var(--e),calc(50cqw - var(--bw) / 2 - var(--pw) - var(--e)))}
 #inventory .sv-bag{position:relative;flex:none;width:var(--bw);display:flex;flex-direction:column;align-items:center;gap:7px;padding:10px 11px 11px}
 #inventory .sv-grid{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g);align-self:center}
 #inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g)}
-/* 5 generic equipment slots (Raft): the diving gear you carry, worn from the bag, one of each kind */
+/* 5 generic equipment slots (Raft): drop gear here to wear it; it then shows here and not in the grid.
+   Gear works while carried, so these are a view over backpack slots (saves and co-op are unchanged). */
 #inventory .sv-equip{display:flex;gap:var(--g);align-self:center;margin-top:2px}
-#inventory .sv-eslot{position:relative;display:block;box-sizing:border-box;width:calc(var(--s) * .82);height:calc(var(--s) * .82);border-radius:3px;
-  background:#7f6039;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1766}
-#inventory .sv-eslot::before{content:"";position:absolute;inset:28%;border-radius:50%;box-shadow:inset 0 0 0 2px #5e442688;opacity:.8}
-#inventory .sv-eslot.sv-worn{background:linear-gradient(180deg,#d6c397,#c4ae80);box-shadow:inset 0 0 0 1px #7a5a34,inset 0 -3px 0 #5f9c3a}
-#inventory .sv-eslot.sv-worn::before{content:none}
-#inventory .sv-eslot .sv-art{position:absolute;inset:4px;display:block;pointer-events:none}
-#inventory .sv-eslot .sv-icon{filter:drop-shadow(0 1px 0 #3e2a1799)}
+#inventory.sv-inv button.sv-slot.sv-eslot{width:calc(var(--s) * .82);height:calc(var(--s) * .82);background:linear-gradient(180deg,#d6c397,#c4ae80);box-shadow:inset 0 0 0 1px #7a5a34,inset 0 -3px 0 #5f9c3a}
+#inventory.sv-inv button.sv-slot.sv-eslot.sv-empty{background:#7f6039;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1766}
+#inventory .sv-eslot.sv-empty::before{content:"";position:absolute;inset:28%;border-radius:50%;box-shadow:inset 0 0 0 2px #5e442688;opacity:.8;pointer-events:none}
+#inventory .sv-eslot .sv-art{inset:4px}
 #inventory .sv-eslot svg.sv-icon{scale:.8}
+#inventory.sv-inv button.sv-slot.sv-eslot.sv-over{box-shadow:inset 0 0 0 2px #2f7f74,0 0 8px #9fe0d6aa}
+/* a backpack slot whose gear shows in the equipment row: it holds that gear, so it reads as taken, not empty */
+#inventory.sv-inv button.sv-slot[data-worn]{background:linear-gradient(180deg,#bfa877,#b09868);box-shadow:inset 0 0 0 1px #7a5a34,inset 0 2px 4px #5e442644}
 #inventory .sv-slot.sv-hot{background:linear-gradient(180deg,#d0bc8e,#bea778)}
 #inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#bea676,#b2996a);box-shadow:inset 0 0 0 2px #4a3520,inset 0 2px 4px #4a352055}
 #inventory.sv-inv button.sv-slot.sv-src{background:linear-gradient(180deg,#e3c98a,#d2b26e);box-shadow:inset 0 0 0 2px #c46a1c,0 0 8px #ffbd6699;transform:translateY(-3px)}
@@ -396,8 +401,9 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-hint.sv-warn{left:0;bottom:calc(100% + 8px);width:auto;height:auto;margin:0;padding:5px 10px;clip-path:none;white-space:normal;border-radius:4px;
   background:#2c1d10e8;box-shadow:inset 0 0 0 1px #c9a66b88;font:700 12.5px/1.3 ${FONT};color:#ffcf9a;pointer-events:none}
 /* pickup rows (game.js docks #pickupFeed into this lane): out of flow beside the bag, so they never resize it */
-#inventory.sv-inv .sv-bag>.feed-lane{position:absolute;left:calc(100% + 14px);bottom:0;width:280px;height:min(45cqh,320px);min-height:0;flex:none;align-self:auto}
-@container (max-width:1499px){#inventory.sv-inv .sv-bag>.feed-lane{left:0;bottom:calc(100% + 8px);width:min(100%,300px);height:min(28cqh,180px)}}
+#inventory.sv-inv .sv-bag>.feed-lane{position:absolute;left:calc(100% + 14px);bottom:0;height:min(45cqh,320px);min-height:0;flex:none;align-self:auto;
+  width:clamp(200px,calc(100cqw - max(2 * var(--e) + var(--pw),50cqw - var(--bw) / 2) - var(--bw) - var(--e) - 14px),280px)}
+@container (max-width:1149px){#inventory.sv-inv .sv-bag>.feed-lane{left:auto;right:0;bottom:calc(100% + 8px);width:min(100%,300px);height:min(28cqh,180px)}}
 /* survival-ui's own card is a fallback: item-tooltips.js draws the item cards while its sheet is in the page */
 #inventory .sv-tip{position:fixed;left:0;top:0;z-index:10;pointer-events:none;box-sizing:border-box;width:max-content;max-width:250px;padding:7px 10px;border-radius:4px;white-space:normal;
   background:#e6d6adf7;border:1px solid #5e4426;color:#3e2a17;font:700 14px/1.3 ${FONT};box-shadow:0 4px 12px #0006}
@@ -406,16 +412,17 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#5e4426}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#8a3a12}
 /* shorter windows: a tighter crafting column; small windows and phones: one scrolling column */
-@container (max-width:1229px){#inventory .sv-wrap{--e:10px;--lw:210px;--dw:236px}}
+@container (max-width:1229px){#inventory .sv-wrap{--e:10px;--lw:210px;--dw:240px}}
 @container (max-height:700px){#inventory .sv-dart{width:52px;height:52px}#inventory .sv-dart .sv-icon{width:46px;height:46px}#inventory .sv-dhead{grid-template-columns:52px 1fr auto}
   #inventory .sv-tab{height:46px}#inventory .sv-recipe{min-height:42px}#inventory .sv-detail{gap:6px}#inventory .sv-craftbtn{height:40px}}
 @container (max-width:999px) or (max-height:519px){
   #inventory .sv-wrap{--e:8px;--tw:44px;--lw:auto;--dw:auto;--cw:min(100%,640px);--s:clamp(30px,calc((100cqw - 56px - ${HB - 1} * var(--g)) / ${HB}),48px);
     inset:0;flex-direction:column;align-items:center;gap:8px;padding:8px;overflow:auto;pointer-events:auto}
-  #inventory .sv-craft{height:auto;max-height:none}
+  #inventory .sv-craft{height:auto;max-height:none;width:var(--cw);align-self:center}
   #inventory .sv-cbody{grid-template-columns:var(--tw) minmax(0,1fr);grid-template-rows:auto}
-  #inventory .sv-detail{grid-column:1 / -1;max-height:none}
-  #inventory .sv-rcol{height:min(40cqh,320px)}
+  #inventory .sv-detail{position:static;grid-column:1 / -1;width:auto;max-height:none;border:0;box-shadow:inset 0 0 0 1px #5e4426}
+  #inventory .sv-tabs{max-height:min(40cqh,320px)}
+  #inventory .sv-rcol{align-self:stretch;height:min(40cqh,320px);max-height:none}
   #inventory .sv-side{margin:0}
   #inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}
   #inventory.sv-inv .sv-bag>.feed-lane{position:static;width:100%;height:auto;max-height:90px}}
@@ -479,7 +486,7 @@ function mountDialog() {
     for (let i = HB; i < TOTAL; i++) grid += `<button type="button" class="sv-slot" data-index="${i}">${slotInner('')}</button>`;
     for (let i = 0; i < HB; i++) hot += `<button type="button" class="sv-slot sv-hot" data-index="${i}">${slotInner(String((i + 1) % 10))}</button>`;
     let eq = '';
-    for (let i = 0; i < EQUIP; i++) eq += `<span class="sv-eslot" data-equip="${i}" role="img" aria-label="Equipment slot ${i + 1}, empty"><i class="sv-art"></i></span>`;
+    for (let i = 0; i < EQUIP; i++) eq += `<button type="button" class="sv-slot sv-eslot sv-empty" data-equip="${i}" aria-label="Equipment slot ${i + 1}, empty">${slotInner('')}</button>`;
     d.innerHTML = `<div class="sv-wrap" tabindex="-1">
       <section class="sv-craft" aria-label="Crafting">
         <h3 class="sv-h">Crafting</h3>
@@ -602,8 +609,17 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let zoom = 1;
   const readZoom = () => { const z = Number(dlg.currentCSSZoom); zoom = z > 0 && Number.isFinite(z) ? z : 1; };
   const hintEl = dlg.querySelector('.sv-hint');
+  const bagEl = dlg.querySelector('.sv-bag');
   const equipEls = [...dlg.querySelectorAll('.sv-eslot[data-equip]')];
-  let equipSig = null;
+  let eqIdx = new Array(equipEls.length).fill(-1), worn = new Set(); // bag index in each equipment slot; those indices
+  equipEls.forEach(el => { el._svSig = undefined; el.classList.remove(...TRANSIENT); el.removeAttribute('aria-pressed'); delete el.dataset.pick; });
+  // Slot element <-> bag index: an equipment slot stands for the backpack slot its gear is in.
+  const isEq = el => el.classList.contains('sv-eslot');
+  const idxOf = el => (isEq(el) ? eqIdx[+el.dataset.equip] ?? -1 : +el.dataset.index);
+  const contentOf = el => { const i = idxOf(el); return i < 0 || (!isEq(el) && worn.has(i)) ? null : curSlots[i]; };
+  const elOfIdx = i => (worn.has(i) ? equipEls[eqIdx.indexOf(i)] : invEls[i]) || null;
+  // Where a stack from `from` goes when placed on el: {to, pre?} | {none} | {refuse}.
+  const dropPlan = (from, el) => (isEq(el) ? equipTarget(curSlots, from, idxOf(el), GEAR, HB) : gridTarget(curSlots, +el.dataset.index, worn, HB));
   const invEls = [];
   dlg.querySelectorAll('.sv-slot[data-index]').forEach(el => {
     invEls[+el.dataset.index] = el; el._svSig = undefined;
@@ -616,7 +632,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let denyEl = null, denyTimer = 0, sayTimer = 0;
   let downOnBackdrop = false, upOnBackdrop = false;
   let dragging = false, dragFrom = null, dragAmt = 0, overEl = null;
-  let hoverIdx = null;
+  let hoverEl = null, srcEl = null, dragEl = null;
   let lastSig = null, bagSig = null;
   let gateSig = null, gateAt = 0; // recipe gates seen by the open bag (goals / unlocks change mid-session)
   const GATE_POLL_MS = 250;
@@ -1029,13 +1045,15 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function setSrc(i, amt) {
     clearSrc();
     src = i; srcAmt = amt; srcKind = curSlots[i]?.kind ?? null;
-    const el = invEls[i]; if (!el) return;
-    el.classList.add('sv-src');
-    el.setAttribute('aria-pressed', 'true');
     markPick();
   }
   function markPick() {
-    const el = src == null ? null : invEls[src];
+    const el = src == null ? null : elOfIdx(src);
+    if (el !== srcEl) {
+      if (srcEl) { srcEl.classList.remove('sv-src'); srcEl.removeAttribute('aria-pressed'); delete srcEl.dataset.pick; }
+      srcEl = el;
+      if (el) { el.classList.add('sv-src'); el.setAttribute('aria-pressed', 'true'); }
+    }
     if (!el) return;
     const s = curSlots[src];
     if (s && srcAmt < s.count) el.dataset.pick = String(srcAmt); else delete el.dataset.pick;
@@ -1046,10 +1064,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
   function placeHeld() { held.style.transform = `translate(${Math.round(px / zoom - 26)}px,${Math.round(py / zoom - 26)}px)`; }
   function clearSrc() {
-    if (src != null && invEls[src]) {
-      const el = invEls[src];
-      el.classList.remove('sv-src'); el.removeAttribute('aria-pressed'); delete el.dataset.pick;
-    }
+    if (srcEl) { srcEl.classList.remove('sv-src'); srcEl.removeAttribute('aria-pressed'); delete srcEl.dataset.pick; srcEl = null; }
     src = null; srcAmt = 0; srcKind = null;
     held.hidden = true;
   }
@@ -1099,33 +1114,36 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (r && typeof r.then === 'function') r.then(v => { if (v === false) deny(el, 'Can’t place that there'); }, e => console.error(e));
     return true;
   }
-  // The 5 equipment slots show the wearables in the bag (they work while carried, one of each kind),
-  // packed from the left like Raft's generic slots. Painted only when that set changes.
-  function paintEquip(slots) {
-    if (!equipEls.length) return;
-    const worn = (GEAR_IDS || []).filter(k => slots.some(s => s && s.kind === k && s.count > 0)).slice(0, equipEls.length);
-    const sig = worn.join(',');
-    if (sig === equipSig) return;
-    equipSig = sig;
-    equipEls.forEach((el, i) => {
-      const k = worn[i] || null, a = el.firstElementChild;
-      el.classList.toggle('sv-worn', !!k);
-      if (k) { a.innerHTML = iconHTML(k); el.dataset.itemKind = k; el.setAttribute('aria-label', `Equipment slot ${i + 1}, ${itemName(k)}`); }
-      else { a.innerHTML = ''; delete el.dataset.itemKind; el.setAttribute('aria-label', `Equipment slot ${i + 1}, empty`); }
+  // The 5 equipment slots: the gear stacks in the backpack grid (craft-book equipView), packed from the left like
+  // Raft's generic slots. Those grid slots read as taken and show nothing, so each item shows once.
+  function paintEquip(slots, sigs) {
+    eqIdx = equipView(slots, GEAR, HB, equipEls.length);
+    worn = new Set(eqIdx.filter(i => i >= 0));
+    equipEls.forEach((el, k) => {
+      const i = eqIdx[k];
+      const changed = paintSlot(el, i >= 0 ? slots[i] : null, i >= 0 ? sigs[i] : '', `Equipment slot ${k + 1}`);
+      if (i >= 0) el.dataset.slot = String(i); else delete el.dataset.slot; // item-tooltips reads the stack (durability)
+      el.draggable = i >= 0;
+      if (changed && hoverEl === el) showTip(el);
     });
   }
   function paintInventory(slots, sigs, selected) {
-    paintEquip(slots);
+    paintEquip(slots, sigs);
     for (let i = 0; i < TOTAL; i++) {
       const el = invEls[i]; if (!el) continue;
-      const changed = paintSlot(el, slots[i], sigs[i], i < HB ? `Hotbar slot ${i + 1}` : `Backpack slot ${i - HB + 1}`);
-      el.draggable = !!sigs[i];
+      const w = worn.has(i), label = i < HB ? `Hotbar slot ${i + 1}` : `Backpack slot ${i - HB + 1}`;
+      const changed = paintSlot(el, w ? null : slots[i], w ? '' : sigs[i], label);
+      if (w !== (el.dataset.worn != null)) {
+        if (w) el.dataset.worn = ''; else delete el.dataset.worn;
+        el.setAttribute('aria-label', label + (w ? ', holds worn gear' : ', empty'));
+      }
+      el.draggable = !!sigs[i] && !w;
       if (i < HB) { const sel = i === selected; if (el._svSel !== sel) { el._svSel = sel; el.classList.toggle('sv-sel', sel); } }
-      if (changed && hoverIdx === i) showTip(i);
+      if (changed && hoverEl === el) showTip(el);
     }
     if (src != null) {
       const s = slots[src];
-      if (!s || !sigs[src] || (srcKind && s.kind !== srcKind)) clearSrc();
+      if (!s || !sigs[src] || (srcKind && s.kind !== srcKind) || !elOfIdx(src)) clearSrc();
       else { srcAmt = Math.max(1, Math.min(srcAmt, s.count)); markPick(); }
     }
   }
@@ -1142,13 +1160,15 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       + (src ? `<small><em>Get it:</em> ${esc(src.how)}</small>` : '')
       + (uses.length ? `<small><em>Ingredient in:</em> ${esc(uses.join(', '))}</small>` : '');
   }
-  // Crafting rows and ingredients anchor beside the whole crafting panel (never over the list or the open recipe) and never cover
-  // the Craft button; a hidden or detached anchor hides the tooltip instead of pinning it top-left.
+  // Crafting rows and ingredients stay inside the crafting area (craft-book craftTip: under the open recipe card,
+  // never over the screen centre); a hidden or detached anchor hides the tooltip instead of pinning it top-left.
   function placeTipAt(el) {
     if (tip.hidden || !el) return;
     const col = el.closest('.sv-craft');
-    const p = el.isConnected && anchorTip(el.getBoundingClientRect(), tip.offsetWidth * zoom, tip.offsetHeight * zoom, innerWidth, innerHeight, 8, 6,
-      col ? { beside: col.getBoundingClientRect(), avoid: detail.hidden ? null : D.btn.getBoundingClientRect() } : null);
+    const r = el.isConnected && el.getBoundingClientRect(), w = tip.offsetWidth * zoom, h = tip.offsetHeight * zoom;
+    const p = r && (col
+      ? craftTip(r, w, h, innerWidth, innerHeight, { list: col.getBoundingClientRect(), detail: detail.hidden ? null : detail.getBoundingClientRect(), bag: bagEl.getBoundingClientRect() })
+      : anchorTip(r, w, h, innerWidth, innerHeight, 8, 6));
     if (!p) { hideTip(); return; }
     tip.style.transform = `translate(${Math.round(p.x / zoom)}px,${Math.round(p.y / zoom)}px)`;
     tip.dataset.side = p.side;
@@ -1165,9 +1185,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     tip.hidden = false;
     placeTipAt(el);
   }
-  function showTip(i) {
-    const s = curSlots[i], el = invEls[i];
-    if (!s || !slotSig(s) || dragging || !el) { hideTip(); return; }
+  function showTip(el) {
+    const s = el && contentOf(el);
+    if (!s || !slotSig(s) || dragging) { hideTip(); return; }
     const f = durFrac(s), max = stackMax(s.kind);
     const sub = f != null ? `Durability ${Math.round(f * 100)}%` : s.count > 1 || max > 1 ? stackLabel(s.count, max) : '';
     tipAnchor = el;
@@ -1266,7 +1286,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     stopHold();
     endDrag(false);
     clearSrc(); clearDeny(); clearSay();
-    hideTip(); hoverIdx = null;
+    hideTip(); hoverEl = null;
     if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } }
     safe(onResume);
   }
@@ -1274,16 +1294,16 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   // ---------- drag & drop ----------
   function endDrag(refresh = true) {
     if (overEl) { overEl.classList.remove('sv-over'); overEl = null; }
-    if (dragFrom != null && invEls[dragFrom]) invEls[dragFrom].classList.remove('sv-dragging');
+    if (dragEl) { dragEl.classList.remove('sv-dragging'); dragEl = null; }
     dragging = false; dragFrom = null; dragAmt = 0;
     if (refresh) invalidate();
   }
-  const slotFrom = e => e.target?.closest?.('#inventory .sv-slot[data-index]') || null;
+  const slotFrom = e => e.target?.closest?.('#inventory .sv-slot[data-index],#inventory .sv-eslot') || null;
 
   dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, opt);
   dlg.addEventListener('close', () => {
     if (!isOpen) return;
-    isOpen = false; stopHold(); endDrag(false); clearSrc(); clearDeny(); hideTip(); hoverIdx = null;
+    isOpen = false; stopHold(); endDrag(false); clearSrc(); clearDeny(); hideTip(); hoverEl = null;
     safe(onResume);
   }, opt);
   // Backdrop: close only when the press started and ended there (Chrome sends a click that
@@ -1306,15 +1326,19 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       return;
     }
     const el = slotFrom(e); if (!el) return;
-    const i = +el.dataset.index, s = curSlots[i], has = !!slotSig(s);
+    const i = idxOf(el), s = contentOf(el), has = !!slotSig(s);
     if (src == null) { if (has) setSrc(i, s.count); return; }
     if (i === src) { clearSrc(); return; }
     if (!slotSig(curSlots[src])) { clearSrc(); return; }
     const from = src, amt = srcAmt;
-    const p = planMove(from, i, amt);
+    const d = dropPlan(from, el);
+    if (d.none) { clearSrc(); return; }
+    if (d.refuse != null) { deny(el, d.refuse); return; }
+    const p = d.pre ? { ok: true, put: Math.min(amt, curSlots[from].count) } : planMove(from, d.to, amt);
     // Partial stack onto a different kind / full stack: keep holding, flag the slot.
-    if (!p.ok) { deny(el, refusal(from, i)); return; }
-    if (!sendMove(from, i, amt, el)) return; // sync rejection: selection untouched
+    if (!p.ok) { deny(el, refusal(from, d.to)); return; }
+    if (d.pre && !sendMove(d.pre[0], d.pre[1], undefined, el)) return; // worn gear steps aside first
+    if (!sendMove(from, d.to, amt, el)) return; // sync rejection: selection untouched
     if (src !== from) return;                 // a synchronous update already cleared it
     const left = amt - p.put;
     if (left <= 0) { clearSrc(); return; }
@@ -1324,17 +1348,22 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   dlg.addEventListener('contextmenu', e => {
     const el = slotFrom(e); if (!el) return;
     e.preventDefault();
-    const i = +el.dataset.index, s = curSlots[i], has = !!slotSig(s);
+    const i = idxOf(el), s = contentOf(el), has = !!slotSig(s);
     if (src == null) { if (has) setSrc(i, Math.ceil(s.count / 2)); return; }
     if (i === src) { clearSrc(); return; }
     if (!slotSig(curSlots[src])) { clearSrc(); return; }
     const from = src;
     const hs = curSlots[from];
+    const d = dropPlan(from, el);
+    if (d.none) { clearSrc(); return; }
+    if (d.refuse != null) { deny(el, d.refuse); return; }
     // Place a single item; only into an empty slot or a same-kind stack with room.
+    const t = d.pre ? null : curSlots[d.to];
     const max = stackMax(hs.kind);
-    const fits = !slotSig(s) || (s.kind === hs.kind && max > 1 && s.count < max);
-    if (!fits) { deny(el, refusal(from, i)); return; }
-    if (!sendMove(from, i, 1, el)) return;
+    const fits = !slotSig(t) || (t.kind === hs.kind && max > 1 && t.count < max);
+    if (!fits) { deny(el, refusal(from, d.to)); return; }
+    if (d.pre && !sendMove(d.pre[0], d.pre[1], undefined, el)) return;
+    if (!sendMove(from, d.to, 1, el)) return;
     if (src !== from) return;
     const left = srcAmt - 1;
     if (left <= 0) { clearSrc(); return; }
@@ -1344,9 +1373,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   dlg.addEventListener('dragstart', e => {
     const el = slotFrom(e);
     if (!el) { e.preventDefault(); return; }
-    const i = +el.dataset.index, s = curSlots[i];
+    const i = idxOf(el), s = contentOf(el);
     if (!slotSig(s)) { e.preventDefault(); return; }
-    dragging = true; dragFrom = i;
+    dragging = true; dragFrom = i; dragEl = el;
     dragAmt = src === i ? srcAmt : e.shiftKey ? Math.ceil(s.count / 2) : s.count;
     hideTip();
     el.classList.add('sv-dragging');
@@ -1369,9 +1398,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const from = dragFrom, amt = dragAmt;
     endDrag();
     clearSrc();
-    if (el && from != null) {
-      const to = +el.dataset.index;
-      if (to !== from && amt > 0) { if (planMove(from, to, amt).ok) sendMove(from, to, amt, el); else deny(el, refusal(from, to)); }
+    if (el && from != null && idxOf(el) !== from && amt > 0) {
+      const d = dropPlan(from, el);
+      if (d.refuse != null) deny(el, d.refuse);
+      else if (d.to != null) {
+        if (!d.pre && !planMove(from, d.to, amt).ok) deny(el, refusal(from, d.to));
+        else if (!d.pre || sendMove(d.pre[0], d.pre[1], undefined, el)) sendMove(from, d.to, amt, el);
+      }
     }
   }, opt);
   dlg.addEventListener('dragend', () => { if (dragging) endDrag(); if (src != null) held.hidden = false; }, opt);
@@ -1379,16 +1412,15 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   dlg.addEventListener('pointerover', e => {
     const el = slotFrom(e);
     if (el) {
-      const i = +el.dataset.index;
-      if (i !== hoverIdx) { hoverIdx = i; showTip(i); }
+      if (el !== hoverEl) { hoverEl = el; showTip(el); }
       return;
     }
-    hoverIdx = null;
+    hoverEl = null;
     const k = e.target?.closest?.('#inventory [data-tip-kind]');
     if (k) { if (k !== tipAnchor) showTipFor(k); return; }
     if (tipAnchor) hideTip();
   }, opt);
-  dlg.addEventListener('pointerleave', () => { hoverIdx = null; hideTip(); }, opt);
+  dlg.addEventListener('pointerleave', () => { hoverEl = null; hideTip(); }, opt);
   rlist.addEventListener('scroll', () => { paintMore(); if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor); }, { ...opt, passive: true });
   // Hold-to-craft on the craft button (mouse, touch, pen; Enter / Space).
   D.btn.addEventListener('pointerdown', e => {
@@ -1487,7 +1519,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       endDrag(false);
       clearSrc();
       clearDeny();
-      hideTip(); hoverIdx = null;
+      hideTip(); hoverEl = null;
       if (trackEl) trackEl.hidden = true;
       if (window[INST_KEY] === api) window[INST_KEY] = null;
     },

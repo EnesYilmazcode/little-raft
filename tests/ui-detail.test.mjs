@@ -27,12 +27,13 @@ test('help opened from the title menu returns to the menu', () => {
 
 test('inventory slots shrink so crafting and the bag fit side by side from 1000px wide', () => {
   const ui = read('survival-ui.js');
-  assert.match(ui, /--s:clamp\(36px,calc\(\(100cqw - var\(--cw\) - 3 \* var\(--e\) - 26px - \$\{HB - 1\} \* var\(--g\)\) \/ \$\{HB\}\),56px\)/);
-  // crafting column (tabs 50 + list + detail + 36) + bag (10 slots + 9 gaps + 26) + 3 edges fit the width
-  const fits = (w, lw, dw, e) => { const cw = 50 + lw + dw + 36, s = Math.max(36, Math.min(56, (w - cw - 3 * e - 26 - 9 * 5) / 10)); return e + cw + e + 10 * s + 45 + 26 + e <= w; };
-  assert.ok(fits(1536, 236, 256, 14), '1536');
-  assert.ok(fits(1229, 210, 236, 10), '1229');
-  assert.ok(fits(1000, 210, 236, 10), '1000');
+  assert.match(ui, /--s:clamp\(36px,calc\(\(100cqw - var\(--pw\) - 3 \* var\(--e\) - 26px - \$\{HB - 1\} \* var\(--g\)\) \/ \$\{HB\}\),56px\)/);
+  // crafting panel (tabs 50 + list + 28) + bag (10 slots + 9 gaps + 26) + 3 edges fit the width
+  // (the recipe card sits beside the list and ends above the bag, so it takes no width from it)
+  const fits = (w, lw, e) => { const pw = 50 + lw + 28, s = Math.max(36, Math.min(56, (w - pw - 3 * e - 26 - 9 * 5) / 10)); return e + pw + e + 10 * s + 45 + 26 + e <= w; };
+  assert.ok(fits(1536, 236, 14), '1536');
+  assert.ok(fits(1229, 210, 10), '1229');
+  assert.ok(fits(1000, 210, 10), '1000');
   // Electron's 900px minimum width and phones use the stacked, scrolling column.
   assert.match(ui, /@container \(max-width:999px\) or \(max-height:519px\)\{/);
 });

@@ -113,7 +113,7 @@ test('the full-viewport dialog is a plain block; .sv-wrap places the panels', ()
   // A flex dialog made any child appended to it (an unstyled tooltip card) a sibling that re-centred the panel.
   assert.match(ui, /#inventory\.sv-inv\[open\]\{display:block\}/);
   assert.doesNotMatch(ui, /#inventory\.sv-inv\[open\]\{display:flex/);
-  assert.match(ui, /#inventory \.sv-wrap\{[\s\S]{0,400}?position:absolute;left:var\(--e\);top:var\(--e\);bottom:var\(--e\);/, 'anchored on the left edge');
+  assert.match(ui, /#inventory \.sv-wrap\{[\s\S]{0,900}?position:absolute;left:var\(--e\);top:var\(--e\);bottom:var\(--e\);/, 'anchored on the left edge');
 });
 
 // ---------------------------------------------------------------- 1. no text selection / dragging

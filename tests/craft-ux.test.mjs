@@ -198,7 +198,9 @@ test('recipe rows keep their order while the bag is open (no jumping under the p
 test('item tooltips anchor beside the element instead of trailing the pointer', () => {
   const tt = src('item-tooltips.js');
   const place = tt.slice(tt.indexOf('function place()'), tt.indexOf('function show('));
-  assert.match(place, /anchorTip\(cur\.el\.getBoundingClientRect\(\)/);
+  assert.match(place, /const r = cur\.el\.isConnected && cur\.el\.getBoundingClientRect\(\)/);
+  assert.match(place, /craftTip\(r, w, h, innerWidth, innerHeight, \{ list: col\.getBoundingClientRect\(\)/, 'crafting cards stay in the crafting area');
+  assert.match(place, /: anchorTip\(r, w, h, innerWidth, innerHeight, 8, 6\)\)/, 'other cards sit beside their element');
   assert.doesNotMatch(tt, /'pointermove'/, 'no pointer-follow placement');
   assert.match(tt, /on\(root, 'close', hide, \{ capture: true \}\)/, 'hidden when the bag closes');
   assert.match(tt, /tipFacts\(/, 'shows where to get it and what it is used in');

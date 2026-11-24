@@ -88,14 +88,14 @@ test('HUD-6/UX-7: the header sits above the welcome overlay so the brand is read
 
 // ---------------------------------------------------------------- UX-2 bag jumps between crafting tabs
 
-test('UX-2: the bag stays put across crafting tabs (fixed-height craft column)', () => {
+test('UX-2: the bag stays put across crafting tabs (its place depends only on the dialog size)', () => {
   const ui = src('survival-ui.js');
   const book = [...ui.matchAll(/^#inventory \.sv-craft\{[^}]*\}/gm)].at(-1)?.[0];
   assert.ok(book, 'crafting-book column rule');
-  assert.match(book, /;height:min\(100%,780px\)/, 'fixed height, so the panel height does not follow the tab');
+  assert.match(book, /;width:var\(--pw\);height:auto;/, 'the panel is as tall as its content (no empty block), its width is fixed');
   // The dialog covers the viewport; the bag's place depends only on the dialog size, never on the tab or recipe.
   assert.match(ui, /#inventory\.sv-inv\{[^}]*position:fixed;inset:0;padding:0;margin:0;/, 'dialog covers the viewport');
-  assert.match(ui, /#inventory \.sv-side\{[^}]*margin-left:max\(var\(--e\),calc\(50cqw - var\(--bw\) \/ 2 - var\(--cw\) - var\(--e\)\)\)/, 'bag centred when there is room');
+  assert.match(ui, /#inventory \.sv-side\{[^}]*margin-left:max\(var\(--e\),calc\(50cqw - var\(--bw\) \/ 2 - var\(--pw\) - var\(--e\)\)\)/, 'bag centred unless it would cover the crafting panel');
   assert.match(ui, /@container \(max-width:999px\) or \(max-height:519px\)[^@]*#inventory \.sv-craft\{height:auto;max-height:none/, 'stacked layout resets the height');
 });
 
