@@ -44,6 +44,7 @@ const state = {
   build: null,
   protocol: null,
   updating: false,
+  booting: false,
   lastError: null,
   failedBuild: null,
   failedAt: 0,
@@ -227,6 +228,11 @@ function stageCss(build) {
 const BAKED_BUILD = new URL(moduleUrl(null)).searchParams.get('build');
 
 async function boot() {
+  state.booting = true;
+  try { await bootOnce(); } finally { state.booting = false; }
+}
+
+async function bootOnce() {
   const retry = state.retryCount ? state.retryCount : 0;
   // Start fetching game.js and its whole import graph (in parallel) while version.json is in flight.
   preloadGraph(BAKED_BUILD);
@@ -260,8 +266,19 @@ async function boot() {
 }
 
 // ---------- update check / swap ----------
-async function check() {
-  if (state.updating) return { status: 'busy', build: state.build };
+// One check (and so at most one swap) at a time. The poll, a visibilitychange schedule(0) and a manual
+// raftLive.check() can overlap; state.updating is only set once swap() starts, after fetchManifest()
+// resolves, so without this both would mount a new engine and the first one would never be disposed.
+// Overlapping callers share the running check's result.
+let inflight = null;
+function check() {
+  if (inflight) return inflight;
+  inflight = checkOnce().finally(() => { inflight = null; });
+  return inflight;
+}
+
+async function checkOnce() {
+  if (state.updating || state.booting) return { status: 'busy', build: state.build };
   state.lastCheckAt = Date.now();
   let manifest;
   try {
