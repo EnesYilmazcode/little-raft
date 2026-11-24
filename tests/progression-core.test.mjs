@@ -84,13 +84,13 @@ test('whyLocked gives friendly text', () => {
   const p = prog();
   assert.equal(p.whyLocked('lantern'), 'Find Scrap first');
   assert.equal(p.whyLocked('smelter'), 'Find Scrap and Plastic first');
-  assert.equal(p.whyLocked('net'), 'Research Rope and Scrap at a Research Table');
+  assert.equal(p.whyLocked('net'), 'Research Rope and Scrap at the Research Table');
   assert.equal(p.whyLocked('sail'), 'Build a Smelter');
   assert.equal(p.whyLocked('wood'), '');
   assert.equal(p.whyLocked('zzz'), 'Unknown item');
   p.notePlaced('researchtable');
   p.research('rope', { has: ['rope'] });
-  assert.equal(p.whyLocked('net'), 'Research Scrap at a Research Table');
+  assert.equal(p.whyLocked('net'), 'Research Scrap at the Research Table');
 });
 
 test('nextGoals ranks locked items by fewest missing requirements, then table order', () => {

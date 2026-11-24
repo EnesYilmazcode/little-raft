@@ -57,6 +57,7 @@ export class Progression {
     if (u.type === 'discover') return strList(u.items).every((k) => this.discovered.has(k));
     if (u.type === 'research') return strList(u.items).every((k) => this.researched.has(k));
     if (u.type === 'station') return this.stations.has(u.station);
+    if (u.type === 'retired') return false;
     return true;
   }
 
@@ -82,7 +83,7 @@ export class Progression {
     return this._refresh();
   }
 
-  /** Research a held kind at a placed Research Table. Never consumes it. */
+  /** Research a held kind at a placed Research Table. Pure: never consumes it (progression-hooks.js takes one from the bag). */
   research(kind, opts = {}) {
     const has = opts && typeof opts === 'object' && !Array.isArray(opts) && 'has' in opts ? opts.has : opts;
     if (!hasOwn(this.items, kind)) return { ok: false, unlocked: [], reason: 'Unknown item' };
@@ -98,6 +99,7 @@ export class Progression {
 
   isUnlocked(id) {
     if (!hasOwn(this.items, id)) return false;
+    if (unlockOf(this.items, id).type === 'retired') return false; // retired recipes stay gone, even if learned once
     return this.learned.has(id) || this._met(id);
   }
 
@@ -105,6 +107,7 @@ export class Progression {
   missingFor(id) {
     if (this.isUnlocked(id)) return [];
     const u = unlockOf(this.items, id);
+    if (u.type === 'retired') return [{ type: 'retired', kind: id }];
     if (u.type === 'station') return [{ type: 'station', kind: u.station }];
     const done = u.type === 'research' ? this.researched : this.discovered;
     return strList(u.items).filter((k) => !done.has(k)).map((kind) => ({ type: u.type, kind }));
@@ -115,8 +118,9 @@ export class Progression {
     const miss = this.missingFor(id);
     if (!miss.length) return '';
     const names = joinAnd(miss.map((m) => nameOf(this.items, m.kind)));
+    if (miss[0].type === 'retired') return 'No longer made';
     if (miss[0].type === 'station') return `Build ${article(names)}`;
-    if (miss[0].type === 'research') return `Research ${names} at ${article(nameOf(this.items, RESEARCH_TABLE))}`;
+    if (miss[0].type === 'research') return `Research ${names} at the ${nameOf(this.items, RESEARCH_TABLE)}`;
     // Something the player can make in the bag (Rope) reads "Craft", things only found at sea read "Find".
     const craftable = (k) => hasOwn(this.items, k) && !!this.items[k].recipe && this.items[k].recipe.station == null;
     const make = miss.filter((m) => craftable(m.kind)).map((m) => nameOf(this.items, m.kind));
@@ -133,11 +137,26 @@ export class Progression {
   nextGoals(n = 3) {
     const ids = Object.keys(this.items);
     return ids
-      .filter((id) => !this.isUnlocked(id))
+      .filter((id) => !this.isUnlocked(id) && unlockOf(this.items, id).type !== 'retired')
       .map((id, i) => ({ id, i, m: this.missingFor(id).length }))
       .sort((a, b) => a.m - b.m || a.i - b.i)
       .slice(0, Math.max(0, n | 0))
       .map((g) => g.id);
+  }
+
+  /**
+   * Locked research blueprints (hand recipes only), nearest first: [{id, done:[kinds], missing:[kinds]}].
+   * Used by the Research Table panel.
+   */
+  blueprints() {
+    const out = [];
+    Object.keys(this.items).forEach((id, i) => {
+      const u = unlockOf(this.items, id), r = this.items[id].recipe;
+      if (u.type !== 'research' || !r || r.station != null || this.isUnlocked(id)) return;
+      const set = strList(u.items);
+      out.push({ id, i, done: set.filter((k) => this.researched.has(k)), missing: set.filter((k) => !this.researched.has(k)) });
+    });
+    return out.sort((a, b) => a.missing.length - b.missing.length || a.i - b.i).map(({ i, ...b }) => b);
   }
 
   /** Discovered, unresearched kinds that some locked research item needs. */

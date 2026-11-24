@@ -11,7 +11,7 @@ const ITEMS_MOD = await import(new URL('items.js', base));
 const INV = await import(new URL('inventory-state.js', base));
 
 test('CRAFT-5: migrateSnapshot keeps bag kinds that are not in ITEMS', () => {
-  const all = INV.ITEM_KINDS.filter(k => !ITEMS_MOD.isItem(k));
+  const all = INV.ITEM_KINDS.filter(k => !ITEMS_MOD.isItem(k) && !Object.hasOwn(ITEMS_MOD.LOAD_RENAMES, k)); // renamed kinds load as their new kind
   assert.ok(all.includes('cup') && all.includes('receiver'), 'test premise: bag knows kinds ITEMS does not');
   // raft-master's lanes added more bag-only kinds than the bag has slots: test as many as fit, keeping cup and receiver.
   const extra = [...new Set(['cup', 'receiver', ...all])].slice(0, INV.SLOT_COUNT - 1);
@@ -27,6 +27,9 @@ test('CRAFT-5: migrateSnapshot keeps bag kinds that are not in ITEMS', () => {
   assert.equal(ITEMS_MOD.migrateSnapshot({ slots }).slots.filter(Boolean).length, 0);
   assert.equal(ITEMS_MOD.migrateSnapshot({ slots: [{ kind: 'nope', count: 3 }, { kind: 'toString', count: 1 }] }, INV.ITEM_INFO).slots.filter(Boolean).length, 0);
   assert.match(src('game.js'), /migrateSnapshot\(s, ITEM_INFO\)/, 'snapBag passes the bag info table');
+  // the old Tinker's Desk loads as a Research Table (research-tree.js)
+  const desk = new INV.Bag(ITEMS_MOD.migrateSnapshot({ slots: [{ kind: 'research', count: 2 }], selected: 0 }, INV.ITEM_INFO));
+  assert.equal(desk.count('research'), 0); assert.equal(desk.count('researchtable'), 2);
 });
 
 const CB = await import(new URL('craft-book.js', base));

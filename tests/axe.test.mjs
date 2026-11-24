@@ -40,7 +40,7 @@ test('Stone Axe item: recipe, durability, unlock and tool role', () => {
   assert.equal(a.durability, 50);
   assert.deepEqual(a.recipe.cost, { wood: 6, stone: 3, rope: 2 });
   assert.equal(a.recipe.station, null);
-  assert.deepEqual(a.unlock, { type: 'discover', items: ['stone', 'rope'] });
+  assert.deepEqual(a.unlock, { type: 'research', items: ['wood', 'stone', 'rope'] });
   assert.equal(I.toolRole('axe'), 'axe'); assert.equal(L.isAxe('axe'), true); assert.equal(L.isAxe('hammer'), false);
   assert.equal(I.wearPerUse('axe'), 2);
   assert.ok(I.repairCost('axe'));

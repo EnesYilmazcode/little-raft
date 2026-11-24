@@ -25,9 +25,10 @@ test('Tinker\'s Desk header is one line that names what to study', () => {
 
 test('lock reasons say Craft for things made in the bag', () => {
   const p = new Progression();
-  assert.equal(p.whyLocked('fishingrod'), 'Craft Rope first');
-  assert.equal(p.whyLocked('lantern'), 'Find Scrap first');
-  assert.equal(p.whyLocked('sail'), 'Find Palm Leaf and Scrap first'); // sail: 10 planks, 20 leaves, 3 scrap (loop-fidelity-0804)
+  assert.equal(p.whyLocked('fishingrod'), ''); // Raft start recipe
+  assert.equal(p.whyLocked('honeyfish'), 'Find Honey first'); // items.js discover gates still read "Find"
+  assert.equal(p.whyLocked('net'), 'Research Plank, Scrap and Nail at the Research Table');
+  assert.equal(p.whyLocked('sail'), 'Research Plank, Palm Leaf and Scrap at the Research Table'); // sail: 10 planks, 20 leaves, 3 scrap
 });
 
 test('build wheel names the hovered piece and hides the aim prompt while open', () => {
@@ -65,5 +66,8 @@ test('HUD chips: no sail chip waits for a sail to be makeable; fish chip is shor
   const fresh = new Progression();
   assert.equal(fresh.isUnlocked('sail'), false); // a new player does not see "craft one" yet
   fresh.noteItems(['leaf', 'scrap']);
+  assert.equal(fresh.isUnlocked('sail'), false, 'holding is not enough: the sail is researched');
+  fresh.notePlaced('researchtable');
+  for (const k of ['wood', 'leaf', 'scrap']) fresh.research(k, true);
   assert.equal(fresh.isUnlocked('sail'), true);
 });

@@ -35,7 +35,7 @@ export const CONTENT_ITEMS = Object.freeze({
   goatpen:  item('goatpen', 'Hay Corner',      'icon-hay',     false),
   bucket:   item('bucket',  'Wooden Pail',     'icon-pail',    false, 5),
   milk:     item('milk',    'Pail of Milk',    'icon-milk',    false, 5),
-  research: item('research', 'Tinker\u2019s Desk', 'icon-research', false),
+  research: item('research', 'Research Table', 'icon-research', false), // the old Tinker's Desk: placed ones work as a Research Table, bag ones load as one
   motor:    item('motor',    'Little Motor',   'icon-motor',  false),
   wheel:    item('wheel',    'Steering Wheel', 'icon-wheel',  false),
   bed:      item('bed',      'Simple Bed',     'icon-bed',    false), // [bed] Raft's Simple Bed; same 'bed' kind, so old saves keep their beds
@@ -76,10 +76,10 @@ export const CONTENT_ITEMS = Object.freeze({
 const recipe = (id, name, count, cost) => Object.freeze({ id, name, output: Object.freeze({ kind: id, count }), cost: Object.freeze(cost) });
 
 export const CONTENT_RECIPES = Object.freeze({
-  research: recipe('research', 'Tinker\u2019s Desk', 1, { wood: 6, scrap: 2 }),
-  motor:    recipe('motor', 'Little Motor', 1, { wood: 6, scrap: 4, rope: 2 }),
-  wheel:    recipe('wheel', 'Steering Wheel', 1, { wood: 5, rope: 2 }),
-  bed:      recipe('bed', 'Bed', 1, { wood: 6, leaf: 4 }),
+  research: recipe('research', 'Research Table', 1, { wood: 6, scrap: 2 }), // retired (research-tree.js): the old Tinker's Desk, kept so saves load
+  motor:    recipe('motor', 'Little Motor', 1, { wood: 20, metalingot: 5, rope: 5, copperingot: 1 }), // Raft Engine: ~20 planks, 5 metal ingots, 5 rope, 1 circuit board
+  wheel:    recipe('wheel', 'Steering Wheel', 1, { scrap: 10, metalingot: 4, rope: 4, bolt: 2 }), // Raft: 10 scrap, 4 metal ingots, 4 rope, 2 bolts
+  bed:      recipe('bed', 'Simple Bed', 1, { leaf: 10, wood: 6, plastic: 4, nail: 3 }), // [bed] Raft: 10 palm leaves, 6 planks, 4 plastic, 3 nails
   brush:          recipe('brush', 'Paint Brush', 1, { wood: 2, rope: 1 }), // paint: one pot paints one piece, each recipe makes 4
   paint_seafoam:  recipe('paint_seafoam', 'Seafoam Paint', 4, { leaf: 1, sand: 1 }),
   paint_coral:    recipe('paint_coral', 'Coral Paint', 4, { clay: 2 }),
@@ -110,15 +110,6 @@ export const CONTENT_RECIPES = Object.freeze({
   egglamp: Object.freeze({ id: 'egglamp', name: 'Egg Lantern', output: Object.freeze({ kind: 'lantern', count: 1 }), cost: Object.freeze({ puffegg: 1, wood: 2 }) }),
   goatpen: recipe('goatpen', 'Hay Corner',      1, { wood: 4, leaf: 3, rope: 1 }),
   bucket:  recipe('bucket',  'Wooden Pail',     1, { wood: 3, rope: 1 }),
-  motor:    recipe('motor', 'Little Motor', 1, { wood: 6, scrap: 4, rope: 2 }),
-  wheel:    recipe('wheel', 'Steering Wheel', 1, { wood: 5, rope: 2 }),
-  bed:      recipe('bed', 'Simple Bed', 1, { leaf: 10, wood: 6, plastic: 4, nail: 3 }), // [bed]
-  brush:          recipe('brush', 'Paint Brush', 1, { wood: 2, rope: 1 }), // paint: one pot paints one piece, each recipe makes 4
-  paint_seafoam:  recipe('paint_seafoam', 'Seafoam Paint', 4, { leaf: 1, sand: 1 }),
-  paint_coral:    recipe('paint_coral', 'Coral Paint', 4, { clay: 2 }),
-  paint_sunshell: recipe('paint_sunshell', 'Sunshell Paint', 4, { sand: 1, seed: 1 }),
-  paint_lagoon:   recipe('paint_lagoon', 'Lagoon Paint', 4, { plastic: 1, leaf: 1 }),
-  paint_pebble:   recipe('paint_pebble', 'Pebble Paint', 4, { stone: 1, clay: 1 }),
   // diving gear (diving-gear.js)
   fins:    recipe('fins',    'Puff-Feather Fins', 1, { feather: 3, plastic: 2, rope: 1 }),
   airjug:  recipe('airjug',  'Breath Jug',        1, { plastic: 3, metalingot: 1, rope: 1 }),

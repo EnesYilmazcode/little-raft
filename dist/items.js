@@ -22,14 +22,14 @@
 //                cost:   {kind: n}  (station recipes have exactly one cost key = input)
 //                count:  output amount per craft / per smelted input
 //                station: null (hand craft) | 'smelter' | 'grill' | 'purifier'
-//                (the 'recycler' Sorting Tub has no ITEMS recipes: see stationExtraRecipes)
+//                (the 'recycler' Recycler has no ITEMS recipes: see stationExtraRecipes)
 //                time:   seconds per item (station only)
 //                fuel:   fuel units per item (station only; see FUEL_VALUE)
 //              }
 //   unlock:    {type:'start'}                         known from the beginning
 //            | {type:'discover', items:[kinds]}       once the player has ever held all of them
 //            | {type:'research', items:[kinds]}       research each kind at the Research Table
-//                                                     (researching never consumes the item)
+//                                                     (the Research Table uses up one of each; research-tree.js)
 //            | {type:'station', station:id}           once that station has been placed
 //   tip:       one or two friendly sentences (tooltips)
 // }
@@ -38,7 +38,8 @@
 // item lane), SPAWN_TABLE is 3 wood : 3 plastic : 3 leaf : 1 scrap : 1 barrel.
 // An attentive player hooks ~4-5 items/min, i.e. ~0.5 barrels/min (hook + nets; see
 // docs/cloud/progression-sim.md). New raw materials only come from barrels, so BARREL_LOOT
-// plus BARREL_PITY is tuned for ~43 barrels -> smelter (~66 min) and ~48 -> metal hook.
+// plus BARREL_PITY was tuned for ~43 barrels -> smelter (~66 min) and ~48 -> metal hook, when the smelter
+// took 10 bricks + 7 stone; the Raft recipe (6 bricks, no stone) gets there sooner.
 
 const STACK = 20;
 // These mirror inventory-state.js (which imports this file, so it cannot be imported back here).
@@ -89,17 +90,17 @@ const LIST = [
     tip: 'Rusty little metal bits. Handy for nails, lanterns and fixing your hook.' }),
   item('sand', 'Sand', 'material', { iconTint: '#e8d39a', unlock: START,
     tip: 'A pouch of fine beach sand from a barrel. The smelter melts it into glass.' }),
-  // [recycler] floating junk; a Sorting Tub turns it into materials (RECYCLE_YIELDS)
+  // [recycler] floating junk; a Recycler turns it into materials (RECYCLE_YIELDS)
   item('oldboot', 'Old Boot', 'material', { iconTint: '#6b4f3a', unlock: START,
-    tip: 'A soggy boot with a sturdy rubber sole. A Sorting Tub turns it into plastic.' }),
+    tip: 'A soggy boot with a sturdy rubber sole. A Recycler turns it into plastic.' }),
   item('tincan', 'Tin Can', 'material', { iconTint: '#9aa4a8', unlock: START,
-    tip: 'A dented tin with no label. A Sorting Tub flattens it into scrap.' }),
+    tip: 'A dented tin with no label. A Recycler flattens it into scrap.' }),
   item('seajar', 'Sea Jar', 'material', { iconTint: '#9fd0c8', unlock: START,
-    tip: 'A cloudy glass jar. A Sorting Tub crushes it into sand.' }),
+    tip: 'A cloudy glass jar. A Recycler crushes it into sand.' }),
   item('clay', 'Clay', 'material', { iconTint: '#c07a52',
     tip: 'Squishy river clay. Fire it on the grill to make bricks.' }),
   item('stone', 'Stone', 'material', { iconTint: '#9aa3a8',
-    tip: 'A smooth, heavy pebble. A few of these hold a smelter together.' }),
+    tip: 'A smooth, heavy pebble. Good for stone axes and cooking pots.' }),
   item('copperore', 'Copper Ore', 'material', { iconTint: '#d98a4e',
     tip: 'A rock with shiny orange streaks. Smelt it into a copper ingot.' }),
   item('metalore', 'Metal Ore', 'material', { iconTint: '#8d96a3',
@@ -132,7 +133,7 @@ const LIST = [
     recipe: hand({ leaf: 2 }), unlock: START,
     tip: 'Two palm leaves twisted into rope. You will want lots of this.' }),
   item('nail', 'Nail', 'refined', { iconTint: '#b7bcc2',
-    recipe: hand({ scrap: 2 }, 3), unlock: discover('scrap'),
+    recipe: hand({ scrap: 2 }, 3), unlock: START,
     tip: 'Hammered from scrap, three at a time. Nets and tables need a few.' }),
   item('brick', 'Brick', 'refined', { iconTint: '#b5533c',
     recipe: cook('grill', 'clay', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
@@ -147,7 +148,7 @@ const LIST = [
     recipe: cook('smelter', 'sand', { time: 25, fuel: 1 }), unlock: atStation('smelter'),
     tip: 'Sand melted into a clear little pane. Look through it and the sea sparkles.' }),
   item('bolt', 'Bolt', 'refined', { iconTint: '#8d96a3',
-    recipe: hand({ metalingot: 1, scrap: 1 }, 2), unlock: research('metalingot'),
+    recipe: hand({ metalingot: 1, scrap: 1 }, 2), unlock: research('metalingot', 'scrap'),
     tip: 'Two sturdy bolts from one ingot. They hold the fancy stuff together.' }),
   item('hinge', 'Hinge', 'refined', { iconTint: '#c3c9d1',
     recipe: hand({ metalingot: 1, nail: 2 }, 2), unlock: research('metalingot', 'nail'),
@@ -159,50 +160,50 @@ const LIST = [
     tip: 'Throw it, reel it, grab the goodies. Gets tired after about 40 catches; R fixes it up.' }),
   item('metalhook', 'Metal Hook', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#a9b4c2',
     tool: true, durability: 150, actsAs: 'hook',
-    recipe: hand({ metalingot: 6, bolt: 2, rope: 2, wood: 2 }), unlock: research('metalingot', 'bolt'),
+    recipe: hand({ metalingot: 6, bolt: 2, rope: 2, wood: 2 }), unlock: research('metalingot', 'bolt', 'rope', 'wood'),
     tip: 'A shiny metal hook that lasts three times longer. Your arm will thank you.' }),
   item('hammer', 'Hammer', 'tool', { icon: 'icon-hammer', placeholder: false, tool: true, durability: 120,
     recipe: hand({ wood: 4, rope: 2 }), unlock: START,
     tip: 'Builds new floor tiles (2 planks + 2 plastic each). Make room for friends!' }),
   item('fishingrod', 'Fishing Rod', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#c69860',
     tool: true, durability: 40,
-    recipe: hand({ wood: 6, rope: 8 }), unlock: discover('rope'),
+    recipe: hand({ wood: 6, rope: 8 }), unlock: START,
     tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 40 catches between repairs.' }),
   item('spear', 'Wooden Spear', 'tool', { iconTint: '#bb8650', tool: true, durability: 20,
-    recipe: hand({ wood: 8, rope: 3 }), unlock: discover('rope'),
+    recipe: hand({ wood: 8, rope: 3 }), unlock: START,
     tip: 'A long pole with a sharp lashed tip. Click to jab at things in the water; wears only when it lands.' }),
   item('metalspear', 'Metal Spear', 'tool', { iconTint: '#9fb1bf', tool: true, durability: 40, actsAs: 'spear',
-    recipe: hand({ wood: 6, rope: 2, metalingot: 2, bolt: 1 }), unlock: research('metalingot', 'bolt'),
+    recipe: hand({ wood: 6, rope: 2, metalingot: 2, bolt: 1 }), unlock: research('wood', 'rope', 'metalingot', 'bolt'),
     tip: 'A heavy metal point on a sturdy shaft. Twice the bite of the wooden one and lasts twice as long.' }),
   item('paddle', 'Paddle', 'tool', { iconTint: '#c29462', tool: true, durability: 250,
-    recipe: hand({ wood: 4, rope: 2, plastic: 2 }), unlock: discover('rope'),
+    recipe: hand({ wood: 4, rope: 2, plastic: 2 }), unlock: START,
     tip: 'Stand at the raft edge and click to push the raft the way you face. Good for about 250 strokes.' }),
   item('axe', 'Stone Axe', 'tool', { iconTint: '#8f9aa0', tool: true, durability: 50,
-    recipe: hand({ wood: 6, stone: 3, rope: 2 }), unlock: discover('stone', 'rope'),
+    recipe: hand({ wood: 6, stone: 3, rope: 2 }), unlock: research('wood', 'stone', 'rope'),
     tip: 'A sharp stone head lashed to a sturdy handle. Click a palm five times to fell it; good for about 50 chops.' }),
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
-    recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
+    recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot', 'hinge', 'bolt'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
   item('spyglass', 'Spyglass', 'tool', { iconTint: '#c9a15a', stack: 1, // [spyglass]
     recipe: hand({ wood: 3, rope: 1, plastic: 2, scrap: 1 }), unlock: discover('rope', 'plastic', 'scrap'),
     tip: 'A little brass-and-wood telescope. Hold right click to look far away. Never wears out.' }),
   // [instruments] held instruments (dist/instruments.js): no durability, no world state
-  item('drum', 'Tide Drum', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 3, leaf: 2, rope: 1 }), unlock: discover('rope'),
+  item('drum', 'Tide Drum', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 3, leaf: 2, rope: 1 }), unlock: research('wood', 'leaf', 'rope'),
     tip: 'A palm-leaf hand drum. Click to thump; look up or down to change the note.' }),
-  item('pipes', 'Reed Pipes', 'tool', { iconTint: '#8fc3c9', stack: 1, recipe: hand({ plastic: 3, rope: 1 }), unlock: discover('rope', 'plastic'),
+  item('pipes', 'Reed Pipes', 'tool', { iconTint: '#8fc3c9', stack: 1, recipe: hand({ plastic: 3, rope: 1 }), unlock: research('plastic', 'rope'),
     tip: 'Breathy little tubes tied in a row. Look up for high notes, down for low ones.' }),
-  item('bells', 'Bell Bars', 'tool', { iconTint: '#c9b26a', stack: 1, recipe: hand({ wood: 2, scrap: 3, nail: 2 }), unlock: research('nail'),
+  item('bells', 'Bell Bars', 'tool', { iconTint: '#c9b26a', stack: 1, recipe: hand({ wood: 2, scrap: 3, nail: 2 }), unlock: research('wood', 'scrap', 'nail'),
     tip: 'Scrap-metal bars on a little frame. They ring bright and fade out softly.' }),
   item('finder', 'Seashell Finder', 'tool', { iconTint: '#c99560', stack: 1,
-    recipe: hand({ scrap: 4, wood: 2, rope: 2 }), unlock: discover('sand', 'scrap'),
+    recipe: hand({ scrap: 4, wood: 2, rope: 2 }), unlock: research('scrap', 'wood', 'rope'),
     tip: 'A driftwood wand with a brass coil. It ticks faster near buried bundles. Never wears out.' }),
   item('spade', 'Little Spade', 'tool', { iconTint: '#bb8650', tool: true, durability: 60,
-    recipe: hand({ wood: 3, scrap: 2 }), unlock: discover('sand'),
+    recipe: hand({ wood: 3, scrap: 2 }), unlock: research('wood', 'scrap'),
     tip: 'Press E on island sand to dig. Finds bundles, or at least a handful of sand. R fixes it.' }),
   // [camera] Little Camera (dist/camera.js): no durability, photos stay in this browser
   item('camera', 'Little Camera', 'tool', { iconTint: '#e07a5f', stack: 1, recipe: hand({ glass: 1, plastic: 2, scrap: 2, rope: 1 }), unlock: research('glass'),
     tip: 'Click to snap a photo. Press P to open your album.' }),
-  item('glidehandle', 'Glide Handle', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 2, rope: 2, scrap: 2 }), unlock: discover('nail'), // [zipline] tool:false, no durability
+  item('glidehandle', 'Glide Handle', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 2, rope: 2, scrap: 2 }), unlock: research('wood', 'rope', 'scrap'), // [zipline] tool:false, no durability
     tip: 'A wooden T-bar with a wheel. E links two posts or hooks you onto a line. Space lets go.' }),
 
   // ----- food -----
@@ -238,14 +239,14 @@ const LIST = [
     recipe: hand({ wood: 2, leaf: 3 }), unlock: START,
     tip: 'A little potted palm. Every raft deserves some green.' }),
   item('cropplot', 'Small Crop Plot', 'decor', { placeable: true, iconTint: '#7a5232', // [crops]
-    recipe: hand({ wood: 6, rope: 4 }), unlock: discover('rope'),
+    recipe: hand({ wood: 6, rope: 4 }), unlock: research('wood', 'rope'),
     tip: 'A long box of dark soil with three slots. Plant beets or potatoes, water them, harvest with E.' }),
   // [bees] flower box, beehive and beeswax candle (models in dist/bees-model.js)
   item('flowerbox', 'Flower Box', 'decor', { placeable: true, iconTint: '#ff7aa2',
-    recipe: hand({ wood: 2, flowerseed: 1 }), unlock: discover('flowerseed'),
+    recipe: hand({ wood: 2, flowerseed: 1 }), unlock: research('wood', 'flowerseed'),
     tip: 'A box of bright blooms. Bees love it.' }),
   item('beehive', 'Beehive', 'decor', { placeable: true, iconTint: '#d9a441',
-    recipe: hand({ wood: 4, rope: 2, leaf: 2 }), unlock: discover('flowerseed'),
+    recipe: hand({ wood: 4, rope: 2, leaf: 2 }), unlock: research('wood', 'rope', 'leaf'),
     tip: 'A cosy hive. Put flower boxes close by and the bees make honeycomb.' }),
   item('candle', 'Beeswax Candle', 'decor', { placeable: true, iconTint: '#ffd27a',
     recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
@@ -254,29 +255,29 @@ const LIST = [
     recipe: hand({ wood: 3, rope: 2, leaf: 1 }), unlock: discover('cookedfish'),
     tip: 'A driftwood perch with a woven tray. Seagulls like a good lookout.' }), // [gull]
   item('juicer', 'Juicer', 'decor', { placeable: true, iconTint: '#a9b4c2', // [juicer] not 'station' (no slot panel)
-    recipe: hand({ wood: 4, scrap: 2, rope: 1 }), unlock: discover('berries'),
+    recipe: hand({ wood: 4, scrap: 2, rope: 1 }), unlock: research('wood', 'scrap', 'rope'),
     tip: 'A hand-crank juicer. Bring a cup of fresh water and two fruit.' }),
   // [power] wind turbine, battery, string lights and lamp post (dist/power.js, models in dist/power-model.js).
   // Lights share daynight's 64-lantern cap with lanterns and candles (raft order); one past the cap never brightens.
   item('turbine', 'Wind Turbine', 'decor', { placeable: true, iconTint: '#e9eef1', // [power]
-    recipe: hand({ wood: 4, metalingot: 2, bolt: 2, rope: 2 }), unlock: research('metalingot', 'bolt'),
+    recipe: hand({ wood: 4, metalingot: 2, bolt: 2, rope: 2 }), unlock: research('wood', 'metalingot', 'bolt', 'rope'),
     tip: 'Spins in the breeze and charges a battery next to it.' }),
   item('battery', 'Battery', 'decor', { placeable: true, iconTint: '#7dff9a', // [power]
-    recipe: hand({ copperingot: 2, metalingot: 1, plastic: 2 }), unlock: research('copperingot'),
+    recipe: hand({ copperingot: 2, metalingot: 1, plastic: 2 }), unlock: research('copperingot', 'metalingot', 'plastic'),
     tip: 'Stores wind power. Lights within 3 tiles share it at night.' }),
   item('stringlights', 'String Lights', 'decor', { placeable: true, iconTint: '#ffc070', // [power]
-    recipe: hand({ glass: 2, copperingot: 1, rope: 2 }), unlock: research('glass', 'copperingot'),
+    recipe: hand({ glass: 2, copperingot: 1, rope: 2 }), unlock: research('glass', 'copperingot', 'rope'),
     tip: 'A little post with a wire of warm bulbs. Needs a charged battery nearby.' }),
   item('lamppost', 'Lamp Post', 'decor', { placeable: true, iconTint: '#ffe2a8', // [power]
-    recipe: hand({ wood: 3, glass: 1, copperingot: 1, nail: 2 }), unlock: research('glass', 'copperingot'),
+    recipe: hand({ wood: 3, glass: 1, copperingot: 1, nail: 2 }), unlock: research('wood', 'glass', 'copperingot', 'nail'),
     tip: 'A tall lamp that lights the deck at night. Needs a charged battery nearby.' }),
   item('fishtrap', 'Fish Trap', 'decor', { placeable: true, iconTint: '#b98a4e', recipe: hand({ wood: 3, rope: 3, leaf: 2 }), unlock: discover('fish'), // [fishtrap] see dist/fish-trap.js
     tip: 'A woven basket that hangs off the raft edge. Fish swim in while you relax.' }),
   item('shelf', 'Display Shelf', 'decor', { placeable: true, iconTint: '#b4824b', // [display] see dist/display.js
-    recipe: hand({ wood: 4, nail: 2 }), unlock: discover('nail'),
+    recipe: hand({ wood: 4, nail: 2 }), unlock: research('wood', 'nail'),
     tip: 'A little shelf for showing off your favourite finds.' }), // [display]
   item('trophystand', 'Trophy Stand', 'decor', { placeable: true, iconTint: '#c9a24a', // [display]
-    recipe: hand({ wood: 3, scrap: 1 }), unlock: discover('fish'),
+    recipe: hand({ wood: 3, scrap: 1 }), unlock: research('wood', 'scrap'),
     tip: 'A small pedestal for one treasure, or a trophy of your best catch.' }), // [display]
   item('taskboard', 'Task Board', 'decor', { placeable: true, iconTint: '#c9a26b', recipe: hand({ wood: 3, leaf: 1 }), unlock: START, // [tasks] model in dist/tasks-model.js
     tip: 'Pin up the crew tasks for the day.' }),
@@ -284,32 +285,32 @@ const LIST = [
     tip: 'Hang a favourite photo on your raft. Press E on it to choose one.' }),
   // [fireworks] sky rocket (model in dist/fireworks-model.js, logic in dist/fireworks.js)
   item('skyrocket', 'Sky Rocket', 'decor', { placeable: true, stack: 20, iconTint: '#e9a08c',
-    recipe: hand({ plastic: 2, leaf: 1, scrap: 1 }, 3), unlock: discover('plastic', 'scrap'),
+    recipe: hand({ plastic: 2, leaf: 1, scrap: 1 }, 3), unlock: research('plastic', 'leaf', 'scrap'),
     tip: 'A paper-and-plastic rocket on a little stand. Press E to light it, best after dark!' }),
   item('scarecrow', 'Scarecrow', 'decor', { placeable: true, iconTint: '#c9a46a', // [scarecrow] model in dist/scarecrow-model.js
-    recipe: hand({ wood: 3, leaf: 4, rope: 2, plastic: 1 }), unlock: discover('rope'),
+    recipe: hand({ wood: 3, leaf: 4, rope: 2, plastic: 1 }), unlock: research('wood', 'leaf', 'rope', 'plastic'),
     tip: 'A friendly driftwood scarecrow. Gulls leave nearby planters alone and sit on its hat instead.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
-    recipe: hand({ wood: 10, leaf: 20, scrap: 3 }), unlock: discover('leaf', 'scrap'), // Raft: 10 planks + 20 leaves + 3 scrap
+    recipe: hand({ wood: 10, leaf: 20, scrap: 3 }), unlock: research('wood', 'leaf', 'scrap'), // Raft: 10 planks + 20 leaves + 3 scrap
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
   item('lantern', 'Lantern', 'decor', { icon: 'icon-lantern', placeholder: false, placeable: true,
-    recipe: hand({ wood: 2, scrap: 2 }), unlock: discover('scrap'),
+    recipe: hand({ wood: 2, scrap: 2 }), unlock: START,
     tip: 'A warm glow for quiet evenings on the water.' }),
   item('crate', 'Crate', 'build', { icon: 'icon-barrel', placeholder: true, placeable: true,
-    recipe: hand({ wood: 4, scrap: 1 }), unlock: discover('scrap'),
+    recipe: hand({ wood: 4, scrap: 1 }), unlock: START,
     tip: 'A sturdy wooden crate. Looks great stacked by the edge.' }),
   item('net', 'Collection Net', 'build', { icon: 'icon-net', placeholder: false, placeable: true,
-    recipe: hand({ wood: 6, rope: 8, nail: 2 }), unlock: discover('nail'),
+    recipe: hand({ wood: 6, rope: 8, nail: 2 }), unlock: research('wood', 'scrap', 'nail'), // Raft: Simple Collection Net, research Plank + Scrap + Nail
     tip: 'Hang it off the raft edge. Debris drifting into it stays there (up to 10, even barrels). Press E to empty it.' }),
   item('maptable', 'Map Table', 'decor', { iconTint: '#c9a46a', stack: 5, placeable: true,
     recipe: hand({ wood: 6, rope: 3, nail: 2, copperingot: 1 }), unlock: research('copperingot'),
     tip: 'A little chart table. It remembers the islands you meet and points the sail where you like.' }),
   // [zipline] glide posts (models in dist/zipline-model.js, logic in dist/zipline.js)
   item('glidepost', 'Glide Post', 'decor', { placeable: true, iconTint: '#a57a4c',
-    recipe: hand({ wood: 6, rope: 3, nail: 2 }), unlock: discover('nail'),
+    recipe: hand({ wood: 6, rope: 3, nail: 2 }), unlock: research('wood', 'rope', 'nail'),
     tip: 'A tall mast with a little wheel on top. String a glide line to another post.' }),
   item('glidestep', 'Low Glide Post', 'decor', { placeable: true, iconTint: '#8b6a43',
-    recipe: hand({ wood: 4, rope: 2, nail: 1 }), unlock: discover('nail'),
+    recipe: hand({ wood: 4, rope: 2, nail: 1 }), unlock: research('wood', 'rope', 'nail'),
     tip: 'A shorter glide post. Run a line down to it from a tall one for a speedy glide.' }),
 
   item('armor', 'Foundation Armor', 'build', { iconTint: '#8e9aa4',
@@ -318,17 +319,17 @@ const LIST = [
 
   // ----- stations -----
   item('researchtable', 'Research Table', 'station', { iconTint: '#c69860', stack: 5, placeable: true,
-    recipe: hand({ wood: 10, nail: 4, rope: 2 }), unlock: discover('nail'),
-    tip: 'Show it something new and learn what you can make. Your items stay safe in your bag.' }),
+    recipe: hand({ wood: 14, scrap: 2 }), unlock: START, // Raft: 14 planks + 2 scrap
+    tip: 'Research one of each new material here (it uses that one up) to learn the blueprints that need it.' }),
   item('grill', 'Simple Grill', 'station', { iconTint: '#6b5a4c', stack: 5, placeable: true,
-    recipe: hand({ wood: 6, scrap: 1, rope: 3 }), unlock: discover('fish'),
+    recipe: hand({ wood: 6, scrap: 1, rope: 3 }), unlock: START,
     tip: 'Grills fish into snacks and fires clay into bricks. Feed it planks or leaves.' }),
   item('smelter', 'Smelter', 'station', { iconTint: '#b5533c', stack: 5, placeable: true,
-    recipe: hand({ wood: 6, brick: 10, stone: 7, nail: 6 }), unlock: research('clay', 'stone'),
+    recipe: hand({ wood: 4, brick: 6, scrap: 4, nail: 6 }), unlock: research('wood', 'brick', 'scrap', 'nail'), // Raft: 4 planks + 6 bricks + 4 scrap + 6 nails
     tip: 'A toasty brick furnace. Melts ore into ingots and sand into glass, one at a time.' }),
-  item('recycler', 'Sorting Tub', 'station', { iconTint: '#7fa7a0', stack: 5, placeable: true, // [recycler]
-    recipe: hand({ wood: 6, rope: 2, nail: 3 }), unlock: discover('nail'),
-    tip: 'A hand-cranked tub that sorts junk into scrap, plastic and sand. No fuel needed.' }),
+  item('recycler', 'Recycler', 'station', { iconTint: '#7fa7a0', stack: 5, placeable: true, // [recycler]
+    recipe: hand({ wood: 6, rope: 2, nail: 3 }), unlock: research('wood', 'rope', 'nail'),
+    tip: 'A hand-cranked recycler that sorts junk into scrap, plastic and sand. No fuel needed.' }),
 ];
 
 export const ITEMS = deepFreeze(Object.fromEntries(LIST.map((e) => [e.id, e])));
@@ -359,7 +360,7 @@ export const BLOCK_RADII = deepFreeze({
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
 export const SPEAR_DAMAGE = deepFreeze({ spear: 5, metalspear: 10 });
 
-/** [recycler] Sorting Tub yields: one junk item -> count of a gathered material, no fuel. */
+/** [recycler] Recycler yields: one junk item -> count of a gathered material, no fuel. */
 export const RECYCLE_YIELDS = deepFreeze({
   tincan: { kind: 'scrap', count: 2, time: 12 },
   oldboot: { kind: 'plastic', count: 2, time: 10 },
@@ -616,7 +617,7 @@ const knownIn = (info, k) => !!info && typeof info === 'object' && hasOwn(info, 
 
 // Registered kinds that saves must not keep: renamed on load, before alias lookup. The old farming.js build minted
 // {kind:'water'} cups that look like freshcup but no watering action accepts ('water' stays registered for farming.js).
-export const LOAD_RENAMES = deepFreeze({ water: 'freshcup' });
+export const LOAD_RENAMES = deepFreeze({ water: 'freshcup', research: 'researchtable' }); // research: the old Tinker's Desk is a Research Table now (research-tree.js)
 
 function resolveKind(kind, info) {
   if (typeof kind !== 'string') return null;

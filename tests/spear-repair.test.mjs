@@ -18,8 +18,8 @@ test('spear recipes, unlocks, damage and durability follow the research numbers'
   assert.equal(ITEMS.spear.durability, 20);
   assert.equal(ITEMS.metalspear.durability, 40);
   assert.ok(ITEMS.spear.tool && ITEMS.metalspear.tool);
-  assert.deepEqual(ITEMS.spear.unlock, { type: 'discover', items: ['rope'] });
-  assert.deepEqual(ITEMS.metalspear.unlock, { type: 'research', items: ['metalingot', 'bolt'] });
+  assert.deepEqual(ITEMS.spear.unlock, { type: 'start' }); // Raft start recipe
+  assert.deepEqual(ITEMS.metalspear.unlock, { type: 'research', items: ['wood', 'rope', 'metalingot', 'bolt'] }); // Raft: Plank, Rope, Metal Ingot, Bolt
   assert.equal(SPEAR_DAMAGE.spear, 5); assert.equal(SPEAR_DAMAGE.metalspear, 10);
   assert.equal(spearDamage('spear'), 5); assert.equal(spearDamage('metalspear'), 10); assert.equal(spearDamage('hook'), 0);
   assert.equal(toolRole('metalspear'), 'spear');

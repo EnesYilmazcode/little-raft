@@ -32,10 +32,10 @@ test('recycler: junk items are START materials with stack 20 and real tips', () 
 
 test('recycler: station row, unlock, recipe and radius', () => {
   const r = ITEMS.recycler;
-  assert.equal(r.name, 'Sorting Tub');
+  assert.equal(r.name, 'Recycler'); // Raft's Recycler (was 'Sorting Tub')
   assert.equal(r.category, 'station');
   assert.ok(r.placeable);
-  assert.deepEqual(r.unlock, { type: 'discover', items: ['nail'] });
+  assert.deepEqual(r.unlock, { type: 'research', items: ['wood', 'rope', 'nail'] });
   assert.deepEqual({ ...r.recipe.cost }, { wood: 6, rope: 2, nail: 3 });
   assert.equal(r.recipe.station, null);
   assert.ok(recipeTable().recycler);

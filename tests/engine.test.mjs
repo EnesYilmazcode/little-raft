@@ -20,8 +20,8 @@ const slice = motors => ({ v: 1, motors });
 test('items, recipes and decor are registered', () => {
   assert.equal(ITEM_INFO.motor.name, 'Little Motor');
   assert.equal(ITEM_INFO.wheel.name, 'Steering Wheel');
-  assert.deepEqual({ ...RECIPES.motor.cost }, { wood: 6, scrap: 4, rope: 2 });
-  assert.deepEqual({ ...RECIPES.wheel.cost }, { wood: 5, rope: 2 });
+  assert.deepEqual({ ...RECIPES.motor.cost }, { wood: 20, metalingot: 5, rope: 5, copperingot: 1 }); // Raft Engine (circuit board -> copper ingot)
+  assert.deepEqual({ ...RECIPES.wheel.cost }, { scrap: 10, metalingot: 4, rope: 4, bolt: 2 }); // Raft Steering Wheel
   assert.ok(CONTENT_DECOR.includes('motor') && CONTENT_DECOR.includes('wheel'));
   assert.equal(CONTENT_BLOCK_RADIUS.motor, .45); assert.equal(CONTENT_BLOCK_RADIUS.wheel, .4);
 });
