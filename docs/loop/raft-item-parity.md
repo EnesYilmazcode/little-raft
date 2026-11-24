@@ -1,21 +1,66 @@
 # Raft 1.0 item parity
 
 Every Raft 1.0 item we could pin down, matched against Little Raft's item data, with an effort call for each missing one.
-Read-only research: no game code was changed.
+The research pass changed no game code; the items pass (section 0) added items and applied retunes.
+
+## 0. Items pass (branch `claude/raft-items`)
+
+Added (catalogue entry, recipe, unlock, icon, held model, crafting tab, craft-book text; all hand recipes):
+
+| Id | Name | Tab | Recipe | Unlock | What it does |
+|---|---|---|---|---|---|
+| `metalaxe` | Metal Axe | tools | 4 wood + 3 metal ingot + 2 rope + 1 bolt | research metal ingot + Stone Axe | `actsAs: 'axe'`, 100 uses (stone 50); repair 1 ingot + 1 wood |
+| `machete` | Machete | weapons | 3 metal ingot + 2 bolt + 3 wood + 2 rope | research Metal Spear | `actsAs: 'spear'`, 15 damage (`SPEAR_DAMAGE`), 60 uses; repair 1 ingot + 1 scrap. Jabs like the spears (no slash mechanic) |
+| `headlamp` | Headlamp | equipment | 1 battery + 2 rope + 2 scrap [src] | Tinker's Desk research (like the other diving gear) | Diving gear (`GEAR_IDS` bit 4): fog x1.25 while in the bag, stacks with the goggles |
+
+The metal axe and machete recipes are our picks: their rows below are `[recall]` (Raft's are ingot + plank + rope,
+plus bolt, based), so the counts follow our metal spear (2 ingot + 1 bolt) one step up. Verify on the wiki.
+Damage 15 and 60 uses for the machete, 100 uses for the metal axe, and the headlamp's fog x1.25 are also our picks.
+
+Retunes applied (recipe only, ids unchanged): `grill` 3 rope -> 6 rope [src]; `scarecrow` 3 wood + 4 leaf + 2 rope +
+1 plastic -> 5 wood + 3 leaf + 3 nail + 3 plastic [src] (unlock moved from holding rope to holding a nail, since it
+now costs nails). Both stay inside `PROGRESSION_PLAN` (the grill is minute 24, rope is plentiful by then).
+
+Crafting tabs: every recipe id (ITEMS, content and lane recipes, and station outputs) has one of Raft's 8 tabs:
+`CRAFT_TABS` and `craftTabOf(id)` in `dist/items.js`, and `ITEMS[id].tab`. Text for kinds newer than the craft book:
+`ITEM_TEXT_EXTRA` in `dist/items.js`.
+
+Save safety: `tests/item-ids-save.test.mjs` loads bags, Progression, decor, chests, drop boxes and pickup loot with
+new, legacy, renamed, future and junk ids. New ids do not collide with `LEGACY_ALIASES` (added `metal_axe` ->
+`metalaxe`). Old saves simply lack the new ids. Co-op: a host snapshot with a kind the guest lacks is dropped by
+`migrateSnapshot` (the rest of the bag stays); the held kind travels as its role (`axe`, `spear`), so older guests
+see the stone axe or wooden spear in a partner's hand; an unknown held kind is sent as index 0 (nothing).
+
+Why many CHEAP rows stayed open: the crafting UI (`dist/craft-book.js`, owned by the UI lane this round) needs an
+`ITEM_SOURCE` row for every bag kind that is not hand crafted (gathered items, station outputs, meals, juices), and an
+`ITEM_TEXT` row for every kind (`tests/craft-ux.test.mjs`, `tests/survival.test.mjs`). Hand-crafted items can ship
+with `ITEM_TEXT_EXTRA`; gathered or station-made kinds cannot until the craft book reads a source hint from item
+data. The rows marked "Blocked: ITEM_SOURCE" below are the ones that are otherwise ready.
+
+| Measure | Before | After |
+|---|---|---|
+| Raft 1.0 items listed | 191 | 191 |
+| Matched in Little Raft (MATCH) | 102 | 106 |
+| Ours-only (OURS) | 59 | 59 |
+| Missing, CHEAP | 53 | 49 |
+| Missing, SYSTEM | 36 | 36 |
+| Our bag kinds (`ITEM_KINDS`) | 148 | 151 |
+
+The fourth new match is Drinking Glass, which the existing `glasscups` recipe (1 glass -> 3 cups) already covers.
 
 ## Summary
 
 | Measure | Count |
 |---|---|
 | Raft 1.0 items listed | 191 |
-| Matched in Little Raft (MATCH) | 102 |
+| Matched in Little Raft (MATCH) | 106 |
 | Ours-only (OURS) | 59 |
-| Missing, CHEAP | 53 |
+| Missing, CHEAP | 49 |
 | Missing, SYSTEM | 36 |
 
-Coverage: 102 of 191 Raft items (53%) have a Little Raft counterpart; adding every CHEAP item would reach 155 (81%).
-Every one of our 148 bag kinds (`ITEM_KINDS` in `dist/inventory-state.js`) appears in this file, either as a match
-or in the ours-only table.
+Coverage: 106 of 191 Raft items (55%) have a Little Raft counterpart; adding every CHEAP item would reach 155 (81%).
+Every one of our 151 bag kinds (`ITEM_KINDS` in `dist/inventory-state.js`) appears in this file, either as a match
+or in the ours-only table (the three new kinds are in the item tables as MATCH rows).
 
 - **Raft total** counts the rows in sections 2 to 11 (one row per Raft item; colour or species families that share one
   bag kind in Raft's own menus, such as the 5 flower seeds or the 28 vending-machine decorations, are one row each).
@@ -58,7 +103,7 @@ the Research Table, then crafted by hand), **blueprint** (learned by picking up 
 | MATCH | Sand | seafloor near islands [src] | `sand` | |
 | MATCH | Metal Ore | seafloor, island rocks | `metalore` | |
 | MATCH | Copper Ore | seafloor, island rocks [src] | `copperore` | |
-| CHEAP | Titanium Ore | deep seafloor, rare [src] | - | Add to seafloor/barrel tables (`BARREL_LOOT`, diving seafloor nodes) |
+| CHEAP | Titanium Ore | deep seafloor, rare [src] | - | Add to seafloor/barrel tables (`BARREL_LOOT`, diving seafloor nodes). Blocked: ITEM_SOURCE |
 | MATCH | Seaweed | seafloor | `seaweed` | |
 | CHEAP | Sea Vine | seafloor plant [recall, verify use] | - | Seafloor node drop |
 | CHEAP | Silver Algae | seafloor, glowing [recall] | - | Seafloor node drop; Raft uses it in late recipes (verify) |
@@ -102,13 +147,13 @@ the Research Table, then crafted by hand), **blueprint** (learned by picking up 
 | MATCH | Copper Ingot | 1 Copper Ore | smelter | `copperingot` | |
 | CHEAP | Titanium Ingot | 1 Titanium Ore | smelter | - | One `cook('smelter', ...)` row |
 | MATCH | Glass | 1 Sand | smelter | `glass` | |
-| CHEAP | Vine Goo | 1 Seaweed [src: smelter takes seaweed] | smelter | - | One smelter row; seaweed is already smelter fuel |
-| CHEAP | Circuit Board | 2 Copper Ingot + 5 Plastic + 1 Vine Goo [src, single source] | research | - | Gate on copper ingot + vine goo research |
-| CHEAP | Wet Brick | 1 Sand + 1 Clay [src] | hand | - | Raft dries it into Dry Brick when placed; we could keep firing it at the grill |
+| CHEAP | Vine Goo | 1 Seaweed [src: smelter takes seaweed] | smelter | - | One smelter row; seaweed is already smelter fuel, so check the fuel / input split. Blocked: ITEM_SOURCE (station output) |
+| CHEAP | Circuit Board | 2 Copper Ingot + 5 Plastic + 1 Vine Goo [src, single source] | research | - | Gate on copper ingot + vine goo research. Waits on Vine Goo |
+| CHEAP | Wet Brick | 1 Sand + 1 Clay [src] | hand | - | Raft dries it into Dry Brick when placed; we could keep firing it at the grill. Skipped: inert until placed drying exists, and `brick` already has its one grill recipe (clay) |
 | MATCH | Dry Brick | Wet Brick, placed to dry [src] | placed | `brick` | Ours: 1 clay at the grill |
 | CHEAP | Explosive Powder | ~1 Sand + 1 Explosive mushroom-type drop [recall, verify] | hand | - | Only useful with fireworks / arrows |
 | CHEAP | Explosive Goo | 1 Explosive Powder [recall] | smelter | - | One smelter row |
-| CHEAP | Empty Bottle | ~Glass [recall, verify count] | research | - | Ingredient for binoculars / oxygen bottle |
+| CHEAP | Empty Bottle | ~Glass [recall, verify count] | research | - | Ingredient for binoculars / oxygen bottle. Skipped: inert until `airjug` / `binoculars` use it (the airjug retune also needs Vine Goo) |
 | SYSTEM | Biofuel | food or leaves in a Biofuel Refiner [recall] | refiner | - | Needs the refiner + fuel tank + engine fuel line |
 | MATCH | Battery | 1 Copper Ingot + 6 Plastic [src, single source] | research | `battery` | Ours 2 copper + 1 ingot + 2 plastic |
 
@@ -121,10 +166,10 @@ the Research Table, then crafted by hand), **blueprint** (learned by picking up 
 | CHEAP | Titanium Hook | ~2 Titanium Ingot + Plank + Rope [recall] | research | - | Third tier, more uses |
 | MATCH | Building Hammer | Planks + Rope [src] | hand | `hammer` | Ours 4 wood + 2 rope |
 | MATCH | Fishing Rod | ~6 Plank + 8 Rope [recall] | hand | `fishingrod` | Same as ours |
-| CHEAP | Metal Fishing Rod | ~Metal Ingot + Plank + Rope [recall] | research | - | Faster bite / reel multiplier in `fishing-rules.js` |
+| CHEAP | Metal Fishing Rod | ~Metal Ingot + Plank + Rope [recall] | research | - | Faster bite / reel multiplier in `fishing-rules.js`. Skipped: `game.js` and `fishing-cooking.js` check the raw kind `'fishingrod'`, not `toolRole`, so a second rod needs code |
 | MATCH | Axe | ~6 Plank + 3 Stone + 2 Rope [W guide] | research | `axe` | Ours "Stone Axe", same cost |
-| CHEAP | Metal Axe | Metal Ingot + Plank + Rope [recall] | research | - | More uses, faster chop |
-| CHEAP | Titanium Axe | Titanium Ingot based [src: titanium tools exist] | research | - | |
+| MATCH | Metal Axe | Metal Ingot + Plank + Rope [recall] | research | `metalaxe` | Added: 4 wood + 3 ingot + 2 rope + 1 bolt (our pick), 100 uses. Same chop count as the stone axe |
+| CHEAP | Titanium Axe | Titanium Ingot based [src: titanium tools exist] | research | - | Waits on titanium (ore blocked: ITEM_SOURCE) |
 | MATCH | Shovel | Plank + Scrap based [recall] | research | `spade` | Our "Little Spade" |
 | MATCH | Metal Detector | Battery + Circuit Board + Metal Ingot [recall] | research | `finder` | Ours "Seashell Finder", no battery |
 | MATCH | Binoculars | Empty Bottle + Bolt + Glass + Rope [src] | research | `binoculars` | Ours 2 glass + 1 copper + 2 hinge + 1 bolt |
@@ -144,7 +189,7 @@ the Research Table, then crafted by hand), **blueprint** (learned by picking up 
 |---|---|---|---|---|---|
 | MATCH | Wooden Spear | ~Plank + Rope + Scrap [recall] | hand | `spear` | Ours 8 wood + 3 rope |
 | MATCH | Metal Spear | Metal Ingot + Plank + Rope [recall] | research | `metalspear` | |
-| CHEAP | Machete | blueprint, Metal Ingot + Bolt + Plank based [recall] | blueprint | - | `actsAs: 'spear'` melee tier with `SPEAR_DAMAGE` row |
+| MATCH | Machete | blueprint, Metal Ingot + Bolt + Plank based [recall] | blueprint | `machete` | Added as a research recipe (we have no blueprints): 3 ingot + 2 bolt + 3 wood + 2 rope (our pick), 15 damage, 60 uses. Jabs, no slash |
 | CHEAP | Titanium Sword | Titanium Ingot based [src] | research | - | Same role as machete |
 | SYSTEM | Bow | Plank + Rope + Wool/Leather based [recall] | research | - | Projectile weapon, charge + aim |
 | SYSTEM | Stone Arrow | Plank + Stone + Feather [recall] | research | - | Needs the bow |
@@ -158,7 +203,7 @@ the Research Table, then crafted by hand), **blueprint** (learned by picking up 
 |---|---|---|---|---|---|
 | MATCH | Oxygen Bottle | 8 Plastic + 4 Rope + 1 Empty Bottle + 5 Vine Goo [src] | research | `airjug` | Ours 3 plastic + 1 ingot + 1 rope ("Breath Jug") |
 | MATCH | Flippers | 6 Plastic + 6 Seaweed + 5 Vine Goo + 4 Rope [src] | research | `fins` | Ours 3 feather + 2 plastic + 1 rope |
-| CHEAP | Headlight | 1 Battery + 2 Rope + 2 Scrap [src] | research | - | Works-in-bag gear like `diving-gear-core.js`; a head light at night, skip the battery drain |
+| MATCH | Headlight | 1 Battery + 2 Rope + 2 Scrap [src] | research | `headlamp` | Added as "Headlamp": diving gear, fog x1.25 underwater. No deck light at night and no battery drain yet (follow-up) |
 | SYSTEM | Backpack | 4 Leather + 4 Rope + 6 Wool [src] | research | - | +5 bag slots: `SLOT_COUNT` is fixed and `new Bag()` rejects any other length |
 | SYSTEM | Leather Helmet | 4 Leather + 2 Wool [src] | research | - | Armor; no damage in our design |
 | SYSTEM | Leather Body Armor | 8 Leather + 4 Wool [src] | research | - | Same |
@@ -192,12 +237,12 @@ the Research Table, then crafted by hand), **blueprint** (learned by picking up 
 | MATCH | Cooking Pot | includes 2 Metal Ingot [src] | research | `cookpot` | Ours 3 clay + 2 stone + 1 scrap |
 | MATCH | Juicer | 6 Plank + 6 Plastic + 1 Bolt + 4 Vine Goo + 1 Circuit Board [src] | research | `juicer` | Ours 4 wood + 2 scrap + 1 rope |
 | MATCH | Small Storage | Plank + Scrap based [recall] | hand | `crate` | |
-| CHEAP | Large Storage | more planks + nails [recall] | research | - | Bigger `crate` variant in `storage-research.js` |
+| CHEAP | Large Storage | more planks + nails [recall] | research | - | Bigger `crate` variant in `storage-research.js`. Skipped: that module hard-codes the `'crate'` decor type and `CHEST_SLOTS` |
 | CHEAP | Fridge | Metal + Circuit Board based [src: 1.0 changelog] | research | - | Storage variant (no spoilage in our design) |
 | CHEAP | Wardrobe | Plank based [src: 1.0 changelog] | research | - | Opens the existing `look.js` avatar UI |
 | MATCH | Collection Net | Plank + Rope + Scrap [recall] | hand | `net` | |
 | MATCH | Small Crop Plot | Plank + Rope [recall] | hand | `cropplot` | |
-| CHEAP | Medium Crop Plot | more planks + rope [recall] | research | - | More slots, same `crops.js` |
+| CHEAP | Medium Crop Plot | more planks + rope [recall] | research | - | More slots, same `crops.js`. Skipped: `crops.js` has one `PLOT_TYPE` with a fixed `SLOTS = 3` |
 | CHEAP | Large Crop Plot | more planks + rope [recall] | research | - | More slots, same `crops.js` |
 | SYSTEM | Grass Plot | Plank + dirt / seeds [recall] | research | - | Llama/goat grazing |
 | MATCH | Scarecrow | 5 Plank + 3 Palm Leaf + 3 Nail + 3 Plastic [src] | research | `scarecrow` | Ours 3 wood + 4 leaf + 2 rope + 1 plastic |
@@ -223,8 +268,8 @@ the Research Table, then crafted by hand), **blueprint** (learned by picking up 
 | MATCH | Empty Cup | 4 Plastic [recall, as ours] | hand | `cup` | |
 | MATCH | Cup of Salt Water | scoop the sea | - | `saltcup` | |
 | MATCH | Cup of Fresh Water | Salt Water in a purifier | purifier | `freshcup` | |
-| CHEAP | Canteen | Plastic + Rope based [recall] | research | - | A bigger cup (3 sips) on the same watering lane |
-| CHEAP | Drinking Glass | Glass [recall] | research | - | Glass-tier cup |
+| CHEAP | Canteen | Plastic + Rope based [recall] | research | - | A bigger cup (3 sips) on the same watering lane. Skipped: needs a sip counter on the cup kinds |
+| MATCH | Drinking Glass | Glass [recall] | research | `glasscups` recipe | Existing "Glass Cups" recipe: 1 glass -> 3 cups |
 | MATCH | Cooked Beet | 1 Raw Beet | grill | `cookedbeet` | |
 | MATCH | Cooked Potato | 1 Raw Potato | grill | `cookedpotato` | |
 | MATCH | Cooked Fish (each species) | 1 raw fish | grill | `cookedfish` | One kind for all species |
@@ -373,8 +418,9 @@ section 14 for the stores that do not go through it.
    (20 wood + 5 ingot + 5 rope + 1 circuit), `wheel` (10 scrap + 4 ingot + 4 rope + 2 bolt), `juicer`
    (6 wood + 6 plastic + 1 bolt + 4 vine goo + 1 circuit). Ours are all early-game wood/scrap costs today, so this
    moves them later; check `PROGRESSION_PLAN` timings before applying.
-5. **`grill`**: 3 rope -> 6 rope [src].
-6. **`scarecrow`**: 3 wood + 4 leaf + 2 rope + 1 plastic -> 5 wood + 3 leaf + 3 nail + 3 plastic [src].
+5. **`grill`**: 3 rope -> 6 rope [src]. **Applied** (items pass).
+6. **`scarecrow`**: 3 wood + 4 leaf + 2 rope + 1 plastic -> 5 wood + 3 leaf + 3 nail + 3 plastic [src]. **Applied**
+   (items pass; the unlock is now `discover('nail')`).
 7. **`battery`**: 2 copper + 1 ingot + 2 plastic -> 1 copper + 6 plastic [src, single source, verify].
 8. **`airjug` / `fins`**: Raft costs are much higher and need Vine Goo + Empty Bottle; retune after those exist.
 9. **`cookpot`**: Raft's includes metal ingots; ours is clay/stone. Fine as a deliberate early cosy pot.
@@ -412,6 +458,8 @@ Changing only `name` needs none of that.
   cups, receiver, purifier, then `infoTable()` from items.js wins) and `RECIPES` (hand recipes; `recipeTable()` wins).
 - `dist/content-items.js`: `CONTENT_ITEMS`, `CONTENT_RECIPES`, `CONTENT_DECOR`, `CONTENT_BLOCK_RADIUS` (decor, paints,
   diving gear, meals, storm items, animals' items).
+- `dist/items.js` also holds the Raft crafting tabs (`CRAFT_TABS`, `craftTabOf(id)`, `ITEMS[id].tab`) and
+  `ITEM_TEXT_EXTRA` (craft-book text for kinds newer than the craft book).
 - `dist/craft-book.js`: crafting UI categories (`CATEGORIES`: tools, materials, survival, building), `ITEM_TEXT`,
   `categoryOf`, `ITEM_SOURCE`.
 - `dist/building-pieces.js`: hammer pieces (`PIECES`, `PIECE_ORDER`).
@@ -432,3 +480,25 @@ Changing only `name` needs none of that.
 - Juicer, Simple Grill, Scarecrow: https://www.pcgamesn.com/raft/juicer-recipes, https://gameranx.com/features/id/322040/article/raft-how-to-craft-every-useful-recipe-cooking-pot-juicer-guide/
 - Smelter, Wet Brick, Electric Smelter: https://raft.fandom.com/wiki/Smelter?oldid=4438, https://screenrant.com/raft-how-to-craft-use-electric-smelter-guide/
 - 1.0 additions: https://raft.fandom.com/wiki/Version_1.0, https://www.touchtapplay.com/everything-new-added-with-raft-the-final-chapter-update/, https://www.thegamer.com/raft-biggest-changes-from-early-access-full-release/
+
+## 17. Follow-ups
+
+Item lane (data ready once the craft book can describe non-hand kinds, see section 0):
+
+- Vine Goo (smelter, 1 seaweed) -> Circuit Board (hand) -> the navigation retunes in section 13 item 4, then
+  `airjug` / `fins` (section 13 item 8) and Empty Bottle.
+- Titanium Ore (seafloor + barrels) -> Titanium Ingot (smelter) -> Titanium Hook, Axe and Sword.
+- Fruit (Watermelon, Pineapple, Mango, Banana), Cave Mushroom, Sea Vine and Silver Algae as island or seafloor drops,
+  then the juicer mixes (Fruit Juice, Coconut Beat, Silver Smoothie) and cooking pot meals (Simple Fish Stew,
+  Vegetable Soup, Shark Dinner, Mushroom Omelette). `cookpot-core.js` and `juicer.js` take them as data, but each
+  output kind needs an `ITEM_SOURCE` row.
+- Battery retune (1 copper + 6 plastic) is single source: verify first. Nail, bolt and hinge yields: verify first.
+
+Code (small, outside the item files): a second fishing rod tier (raw `'fishingrod'` checks in `game.js` and
+`fishing-cooking.js`), Large Storage (`storage-research.js` decor type), Medium and Large Crop Plot (`crops.js` slot
+count per plot type), Canteen (sip counter), Anchor, Compass, Honk Horn, Foundation Counter and vending decor (placed
+decor with behaviour), Advanced Grill and Purifier (station speed tier), Door and roof variants (hammer pieces), and
+the Headlamp as a deck light at night.
+
+SYSTEM rows (sections 2 to 11) are unchanged: llamas and wool, hostile animals and meat, bait, bow and arrows, health,
+armor, backpack slots, pipes and biofuel, the electric stations, story blueprints and keys.
