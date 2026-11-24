@@ -5,12 +5,14 @@ import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILIT
 import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, haveNeedLine, stackLabel, holdDelay, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, reqChips, reqAmount, setItemGlyph, craftButtonView, anchorVisible, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { GEAR_IDS } from './diving-gear-core.js?build=v3-survival-ae77fa84ac2b'; // the wearables: they work while carried, one of each kind
 
-const VERSION = 'sv6';
+const VERSION = 'sv7';
 const HB = Number(HOTBAR_SIZE) || 8;
 const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
 const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
+const EQUIP = 5; // Raft's 5 generic equipment slots
 const INST_KEY = '__littleRaftSurvivalUI';
 /** Fired on document whenever the local bag's contents or selection change (item-tooltips.js listens). */
 export const BAG_EVENT = 'littleraft:bagchange';
@@ -240,62 +242,45 @@ const CSS = `
 .tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
 @media(max-width:760px){.tools.sv-hotbar{--s:min(42px,calc((96vw - 41px) / 10));--g:3px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
 body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag has its own hotbar row; the world one peeked out under the modal */
-#inventory.sv-inv{--s:min(56px,calc((96vw - 410px) / 10 - 6px));--g:6px;--ph:min(600px,calc(94vh - 36px));position:fixed;inset:0;padding:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#3e2a17;
-  width:auto;height:auto;min-width:0;max-width:none;max-height:none;overflow:visible;font:500 14px/1.35 ${FONT}}
-/* The dialog covers the viewport (its empty area acts as the backdrop) and centres the panel at every size and UI scale. */
-#inventory.sv-inv[open]{display:flex;align-items:center;justify-content:center}
+/* The dialog is the full-viewport backdrop and a size container. It is a plain block: the panels are placed
+   by .sv-wrap, never by the dialog's own layout, so a card or lane appended to the dialog can not move them. */
+#inventory.sv-inv{position:fixed;inset:0;padding:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#3e2a17;container-type:size;
+  width:auto;height:auto;min-width:0;max-width:none;max-height:none;overflow:hidden;font:500 14px/1.35 ${FONT}}
+#inventory.sv-inv[open]{display:block}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
-#inventory .sv-wrap{display:flex;gap:12px;align-items:stretch;box-sizing:border-box;max-width:96vw;max-height:94vh;padding:12px;outline:none;border-radius:6px;
+/* Raft layout: crafting on the left edge [category icons | recipe list | recipe detail]; the backpack to its
+   right, centred on the screen when there is room, on the bottom edge with the hotbar as its last row.
+   The right side of the screen stays clear. All sizes come from the dialog size (cqw), so this is pure CSS. */
+#inventory .sv-wrap{--e:14px;--g:5px;--tw:50px;--lw:236px;--dw:256px;--cw:calc(var(--tw) + var(--lw) + var(--dw) + 36px);
+  --s:clamp(36px,calc((100cqw - var(--cw) - 3 * var(--e) - 26px - ${HB - 1} * var(--g)) / ${HB}),56px);--bw:calc(${HB} * var(--s) + ${HB - 1} * var(--g) + 26px);
+  position:absolute;left:var(--e);top:var(--e);bottom:var(--e);display:flex;align-items:stretch;outline:none;pointer-events:none}
+#inventory .sv-craft,#inventory .sv-bag{pointer-events:auto;box-sizing:border-box;border-radius:6px;
   background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 21px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
-  border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 12px 36px #0006}
-#inventory .sv-craft,#inventory .sv-bag{background:#7f6039;border-radius:3px;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1755}
-/* Raft-style layout: [categories | recipe list] on the left, [detail over backpack] on the right.
-   The crafting column has a fixed height, so switching tabs or recipes never resizes the panel. */
-#inventory .sv-side{flex:none;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;min-height:0;min-width:0}
-#inventory .sv-bag{flex:1 1 auto;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:8px;padding:9px 12px 11px}
-#inventory .sv-grid{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g);align-self:center}
-#inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g)}
-#inventory .sv-h{align-self:stretch;margin:2px 2px 1px;font:800 11px/1 ${FONT};letter-spacing:2.2px;text-transform:uppercase;color:#f6e8c6;text-shadow:0 1px 0 #3e2a1799}
-#inventory .sv-craft>.sv-h{margin:3px 2px 1px}
-#inventory .sv-slot.sv-hot{background:linear-gradient(180deg,#d0bc8e,#bea778)}
-#inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#bea676,#b2996a);box-shadow:inset 0 0 0 2px #4a3520,inset 0 2px 4px #4a352055}
-#inventory.sv-inv button.sv-slot.sv-src{background:linear-gradient(180deg,#e3c98a,#d2b26e);box-shadow:inset 0 0 0 2px #c46a1c,0 0 8px #ffbd6699;transform:translateY(-3px)}
-#inventory.sv-inv button.sv-slot.sv-over{box-shadow:inset 0 0 0 2px #2f7f74,0 0 8px #9fe0d6aa;transform:scale(1.06)}
-#inventory.sv-inv button.sv-slot.sv-deny{box-shadow:inset 0 0 0 2px #b0391e,0 0 6px #e06a4a88;animation:svShake .26s}
-@keyframes svShake{25%{translate:-3px 0}75%{translate:3px 0}}
-#inventory .sv-slot.sv-dragging{opacity:.4}
-#inventory .sv-slot.sv-src:not([data-pick]) .sv-art,#inventory .sv-slot.sv-src:not([data-pick]) .sv-count{opacity:.3}
-#inventory .sv-held{position:fixed;left:0;top:0;z-index:11;width:52px;height:52px;pointer-events:none;filter:drop-shadow(0 6px 6px #000a)}
-#inventory .sv-held .sv-art{position:absolute;inset:0;display:block;scale:1.15}
-#inventory .sv-held .sv-count{position:absolute;right:0;bottom:0;font:800 14px/1 ${FONT};color:#fff;text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000}
-#inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;z-index:2;min-width:16px;padding:2px 3px;border-radius:8px;
-  background:#ffc66e;color:#1d1608;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
-#inventory .sv-rope{width:100%;height:4px;margin:1px 0;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
-#inventory .sv-hint{margin:0;width:calc(${HB} * var(--s) + ${HB - 1} * var(--g));max-width:100%;font:500 12px/1.35 ${FONT};color:#f6e8c6;text-align:left;text-shadow:0 1px 0 #3e2a1799}
-#inventory .sv-hint.sv-warn{color:#ffb39a}
-#inventory .sv-craft{flex:none;box-sizing:border-box;height:var(--ph);display:flex;flex-direction:column;gap:8px;padding:9px;overflow:hidden}
-#inventory .sv-cbody{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:86px 270px;gap:8px}
-/* categories: a vertical column of icon + label buttons */
-#inventory .sv-tabs{display:flex;flex-direction:column;gap:5px;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
-#inventory .sv-tab{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;min-width:0;height:62px;margin:0;padding:6px 3px 5px;border:0;border-radius:4px;
-  background:linear-gradient(#b8a173,#a68e60);box-shadow:inset 0 0 0 1px #7a5a34;color:#3e2a17;font:700 12px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
-#inventory .sv-tab .sv-icon{width:28px;height:28px;opacity:.8}
+  border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 10px 30px #0006}
+#inventory .sv-sr,#inventory .sv-h,#inventory .sv-dlabel{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+#inventory .sv-craft{flex:none;width:var(--cw);height:min(100%,780px);display:flex;flex-direction:column;padding:8px}
+#inventory .sv-cbody{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:var(--tw) var(--lw) var(--dw);grid-template-rows:minmax(0,1fr);gap:8px;align-items:start}
+/* categories: a column of icon tabs on the far left; the name is the tab's tooltip and label */
+#inventory .sv-tabs{align-self:stretch;display:flex;flex-direction:column;gap:4px;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+#inventory .sv-tab{position:relative;flex:none;display:grid;place-items:center;width:var(--tw);height:var(--tw);min-width:0;margin:0;padding:0;border:0;border-radius:4px;
+  background:linear-gradient(#b8a173,#a68e60);box-shadow:inset 0 0 0 1px #7a5a34;color:#3e2a17;font:700 12px/1 ${FONT};text-transform:none;cursor:pointer;transform:none}
+#inventory .sv-tab .sv-icon{width:34px;height:34px;opacity:.78;filter:drop-shadow(0 1px 0 #3e2a1766)}
 #inventory .sv-tab:hover{background:linear-gradient(#c8b285,#b39b6d);box-shadow:inset 0 0 0 1px #4a3520}
-#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#ead9ae,#d6c397);color:#2e1f10;box-shadow:inset 0 0 0 2px #4a3520,inset 4px 0 0 #5f9c3a}
+#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#ead9ae,#d6c397);box-shadow:inset 0 0 0 2px #4a3520,inset 4px 0 0 #5f9c3a}
 #inventory .sv-tab[aria-selected="true"] .sv-icon{opacity:1}
 #inventory .sv-tab:focus-visible{outline:2px solid #fff3d6;outline-offset:-4px}
-#inventory .sv-tbadge{position:absolute;right:4px;top:4px;min-width:15px;padding:2px 3px;border-radius:8px;background:#5f9c3a;color:#f4ffe6;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
+#inventory .sv-tbadge{position:absolute;right:2px;top:2px;min-width:15px;padding:2px 3px;border-radius:8px;background:#5f9c3a;color:#f4ffe6;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-tbadge:empty{display:none}
 /* recipe list: fills the column height, visible scrollbar, and a bottom fade while more rows are below */
-#inventory .sv-rcol{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0}
-#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:4px;
+#inventory .sv-rcol{align-self:stretch;position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;padding:5px;border-radius:4px;background:#7f6039;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1755}
+#inventory .sv-rlist{flex:1 1 auto;min-height:48px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:flex;flex-direction:column;gap:4px;padding-right:3px;
   scrollbar-width:thin;scrollbar-color:#e0cfa5 #5e4426}
-#inventory .sv-rcol::after{content:"";position:absolute;left:0;right:14px;bottom:0;height:34px;border-radius:0 0 4px 4px;pointer-events:none;opacity:0;transition:opacity .15s;
+#inventory .sv-rcol::after{content:"";position:absolute;left:5px;right:17px;bottom:5px;height:30px;border-radius:0 0 4px 4px;pointer-events:none;opacity:0;transition:opacity .15s;
   background:linear-gradient(#7f603900,#7f6039f2 80%)}
 #inventory .sv-rcol.sv-more::after{opacity:1}
-#inventory .sv-recipe{position:relative;display:grid;grid-template-columns:42px 1fr auto;gap:9px;align-items:center;flex:none;width:100%;height:auto;min-height:52px;margin:0;padding:5px 8px 5px 6px;
+#inventory .sv-recipe{position:relative;display:grid;grid-template-columns:38px 1fr auto;gap:8px;align-items:center;flex:none;width:100%;height:auto;min-height:46px;margin:0;padding:4px 7px 4px 5px;
   border:0;border-radius:4px;text-align:left;background:linear-gradient(180deg,#d6c397,#c4ae80);box-shadow:inset 0 0 0 1px #7a5a34;
-  color:#3e2a17;font:600 14px/1.25 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:background .08s,box-shadow .08s}
+  color:#3e2a17;font:600 13.5px/1.25 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:background .08s,box-shadow .08s}
 #inventory .sv-recipe[hidden]{display:none}
 #inventory .sv-recipe::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:2px;background:transparent}
 #inventory .sv-recipe.sv-ready::before{background:#5f9c3a;box-shadow:0 0 4px #5f9c3a99}
@@ -306,37 +291,38 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-recipe.sv-locked .sv-rname{color:#6b5638}
 #inventory .sv-recipe.sv-gated .sv-rart>*{filter:grayscale(1) brightness(.55)} /* [progression-hook] research-locked */
 #inventory .sv-recipe:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
-#inventory .sv-rart{position:relative;display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
-#inventory .sv-rart .sv-icon{width:36px;height:36px}
+#inventory .sv-rart{position:relative;display:grid;place-items:center;width:38px;height:38px;border-radius:3px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
+#inventory .sv-rart .sv-icon{width:33px;height:33px}
 #inventory .sv-rbody{display:block;min-width:0}
-#inventory .sv-rname{display:block;font:700 14px/1.2 ${FONT};color:#3e2a17;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inventory .sv-rname{display:block;font:700 13.5px/1.2 ${FONT};color:#3e2a17;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inventory .sv-rsub{display:block;margin-top:2px;font:600 12px/1.2 ${FONT};color:#4e3720;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inventory .sv-rsub:empty{display:none}
 #inventory .sv-gated .sv-rsub{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2}
 #inventory .sv-ready .sv-rsub{color:#3f6a26}
 #inventory .sv-full .sv-rsub{color:#8a4a12}
 #inventory .sv-locked .sv-rsub{color:#a3321a}
-#inventory .sv-rq{display:inline-flex;align-items:center;gap:2px;margin-right:7px;vertical-align:middle;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#a3321a}
+#inventory .sv-rq{display:inline-flex;align-items:center;gap:2px;margin-right:6px;vertical-align:middle;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#a3321a}
 #inventory .sv-rq .sv-icon{width:18px;height:18px}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
-/* detail: big icon, name, what it is for, have / need rows and the Craft button */
-#inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
+/* detail: chosen by a click and kept open; big icon, name, what it is for, ingredient tiles and the Craft button.
+   Its height follows the ingredients (as in Raft) and it sits in its own column, so it never covers the bag. */
+#inventory .sv-detail{align-self:start;box-sizing:border-box;max-height:100%;overflow-y:auto;scrollbar-width:thin;display:flex;flex-direction:column;gap:8px;padding:10px 10px 11px;border-radius:4px;
+  background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
 #inventory .sv-detail[hidden]{display:none}
-#inventory .sv-dhead{flex:none;display:grid;grid-template-columns:64px 1fr auto;gap:11px;align-items:center}
-#inventory .sv-dart{display:grid;place-items:center;width:64px;height:64px;border-radius:4px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
-#inventory .sv-dart .sv-icon{width:58px;height:58px}
+#inventory .sv-dhead{flex:none;display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center}
+#inventory .sv-dart{display:grid;place-items:center;width:60px;height:60px;border-radius:4px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
+#inventory .sv-dart .sv-icon{width:54px;height:54px}
 #inventory .sv-dtext{min-width:0}
-#inventory .sv-dname{display:block;font:800 17px/1.2 ${FONT};color:#3e2a17}
+#inventory .sv-dname{display:block;font:800 16px/1.2 ${FONT};color:#3e2a17}
 #inventory .sv-ddesc{display:block;margin-top:2px;font:500 12.5px/1.3 ${FONT};color:#5e4426}
 #inventory .sv-duse{flex:none;margin:0;font:500 12.5px/1.35 ${FONT};color:#4e3720}
 #inventory .sv-duse em{font-style:normal;font-weight:700;color:#8a3a12}
 #inventory .sv-duse[hidden]{display:none}
 #inventory .sv-dstate{flex:none;margin:0;padding:5px 8px;border-radius:3px;background:#a3321a1f;box-shadow:inset 3px 0 0 #a3321a;color:#7a2410;font:700 12.5px/1.3 ${FONT}}
 #inventory .sv-dstate[hidden]{display:none}
-#inventory .sv-dlabel{flex:none;display:flex;justify-content:space-between;font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#6b5638}
-#inventory .sv-dlabel i{font-style:normal;letter-spacing:.6px;text-transform:none;font-weight:700;padding-right:8px}
-/* ingredients: one tile each, the count under the icon (the name is the hover tooltip); every tile stays visible */
+/* ingredients: one tile each, have/need under the icon (red when short); the name is the hover tooltip */
 #inventory .sv-ings{flex:none;list-style:none;margin:0;padding:2px 0 0;display:flex;flex-wrap:wrap;gap:7px}
-#inventory .sv-ing{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;width:56px;padding:5px 2px 6px;border-radius:4px;
+#inventory .sv-ing{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;width:52px;padding:5px 2px 6px;border-radius:4px;
   background:#d6c397;box-shadow:inset 0 0 0 1px #7a5a34,inset 0 -3px 0 #b0391e}
 #inventory .sv-ing.sv-ok{box-shadow:inset 0 0 0 1px #7a5a34,inset 0 -3px 0 #5f9c3a}
 #inventory .sv-ing .sv-icon{width:34px;height:34px}
@@ -353,7 +339,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory button.sv-iplus:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
 #inventory button.sv-iplus.sv-deny{background:linear-gradient(#c05a3a,#8a3a12)}
 @media(hover:none){#inventory button.sv-iplus{opacity:1;transform:none}}
-#inventory .sv-craftbtn{position:relative;flex:none;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:44px;margin:auto 0 0;padding:0 12px;overflow:hidden;border:0;border-radius:4px;
+#inventory .sv-craftbtn{position:relative;flex:none;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:44px;margin:2px 0 0;padding:0 12px;overflow:hidden;border:0;border-radius:4px;
   background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6;font:800 15px/1 ${FONT};letter-spacing:.5px;text-transform:none;cursor:pointer;transform:none;
   user-select:none;-webkit-user-select:none;touch-action:none}
 #inventory .sv-craftbtn:hover{background:linear-gradient(#6c9c46,#4a7a2e)}
@@ -374,23 +360,65 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-ccount{min-width:26px;padding:3px 5px;border-radius:9px;background:#14270bcc;color:#c8f7a0;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums}
 #inventory .sv-ccount:empty{display:none}
 #inventory .sv-empty-list{margin:6px;color:#f6e8c6;font-size:14px}
+/* backpack: centred on the screen when there is room, else right beside the crafting column (never under it) */
+#inventory .sv-side{flex:none;display:flex;flex-direction:column;justify-content:flex-end;min-height:0;min-width:0;pointer-events:none;
+  margin-left:max(var(--e),calc(50cqw - var(--bw) / 2 - var(--cw) - var(--e)))}
+#inventory .sv-bag{position:relative;flex:none;width:var(--bw);display:flex;flex-direction:column;align-items:center;gap:7px;padding:10px 11px 11px}
+#inventory .sv-grid{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g);align-self:center}
+#inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g)}
+/* 5 generic equipment slots (Raft): the diving gear you carry, worn from the bag, one of each kind */
+#inventory .sv-equip{display:flex;gap:var(--g);align-self:center;margin-top:2px}
+#inventory .sv-eslot{position:relative;display:block;box-sizing:border-box;width:calc(var(--s) * .82);height:calc(var(--s) * .82);border-radius:3px;
+  background:#7f6039;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1766}
+#inventory .sv-eslot::before{content:"";position:absolute;inset:28%;border-radius:50%;box-shadow:inset 0 0 0 2px #5e442688;opacity:.8}
+#inventory .sv-eslot.sv-worn{background:linear-gradient(180deg,#d6c397,#c4ae80);box-shadow:inset 0 0 0 1px #7a5a34,inset 0 -3px 0 #5f9c3a}
+#inventory .sv-eslot.sv-worn::before{content:none}
+#inventory .sv-eslot .sv-art{position:absolute;inset:4px;display:block;pointer-events:none}
+#inventory .sv-eslot .sv-icon{filter:drop-shadow(0 1px 0 #3e2a1799)}
+#inventory .sv-eslot svg.sv-icon{scale:.8}
+#inventory .sv-slot.sv-hot{background:linear-gradient(180deg,#d0bc8e,#bea778)}
+#inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#bea676,#b2996a);box-shadow:inset 0 0 0 2px #4a3520,inset 0 2px 4px #4a352055}
+#inventory.sv-inv button.sv-slot.sv-src{background:linear-gradient(180deg,#e3c98a,#d2b26e);box-shadow:inset 0 0 0 2px #c46a1c,0 0 8px #ffbd6699;transform:translateY(-3px)}
+#inventory.sv-inv button.sv-slot.sv-over{box-shadow:inset 0 0 0 2px #2f7f74,0 0 8px #9fe0d6aa;transform:scale(1.06)}
+#inventory.sv-inv button.sv-slot.sv-deny{box-shadow:inset 0 0 0 2px #b0391e,0 0 6px #e06a4a88;animation:svShake .26s}
+@keyframes svShake{25%{translate:-3px 0}75%{translate:3px 0}}
+#inventory .sv-slot.sv-dragging{opacity:.4}
+#inventory .sv-slot.sv-src:not([data-pick]) .sv-art,#inventory .sv-slot.sv-src:not([data-pick]) .sv-count{opacity:.3}
+#inventory .sv-held{position:fixed;left:0;top:0;z-index:11;width:52px;height:52px;pointer-events:none;filter:drop-shadow(0 6px 6px #000a)}
+#inventory .sv-held[hidden]{display:none}
+#inventory .sv-held .sv-art{position:absolute;inset:0;display:block;scale:1.15}
+#inventory .sv-held .sv-count{position:absolute;right:0;bottom:0;font:800 14px/1 ${FONT};color:#fff;text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000}
+#inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;z-index:2;min-width:16px;padding:2px 3px;border-radius:8px;
+  background:#ffc66e;color:#1d1608;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
+#inventory .sv-rope{width:100%;height:4px;margin:1px 0;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
+/* The controls hint is for screen readers; a refusal ("Can't place that there") shows briefly above the bag. */
+#inventory .sv-hint{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#inventory .sv-hint.sv-warn{left:0;bottom:calc(100% + 8px);width:auto;height:auto;margin:0;padding:5px 10px;clip-path:none;white-space:normal;border-radius:4px;
+  background:#2c1d10e8;box-shadow:inset 0 0 0 1px #c9a66b88;font:700 12.5px/1.3 ${FONT};color:#ffcf9a;pointer-events:none}
+/* pickup rows (game.js docks #pickupFeed into this lane): out of flow beside the bag, so they never resize it */
+#inventory.sv-inv .sv-bag>.feed-lane{position:absolute;left:calc(100% + 14px);bottom:0;width:280px;height:min(45cqh,320px);min-height:0;flex:none;align-self:auto}
+@container (max-width:1499px){#inventory.sv-inv .sv-bag>.feed-lane{left:0;bottom:calc(100% + 8px);width:min(100%,300px);height:min(28cqh,180px)}}
+/* survival-ui's own card is a fallback: item-tooltips.js draws the item cards while its sheet is in the page */
 #inventory .sv-tip{position:fixed;left:0;top:0;z-index:10;pointer-events:none;box-sizing:border-box;width:max-content;max-width:250px;padding:7px 10px;border-radius:4px;white-space:normal;
   background:#e6d6adf7;border:1px solid #5e4426;color:#3e2a17;font:700 14px/1.3 ${FONT};box-shadow:0 4px 12px #0006}
 #inventory .sv-tip[hidden]{display:none}
+:root:has(style.item-tooltips-style) #inventory .sv-tip{display:none!important}
 #inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#5e4426}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#8a3a12}
-/* smaller screens: slightly smaller slots, then a compact side-by-side layout, and only phones stack */
-@media(max-width:1040px){#inventory.sv-inv{--s:45px;--g:5px}#inventory .sv-cbody{grid-template-columns:80px 256px}}
-@media(max-width:900px){#inventory.sv-inv{--s:min(44px,calc((96vw - 380px) / 10 - 4px));--g:4px}#inventory .sv-wrap{gap:8px;padding:10px}#inventory .sv-side{gap:8px}
-  #inventory .sv-cbody{grid-template-columns:66px 222px;gap:6px}#inventory .sv-tab{height:54px;font-size:11px}#inventory .sv-tab .sv-icon{width:24px;height:24px}
-  #inventory .sv-recipe{grid-template-columns:34px 1fr auto;gap:7px;min-height:44px;padding:4px 6px 4px 5px}#inventory .sv-rart{width:34px;height:34px}#inventory .sv-rart .sv-icon{width:30px;height:30px}
-  #inventory .sv-bag{padding:8px 10px 9px;gap:6px}#inventory .sv-detail{gap:5px;padding:8px 9px 9px}#inventory .sv-craftbtn{height:38px}#inventory .sv-slot .sv-art{inset:3px}}
-@media(max-height:640px){#inventory .sv-dart{width:52px;height:52px}#inventory .sv-dart .sv-icon{width:46px;height:46px}#inventory .sv-dhead{grid-template-columns:52px 1fr auto}
-  #inventory .sv-hint{font-size:11px;line-height:1.3}#inventory .sv-tab{height:56px}}
-@media(max-width:720px),(max-height:520px){#inventory.sv-inv{width:auto;--s:44px;--g:5px}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}
-  #inventory .sv-craft{height:auto;max-height:none;overflow:visible}#inventory .sv-cbody{grid-template-columns:76px minmax(0,1fr)}#inventory .sv-rlist{max-height:40vh}
-  #inventory .sv-side{flex:none}#inventory .sv-detail{flex:none}#inventory .sv-bag{min-width:0}#inventory .sv-slot .sv-art{inset:3px}}
-@media(max-width:560px){#inventory.sv-inv{--s:min(36px,calc((92vw - 75px) / ${HB}));--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
+/* shorter windows: a tighter crafting column; small windows and phones: one scrolling column */
+@container (max-width:1229px){#inventory .sv-wrap{--e:10px;--lw:210px;--dw:236px}}
+@container (max-height:700px){#inventory .sv-dart{width:52px;height:52px}#inventory .sv-dart .sv-icon{width:46px;height:46px}#inventory .sv-dhead{grid-template-columns:52px 1fr auto}
+  #inventory .sv-tab{height:46px}#inventory .sv-recipe{min-height:42px}#inventory .sv-detail{gap:6px}#inventory .sv-craftbtn{height:40px}}
+@container (max-width:999px) or (max-height:519px){
+  #inventory .sv-wrap{--e:8px;--tw:44px;--lw:auto;--dw:auto;--cw:min(100%,640px);--s:clamp(30px,calc((100cqw - 56px - ${HB - 1} * var(--g)) / ${HB}),48px);
+    inset:0;flex-direction:column;align-items:center;gap:8px;padding:8px;overflow:auto;pointer-events:auto}
+  #inventory .sv-craft{height:auto;max-height:none}
+  #inventory .sv-cbody{grid-template-columns:var(--tw) minmax(0,1fr);grid-template-rows:auto}
+  #inventory .sv-detail{grid-column:1 / -1;max-height:none}
+  #inventory .sv-rcol{height:min(40cqh,320px)}
+  #inventory .sv-side{margin:0}
+  #inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}
+  #inventory.sv-inv .sv-bag>.feed-lane{position:static;width:100%;height:auto;max-height:90px}}
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
 /* pin a recipe to the HUD edge (craft-book.js trackerView) */
 #inventory button.sv-pinbtn{align-self:start;display:grid;place-items:center;width:30px;height:30px;min-width:0;margin:0;padding:0;border:0;border-radius:50%;background:#3e2a1712;box-shadow:inset 0 0 0 1px #3e2a1759;color:#3e2a17;
@@ -450,26 +478,29 @@ function mountDialog() {
     let grid = '', hot = '';
     for (let i = HB; i < TOTAL; i++) grid += `<button type="button" class="sv-slot" data-index="${i}">${slotInner('')}</button>`;
     for (let i = 0; i < HB; i++) hot += `<button type="button" class="sv-slot sv-hot" data-index="${i}">${slotInner(String((i + 1) % 10))}</button>`;
+    let eq = '';
+    for (let i = 0; i < EQUIP; i++) eq += `<span class="sv-eslot" data-equip="${i}" role="img" aria-label="Equipment slot ${i + 1}, empty"><i class="sv-art"></i></span>`;
     d.innerHTML = `<div class="sv-wrap" tabindex="-1">
       <section class="sv-craft" aria-label="Crafting">
         <h3 class="sv-h">Crafting</h3>
         <div class="sv-cbody">
           <div class="sv-tabs" role="tablist" aria-label="Recipe categories" aria-orientation="vertical"></div>
           <div class="sv-rcol"><div class="sv-rlist" role="tabpanel"></div></div>
+          <div class="sv-detail" hidden>
+            <div class="sv-dhead"><span class="sv-dart" aria-hidden="true"></span><span class="sv-dtext"><b class="sv-dname"></b><small class="sv-ddesc"></small></span><button type="button" class="sv-pinbtn" aria-pressed="false" aria-label="Pin recipe">${uiIcon('pin')}</button></div>
+            <p class="sv-duse" hidden></p>
+            <p class="sv-dstate" hidden></p>
+            <span class="sv-dlabel">Requires</span>
+            <ul class="sv-ings"></ul>
+            <button type="button" class="sv-craftbtn"><i class="sv-fill"></i><span class="sv-clabel">${uiIcon('hammer')}</span><small class="sv-chint"></small><b class="sv-ccount" aria-hidden="true"></b></button>
+          </div>
         </div>
       </section>
       <div class="sv-side">
-        <div class="sv-detail" hidden>
-          <div class="sv-dhead"><span class="sv-dart" aria-hidden="true"></span><span class="sv-dtext"><b class="sv-dname"></b><small class="sv-ddesc"></small></span><button type="button" class="sv-pinbtn" aria-pressed="false" aria-label="Pin recipe">${uiIcon('pin')}</button></div>
-          <p class="sv-duse" hidden></p>
-          <p class="sv-dstate" hidden></p>
-          <span class="sv-dlabel">Requires</span>
-          <ul class="sv-ings"></ul>
-          <button type="button" class="sv-craftbtn"><i class="sv-fill"></i><span class="sv-clabel">${uiIcon('hammer')}</span><small class="sv-chint"></small><b class="sv-ccount" aria-hidden="true"></b></button>
-        </div>
         <section class="sv-bag" aria-label="Inventory">
           <h3 class="sv-h">Backpack</h3>
           <div class="sv-grid" role="group" aria-label="Backpack">${grid}</div>
+          <div class="sv-equip" role="group" aria-label="Equipment">${eq}</div>
           <div class="sv-rope" aria-hidden="true"></div>
           <div class="sv-hotrow" role="group" aria-label="Hotbar">${hot}</div>
           <p class="sv-hint" role="status" aria-live="polite">${HINT}</p>
@@ -566,7 +597,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   const tip = dlg.querySelector('.sv-tip');
   const held = dlg.querySelector('.sv-held'), heldArt = held.firstElementChild, heldCnt = held.lastElementChild;
   let heldKind = null, px = 0, py = 0;
+  // graphics.css zooms the dialog (--ui-scale). Pointer and rect px are viewport px; the fixed card and held stack
+  // are laid out in zoomed px, so their offsets are divided by it. Read on open and resize, never per frame.
+  let zoom = 1;
+  const readZoom = () => { const z = Number(dlg.currentCSSZoom); zoom = z > 0 && Number.isFinite(z) ? z : 1; };
   const hintEl = dlg.querySelector('.sv-hint');
+  const equipEls = [...dlg.querySelectorAll('.sv-eslot[data-equip]')];
+  let equipSig = null;
   const invEls = [];
   dlg.querySelectorAll('.sv-slot[data-index]').forEach(el => {
     invEls[+el.dataset.index] = el; el._svSig = undefined;
@@ -637,7 +674,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const key = recipes.map(r => r.id).join(',') + '|' + (iconFor ? 3 : 2);
     if (dlg.dataset.svRecipes !== key || rlist.childElementCount !== recipes.length || !recipes.length) {
       tabsEl.style.setProperty('--tabs', String(Math.max(1, groups.length)));
-      tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" aria-selected="false" tabindex="-1">${iconSVG(g.icon)}<span>${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
+      tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" aria-selected="false" tabindex="-1" title="${esc(g.name)}">${iconSVG(g.icon)}<span class="sv-sr">${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
       // Rows in tab order so the list reads naturally inside each category.
       const ordered = groups.flatMap(g => g.recipes);
       rlist.innerHTML = ordered.length ? ordered.map(r => `<button type="button" class="sv-recipe sv-locked" data-recipe="${esc(r.id)}" data-cat="${esc(catOf.get(r.id))}" data-tip-kind="${esc(r.out.kind)}">
@@ -1007,7 +1044,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     heldCnt.textContent = srcAmt > 1 ? String(srcAmt) : '';
     held.hidden = false; placeHeld();
   }
-  function placeHeld() { held.style.transform = `translate(${px - 26}px,${py - 26}px)`; }
+  function placeHeld() { held.style.transform = `translate(${Math.round(px / zoom - 26)}px,${Math.round(py / zoom - 26)}px)`; }
   function clearSrc() {
     if (src != null && invEls[src]) {
       const el = invEls[src];
@@ -1062,7 +1099,23 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (r && typeof r.then === 'function') r.then(v => { if (v === false) deny(el, 'Can’t place that there'); }, e => console.error(e));
     return true;
   }
+  // The 5 equipment slots show the wearables in the bag (they work while carried, one of each kind),
+  // packed from the left like Raft's generic slots. Painted only when that set changes.
+  function paintEquip(slots) {
+    if (!equipEls.length) return;
+    const worn = (GEAR_IDS || []).filter(k => slots.some(s => s && s.kind === k && s.count > 0)).slice(0, equipEls.length);
+    const sig = worn.join(',');
+    if (sig === equipSig) return;
+    equipSig = sig;
+    equipEls.forEach((el, i) => {
+      const k = worn[i] || null, a = el.firstElementChild;
+      el.classList.toggle('sv-worn', !!k);
+      if (k) { a.innerHTML = iconHTML(k); el.dataset.itemKind = k; el.setAttribute('aria-label', `Equipment slot ${i + 1}, ${itemName(k)}`); }
+      else { a.innerHTML = ''; delete el.dataset.itemKind; el.setAttribute('aria-label', `Equipment slot ${i + 1}, empty`); }
+    });
+  }
   function paintInventory(slots, sigs, selected) {
+    paintEquip(slots);
     for (let i = 0; i < TOTAL; i++) {
       const el = invEls[i]; if (!el) continue;
       const changed = paintSlot(el, slots[i], sigs[i], i < HB ? `Hotbar slot ${i + 1}` : `Backpack slot ${i - HB + 1}`);
@@ -1089,15 +1142,15 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       + (src ? `<small><em>Get it:</em> ${esc(src.how)}</small>` : '')
       + (uses.length ? `<small><em>Ingredient in:</em> ${esc(uses.join(', '))}</small>` : '');
   }
-  // Crafting rows anchor beside their whole column (the list or the detail pane) and never cover
+  // Crafting rows and ingredients anchor beside the whole crafting panel (never over the list or the open recipe) and never cover
   // the Craft button; a hidden or detached anchor hides the tooltip instead of pinning it top-left.
   function placeTipAt(el) {
     if (tip.hidden || !el) return;
-    const col = el.closest('.sv-rcol,.sv-detail');
-    const p = el.isConnected && anchorTip(el.getBoundingClientRect(), tip.offsetWidth, tip.offsetHeight, innerWidth, innerHeight, 8, 6,
+    const col = el.closest('.sv-craft');
+    const p = el.isConnected && anchorTip(el.getBoundingClientRect(), tip.offsetWidth * zoom, tip.offsetHeight * zoom, innerWidth, innerHeight, 8, 6,
       col ? { beside: col.getBoundingClientRect(), avoid: detail.hidden ? null : D.btn.getBoundingClientRect() } : null);
     if (!p) { hideTip(); return; }
-    tip.style.transform = `translate(${Math.round(p.x)}px,${Math.round(p.y)}px)`;
+    tip.style.transform = `translate(${Math.round(p.x / zoom)}px,${Math.round(p.y / zoom)}px)`;
     tip.dataset.side = p.side;
   }
   function showTipFor(el) {
@@ -1194,6 +1247,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     safe(onPause);
     exitLock(document); // marked page-initiated (lock-rules.js), so the game does not treat it as a lost lock
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
+    readZoom();
     if (trackEl) trackEl.hidden = true;
     buildRecipes();
     gateSig = gateSignature(); gateAt = performance.now() + GATE_POLL_MS;
@@ -1389,6 +1443,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }, opt);
   // Keep scroll inside the panel from reaching the engine's hotbar wheel handler.
   dlg.addEventListener('wheel', e => e.stopPropagation(), { ...opt, passive: true });
+  window.addEventListener('resize', () => { if (isOpen) readZoom(); }, { ...opt, passive: true });
 
   // Hotbar clicks (delegated so a replaced .tools node needs no rebinding).
   document.addEventListener('click', e => {

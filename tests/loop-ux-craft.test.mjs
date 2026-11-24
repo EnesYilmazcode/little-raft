@@ -156,13 +156,14 @@ test('hold to craft: a click makes exactly one; repeats start after ~800 ms, the
 test('layout: vertical category column, tall recipe list with a scroll cue, detail beside it, steady height', () => {
   const ui = src('survival-ui.js');
   assert.match(ui, /class="sv-tabs" role="tablist" aria-label="Recipe categories" aria-orientation="vertical"/);
-  assert.match(ui, /#inventory \.sv-tabs\{display:flex;flex-direction:column;/);
+  assert.match(ui, /#inventory \.sv-tabs\{align-self:stretch;display:flex;flex-direction:column;/);
   assert.match(ui, /e\.code === 'ArrowDown' \|\| e\.code === 'ArrowRight'/, 'up/down (and left/right) move between categories');
   assert.match(ui, /<div class="sv-rcol"><div class="sv-rlist" role="tabpanel"><\/div><\/div>/);
   assert.match(ui, /#inventory \.sv-rcol\.sv-more::after\{opacity:1\}/, 'bottom fade while more rows are below');
-  assert.match(ui, /#inventory \.sv-craft\{flex:none;box-sizing:border-box;height:var\(--ph\);/, 'fixed-height crafting column: tabs never resize the panel');
-  const order = ['class="sv-craft"', 'class="sv-side"', 'class="sv-detail"', 'class="sv-bag"'].map(k => ui.indexOf(k));
-  assert.ok(order.every((v, i) => v > 0 && (i === 0 || v > order[i - 1])), 'crafting on the left, detail over the backpack on the right');
+  assert.match(ui, /#inventory \.sv-craft\{flex:none;width:var\(--cw\);height:min\(100%,780px\);/, 'fixed-height crafting column: tabs never resize the panel');
+  const order = ['class="sv-craft"', 'class="sv-tabs"', 'class="sv-rcol"', 'class="sv-detail"', 'class="sv-side"', 'class="sv-bag"', 'class="sv-equip"', 'class="sv-hotrow"'].map(k => ui.indexOf(k));
+  assert.ok(order.every((v, i) => v > 0 && (i === 0 || v > order[i - 1])), 'Raft: [tabs | list | detail] on the left, then the backpack, equipment and hotbar');
+  assert.match(ui, /grid-template-columns:var\(--tw\) var\(--lw\) var\(--dw\)/, 'the detail pane has its own column: it never covers the bag');
   assert.match(ui, /<span class="sv-dlabel">Requires<\/span>/);
 });
 

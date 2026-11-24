@@ -104,12 +104,16 @@ test('the pin is an icon with pinned / unpinned states', () => {
 });
 
 // ---------------------------------------------------------------- 3. centred
-test('the crafting panel is centred by the full-viewport dialog', () => {
+test('the full-viewport dialog is a plain block; .sv-wrap places the panels', () => {
   const rule = ui.match(/#inventory\.sv-inv\{[^}]*\}/)[0];
   assert.match(rule, /position:fixed;inset:0;/);
   assert.match(rule, /margin:0;/);
+  assert.match(rule, /container-type:size/, 'sizes come from the dialog, so the layout is pure CSS');
   assert.doesNotMatch(rule, /auto auto/, 'no top-pinned margins');
-  assert.match(ui, /#inventory\.sv-inv\[open\]\{display:flex;align-items:center;justify-content:center\}/);
+  // A flex dialog made any child appended to it (an unstyled tooltip card) a sibling that re-centred the panel.
+  assert.match(ui, /#inventory\.sv-inv\[open\]\{display:block\}/);
+  assert.doesNotMatch(ui, /#inventory\.sv-inv\[open\]\{display:flex/);
+  assert.match(ui, /#inventory \.sv-wrap\{[\s\S]{0,400}?position:absolute;left:var\(--e\);top:var\(--e\);bottom:var\(--e\);/, 'anchored on the left edge');
 });
 
 // ---------------------------------------------------------------- 1. no text selection / dragging
