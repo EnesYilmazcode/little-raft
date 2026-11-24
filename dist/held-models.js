@@ -387,7 +387,7 @@ export const HELD_HOLD = Object.freeze({
   stone: LUMP, clay: LUMP, metalore: LUMP, copperore: LUMP, titaniumore: LUMP,
   sand: S(0.1, 0.3, 0.4, 0.1, -0.45),
   brick: S(0.1, 0.3, 0.9, 0.2, -0.3), metalingot: S(0.1, 0.3, 0.9, 0.25, -0.3), copperingot: S(0.1, 0.3, 0.9, 0.25, -0.3), titaniumingot: S(0.1, 0.3, 0.9, 0.25, -0.3),
-  vinegoo: S(0.09, 0.3, 0.4, 0.1, -0.3), circuitboard: S(0.12, -0.9, 0.3, 0.15, 0),
+  vinegoo: S(0.09, 0.3, 0.4, 0.1, -0.3), circuitboard: S(0.12, 0.55, 0.4, 0.1, -0.3),
   glass: S(0.1, 0.1, 0.6, 0.15, -0.4), wax: S(0.09, 0.3, 0.4, 0.1), honey: S(0.1, 0.2, 0.4, 0),
   seaweed: S(0.15, -0.2, 0.4, 0.3, -0.4), flowerseed: S(0.08, 0.3, 0.4, 0.2, -0.3),
   bolt: S(0.08, 0.1, 0.4, 0.3, -0.3), hinge: S(0.08, 0.3, 0.5, 0.2, -0.35), sinker: S(0.07, 0.15, 0, 0.2, -0.45),

@@ -56,7 +56,7 @@ export function createAxe(T, { metal = false, titanium = false } = {}) {
   head.setAttribute('position', new T.BufferAttribute(p, 3)); head.computeVertexNormals();
   // Knapped-flint look: each facet a slightly different grey-brown, the worked cutting edge paler. One flat
   // grey read as a steel cleaver.
-  const col = new Float32Array(p.length), base = new T.Color(titanium ? 0xc3cbe0 : metal ? 0x8fa1ae : 0x8a8e88), edgeC = new T.Color(titanium ? 0xf4f6fc : metal ? 0xe3e9ec : 0xc4c8bf), c = new T.Color();
+  const col = new Float32Array(p.length), base = new T.Color(titanium ? 0x97a3c2 : metal ? 0x8fa1ae : 0x8a8e88), edgeC = new T.Color(titanium ? 0xe6ebf7 : metal ? 0xe3e9ec : 0xc4c8bf), c = new T.Color();
   f.forEach((t, i) => {
     const k = metal ? 0.92 + ((i * 7919) % 13) / 13 * 0.12 : 0.84 + ((i * 7919) % 13) / 13 * 0.3; // forged steel: even facets
     t.forEach((vi, j) => { c.copy(base).multiplyScalar(k); if (v[vi][2] < -0.15) c.lerp(edgeC, 0.75); col.set([c.r, c.g, c.b], i * 9 + j * 3); });

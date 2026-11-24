@@ -279,7 +279,7 @@ export function buildItemModel(T, kind, factory = null) {
     root.userData.grip = [gp.x, gp.y, gp.z];
     root.userData.model = m;
   } else if (kind === 'machete' || kind === 'titaniumsword') { // spear-repair-hooks.js slides userData.model along +Y to jab (userData.jab metres)
-    const m = kind === 'machete' ? createMachete(T) : createSword(T), s = 0.72;
+    const m = kind === 'machete' ? createMachete(T) : createSword(T), s = kind === 'machete' ? 0.72 : 0.56;
     m.scale.setScalar(s); m.userData.jab = 0.12;
     root = new T.Group(); root.add(m);
     const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size;
