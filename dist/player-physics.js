@@ -81,6 +81,8 @@ const isTile = t => Array.isArray(t) && Number.isFinite(t[0]) && Number.isFinite
 // Math.hypot is a varargs builtin that V8 does not lower: it allocates on every call.
 const len2 = (x, z) => Math.sqrt(x * x + z * z);
 const NONE = Object.freeze([]); // shared stand-in for missing tiles/blocked arrays
+// Cheap reject before blockerGap: no decor footprint corner plus the body radius reaches 2.4 m from its centre (half sizes <= 1.4 m).
+const far = (b, x, z) => b.x - x > 2.4 || x - b.x > 2.4 || b.z - z > 2.4 || z - b.z > 2.4;
 const isTop = t => !!t && typeof t === 'object' && !Array.isArray(t) && Number.isFinite(t.x) && Number.isFinite(t.z);
 // Is blocker b (optionally with a height: y0 / top above baseY, see dist/decor-collision.js) solid for a body whose
 // feet are at `feet`? Above its top less `tol` the body passes over it; a blocker without a top is a full column.
@@ -399,7 +401,7 @@ export class PlayerPhysics {
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
-      if (!solidFor(b, feet, head, this._baseY, tol)) continue;
+      if (far(b, nx, nz) || !solidFor(b, feet, head, this._baseY, tol)) continue;
       const gn = blockerGap(b, nx, nz);
       if (gn >= C.BODY_RADIUS) continue;
       const go = blockerGap(b, ox, oz);
@@ -428,7 +430,7 @@ export class PlayerPhysics {
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || !Number.isFinite(b.top) || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
-      if (!solidFor(b, feet, head, this._baseY, C.PASS_TOL) || blockerGap(b, this.x, this.z) >= R) continue;
+      if (far(b, this.x, this.z) || !solidFor(b, feet, head, this._baseY, C.PASS_TOL) || blockerGap(b, this.x, this.z) >= R) continue;
       const dx = this.x - b.x, dz = this.z - b.z;
       let nx, nz, ox, oz; // outward normal and the new offset from the blocker centre
       if (!Number.isFinite(b.hx)) {
@@ -461,6 +463,7 @@ export class PlayerPhysics {
       if (!b || b.stand !== true || !Number.isFinite(b.top) || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
       const top = base + b.top;
       if (!(top > deckY + 1e-6) || top <= best || top > feet + up) continue;
+      if (far(b, this.x, this.z)) continue;
       const g = blockerGap(b, this.x, this.z);
       if (g > (top > feet + 0.04 ? 0 : C.SURF_MARGIN)) continue; // stepping up: centre over the top
       best = top; bi = i;
@@ -487,8 +490,8 @@ export class PlayerPhysics {
     if (top === -Infinity) return false;
     // Stand well on it when it is deep enough (a floor, a crate), else on the thin top itself (wall, rail).
     let d = d1 + 0.3;
-    const far = this._ledgeAt(L, blocked, this.x + fx * d, this.z + fz * d, top - 0.06, top + 0.06, base);
-    if (!(far > -Infinity)) d = d1;
+    const deep = this._ledgeAt(L, blocked, this.x + fx * d, this.z + fz * d, top - 0.06, top + 0.06, base);
+    if (!(deep > -Infinity)) d = d1;
     const tx = this.x + fx * d, tz = this.z + fz * d, headTop = top + C.EYE_OFFSET + C.HEAD + 0.05;
     const r = R - 0.04;
     if (L && typeof L.clearAt === 'function' &&
@@ -511,7 +514,7 @@ export class PlayerPhysics {
       if (!b || b.stand !== true || !Number.isFinite(b.top) || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
       const t = base + b.top;
       if (t < lo || t > hi || t <= top) continue;
-      if (blockerGap(b, x, z) <= 0) top = t;
+      if (!far(b, x, z) && blockerGap(b, x, z) <= 0) top = t;
     }
     return top;
   }
