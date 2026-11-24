@@ -171,7 +171,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
     assert.equal(INFO[k].tool, Inv.ITEM_INFO[k].tool, `${k} tool flag matches Bag`);
   }
   assert.equal(ITEMS.wood.name, 'Plank');
-  assert.deepEqual([...TOOL_IDS].sort(), ['axe', 'fishingrod', 'hammer', 'hook', 'machete', 'metalaxe', 'metalhook', 'metalspear', 'paddle', 'spade', 'spear']);
+  assert.deepEqual([...TOOL_IDS].sort(), ['axe', 'fishingrod', 'hammer', 'hook', 'machete', 'metalaxe', 'metalhook', 'metalspear', 'paddle', 'spade', 'spear', 'titaniumaxe', 'titaniumsword']);
   for (const s of ['smelter', 'researchtable', 'grill']) assert.ok(STATION_IDS.includes(s) && PLACEABLE_IDS.includes(s));
   for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'juicer' /* [juicer] */]) assert.ok(PLACEABLE_IDS.includes(k));
   assert.ok(!STATION_IDS.includes('juicer')); // [juicer] decor, not a slot-panel station

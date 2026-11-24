@@ -87,15 +87,16 @@ export const CRAFT_TABS = Object.freeze(['food', 'other', 'tools', 'weapons', 'e
 const tabs = (tab, ids) => ids.map((id) => [id, tab]);
 const CRAFT_TAB_OF = Object.freeze(Object.fromEntries([
   ...tabs('food', ['cup', 'glasscups', 'purifier', 'rainbarrel', 'grill', 'cookpot', 'bowl', 'juicer', 'honeyfish',
-    'cookedfish', 'cookedbeet', 'cookedpotato', 'cookedsharkmeat', 'berrycup', 'coconutcup', 'mixcup']),
+    'cookedfish', 'cookedbeet', 'cookedpotato', 'cookedsharkmeat', 'berrycup', 'coconutcup', 'mixcup',
+    'meal_chowder', 'meal_omelette', 'meal_broth', 'meal_fishbowl', 'meal_custard', 'meal_stew', 'meal_gardensoup', 'meal_hotpot', 'meal_sharkroast']),
   ...tabs('other', ['researchtable', 'research', 'smelter', 'kiln', 'recycler', 'crate', 'net', 'cropplot', 'beehive', 'scarecrow',
     'sprinkler', 'bed', 'nestbox', 'goatpen', 'fishtrap', 'turbine', 'battery', 'skyrocket', 'armor', 'sinker', 'stormrod',
     'drum', 'pipes', 'bells', 'coursekit', 'scoreboard', 'glidepost', 'glidestep', 'taskboard']),
-  ...tabs('tools', ['hook', 'metalhook', 'hammer', 'fishingrod', 'axe', 'metalaxe', 'spade', 'finder', 'binoculars', 'spyglass',
+  ...tabs('tools', ['hook', 'metalhook', 'hammer', 'fishingrod', 'axe', 'metalaxe', 'titaniumaxe', 'spade', 'finder', 'binoculars', 'spyglass',
     'bucket', 'glidehandle', 'brush', 'camera']),
-  ...tabs('weapons', ['spear', 'metalspear', 'machete']),
+  ...tabs('weapons', ['spear', 'metalspear', 'machete', 'titaniumsword']),
   ...tabs('equipment', ['fins', 'airjug', 'goggles', 'scraper', 'headlamp', 'driftboard']),
-  ...tabs('resources', ['rope', 'nail', 'bolt', 'hinge', 'brick', 'metalingot', 'copperingot', 'glass']),
+  ...tabs('resources', ['rope', 'nail', 'bolt', 'hinge', 'brick', 'metalingot', 'copperingot', 'glass', 'titaniumingot', 'vinegoo', 'circuitboard']),
   ...tabs('navigation', ['sail', 'paddle', 'motor', 'wheel', 'receiver', 'antenna', 'maptable']),
   ...tabs('decorations', ['bench', 'palm', 'brickplanter', 'lantern', 'egglamp', 'candle', 'flowerbox', 'rug', 'pennant', 'fern', 'chime',
     'hammock', 'pots', 'sign', 'glasslamp', 'stormlamp', 'stormglass', 'cushion', 'shellwreath', 'flagpole', 'gametable', 'shelf',
@@ -111,9 +112,30 @@ export const ITEM_TEXT_EXTRA = deepFreeze({
   metalaxe: { desc: 'A forged metal head on a stout handle.', use: 'Click an island palm to chop, like the stone axe; lasts twice as long.' },
   machete: { desc: 'A short, heavy blade with a wrapped grip.', use: 'Click to jab: 15 damage, wears only when it lands.' },
   headlamp: { desc: 'A little lamp on a strap.', use: 'Keep it in your bag: lights up the water so you see farther when diving.' },
+  // items pass 2 (docs/loop/raft-item-parity.md section 0)
+  titaniumore: { desc: 'A heavy pale rock with a silver sheen.', use: 'Smelt it into a titanium ingot. Rare: barrels, buried bundles and island traders.' },
+  titaniumingot: { desc: 'A light, very hard pale bar.', use: 'The best tools: titanium axe and titanium sword.' },
+  vinegoo: { desc: 'Seaweed cooked down into a sticky green glue.', use: 'Glue for circuit boards.' },
+  circuitboard: { desc: 'A little green board with copper tracks.', use: 'A part for electric gadgets. Keep a few: nothing on the raft needs one yet.' },
+  titaniumaxe: { desc: 'A pale titanium head on a dark handle.', use: 'Click an island palm to chop; lasts twice as long as the metal axe.' },
+  titaniumsword: { desc: 'A straight titanium blade with a wrapped grip.', use: 'Click to jab: 20 damage, wears only when it lands.' },
+  meal_gardensoup: { desc: 'Beet and potato simmered in fresh water.', use: 'Eat it: Sure Footing, walk 20% faster for 4 min.' },
+  meal_hotpot: { desc: 'Fish, beet and potato in one pot.', use: 'Eat it: Steady Reel, reel 35% faster for 4 min.' },
+  meal_sharkroast: { desc: 'Shark meat roasted with beet and potato.', use: 'Eat it: Sea Legs, swim 20% faster and dives last 30% longer for 5 min.' },
 });
 
-export const ITEM_SOURCE_EXTRA = {};
+/**
+ * Craft-book source hints ({tag, how}, the shape of craft-book.js ITEM_SOURCE) for gathered and station-made kinds
+ * added after the craft book was written. The crafting UI merges these under its own ITEM_SOURCE (its rows win).
+ */
+export const ITEM_SOURCE_EXTRA = deepFreeze({
+  titaniumore: { tag: 'barrels, trader', how: 'Rare in floating barrels and buried bundles; island traders sell one for Bright Shells.' },
+  titaniumingot: { tag: 'smelter', how: 'Smelt titanium ore in a smelter.' },
+  vinegoo: { tag: 'smelter', how: 'Smelt seaweed in a smelter.' },
+  meal_gardensoup: { tag: 'cooking pot', how: 'Cooking Pot: beet + potato + fresh water; collect with a bowl.' },
+  meal_hotpot: { tag: 'cooking pot', how: 'Cooking Pot: fish + beet + potato; collect with a bowl.' },
+  meal_sharkroast: { tag: 'cooking pot', how: 'Cooking Pot: raw shark meat + beet + potato; collect with a bowl.' },
+});
 
 /**
  * Raft crafting tab of a recipe id or item kind: one of CRAFT_TABS ('food', 'other', 'tools', 'weapons',
@@ -154,6 +176,9 @@ const LIST = [
     tip: 'A rock with shiny orange streaks. Smelt it into a copper ingot.' }),
   item('metalore', 'Metal Ore', 'material', { iconTint: '#8d96a3',
     tip: 'A chunky grey rock full of metal. The smelter turns it into ingots.' }),
+  // Raft's rare third ore: barrels (rare), buried bundles and island traders
+  item('titaniumore', 'Titanium Ore', 'material', { iconTint: '#c3cbe0',
+    tip: 'A heavy pale rock with a silver sheen. Rare: smelt it into a titanium ingot for the best tools.' }),
   item('seaweed', 'Seaweed', 'material', { iconTint: '#4f9a5c',
     tip: 'Slippery seaweed tangled in a barrel. Dried out, it burns slow and gentle as fuel.' }),
   // [bees] flower seed (bushes, barrels), honey and beeswax (beehive harvest), see dist/bees.js
@@ -196,12 +221,22 @@ const LIST = [
   item('glass', 'Glass', 'refined', { iconTint: '#bfe6ef',
     recipe: cook('smelter', 'sand', { time: 25, fuel: 1 }), unlock: atStation('smelter'),
     tip: 'Sand melted into a clear little pane. Look through it and the sea sparkles.' }),
+  item('titaniumingot', 'Titanium Ingot', 'refined', { iconTint: '#d4dbea',
+    recipe: cook('smelter', 'titaniumore', { time: 40, fuel: 1.5 }), unlock: atStation('smelter'), // time and fuel: our pick (a harder ore)
+    tip: 'A light, very hard pale bar. The best axes and blades are made of this.' }),
+  // Raft: the smelter turns seaweed into goo [src]; seaweed also stays a fuel (the panel offers it in both rows)
+  item('vinegoo', 'Kelp Glue', 'refined', { iconTint: '#7fc45a',
+    recipe: cook('smelter', 'seaweed', { time: 20, fuel: 0.5 }), unlock: atStation('smelter'),
+    tip: 'Seaweed cooked down into a sticky green glue. Circuit boards need a dab of it.' }),
   item('bolt', 'Bolt', 'refined', { iconTint: '#8d96a3',
     recipe: hand({ metalingot: 1, scrap: 1 }, 2), unlock: research('metalingot'),
     tip: 'Two sturdy bolts from one ingot. They hold the fancy stuff together.' }),
   item('hinge', 'Hinge', 'refined', { iconTint: '#c3c9d1',
     recipe: hand({ metalingot: 1, nail: 2 }, 2), unlock: research('metalingot', 'nail'),
     tip: 'A tiny hinge that swings just right. Binoculars fold up thanks to these.' }),
+  item('circuitboard', 'Circuit Board', 'refined', { iconTint: '#3f8f5a',
+    recipe: hand({ copperingot: 2, plastic: 5, vinegoo: 1 }), unlock: research('copperingot', 'vinegoo'), // Raft: 2 copper ingot + 5 plastic + 1 vine goo [src]
+    tip: 'Copper tracks on a little green board. Electric gadgets will need these.' }),
 
   // ----- tools -----
   item('hook', 'Hook', 'tool', { icon: 'icon-hook', placeholder: false, tool: true, durability: 40, // Raft's plastic hook: 40 uses
@@ -238,6 +273,13 @@ const LIST = [
   item('machete', 'Machete', 'tool', { iconTint: '#c6d6e0', tool: true, durability: 60, actsAs: 'spear',
     recipe: hand({ metalingot: 3, bolt: 2, wood: 3, rope: 2 }), unlock: research('metalspear'),
     tip: 'A short, heavy metal blade. Hits the shark harder than any spear and keeps its edge for about 60 hits.' }),
+  // Titanium tier (Raft has titanium tools and a titanium sword): recipes and numbers are our picks, one step past metal.
+  item('titaniumaxe', 'Titanium Axe', 'tool', { iconTint: '#c3cbe0', tool: true, durability: 200, actsAs: 'axe',
+    recipe: hand({ titaniumingot: 2, wood: 4, rope: 2, bolt: 1 }), unlock: research('titaniumingot', 'metalaxe'),
+    tip: 'A pale titanium head on a dark handle. Fells palms like the other axes and lasts twice as long as the metal one.' }),
+  item('titaniumsword', 'Titanium Sword', 'tool', { iconTint: '#d4dbea', tool: true, durability: 100, actsAs: 'spear',
+    recipe: hand({ titaniumingot: 3, bolt: 2, wood: 2, rope: 2 }), unlock: research('titaniumingot', 'machete'),
+    tip: 'A straight, light titanium blade. The hardest hitter on the raft, good for about 100 hits.' }),
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
@@ -415,7 +457,7 @@ export const BLOCK_RADII = deepFreeze({
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
-export const SPEAR_DAMAGE = deepFreeze({ spear: 5, metalspear: 10, machete: 15 });
+export const SPEAR_DAMAGE = deepFreeze({ spear: 5, metalspear: 10, machete: 15, titaniumsword: 20 });
 
 /** [recycler] Sorting Tub yields: one junk item -> count of a gathered material, no fuel. */
 export const RECYCLE_YIELDS = deepFreeze({
@@ -450,6 +492,8 @@ const REPAIRS = deepFreeze({
   axe: { wood: 2, stone: 1 },
   metalaxe: { metalingot: 1, wood: 1 },
   machete: { metalingot: 1, scrap: 1 },
+  titaniumaxe: { titaniumingot: 1, wood: 1 },
+  titaniumsword: { titaniumingot: 1, scrap: 1 },
 });
 
 /** Alternate / older names that may appear in saves or network messages. */
@@ -504,9 +548,9 @@ export const PROGRESSION_PLAN = deepFreeze([
  * Barrel loot: BARREL_ROLLS.basic picks from the 'basic' pool (min..max each)
  * plus BARREL_ROLLS.treasure picks from the 'treasure' pool (always 1 of the
  * kind, so mid-game materials trickle in steadily with low variance).
- * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 111, incl. beet 5 and potato 4): ~5.3
- * basics plus clay .18, stone .12, metal ore .10, sand .12, seaweed .08 (x1.5), copper ore
- * .06, flower seed .06, scrap .29. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
+ * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 113, incl. beet 5, potato 4 and
+ * titanium ore 2): ~5.3 basics plus clay .18, stone .12, metal ore .10, sand .12, seaweed .08 (x1.5), copper ore
+ * .06, flower seed .06, titanium ore .02 (no pity), scrap .29 (each about 2% lower than before titanium). With the caller's luck state (BARREL_PITY) the mid-game kinds come at
  * least every 5-13 barrels (a few more when two are overdue at once), so the real rates are
  * clay .24, stone .19, metal ore .18, sand .14, copper ore .09, seaweed .05 (x1.5).
  */
@@ -522,6 +566,7 @@ export const BARREL_LOOT = deepFreeze([
   { kind: 'sand', min: 1, max: 1, weight: 12, pool: 'treasure' },
   { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
   { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },
+  { kind: 'titaniumore', min: 1, max: 1, weight: 2, pool: 'treasure' }, // rare, no pity: buried bundles and traders top it up
   { kind: 'flowerseed', min: 1, max: 1, weight: 6, pool: 'treasure' }, // [bees]
   { kind: 'beet', min: 1, max: 2, weight: 5, pool: 'treasure' }, // [crops] a new player can start farming
   { kind: 'potato', min: 1, max: 1, weight: 4, pool: 'treasure' }, // [crops]

@@ -542,10 +542,10 @@ test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES orde
   // Raft's 8 tabs, in Raft's order, from items.js CRAFT_TABS / craftTabOf.
   assert.deepEqual(CB.CATEGORIES.map(c => c.id), ['food', 'other', 'tools', 'weapons', 'equipment', 'resources', 'navigation', 'decorations']);
   for (const c of CB.CATEGORIES) assert.ok(c.name && c.icon, c.id + ' has a name (tooltip) and an icon');
-  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'bucket', 'metalhook', 'axe', 'metalaxe', 'binoculars', 'spyglass', 'finder', 'spade', 'camera', 'glidehandle']);
-  assert.deepEqual(groups.find(g => g.id === 'weapons').recipes.map(r => r.id), ['spear', 'metalspear', 'machete']);
+  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'bucket', 'metalhook', 'axe', 'metalaxe', 'titaniumaxe', 'binoculars', 'spyglass', 'finder', 'spade', 'camera', 'glidehandle']);
+  assert.deepEqual(groups.find(g => g.id === 'weapons').recipes.map(r => r.id), ['spear', 'metalspear', 'machete', 'titaniumsword']);
   assert.deepEqual(groups.find(g => g.id === 'equipment').recipes.map(r => r.id), ['fins', 'airjug', 'goggles', 'scraper', 'headlamp', 'driftboard']);
-  assert.deepEqual(groups.find(g => g.id === 'resources').recipes.map(r => r.id), ['rope', 'nail', 'bolt', 'hinge']);
+  assert.deepEqual(groups.find(g => g.id === 'resources').recipes.map(r => r.id), ['rope', 'nail', 'bolt', 'hinge', 'circuitboard']);
   for (const r of recipes) assert.equal(CB.tabOf(r.id, r.out.kind), groups.find(g => g.recipes.includes(r)).id, r.id);
 });
 

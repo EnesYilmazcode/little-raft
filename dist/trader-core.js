@@ -22,6 +22,7 @@ export const POOL = Object.freeze([
   def('glass', { glass: 2 }, { shell: 3 }, 2),
   def('grill', { cookedfish: 2 }, { shell: 3 }, 2),
   def('copper', { shell: 3 }, { copperore: 1 }, 1),
+  def('titanium', { shell: 8 }, { titaniumore: 1 }, 1), // rare ore: pricier than copper
   def('seeds', { shell: 2 }, { seed: 2 }, 3),
   def('clay', { scrap: 4, rope: 2 }, { clay: 3 }, 1),
   // rare row: the last slot on ~40% of visits

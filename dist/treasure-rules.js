@@ -51,7 +51,7 @@ export function spotsFor(seed) {
 }
 
 // [kind, min, max, weight]: existing mid-game materials only (about one barrel's worth per island).
-const LOOT = [['rope', 2, 2, 3], ['nail', 3, 3, 3], ['glass', 1, 1, 2], ['copperore', 1, 2, 2], ['metalore', 1, 2, 2], ['clay', 2, 2, 2], ['seaweed', 2, 2, 2]];
+const LOOT = [['rope', 2, 2, 3], ['nail', 3, 3, 3], ['glass', 1, 1, 2], ['copperore', 1, 2, 2], ['metalore', 1, 2, 2], ['clay', 2, 2, 2], ['seaweed', 2, 2, 2], ['titaniumore', 1, 1, 1]];
 const LOOT_TOTAL = LOOT.reduce((s, e) => s + e[3], 0);
 // What a dug spot holds: [[kind, n], ...]. Deterministic per (seed, spot, kind). Same kinds add up.
 export function lootForSpot(seed, i, kind) {

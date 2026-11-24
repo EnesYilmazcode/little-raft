@@ -68,6 +68,9 @@ export const CONTENT_ITEMS = Object.freeze({
   meal_fishbowl: Object.freeze({ kind: 'meal_fishbowl', name: 'Smoky Fish Bowl', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_custard:  Object.freeze({ kind: 'meal_custard',  name: 'Coconut Custard', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_stew:     Object.freeze({ kind: 'meal_stew',     name: 'Captain\u2019s Stew', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
+  meal_gardensoup: Object.freeze({ kind: 'meal_gardensoup', name: 'Garden Soup', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
+  meal_hotpot:     Object.freeze({ kind: 'meal_hotpot',     name: 'Fisher\u2019s Hotpot', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
+  meal_sharkroast: Object.freeze({ kind: 'meal_sharkroast', name: 'Harbour Roast', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   // driftboard paddleboard (paddleboard.js): launched from the bag, never lost
   driftboard: Object.freeze({ kind: 'driftboard', name: 'Driftboard', icon: 'icon-driftboard', maxStack: 1, tool: false, placeholder: false }),
   flagpole: item('flagpole', 'Flagpole', 'icon-flag', true), // raft flag (flags.js); placeholder: no icon-flag sprite, item-svg.js draws it

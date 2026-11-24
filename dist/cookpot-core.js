@@ -3,10 +3,12 @@
 // Cosy rules: no hunger, nothing burns, spoils or is lost; an idle pot never uses wood. A meal gives ONE timed buff.
 
 export const POT = Object.freeze({ SLOTS: 3, SERVE: 2, TRAY: 6, FUEL_MAX: 4, COOK: 20, MAX_DT: 1, REACH: 3.2, MAX_POTS: 100, BUFF_MAX: 300 });
-export const INGREDIENTS = Object.freeze(['fish', 'cookedfish', 'seaweed', 'leaf', 'seed', 'puffegg', 'freshcup']);
+export const INGREDIENTS = Object.freeze(['fish', 'cookedfish', 'seaweed', 'leaf', 'seed', 'puffegg', 'freshcup', 'beet', 'potato', 'sharkmeat']);
 export const RECIPES = Object.freeze({ // key = sorted ingredients joined by '+'; value = meal id
   'fish+freshcup+seaweed': 'meal_chowder', 'leaf+puffegg+puffegg': 'meal_omelette', 'freshcup+seaweed+seaweed': 'meal_broth',
   'cookedfish+leaf+seed': 'meal_fishbowl', 'freshcup+puffegg+seed': 'meal_custard', 'cookedfish+puffegg+seaweed': 'meal_stew',
+  // crop-plot meals (Raft has vegetable, fish and shark pot meals; ours are 3-slot sets with our own names and buffs)
+  'beet+freshcup+potato': 'meal_gardensoup', 'beet+fish+potato': 'meal_hotpot', 'beet+potato+sharkmeat': 'meal_sharkroast',
 });
 export const MEALS = Object.freeze({ // buff fields: neutral 1, night 0|1; secs = buff length
   meal_chowder: Object.freeze({ name: 'Tide Chowder', buff: 'Swift Fins', secs: 180, swim: 1.35 }),
@@ -15,12 +17,16 @@ export const MEALS = Object.freeze({ // buff fields: neutral 1, night 0|1; secs 
   meal_fishbowl: Object.freeze({ name: 'Smoky Fish Bowl', buff: 'Steady Reel', secs: 180, reel: 1.3 }),
   meal_custard: Object.freeze({ name: 'Coconut Custard', buff: 'Night Owl', secs: 240, night: 1 }),
   meal_stew: Object.freeze({ name: 'Captain’s Stew', buff: 'Cosy Glow', secs: 300, swim: 1.1, walk: 1.1, oxy: 1.25, reel: 1.1 }),
+  meal_gardensoup: Object.freeze({ name: 'Garden Soup', buff: 'Sure Footing', secs: 240, walk: 1.2 }),
+  meal_hotpot: Object.freeze({ name: 'Fisher’s Hotpot', buff: 'Steady Reel', secs: 240, reel: 1.35 }),
+  meal_sharkroast: Object.freeze({ name: 'Harbour Roast', buff: 'Sea Legs', secs: 300, swim: 1.2, oxy: 1.3 }),
 });
 export const MEAL_IDS = Object.freeze(Object.keys(MEALS));
 export const POT_ACTIONS = Object.freeze(['pot.add', 'pot.fuel', 'pot.take', 'pot.back', 'pot.eat']);
 // Names kept here so this file stays import-free.
 export const NAMES = Object.freeze({
   fish: 'fish', cookedfish: 'grilled fish', seaweed: 'seaweed', leaf: 'palm leaf', seed: 'palm seed', puffegg: 'puff egg', freshcup: 'fresh water',
+  beet: 'beet', potato: 'potato', sharkmeat: 'shark meat',
 });
 export const keyOf = (x, z) => x + ',' + z;
 export const TEXT = Object.freeze({
