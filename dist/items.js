@@ -32,6 +32,7 @@
 //                                                     (researching never consumes the item)
 //            | {type:'station', station:id}           once that station has been placed
 //   tip:       one or two friendly sentences (tooltips)
+//   tab:       crafting tab id (one of CRAFT_TABS, Raft's 8 crafting categories); set from CRAFT_TAB_OF below
 // }
 //
 // Economy reference (game.js): 30 floating items drift past at .22 m/s (~3 min per
@@ -55,6 +56,8 @@ const deepFreeze = (o) => {
   return o;
 };
 
+const hasOwn = (o, k) => o !== null && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
+
 const START = { type: 'start' };
 const discover = (...items) => ({ type: 'discover', items });
 const research = (...items) => ({ type: 'research', items });
@@ -71,7 +74,52 @@ function item(id, name, category, opts) {
   if (iconTint) e.iconTint = iconTint;
   if (tool) e.durability = durability;
   if (actsAs) e.actsAs = actsAs;
+  if (hasOwn(CRAFT_TAB_OF, id)) e.tab = CRAFT_TAB_OF[id];
   return e;
+}
+
+// ---------------------------------------------------------------------------
+// Crafting tabs: Raft's 8 crafting categories, as data for the crafting UI.
+// Keyed by recipe id (ITEMS ids, plus the content and lane recipe ids that live outside ITEMS,
+// e.g. 'glasscups' or 'coursekit'). Station outputs carry a tab too, so a book can file them.
+// ---------------------------------------------------------------------------
+export const CRAFT_TABS = Object.freeze(['food', 'other', 'tools', 'weapons', 'equipment', 'resources', 'navigation', 'decorations']);
+const tabs = (tab, ids) => ids.map((id) => [id, tab]);
+const CRAFT_TAB_OF = Object.freeze(Object.fromEntries([
+  ...tabs('food', ['cup', 'glasscups', 'purifier', 'rainbarrel', 'grill', 'cookpot', 'bowl', 'juicer', 'honeyfish',
+    'cookedfish', 'cookedbeet', 'cookedpotato', 'cookedsharkmeat', 'berrycup', 'coconutcup', 'mixcup']),
+  ...tabs('other', ['researchtable', 'research', 'smelter', 'kiln', 'recycler', 'crate', 'net', 'cropplot', 'beehive', 'scarecrow',
+    'sprinkler', 'bed', 'nestbox', 'goatpen', 'fishtrap', 'turbine', 'battery', 'skyrocket', 'armor', 'sinker', 'stormrod',
+    'drum', 'pipes', 'bells', 'coursekit', 'scoreboard', 'glidepost', 'glidestep', 'taskboard']),
+  ...tabs('tools', ['hook', 'metalhook', 'hammer', 'fishingrod', 'axe', 'metalaxe', 'spade', 'finder', 'binoculars', 'spyglass',
+    'bucket', 'glidehandle', 'brush', 'camera']),
+  ...tabs('weapons', ['spear', 'metalspear', 'machete']),
+  ...tabs('equipment', ['fins', 'airjug', 'goggles', 'scraper', 'headlamp', 'driftboard']),
+  ...tabs('resources', ['rope', 'nail', 'bolt', 'hinge', 'brick', 'metalingot', 'copperingot', 'glass']),
+  ...tabs('navigation', ['sail', 'paddle', 'motor', 'wheel', 'receiver', 'antenna', 'maptable']),
+  ...tabs('decorations', ['bench', 'palm', 'brickplanter', 'lantern', 'egglamp', 'candle', 'flowerbox', 'rug', 'pennant', 'fern', 'chime',
+    'hammock', 'pots', 'sign', 'glasslamp', 'stormlamp', 'stormglass', 'cushion', 'shellwreath', 'flagpole', 'gametable', 'shelf',
+    'trophystand', 'photoframe', 'stringlights', 'lamppost', 'perch',
+    'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble']),
+]));
+
+/**
+ * Craft-book text ({desc, use}, the shape of craft-book.js ITEM_TEXT) for kinds added after the craft book was
+ * written. The crafting UI merges these under its own ITEM_TEXT (its own rows win).
+ */
+export const ITEM_TEXT_EXTRA = deepFreeze({
+  metalaxe: { desc: 'A forged metal head on a stout handle.', use: 'Click an island palm to chop, like the stone axe; lasts twice as long.' },
+  machete: { desc: 'A short, heavy blade with a wrapped grip.', use: 'Click to jab: 15 damage, wears only when it lands.' },
+  headlamp: { desc: 'A little lamp on a strap.', use: 'Keep it in your bag: lights up the water so you see farther when diving.' },
+});
+
+/**
+ * Raft crafting tab of a recipe id or item kind: one of CRAFT_TABS ('food', 'other', 'tools', 'weapons',
+ * 'equipment', 'resources', 'navigation', 'decorations'), or undefined when it has none (gathered items,
+ * unknown ids, non-strings). Pure lookup, never throws.
+ */
+export function craftTabOf(id) {
+  return typeof id === 'string' && hasOwn(CRAFT_TAB_OF, id) ? CRAFT_TAB_OF[id] : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,6 +228,14 @@ const LIST = [
   item('axe', 'Stone Axe', 'tool', { iconTint: '#8f9aa0', tool: true, durability: 50,
     recipe: hand({ wood: 6, stone: 3, rope: 2 }), unlock: discover('stone', 'rope'),
     tip: 'A sharp stone head lashed to a sturdy handle. Click a palm five times to fell it; good for about 50 chops.' }),
+  // Raft's second axe tier: same chop, twice the uses. Recipe is our pick (Raft's metal axe is ingot + plank + rope based).
+  item('metalaxe', 'Metal Axe', 'tool', { iconTint: '#9fb1bf', tool: true, durability: 100, actsAs: 'axe',
+    recipe: hand({ wood: 4, metalingot: 3, rope: 2, bolt: 1 }), unlock: research('metalingot', 'axe'),
+    tip: 'A forged metal head on a stout handle. Fells palms like the stone axe but lasts twice as long.' }),
+  // Raft's machete: a short heavy blade, the step up from the metal spear (jabs like a spear here).
+  item('machete', 'Machete', 'tool', { iconTint: '#c6d6e0', tool: true, durability: 60, actsAs: 'spear',
+    recipe: hand({ metalingot: 3, bolt: 2, wood: 3, rope: 2 }), unlock: research('metalspear'),
+    tip: 'A short, heavy metal blade. Hits the shark harder than any spear and keeps its edge for about 60 hits.' }),
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
@@ -287,7 +343,7 @@ const LIST = [
     recipe: hand({ plastic: 2, leaf: 1, scrap: 1 }, 3), unlock: discover('plastic', 'scrap'),
     tip: 'A paper-and-plastic rocket on a little stand. Press E to light it, best after dark!' }),
   item('scarecrow', 'Scarecrow', 'decor', { placeable: true, iconTint: '#c9a46a', // [scarecrow] model in dist/scarecrow-model.js
-    recipe: hand({ wood: 3, leaf: 4, rope: 2, plastic: 1 }), unlock: discover('rope'),
+    recipe: hand({ wood: 5, leaf: 3, nail: 3, plastic: 3 }), unlock: discover('nail'), // Raft: 5 plank + 3 leaf + 3 nail + 3 plastic
     tip: 'A friendly driftwood scarecrow. Gulls leave nearby planters alone and sit on its hat instead.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
     recipe: hand({ wood: 10, leaf: 20, scrap: 3 }), unlock: discover('leaf', 'scrap'), // Raft: 10 planks + 20 leaves + 3 scrap
@@ -321,7 +377,7 @@ const LIST = [
     recipe: hand({ wood: 10, nail: 4, rope: 2 }), unlock: discover('nail'),
     tip: 'Show it something new and learn what you can make. Your items stay safe in your bag.' }),
   item('grill', 'Simple Grill', 'station', { iconTint: '#6b5a4c', stack: 5, placeable: true,
-    recipe: hand({ wood: 6, scrap: 1, rope: 3 }), unlock: discover('fish'),
+    recipe: hand({ wood: 6, scrap: 1, rope: 6 }), unlock: discover('fish'), // Raft: 6 plank + 1 scrap + 6 rope
     tip: 'Grills fish into snacks and fires clay into bricks. Feed it planks or leaves.' }),
   item('smelter', 'Smelter', 'station', { iconTint: '#b5533c', stack: 5, placeable: true,
     recipe: hand({ wood: 6, brick: 10, stone: 7, nail: 6 }), unlock: research('clay', 'stone'),
@@ -357,7 +413,7 @@ export const BLOCK_RADII = deepFreeze({
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
-export const SPEAR_DAMAGE = deepFreeze({ spear: 5, metalspear: 10 });
+export const SPEAR_DAMAGE = deepFreeze({ spear: 5, metalspear: 10, machete: 15 });
 
 /** [recycler] Sorting Tub yields: one junk item -> count of a gathered material, no fuel. */
 export const RECYCLE_YIELDS = deepFreeze({
@@ -390,6 +446,8 @@ const REPAIRS = deepFreeze({
   metalspear: { metalingot: 1, rope: 1 },
   paddle: { wood: 2, rope: 1 },
   axe: { wood: 2, stone: 1 },
+  metalaxe: { metalingot: 1, wood: 1 },
+  machete: { metalingot: 1, scrap: 1 },
 });
 
 /** Alternate / older names that may appear in saves or network messages. */
@@ -410,6 +468,7 @@ export const LEGACY_ALIASES = deepFreeze({
   research_table: 'researchtable', 'research-table': 'researchtable',
   simplegrill: 'grill', simple_grill: 'grill', furnace: 'smelter',
   collectionnet: 'net', collection_net: 'net', planter: 'palm',
+  metal_axe: 'metalaxe', 'metal-axe': 'metalaxe',
 });
 
 /**
@@ -471,7 +530,6 @@ const POOLS = Object.freeze(Object.fromEntries(['basic', 'treasure'].map((p) => 
   return [p, Object.freeze({ rows, total: rows.reduce((s, e) => s + e.weight, 0) })];
 })));
 
-const hasOwn = (o, k) => o !== null && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
 const unit = (rand) => {
   const r = Number(typeof rand === 'function' ? rand() : Math.random());
   return Number.isFinite(r) ? Math.min(Math.max(r, 0), 0.999999999) : 0;

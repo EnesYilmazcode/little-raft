@@ -539,7 +539,7 @@ test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES orde
   assert.equal(seen.length, recipes.length);
   assert.deepEqual([...seen].sort(), recipes.map(r => r.id).sort());
   for (const g of groups) assert.ok(g.recipes.length > 0, `${g.id} not empty`);
-  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'driftboard', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'binoculars', 'spyglass', 'drum', 'pipes', 'bells', 'finder', 'spade', 'camera', 'glidehandle']); // [instruments] [treasure] [camera] [zipline] [spyglass]
+  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'driftboard', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'metalaxe', 'machete', 'binoculars', 'spyglass', 'drum', 'pipes', 'bells', 'finder', 'spade', 'camera', 'glidehandle']); // [instruments] [treasure] [camera] [zipline] [spyglass]
   assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'nail', 'bolt', 'hinge']);
 });
 
@@ -552,10 +552,13 @@ test('CraftBook: unknown outputs fall back to tools (tool flag) or building', ()
   assert.deepEqual(g.map(c => c.id), ['building']);
 });
 
-test('CraftBook: every item kind has description and use text', () => {
+test('CraftBook: every item kind has description and use text', async () => {
+  // Kinds newer than the craft book carry their text in items.js ITEM_TEXT_EXTRA (the crafting UI merges it).
+  const { ITEM_TEXT_EXTRA = {} } = await import(new URL('items.js', base));
   for (const k of Object.keys(ITEM_INFO)) {
-    assert.ok(CB.ITEM_TEXT[k]?.desc, `${k} desc`);
-    assert.ok(CB.ITEM_TEXT[k]?.use, `${k} use`);
+    const t = CB.ITEM_TEXT[k] ?? ITEM_TEXT_EXTRA[k];
+    assert.ok(t?.desc, `${k} desc`);
+    assert.ok(t?.use, `${k} use`);
   }
 });
 

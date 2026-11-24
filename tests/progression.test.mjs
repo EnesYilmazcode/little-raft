@@ -118,7 +118,7 @@ test('items: every entry is complete and self-consistent', () => {
       assert.equal(it.durability, undefined, `${id} non-tool durability`);
     }
     if (it.placeable) assert.ok(Object.hasOwn(BLOCK_RADII, id) && BLOCK_RADII[id] >= 0, `${id} radius`);
-    if (it.actsAs !== undefined) assert.ok(['hook', 'fishingrod', 'hammer', 'spear'].includes(it.actsAs) && it.tool, `${id} actsAs`);
+    if (it.actsAs !== undefined) assert.ok(['hook', 'fishingrod', 'hammer', 'spear', 'axe'].includes(it.actsAs) && it.tool, `${id} actsAs`);
   }
   for (const id of Object.keys(BLOCK_RADII)) assert.ok(ITEMS[id]?.placeable, `radius for non-placeable ${id}`);
 });
@@ -171,7 +171,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
     assert.equal(INFO[k].tool, Inv.ITEM_INFO[k].tool, `${k} tool flag matches Bag`);
   }
   assert.equal(ITEMS.wood.name, 'Plank');
-  assert.deepEqual([...TOOL_IDS].sort(), ['axe', 'fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'paddle', 'spade', 'spear']);
+  assert.deepEqual([...TOOL_IDS].sort(), ['axe', 'fishingrod', 'hammer', 'hook', 'machete', 'metalaxe', 'metalhook', 'metalspear', 'paddle', 'spade', 'spear']);
   for (const s of ['smelter', 'researchtable', 'grill']) assert.ok(STATION_IDS.includes(s) && PLACEABLE_IDS.includes(s));
   for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'juicer' /* [juicer] */]) assert.ok(PLACEABLE_IDS.includes(k));
   assert.ok(!STATION_IDS.includes('juicer')); // [juicer] decor, not a slot-panel station
@@ -579,7 +579,7 @@ test('progression: full unlock chain with the real catalogue (start -> metal hoo
   };
 
   assert.equal(p.isUnlocked('nail'), false);
-  give('wood', 20); give('leaf', 20); give('plastic', 6);
+  give('wood', 20); give('leaf', 26); give('plastic', 6);
   assert.ok(p.isUnlocked('rope') && !p.isUnlocked('nail'));
   const fresh = give('scrap', 20);
   assert.ok(fresh.includes('nail') && fresh.includes('lantern') && fresh.includes('crate'));
@@ -587,7 +587,7 @@ test('progression: full unlock chain with the real catalogue (start -> metal hoo
   make('nail'); make('nail');
   assert.equal(bag.count('nail'), 6);
   assert.ok(p.isUnlocked('researchtable') && p.isUnlocked('net'));
-  for (let i = 0; i < 8; i++) make('rope');
+  for (let i = 0; i < 11; i++) make('rope'); // the grill takes 6 (Raft)
   make('researchtable');
   assert.equal(p.research('scrap', bag).ok, false, 'table not placed yet');
   assert.ok(bag.remove('researchtable', 1));

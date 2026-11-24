@@ -248,7 +248,7 @@ test('model: craft_scarecrow has rags, fits its box, and the rags sway', () => {
 });
 
 test('items: the scarecrow crafts from its cost and has a 0.25 m radius', () => {
-  const cost = { wood: 3, leaf: 4, rope: 2, plastic: 1 };
+  const cost = { wood: 5, leaf: 3, nail: 3, plastic: 3 }; // Raft's scarecrow cost
   assert.deepEqual({ ...ITEMS.scarecrow.recipe.cost }, cost);
   assert.equal(ITEMS.scarecrow.placeable, true); assert.equal(ITEMS.scarecrow.category, 'decor');
   const slots = new Array(SLOT_COUNT).fill(null); Object.entries(cost).forEach(([kind, count], i) => { slots[i] = { kind, count }; });
