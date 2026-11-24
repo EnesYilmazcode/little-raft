@@ -608,7 +608,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down;
     const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW - (hold.tilt || 0) * nW;
     const rwz = -0.15 * ce + 0.12 * a;
-    applyArm(R, rpx + arm[0] * nW - 0.04 * pDip - 0.10 * zW, rpy + arm[1] * nW - 0.035 * pDip + 0.44 * zW, rpz + arm[2] * nW + 0.09 * pSweep - 0.06 * zW, rrx - 0.12 * pDip + 0.75 * zW, rry, rrz + 0.12 * pDip, rwx + 0.22 * pSweep, 0, rwz, smooth(0, 1, st.ptR)); // [paddle] dip + sweep; [zipline] zW raises the fist
+    applyArm(R, rpx + arm[0] * nW - 0.06 * pDip - 0.10 * zW, rpy + arm[1] * nW - 0.03 * pDip + 0.44 * zW, rpz + arm[2] * nW + 0.14 * pSweep - 0.06 * zW, rrx - 0.16 * pDip + 0.75 * zW, rry, rrz + 0.18 * pDip, rwx + 0.3 * pSweep, 0, rwz, smooth(0, 1, st.ptR)); // [paddle] dip + sweep; [zipline] zW raises the fist
     // [zipline] on the line the handle swings round so its wheel stem points up at the rope (and the strap shows)
     const gh = st.shown === 'glidehandle' ? mounts.get('glidehandle') : null;
     if (gh) {

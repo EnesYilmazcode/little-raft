@@ -44,7 +44,7 @@ test('UX-5: the pickup feed gets the bag\'s 3D icons from the same item-icons mo
   const q = m => (src.match(new RegExp(`from '\\./${m}\\.js(\\?build=[^']*)'`)) || [])[1];
   assert.ok(q('item-icons'), 'game.js imports item-icons.js');
   assert.equal(q('item-icons'), q('pickup-feed'), 'same ?build= query, so the same module instances');
-  assert.match(src, /pickupFeed\.setIconProvider\(\s*k\s*=>\s*iconURL\(k\)(?:\s*\|\|\s*feedSprite\(k\))?\s*\)/);
+  assert.match(src, /pickupFeed\.setIconProvider\(\s*k\s*=>\s*(?:\(flatIcon\(k\) \? null : iconURL\(k\)\)|iconURL\(k\))(?:\s*\|\|\s*feedSprite\(k\))?\s*\)/); // rope and plank stay flat (crafting-ui)
   assert.match(src, /onIconReady\(\s*k\s*=>\s*pickupFeed\.refresh\(k\)\s*\)/, 'rows made before the render finished get swapped');
   // The feed turns a provider URL into an <img>, and falls back to the sprite while it returns null.
   const { createFeed } = await import(new URL('pickup-feed.js', base));

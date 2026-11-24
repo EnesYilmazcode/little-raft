@@ -12,7 +12,7 @@ import { createDebris, createItemBatch } from './debris.js?build=v3-survival-ae7
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { PlayerPhysics, PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
+import { PlayerPhysics, PLAYER_CONSTANTS, RaftRide } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, decorBlock, pieceBlock, pieceCell, inReach, BUILD_REACH, PIECE_REACH, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createContent, cleanExt, promptParts } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
@@ -57,7 +57,7 @@ import { BED_RESPAWN } from './sleep.js?build=v3-survival-ae77fa84ac2b'; // [bed
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
-import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { createSurvivalUI, iconSVG, flatIcon } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { mergeGate } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, wheelDelta, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
@@ -163,6 +163,7 @@ export function mount(transfer = null) {
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
   const itemName = k => (ITEM_INFO[k]?.name ?? k).toLowerCase();
   const missingText = (bag, cost) => Object.entries(cost).filter(([k, n]) => bag.count(k) < n).map(([k, n]) => `${n - bag.count(k)} more ${itemName(k)}`).join(' and ');
+  const missingRows = (bag, cost) => Object.entries(cost).filter(([k, n]) => bag.count(k) < n).map(([kind, n]) => ({kind, count:n - bag.count(kind)})); // feed chips: count + icon
   function spend(bag, cost) { // atomic
     const s = new Bag(bag.snapshot());
     for (const [k, n] of Object.entries(cost)) if (!s.remove(k, n)) return false;
@@ -470,6 +471,7 @@ export function mount(transfer = null) {
     faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, // [sit] seat facing
     award: ev => award(ev), night: () => content?.night?.() ?? 0, // [sit] host achievements, [fireworks] content hook
     heldKind: () => heldKind(), // [zipline] content hook
+    get sailFlow() { return sailFlow; }, // [dropbox] water flow past the raft (read-only)
   };
   function init() {
     // Point the sprite at this build so a deploy never shows a stale cached icons.svg; survival-ui.js reads the URL back.
@@ -1160,6 +1162,7 @@ export function mount(transfer = null) {
     if (content?.effect?.(e)) return; // [fireworks] content hook: consumed effects skip the notice/sound fallthrough
     const toLog = (e.kind === 'note' || e.kind === 'achievement') && typeof logbookUI?.celebrate === 'function'; // shown once: the logbook toast
     if (e.loot && typeof e.loot === 'object') { for (const [k, n] of Object.entries(e.loot)) if (ITEM_INFO[k] && isInt(n) && n > 0) pickupFeed.add(k, n); } // pickup feed rows with icons
+    else if (Array.isArray(e.need) && pickupFeed.need(e.need)) noticeUntil = performance.now() + 400; // count + icon chips; e.text stays for older peers
     else if (typeof e.text === 'string' && e.text && !toLog) notice(e.text.slice(0, 90));
     if (toLog) logbookUI.celebrate(e);
     if (e.kind === 'loot') hintDone('loot');
@@ -1235,7 +1238,7 @@ export function mount(transfer = null) {
       const r = bag.craft(a.recipe);
       if (r.ok) emit({kind:'craft', text:`Crafted ${ITEM_INFO[r.crafted.kind]?.name ?? r.crafted.kind}`, loot:{[r.crafted.kind]:r.crafted.count}}, actor);
       else if (r.reason === 'full') emit({kind:'full', text:'Your bag is full'}, actor);
-      else if (r.reason === 'missing') emit({kind:'notice', text:'Need ' + r.missing.map(m => `${m.count} more ${itemName(m.kind)}`).join(' and ')}, actor);
+      else if (r.reason === 'missing') emit({kind:'notice', text:'Need ' + r.missing.map(m => `${m.count} more ${itemName(m.kind)}`).join(' and '), need:r.missing.map(m => ({kind:m.kind, count:m.count}))}, actor);
       if (r.ok) { award({kind:'craft', crafted:r.crafted.kind}); content?.observe({kind:'craft', item:r.crafted.kind, count:r.crafted.count}, actor); } // [tasks] observe
       return;
     }
@@ -1284,7 +1287,7 @@ export function mount(transfer = null) {
         const why = floorBlock(world.tiles, a.x, a.z) ?? (netOnCell(world.nets, a.x, a.z) ? 'net' : null); // [nets]
         if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
         if (bag.count('hammer') < 1) { emit({kind:'notice', text:'Craft a hammer first'}, actor); return; }
-        if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST)}, actor); return; }
+        if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST), need:missingRows(bag, FLOOR_COST)}, actor); return; }
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
         const why = decorBlock(world.tiles, world.decor, a.x, a.z, world.pieces);
@@ -1355,7 +1358,7 @@ export function mount(transfer = null) {
       if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
       if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
       const cost = repairCost(bag.slots[i].kind) ?? REPAIR_COST; // [progression-hook]
-      if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost)}, actor); return; }
+      if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost), need:missingRows(bag, cost)}, actor); return; }
       bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!', sound:'repair'}, actor);
       award({kind:'repair'}); content?.observe({kind:'repair'}, actor); return; // [tasks] observe
     }
@@ -1406,6 +1409,10 @@ export function mount(transfer = null) {
     if (typeof recipe !== 'string') return false;
     const locked = content?.craftLocked(recipe, myActor()); if (locked) { notice(String(locked)); return false; }
     return action({kind:'craft', recipe}) !== false;
+  }
+  function dropHeld(all) { // [dropbox] Q / Ctrl+Q: not with the build wheel open, under water or passed out (like E)
+    if (!running || uiBlocked() || building?.menu.isOpen || diving?.state.diving || fainted >= 0) return;
+    if (content?.drop(all)) charging = null; // a throw being charged must not fire from the emptied hand
   }
   function repair() { if (!running) return; const bag = localBag();
     const sel = bag.slots[bag.selectedIndex]; if (sel?.kind === 'spade') { action({kind:'treasure.repair'}); return; } // [treasure-hook] R on a held spade
@@ -1462,7 +1469,7 @@ export function mount(transfer = null) {
       const v = placementFor(kind, p);
       if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : kind === 'net' ? 'Point at the water beside the raft edge' : 'Point at an empty raft floor'); return; } // [nets]
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
-      if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
+      if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { if (!pickupFeed.need(missingRows(bag, FLOOR_COST))) notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
       if (kind === 'net') { swing = 1; action({kind:'build', recipe:'net', x:v.x, z:v.z, d:v.d}); return; } // [nets] faces outward, no free rotation
       swing = 1; ghostHold = {kind, x:v.x, z:v.z, rot:kind === 'hammer' ? 0 : placeRot}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
     }
@@ -1618,7 +1625,7 @@ export function mount(transfer = null) {
   const TITLE_FOCUS = new T.Vector3(-5, 0, 2), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
   const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [], ropeScratch = [];
   const handParams = {dt:0, time:0, charge:0, reeling:false, casting:0, paddle:0, walking:false, hasHookOut:false, motion:0, yaw:0, pitch:0, riding:false};
-  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
+  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), tmpRide = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
   const hookParams = {hand:handPos, items:freeItems, reeling:false, time:0}; // freeItems is already filtered for pending items
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() + .06 : null);
@@ -1638,12 +1645,20 @@ export function mount(transfer = null) {
     raft.rotation.x += (-s.sz * .35 - raft.rotation.x) * kr;
     raft.rotation.z += (s.sx * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
   }
+  const raftRide = new RaftRide(), rideOff = new T.Vector3(); // camera offset that keeps the player on the tilting deck
+  // The partner stands on the same tilting deck: carry their avatar with it too (physics poses are deck-flat).
+  const friendRide = new RaftRide(), coopRide = new RaftRide(), friendRideP = {x:0, y:0, z:0, swimming:false}; // one blend state per avatar
+  function friendRideOffset(dt, x, y, z, swimming, out, ride = friendRide) {
+    friendRideP.x = x; friendRideP.y = y; friendRideP.z = z; friendRideP.swimming = !!swimming;
+    return raft ? ride.update(dt, friendRideP, raft.position.y, raft.rotation.x, raft.rotation.z, world.tiles, FLOOR_Y, out) : (out.x = out.y = out.z = 0, out);
+  }
   function updateCamera(dt) {
     viewZoom = running ? content?.zoom() ?? 1 : 1; const damp = 1 / viewZoom; const fov = running ? options.fov / viewZoom : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); } // [spyglass] zoomed FOV
     if (running) {
       const cf = controls?.camera(yaw); // controls lane: replaces the old sine bob with footstep bob + crouch + landing dip
       const bob = (cf ? cf.y : walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0) * damp; // [spyglass] damp
       camera.position.set(physics.x + (cf?.x ?? 0) * damp, physics.y + bob, physics.z + (cf?.z ?? 0) * damp); // [spyglass] damp
+      raftRide.update(dt, physics, raft.position.y, raft.rotation.x, raft.rotation.z, world.tiles, FLOOR_Y, rideOff); camera.position.add(rideOff); // aboard: ride the deck's pitch and roll (raft-local frame)
       camera.rotation.set(pitch, yaw, ((physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0) + (cf?.roll ?? 0)) * damp, 'YXZ'); // [spyglass] damp
       if (eating) { const k = Math.sin(Math.min(1, eating.t / EAT_SECONDS) * Math.PI); camera.rotation.x -= k * .09; camera.position.y -= k * .035; } // [vitals] hand-to-mouth nod
       if (shakeAmp > .002) { const k = shakeAmp * (.4 + options.cameraMotion) * damp; /* [spyglass] */ camera.position.x += (Math.random() - .5) * k; camera.position.y += (Math.random() - .5) * k; camera.rotation.z += (Math.random() - .5) * k * .3; shakeAmp *= Math.exp(-dt * 7); } else shakeAmp = 0; // shark lane: bite shake
@@ -1676,6 +1691,7 @@ export function mount(transfer = null) {
     friend.visible = !!other;
     if (other) {
       friendTarget.set(other.x, other.y !== null ? other.y - EYE_OFFSET : deckY(), other.z);
+      if (other.y !== null) friendTarget.add(friendRideOffset(dt, other.x, other.y, other.z, other.swimming, tmpRide)); // ride the deck tilt
       const before = tmpV.copy(friend.position);
       friend.rotation.y = (other.yaw ?? 0) + Math.PI;
       if (friend.position.distanceTo(friendTarget) > 3) friend.position.copy(friendTarget); else friend.position.lerp(friendTarget, Math.min(1, dt * 12));
@@ -1960,13 +1976,16 @@ export function mount(transfer = null) {
   on(window, 'keydown', e => {
     const kd = keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:uiBlocked()});
     if (!kd.act) { if (kd.record && !controls) keys[e.code] = true; return; } // held keys survive a panel; movePlayer gets input=false meanwhile
-    if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
+    const ctrlQ = e.code === 'KeyQ' && e.ctrlKey; // [dropbox] Ctrl+Q drops the whole stack, even the hammer (Q alone is its build wheel)
+    if (ctrlQ && running) e.preventDefault(); // browsers that let the page see Ctrl+Q must not act on it
+    if (running && !ctrlQ && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
     keys[e.code] = true;
     const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
     const wheelOpen = !!building?.menu.isOpen; // building wheel open: no hotbar swap (drops the hammer, closes the wheel) and no interact
     if (m && running && !wheelOpen) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat && !wheelOpen) interact();
+    if (e.code === 'KeyQ' && !e.repeat && !wheelOpen) dropHeld(e.ctrlKey); // [dropbox]
     if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : e.altKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration (Shift+R in 15 degree steps, Alt+R back)
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
@@ -1991,7 +2010,7 @@ export function mount(transfer = null) {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
-      interact, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
+      interact, drop:dropHeld, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
       pause:() => settingsController?.open(), buildWheelOpen:() => !!building?.menu.isOpen, // hotbar + interact are swallowed while the build wheel is open
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
       menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard
@@ -2193,6 +2212,7 @@ export function mount(transfer = null) {
     local:() => { const k = heldKind(); return {x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, grounded:physics.grounded, seated:!!content?.seated?.(), /* [sit] */ held:k, riding:!!(content?.hanging ?? content?.riding)?.(), /* [zipline] hanging pose; not the driftboard */charge:charging ? chargeValue() : 0, reeling:reeling && !!castOut(),
       hook:hookMesh.visible && hook ? {stage:hook.fishing ? 'fishing' : hook.stage, ...(hook.fishing ? {x:hookMesh.position.x, y:.05, z:hookMesh.position.z} : {x:hook.position.x, y:hook.position.y, z:hook.position.z})} : null, // physics height; remote maps it onto waves
       ghost:hover ? {x:hover.x, z:hover.z, kind:k, ok:k !== 'hammer' || canAfford(localBag(), FLOOR_COST)} : null}; },
+    rideOffset:(dt, x, y, z, swimming, out) => friendRideOffset(dt, x, y, z, swimming, out, coopRide), // remote avatar rides the deck tilt like our camera
     look:() => lookState.look, // [look] coop.js sends the in-memory look (localStorage may be blocked)
     reconnect:coopRejoin, giveUp:() => { closeConnection(); setStatus('Host disconnected. Rejoin when their tab is open.'); }});
   // PeerJS (~93 KB) is only fetched on the first host/join; solo play never loads it. Shared across hot-swapped engines.
@@ -2554,7 +2574,7 @@ export function mount(transfer = null) {
     try { lookUI = createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(pauseInput), onResume:guard(() => { if (running) requestLock(); })}); } catch (e) { console.error('look UI failed', e); lookUI = null; } // [look]
     try { albumUI = createPhotoAlbumUI({store:sharedPhotoStore({notice:s => notice(s, 3200)}), onPause:guard(pauseInput), onResume:guard(() => requestLock())}); } catch (e) { console.error('photo album failed', e); albumUI = null; } // [camera]
     if (role !== 'guest') retroAward();
-    pickupFeed.setIconProvider(k => iconURL(k) || feedSprite(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar; sprite while a render is pending
+    pickupFeed.setIconProvider(k => (flatIcon(k) ? null : iconURL(k)) || feedSprite(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar; sprite while a render is pending
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
     warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants

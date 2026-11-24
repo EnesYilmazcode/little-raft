@@ -13,12 +13,12 @@ const BUILD_PIECES = [
   {id:'lantern', label:'Lantern'}, {id:'net', label:'Net'}, {id:'bench', label:'Bench'}, {id:'crate', label:'Crate'},
 ];
 
-const STOP_BRAKE = 8; // 1/s, added to physics' ground rate of 14 when no move input
+const STOP_BRAKE = 8; // 1/s, added to physics' GROUND_DECEL (22) and friction when no move input
 
 function storage() { try { return globalThis.localStorage ?? null; } catch { return null; } }
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
 
-// g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
+// g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(), drop(all),
 //     inventory(), repair(back), pause(), menuBack(id) (pad closes the open menu), useDown(), useUp(), useCancel(), reelDown(), reelUp(),
 //     buildPieces? (list or () => list of {id,label}), buildPick?(id),
 //     buildWheelOpen?() (hammer build wheel open: hotbar and interact are swallowed, movement still works)}
@@ -37,6 +37,7 @@ export function createControls(g) {
     if (phase === 'down') {
       if (id === 'interact') { if (!g.buildWheelOpen?.()) call('interact'); }
       else if (id === 'inventory') call('inventory');
+      else if (id === 'drop') call('drop', input.ctrlHeld());
       else if (id === 'pause' && pad) call('pause'); // Escape on the keyboard is owned by settings.js / pointer lock
       else if (id === 'rotate') { call('repair', input.shiftHeld()); emit('little-raft-action', {id}); } // game's R = repair today
       else if (id === 'buildMenu') openRadial();
@@ -84,7 +85,7 @@ export function createControls(g) {
   }
   // Call after physics.update(); ev is its return value.
   function afterMove(dt, physics, ev) {
-    // Raft-style crisp stop: extra ground braking on top of physics' GROUND_ACCEL once the stick/keys are released.
+    // Raft-style crisp stop: extra ground braking on top of physics' GROUND_DECEL once the stick/keys are released.
     if (idle && physics.grounded && !physics.swimming) { const k = Math.exp(-STOP_BRAKE * Math.min(dt, .05)); physics.vx *= k; physics.vz *= k; }
     feel.setMotionScale(g.motion?.() ?? 1);
     fx = feel.step(dt, {speed:Math.hypot(physics.vx, physics.vz), grounded:physics.grounded, swimming:physics.swimming,

@@ -16,7 +16,7 @@ with sync_playwright() as p:
     errors=[]
     page=browser.new_page(viewport={'width':1440,'height':900})
     page.on('pageerror',lambda e:errors.append(str(e)))
-    page.goto(URL);wait(page,'!!window.raftDebug');page.locator('#solo').click()
+    page.goto(URL);wait(page,'!!window.raftDebug');page.locator('.ob-item[data-act="new"]:visible, #solo:visible').first.click()
     wait(page,'raftDebug.state.running')
     s=state(page)
     assert s['ownedTools']==['hook'],s
@@ -55,7 +55,7 @@ with sync_playwright() as p:
     context.add_init_script('localStorage.setItem("little-raft-v1",'+json.dumps(json.dumps(saved))+');')
     context.add_init_script('HTMLCanvasElement.prototype.requestPointerLock=function(){return Promise.reject(new Error("Unavailable in this environment"))};')
     page=context.new_page();page.on('pageerror',lambda e:errors.append(str(e)))
-    page.goto(URL);wait(page,'!!window.raftDebug');page.locator('#solo').click()
+    page.goto(URL);wait(page,'!!window.raftDebug');page.locator('.ob-item[data-act="new"]:visible, #solo:visible').first.click()
     wait(page,'raftDebug.state.running');page.keyboard.press('Tab')
     wait(page,'raftDebug.state.inventoryOpen')
     craft_box=page.locator('#inventory .sv-craft').bounding_box()

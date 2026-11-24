@@ -148,7 +148,7 @@ test('hold to craft: a click makes exactly one; repeats start after ~800 ms, the
   for (let i = 2; i < s.length; i++) assert.ok(s[i] - s[i - 1] < s[i - 1] - s[i - 2], 'each repeat comes sooner');
   assert.ok(CB.craftsForHold(1600) <= 3, 'a 1.6 s hold no longer runs away');
   const ui = src('survival-ui.js');
-  assert.match(ui, /D\.hint\.textContent = n === 1 && hold\.cap > 1 \? 'keep holding for more' : '';/, 'the first press says what holding does');
+  assert.match(ui, /paintBtn\(craftButtonView\('ready', \{ holding: true, done: n, cap: hold\.cap \}\)\);/, 'the button counts the batch while held');
   assert.match(ui, /const p = clamp01\(\(now - hold\.t0\) \/ hold\.wait\);\s*setFill\(p\);/, 'the button fills toward the next craft');
 });
 
@@ -163,7 +163,7 @@ test('layout: vertical category column, tall recipe list with a scroll cue, deta
   assert.match(ui, /#inventory \.sv-craft\{flex:none;box-sizing:border-box;height:var\(--ph\);/, 'fixed-height crafting column: tabs never resize the panel');
   const order = ['class="sv-craft"', 'class="sv-side"', 'class="sv-detail"', 'class="sv-bag"'].map(k => ui.indexOf(k));
   assert.ok(order.every((v, i) => v > 0 && (i === 0 || v > order[i - 1])), 'crafting on the left, detail over the backpack on the right');
-  assert.match(ui, /Requires <i>have \/ need<\/i>/);
+  assert.match(ui, /<span class="sv-dlabel">Requires<\/span>/);
 });
 
 test('pin button is dark text on the cream detail pane', () => {

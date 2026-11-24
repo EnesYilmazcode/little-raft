@@ -2,11 +2,11 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, anchorVisible, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, haveNeedLine, stackLabel, holdDelay, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, reqChips, reqAmount, setItemGlyph, craftButtonView, anchorVisible, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
-const VERSION = 'sv5';
+const VERSION = 'sv6';
 const HB = Number(HOTBAR_SIZE) || 8;
 const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
@@ -132,8 +132,11 @@ function durFrac(s) {
 // Rendered 3D icon when ready, flat sprite until then. data-icon lets a late render swap it in place.
 // 3D icons need a second WebGL context, so none are requested on the title screen (see liveIcons).
 let iconsLive = false;
+// Thin, pale 3D renders that read poorly at chip and tile size: these always use the flat drawing.
+const FLAT_ICON = new Set(['rope', 'wood']);
+const flatIcon = kind => FLAT_ICON.has(norm(kind));
 function iconHTML(kind) {
-  const url = iconsLive ? iconURL(kind) : null;
+  const url = iconsLive && !FLAT_ICON.has(norm(kind)) ? iconURL(kind) : null;
   if (url) return `<img class="sv-icon sv-3d" data-icon="${esc(kind)}" src="${url}" alt="" draggable="false">`;
   return iconSVG(kind).replace('<svg ', `<svg data-icon="${esc(kind)}" `);
 }
@@ -175,6 +178,25 @@ function recipeList() {
     return { id, out, name: String(r.name ?? r.label ?? itemName(out.kind)), reqs: reqsOf(r) };
   }).filter(Boolean);
 }
+
+// Line icons for the panel's own controls (24x24, currentColor): the pin, the craft button and the + on a missing ingredient.
+const UI_ICON = {
+  pin: '<path class="sv-uifill" d="M8.5 3h7M10 3v5.2L6.5 12.5h11L14 8.2V3"/><path d="M12 12.5V21"/>',
+  hammer: '<path d="M13.6 10.4L4.6 19.4"/><rect class="sv-uifill" x="11" y="5.6" width="10" height="4.8" rx="1" transform="rotate(45 16 8)"/>',
+  lock: '<rect class="sv-uifill" x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+};
+const uiIcon = id => `<svg class="sv-ui" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${UI_ICON[id] || ''}</svg>`;
+
+// Game UI is never selectable or draggable: only real text fields (chat, names, sign text) are.
+// Chrome resets user-select to text in the top layer (modal dialogs, popovers), so those are listed too.
+const TEXT_FIELD = 'input,textarea,[contenteditable]:not([contenteditable="false"])';
+const NO_SELECT = `html,body,dialog,[popover]{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+img,svg,a{-webkit-user-drag:none}
+${TEXT_FIELD}{-webkit-user-select:text;user-select:text}`;
+const elOf = t => (t && t.nodeType === 1 ? t : t?.parentElement) || null;
+const inTextField = t => !!elOf(t)?.closest?.(TEXT_FIELD);
 
 // ---- styles ----
 const FONT = "var(--ui-font,'Segoe UI',system-ui,sans-serif)";
@@ -218,10 +240,12 @@ const CSS = `
 .tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
 @media(max-width:760px){.tools.sv-hotbar{--s:min(42px,calc((96vw - 41px) / 10));--g:3px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
 body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag has its own hotbar row; the world one peeked out under the modal */
-#inventory.sv-inv{--s:min(56px,calc((96vw - 410px) / 10 - 6px));--g:6px;--ph:min(600px,calc(94vh - 36px));padding:0;margin:max(16px,calc(50vh - 300px)) auto auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#3e2a17;
-  width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
+#inventory.sv-inv{--s:min(56px,calc((96vw - 410px) / 10 - 6px));--g:6px;--ph:min(600px,calc(94vh - 36px));position:fixed;inset:0;padding:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#3e2a17;
+  width:auto;height:auto;min-width:0;max-width:none;max-height:none;overflow:visible;font:500 14px/1.35 ${FONT}}
+/* The dialog covers the viewport (its empty area acts as the backdrop) and centres the panel at every size and UI scale. */
+#inventory.sv-inv[open]{display:flex;align-items:center;justify-content:center}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
-#inventory .sv-wrap{display:flex;gap:12px;align-items:stretch;padding:12px;outline:none;border-radius:6px;
+#inventory .sv-wrap{display:flex;gap:12px;align-items:stretch;box-sizing:border-box;max-width:96vw;max-height:94vh;padding:12px;outline:none;border-radius:6px;
   background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 21px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
   border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 12px 36px #0006}
 #inventory .sv-craft,#inventory .sv-bag{background:#7f6039;border-radius:3px;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1755}
@@ -291,6 +315,8 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-ready .sv-rsub{color:#3f6a26}
 #inventory .sv-full .sv-rsub{color:#8a4a12}
 #inventory .sv-locked .sv-rsub{color:#a3321a}
+#inventory .sv-rq{display:inline-flex;align-items:center;gap:2px;margin-right:7px;vertical-align:middle;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#a3321a}
+#inventory .sv-rq .sv-icon{width:18px;height:18px}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
 /* detail: big icon, name, what it is for, have / need rows and the Craft button */
 #inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
@@ -308,21 +334,25 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-dstate[hidden]{display:none}
 #inventory .sv-dlabel{flex:none;display:flex;justify-content:space-between;font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#6b5638}
 #inventory .sv-dlabel i{font-style:normal;letter-spacing:.6px;text-transform:none;font-weight:700;padding-right:8px}
-/* every ingredient row stays visible: rows wrap into columns instead of scrolling */
-#inventory .sv-ings{flex:none;list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:3px 4px}
-#inventory .sv-ing{flex:none;display:grid;grid-template-columns:26px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 5px;border-radius:3px;background:#d6c397;box-shadow:inset 3px 0 0 #b0391e}
-#inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #5f9c3a}
-#inventory .sv-ing .sv-icon{width:26px;height:26px}
-#inventory .sv-iname{display:flex;align-items:baseline;gap:7px;min-width:0;font:600 13px/1.2 ${FONT};color:#3e2a17}
-#inventory .sv-iname>span{white-space:nowrap}
-#inventory .sv-isrc{font:600 11px/1.2 ${FONT};color:#6b5638;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#inventory .sv-ok .sv-isrc{display:none}
-#inventory button.sv-ijump{flex:none;width:auto;height:auto;margin:0;padding:2px 6px;border:0;border-radius:4px;background:#c4ae80;box-shadow:inset 0 0 0 1px #7a5a34;color:#3e2a17;
-  font:700 11px/1.2 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none}
-#inventory button.sv-ijump:hover{background:#e0cfa5;color:#3e2a17}
-#inventory button.sv-ijump:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
-#inventory .sv-iamt{font:800 14px/1 ${FONT};font-variant-numeric:tabular-nums;color:#a3321a}
+/* ingredients: one tile each, the count under the icon (the name is the hover tooltip); every tile stays visible */
+#inventory .sv-ings{flex:none;list-style:none;margin:0;padding:2px 0 0;display:flex;flex-wrap:wrap;gap:7px}
+#inventory .sv-ing{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;width:56px;padding:5px 2px 6px;border-radius:4px;
+  background:#d6c397;box-shadow:inset 0 0 0 1px #7a5a34,inset 0 -3px 0 #b0391e}
+#inventory .sv-ing.sv-ok{box-shadow:inset 0 0 0 1px #7a5a34,inset 0 -3px 0 #5f9c3a}
+#inventory .sv-ing .sv-icon{width:34px;height:34px}
+#inventory .sv-ing .sv-icon,#inventory .sv-rq .sv-icon{filter:drop-shadow(0 1px 0 #3e2a1799) drop-shadow(0 0 1px #3e2a1766)}
+#inventory .sv-iamt{font:800 13px/1 ${FONT};font-variant-numeric:tabular-nums;color:#a3321a}
 #inventory .sv-ok .sv-iamt{color:#3f6a26}
+/* + on a missing ingredient that can be crafted right now: makes one in place, the recipe stays open */
+#inventory button.sv-iplus{position:absolute;right:-6px;top:-6px;z-index:1;display:grid;place-items:center;width:24px;height:24px;min-width:0;margin:0;padding:0;border:0;border-radius:50%;
+  background:linear-gradient(#6c9c46,#3f6a26);box-shadow:0 0 0 1.5px #1f3612,0 2px 4px #0007;color:#f4ffe6;cursor:pointer;opacity:0;transform:scale(.5);transition:opacity .1s,transform .12s cubic-bezier(.3,1.5,.5,1)}
+#inventory button.sv-iplus[hidden]{display:none}
+#inventory button.sv-iplus .sv-ui{width:15px;height:15px;stroke-width:3}
+#inventory .sv-ing:hover>button.sv-iplus,#inventory button.sv-iplus:focus-visible{opacity:1;transform:none}
+#inventory button.sv-iplus:hover{background:linear-gradient(#7cb050,#4a7a2e);transform:scale(1.12)}
+#inventory button.sv-iplus:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
+#inventory button.sv-iplus.sv-deny{background:linear-gradient(#c05a3a,#8a3a12)}
+@media(hover:none){#inventory button.sv-iplus{opacity:1;transform:none}}
 #inventory .sv-craftbtn{position:relative;flex:none;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:44px;margin:auto 0 0;padding:0 12px;overflow:hidden;border:0;border-radius:4px;
   background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6;font:800 15px/1 ${FONT};letter-spacing:.5px;text-transform:none;cursor:pointer;transform:none;
   user-select:none;-webkit-user-select:none;touch-action:none}
@@ -337,7 +367,9 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-craftbtn.sv-holding .sv-clabel,#inventory .sv-craftbtn.sv-done .sv-clabel{font-variant-numeric:tabular-nums}
 #inventory .sv-craftbtn.sv-done[aria-disabled="true"]{color:#c8f7a0}
 #inventory .sv-clabel,#inventory .sv-chint,#inventory .sv-ccount{position:relative;pointer-events:none}
-#inventory .sv-chint{font:600 11px/1 ${FONT};letter-spacing:0;color:#e6f7d4;opacity:.9}
+#inventory .sv-clabel .sv-ui{display:block;width:24px;height:24px}
+#inventory .sv-clabel .sv-uifill{fill:currentColor}
+#inventory .sv-chint{font:800 15px/1 ${FONT};letter-spacing:0;color:#e6f7d4;font-variant-numeric:tabular-nums}
 #inventory .sv-chint:empty{display:none}
 #inventory .sv-ccount{min-width:26px;padding:3px 5px;border-radius:9px;background:#14270bcc;color:#c8f7a0;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums}
 #inventory .sv-ccount:empty{display:none}
@@ -361,12 +393,17 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 @media(max-width:560px){#inventory.sv-inv{--s:min(36px,calc((92vw - 75px) / ${HB}));--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
 /* pin a recipe to the HUD edge (craft-book.js trackerView) */
-#inventory button.sv-pinbtn{align-self:start;width:auto;height:auto;margin:0;padding:4px 8px;border:0;border-radius:5px;background:#3e2a1712;box-shadow:inset 0 0 0 1px #3e2a1759;color:#3e2a17cc;
-  font:700 11px/1.2 ${FONT};letter-spacing:.3px;text-transform:none;cursor:pointer;transform:none}
-#inventory button.sv-pinbtn:hover{background:#3e2a1726;color:#3e2a17}
-#inventory button.sv-pinbtn[aria-pressed="true"]{background:#c46a1c2e;box-shadow:inset 0 0 0 1px #c46a1ca0;color:#8a4410}
+#inventory button.sv-pinbtn{align-self:start;display:grid;place-items:center;width:30px;height:30px;min-width:0;margin:0;padding:0;border:0;border-radius:50%;background:#3e2a1712;box-shadow:inset 0 0 0 1px #3e2a1759;color:#3e2a17;
+  opacity:.7;cursor:pointer;transform:none;transition:opacity .1s,background .1s}
+#inventory button.sv-pinbtn .sv-ui{width:18px;height:18px;rotate:35deg;transition:rotate .15s}
+#inventory button.sv-pinbtn[aria-pressed="true"] .sv-ui{rotate:0deg}
+#inventory button.sv-pinbtn[aria-pressed="true"] .sv-uifill{fill:currentColor}
+#inventory button.sv-pinbtn:hover{background:#3e2a1726;opacity:1}
+#inventory button.sv-pinbtn[aria-pressed="true"]{background:#c46a1c2e;box-shadow:inset 0 0 0 1px #c46a1ca0;color:#8a4410;opacity:1}
 #inventory button.sv-pinbtn:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
-#inventory .sv-recipe.sv-pinned .sv-rname::after{content:"  \\2022 pinned";font:700 10px/1 ${FONT};letter-spacing:.3px;color:#ffc98f}
+#inventory .sv-recipe.sv-pinned::after{content:"";position:absolute;right:5px;top:5px;width:13px;height:13px;background:#8a4410;
+  -webkit-mask:var(--sv-pin) center/contain no-repeat;mask:var(--sv-pin) center/contain no-repeat}
+#inventory{--sv-pin:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8.5 2h7v1.5H14v4.7l3.5 4.3v1.5h-4.7V22h-1.6v-8H6.5v-1.5L10 8.2V3.5H8.5z'/%3E%3C/svg%3E")}
 #craftTracker{position:fixed;right:16px;bottom:24px;z-index:4;width:220px;padding:9px 10px 8px;border-radius:9px;pointer-events:none;
   background:linear-gradient(180deg,#1a2226d9,#0e1417e0);box-shadow:inset 0 0 0 1px #ffffff17,0 6px 18px #0006;color:#f4efe2;font:500 13px/1.25 ${FONT}}
 #craftTracker[hidden]{display:none}
@@ -380,14 +417,11 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #craftTracker.ct-ready{box-shadow:inset 0 0 0 1px #8fd36a88,0 0 12px #8fd36a33,0 6px 18px #0006}
 #craftTracker.ct-gated .ct-art>*{filter:grayscale(1) brightness(.6)}
 #craftTracker.ct-gated .ct-state{color:#e8c27a;line-height:1.2}
-#craftTracker ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
-#craftTracker li{display:grid;grid-template-columns:20px 1fr auto;gap:7px;align-items:center;padding:2px 6px 2px 3px;border-radius:4px;background:#ffffff0a;box-shadow:inset 2px 0 0 #e06a4a}
-#craftTracker li.ct-ok{box-shadow:inset 2px 0 0 #8fd36a}
-#craftTracker li .sv-icon{width:20px;height:20px}
-#craftTracker li svg.sv-icon{width:16px;height:16px;margin:2px}
-#craftTracker li span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#e9e3d3;font-weight:600}
-#craftTracker li b{font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff8a73}
-#craftTracker li.ct-ok b{color:#9ee07a}
+#craftTracker .ct-reqs{display:flex;flex-wrap:wrap;gap:4px}
+#craftTracker .ct-rq{display:inline-flex;align-items:center;gap:3px;padding:2px 5px 3px 6px;border-radius:4px;background:#ffffff0a;box-shadow:inset 0 -2px 0 #8fd36a;
+  font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#9ee07a}
+#craftTracker .ct-rq.ct-rq-short{box-shadow:inset 0 -2px 0 #e06a4a;color:#ff8a73}
+#craftTracker .ct-rq .sv-icon{width:22px;height:22px}
 #craftTracker .ct-foot{margin-top:6px;font:600 11px/1.3 ${FONT};color:#f4efe299}
 #craftTracker .ct-foot kbd{font:800 10px/1 ${FONT};padding:1px 4px;border-radius:3px;box-shadow:inset 0 0 0 1px #ffffff40;color:#fff6e0}
 @media(max-width:760px){#craftTracker{bottom:110px;right:10px;width:180px}}
@@ -397,7 +431,8 @@ const BAG_HUD = 'body:has(#inventory[open]) :is(#sailBadge,#lrVitals,#fcChip){vi
 function ensureStyle() {
   let st = document.getElementById('survival-style');
   if (!st) { st = document.createElement('style'); st.id = 'survival-style'; document.head.append(st); }
-  if (st.textContent !== CSS + BAG_HUD) st.textContent = CSS + BAG_HUD;
+  const css = CSS + BAG_HUD + NO_SELECT;
+  if (st.textContent !== css) st.textContent = css;
 }
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
@@ -425,12 +460,12 @@ function mountDialog() {
       </section>
       <div class="sv-side">
         <div class="sv-detail" hidden>
-          <div class="sv-dhead"><span class="sv-dart" aria-hidden="true"></span><span class="sv-dtext"><b class="sv-dname"></b><small class="sv-ddesc"></small></span><button type="button" class="sv-pinbtn" aria-pressed="false">Pin</button></div>
+          <div class="sv-dhead"><span class="sv-dart" aria-hidden="true"></span><span class="sv-dtext"><b class="sv-dname"></b><small class="sv-ddesc"></small></span><button type="button" class="sv-pinbtn" aria-pressed="false" aria-label="Pin recipe">${uiIcon('pin')}</button></div>
           <p class="sv-duse" hidden></p>
           <p class="sv-dstate" hidden></p>
-          <span class="sv-dlabel">Requires <i>have / need</i></span>
+          <span class="sv-dlabel">Requires</span>
           <ul class="sv-ings"></ul>
-          <button type="button" class="sv-craftbtn"><i class="sv-fill"></i><span class="sv-clabel">Craft</span><small class="sv-chint"></small><b class="sv-ccount" aria-hidden="true"></b></button>
+          <button type="button" class="sv-craftbtn"><i class="sv-fill"></i><span class="sv-clabel">${uiIcon('hammer')}</span><small class="sv-chint"></small><b class="sv-ccount" aria-hidden="true"></b></button>
         </div>
         <section class="sv-bag" aria-label="Inventory">
           <h3 class="sv-h">Backpack</h3>
@@ -503,6 +538,7 @@ function readSnap(bag) {
 // iconFor (optional): (kind) -> data URL; overrides the rendered icon for that kind.
 export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate, getModel } = {}) {
   if (typeof getModel === 'function') setModelProvider(getModel);
+  setItemGlyph(kind => art(kind));
   const gate = id => { try { return recipeGate?.(id) || null; } catch { return null; } }; // [progression-hook] {hidden, locked, reason}
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
   // this one is fully built (see below), so an early throw leaves the old UI working.
@@ -641,13 +677,6 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (id === pickId) return;
     stopHold(); flashUntil = 0; pickId = id; pickedByUser = true; applyPick();
   }
-  // Open the recipe that makes an ingredient (its tab, picked, focused and scrolled into view).
-  function jumpTo(id) {
-    const v = viewOf(id); if (!v) return;
-    hideTip();
-    setTab(v.cat); setPick(id);
-    try { v.el.focus({ preventScroll: true }); v.el.scrollIntoView({ block: 'nearest' }); } catch {}
-  }
   function applyPick() {
     for (const v of recipeEls) { const on = v.r.id === pickId; v.el.classList.toggle('sv-pick', on); v.el.setAttribute('aria-current', String(on)); }
     if (pickId) dlg.dataset.svPick = pickId;
@@ -663,15 +692,14 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       D.name.textContent = v.r.name + (v.r.out.count > 1 ? ' ×' + v.r.out.count : '');
       D.desc.textContent = t?.desc || t?.use || '';
       if (D.use) { D.use.innerHTML = t?.desc && t?.use ? `<em>Used for:</em> ${esc(t.use)}` : ''; D.use.hidden = !D.use.innerHTML; }
-      // Each ingredient says where to get more when short; a craftable one links to its recipe.
+      // One tile per ingredient: icon and have/need (the name is its tooltip). A missing one that can be
+      // crafted right now gets a + that makes one in place, without leaving this recipe.
       D.ings.innerHTML = v.r.reqs.map(q => {
-        const src = sourceOf(q.kind, recipes, itemName);
-        const tag = !src ? '' : src.recipe && src.recipe !== v.r.id
-          ? `<button type="button" class="sv-isrc sv-ijump" data-jump="${esc(src.recipe)}" aria-label="Go to the ${esc(itemName(q.kind))} recipe">craft it ›</button>`
-          : `<small class="sv-isrc">${esc(src.tag)}</small>`;
-        return `<li class="sv-ing" data-tip-kind="${esc(q.kind)}">${art(q.kind)}<span class="sv-iname"><span>${esc(itemName(q.kind))}</span>${tag}</span><b class="sv-iamt"></b></li>`;
-      }).join('') || '<li class="sv-ing sv-ok"><span></span><span class="sv-iname">Nothing</span><b class="sv-iamt"></b></li>';
-      ingEls = [...D.ings.querySelectorAll('.sv-ing')].map(el => ({ el, amt: el.querySelector('.sv-iamt') }));
+        const sub = sourceOf(q.kind, recipes, itemName)?.recipe;
+        const plus = sub && sub !== v.r.id ? `<button type="button" class="sv-iplus" data-make="${esc(sub)}" aria-label="Craft ${esc(itemName(q.kind))}" hidden>${uiIcon('plus')}</button>` : '';
+        return `<li class="sv-ing" data-tip-kind="${esc(q.kind)}">${art(q.kind)}<b class="sv-iamt"></b>${plus}</li>`;
+      }).join('');
+      ingEls = [...D.ings.querySelectorAll('.sv-ing')].map(el => ({ el, amt: el.querySelector('.sv-iamt'), plus: el.querySelector('.sv-iplus') }));
       D.count.textContent = '';
     }
     paintDetail();
@@ -680,10 +708,14 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const v = viewOf(pickId); if (!v || detail.hidden) return;
     v.rows.forEach((row, k) => {
       const e = ingEls[k]; if (!e) return;
-      e.amt.textContent = amountLabel(row);
+      e.amt.textContent = reqAmount(row);
       e.el.classList.toggle('sv-ok', row.enough);
       const src = row.enough ? null : sourceOf(row.kind, recipes, itemName);
       e.el.setAttribute('aria-label', `${itemName(row.kind)}: have ${row.have}, need ${row.need}${src ? '. ' + src.how : ''}`);
+      if (e.plus) {
+        const can = !row.enough && viewOf(e.plus.dataset.make)?.state === 'ready';
+        if (e.plus.hidden === can) e.plus.hidden = !can;
+      }
     });
     const ready = v.state === 'ready';
     // Why it cannot be made, in full (the list row only has room for two lines).
@@ -693,10 +725,18 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     D.btn.setAttribute('aria-disabled', String(!ready));
     if (!hold && performance.now() >= flashUntil) {
       D.btn.classList.remove('sv-done');
-      D.label.textContent = ready ? 'Craft' : v.state === 'gated' ? 'Locked' : v.state === 'full' ? 'Bag is full' : 'Missing materials'; // [progression-hook]
-      D.hint.textContent = ready ? holdHint(v.times) : '';
+      paintBtn(craftButtonView(v.state, { times: v.times })); // [progression-hook] gated shows the lock
     }
-    D.btn.setAttribute('aria-label', ready ? `Craft ${v.r.name}. Hold to craft several.` : `${v.r.name}: ${D.label.textContent}`);
+    D.btn.setAttribute('aria-label', ready ? `Craft ${v.r.name}${v.times > 1 ? `. Hold to craft up to ${Math.min(v.times, HOLD.max)}` : ''}.`
+      : `${v.r.name}: ${v.state === 'gated' ? 'locked' : v.state === 'full' ? 'bag is full' : 'missing materials'}`);
+  }
+  // Craft button face: an icon plus at most a short number (craft-book.js craftButtonView).
+  function paintBtn(view) {
+    const key = view.icon + '|' + view.text;
+    if (D.btn._svFace === key) return;
+    D.btn._svFace = key;
+    D.label.innerHTML = uiIcon(view.icon);
+    D.hint.textContent = view.text;
   }
   function countOf(bag, kind) {
     if (typeof bag.count === 'function') { try { return Number(bag.count(kind)) || 0; } catch {} }
@@ -729,12 +769,15 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       v.el.classList.toggle('sv-gated', state === 'gated'); // [progression-hook]
       if (state === 'gated') v.el.dataset.lockReason = v.reason || 'not learned yet'; else delete v.el.dataset.lockReason; // item tooltips show it
       const lacking = rows.filter(x => !x.enough);
-      v.sub.textContent = state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') // [progression-hook]
+      const subText = state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') // [progression-hook]
         : state === 'ready' ? 'Ready to craft'
         : state === 'full' ? 'No room in your bag'
-        : 'Need ' + lacking.map(x => `${x.short} ${itemName(x.kind)}`).join(', ');
+        : 'Missing ' + lacking.map(x => `${x.short} ${itemName(x.kind)}`).join(', ');
+      // Missing: one chip per short ingredient (have/need and its icon); ready rows rely on the green edge and badge.
+      if (state === 'missing') v.sub.innerHTML = reqChips(lacking, { glyph: art, nameOf: itemName, cls: 'sv-rq', title: false });
+      else v.sub.textContent = state === 'ready' ? '' : subText;
       v.badge.textContent = state === 'ready' && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
-      v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${v.sub.textContent}.`);
+      v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${subText}.`);
       if (tipAnchor === v.el) { if (anchorVisible(v.el)) showTipFor(v.el); else hideTip(); }
     }
     paintMore();
@@ -758,8 +801,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const on = !!pickId && pinId === pickId;
     if (D.pin) {
       D.pin.setAttribute('aria-pressed', String(on));
-      D.pin.textContent = on ? 'Pinned' : 'Pin';
-      D.pin.title = on ? 'Stop tracking this recipe' : 'Track this recipe on screen while you gather';
+      D.pin.setAttribute('aria-label', on ? 'Unpin recipe' : 'Pin recipe');
+      D.pin.title = on ? 'Unpin' : 'Pin to screen';
     }
     for (const v of recipeEls) v.el.classList.toggle('sv-pinned', v.r.id === pinId);
   }
@@ -791,7 +834,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     t.classList.toggle('ct-gated', tv.state === 'gated');
     const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'gated' ? 'Locked: ' + (tv.reason || 'not learned yet') : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
     t.innerHTML = `<div class="ct-head"><span class="ct-art" aria-hidden="true">${art(tv.kind)}</span><span><b class="ct-name">${esc(tv.name)}</b><small class="ct-state">${esc(state)}</small></span></div>`
-      + `<ul>${tv.rows.map(x => `<li class="${x.enough ? 'ct-ok' : ''}" aria-label="${esc(itemName(x.kind))}: have ${x.have}, need ${x.need}">${art(x.kind)}<span>${esc(itemName(x.kind))}</span><b>${esc(amountLabel(x))}</b></li>`).join('')}</ul>`
+      + `<div class="ct-reqs">${reqChips(tv.rows, { glyph: art, nameOf: itemName, cls: 'ct-rq' })}</div>`
       + (ready ? '<div class="ct-foot">Open your bag with <kbd>Tab</kbd> to craft</div>' : '');
     t.hidden = false;
   }
@@ -833,14 +876,19 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     render(false);
     return true;
   }
+  // + on a missing ingredient: craft one of it now; the open recipe and the list stay where they are.
+  function makeIngredient(btn) {
+    if (hold || !btn.dataset.make) return;
+    if (craftNow(btn.dataset.make)) return;
+    btn.classList.add('sv-deny');
+    setTimeout(() => btn.classList.remove('sv-deny'), 280);
+  }
   function setFill(p) { D.btn.style.setProperty('--fill', p.toFixed(3)); }
   // While held the label counts up ('Crafting 2 / 4'); on release it says what was made ('Crafted 4').
   function showCount(n) {
     if (!hold) return;
     clearTimeout(countTimer);
-    // The first craft says what a longer hold does while the bar fills toward the second.
-    D.label.textContent = n === 1 ? holdLabel(1, 0, false, viewOf(hold.id)?.r.out.count || 1) : holdLabel(n, hold.cap, true);
-    D.hint.textContent = n === 1 && hold.cap > 1 ? 'keep holding for more' : '';
+    paintBtn(craftButtonView('ready', { holding: true, done: n, cap: hold.cap }));
     D.count.textContent = '';
   }
   function startHold() {
@@ -854,7 +902,6 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!craftNow(pickId)) { denyBtn(); return; }
     hold = { id: pickId, done: 1, cap, t0: performance.now(), wait: holdDelay(1), raf: 0 };
     D.btn.classList.add('sv-holding');
-    D.hint.textContent = holdHint(cap); // what this batch will make, not what is left after the first craft
     showCount(1);
     if (hold.done >= hold.cap) { stopHold(); return; }
     hold.raf = requestAnimationFrame(tick);
@@ -880,8 +927,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     setFill(0);
     clearTimeout(countTimer);
     flashUntil = performance.now() + 1100;
-    D.label.textContent = holdLabel(made, 0, false, out);
-    D.hint.textContent = '';
+    paintBtn(craftButtonView('', { flash: true, done: made, out }));
     D.btn.classList.add('sv-done');
     countTimer = setTimeout(() => { flashUntil = 0; paintDetail(); }, 1100);
     paintDetail();
@@ -1196,8 +1242,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (e.target.closest?.('.sv-pinbtn')) { togglePin(); return; }
     const tb = e.target.closest?.('.sv-tab');
     if (tb) { setTab(tb.dataset.cat); return; }
-    const jb = e.target.closest?.('.sv-ijump');
-    if (jb) { jumpTo(jb.dataset.jump); return; }
+    const mk = e.target.closest?.('.sv-iplus');
+    if (mk) { makeIngredient(mk); return; }
     const rb = e.target.closest?.('.sv-recipe');
     if (rb) { setPick(rb.dataset.recipe); return; }
     if (e.target.closest?.('.sv-craftbtn')) {
@@ -1335,6 +1381,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     e.preventDefault();
     try { next.focus({ preventScroll: false }); } catch {}
   }, opt);
+  document.addEventListener('selectstart', e => { if (!inTextField(e.target)) e.preventDefault(); }, opt);
+  document.addEventListener('dragstart', e => {
+    const el = elOf(e.target);
+    if (inTextField(el) || el?.closest?.('[draggable="true"]')) return;
+    e.preventDefault();
+  }, opt);
   // Keep scroll inside the panel from reaching the engine's hotbar wheel handler.
   dlg.addEventListener('wheel', e => e.stopPropagation(), { ...opt, passive: true });
 
@@ -1393,4 +1445,4 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 }
 
 export default createSurvivalUI;
-export { iconSVG, slotSig, paintSlot, itemName }; // content hook (storage-research)
+export { iconSVG, slotSig, paintSlot, itemName, flatIcon }; // content hook (storage-research)

@@ -24,6 +24,7 @@
 //                             Host and guest must compute it from synced data (engine: motors).
 //   steerTargets()            -> array of raft-local {x,z} extra hold-R steering grab points (engine: wheels)
 //   use(aim, kind)            left click with a bag item `kind` that no engine tool handles. Return true if consumed.
+//   drop(all)                 Q (all: Ctrl+Q) on the held hotbar item. Return true if consumed ([dropbox]).
 //   alt(aim, kind)            right click while holding `kind`. Return true if consumed (paint: brush colour).
 //   zoom()                    -> view zoom factor 1..8 this frame (spyglass); game.js divides the FOV, look speed and camera motion by it
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
@@ -91,8 +92,9 @@ import { createFireworks } from './fireworks.js?build=v3-survival-ae77fa84ac2b';
 import { createZipline } from './zipline.js?build=v3-survival-ae77fa84ac2b'; // [zipline]
 import { createSpyglass } from './spyglass.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
 import { createStorm } from './storm.js?build=v3-survival-ae77fa84ac2b'; // [storm]
+import { createDropBox } from './drop-box.js?build=v3-survival-ae77fa84ac2b'; // [dropbox] Q drops the held item into a floating box
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [crops] + createCrops; [spyglass]; [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createDropBox, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [crops] + createCrops; [spyglass]; [juicer] + createJuicer [gull] + createGull
 // [undecor] decor whose module stores items per tile but has no beforeUndecor/undecorLoot/afterUndecor yet:
 // picking it up would lose what it holds, so the host refuses (display, fish trap, cooking pot, gull perch tray).
 const NO_UNDECOR = new Set(['shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch', 'cropplot', 'glidepost', 'glidestep']); // [zipline] posts hold line rope // [crops] slots live on the decor entry
@@ -152,6 +154,7 @@ export function createContent(ctx, features = FEATURES) {
     claims: (kind, aim) => !!first('claims', kind, aim), // [crops]
     prompt: aim => { const m = seatedMod(); return (m && call(m, 'prompt', aim)) || first('prompt', aim); }, // [sit] a seated module's prompt wins (E gets you up)
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint, crops)
+    drop: all => !!first('drop', all), // [dropbox] Q / Ctrl+Q drops the held item
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
     zoom() { const z = first('zoom'); return Number.isFinite(z) && z >= 1 && z <= 8 ? z : 1; }, // [spyglass] view zoom, default 1
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)

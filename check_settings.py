@@ -3,7 +3,7 @@ import json
 with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  page=b.new_page(viewport={'width':1440,'height':900});page.goto('http://127.0.0.1:41897');page.wait_for_function('!!window.raftDebug')
- page.locator('#solo').click();page.wait_for_function('!!document.pointerLockElement')
+ page.locator('.ob-item[data-act="new"]:visible, #solo:visible').first.click();page.wait_for_function('!!document.pointerLockElement')
  page.keyboard.press('Escape');page.wait_for_function('document.querySelector("#options")?.open')
  assert page.evaluate('!document.pointerLockElement')
  page.locator('#options input[name="fov"]').evaluate('(el)=>{el.value=85;el.dispatchEvent(new Event("input",{bubbles:true}));}')

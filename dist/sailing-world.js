@@ -5,7 +5,7 @@ import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailA
 import { createSailingUI } from './sailing-ui.js?build=v3-survival-ae77fa84ac2b';
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
-const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22, WHEEL_Y = 1.05, WHEEL_R = .5;
+const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, ANCHOR_H = 1.25, DECK_Y = .22, WHEEL_Y = 1.05, WHEEL_R = .5;
 const CLOTH_R = 1.2, CLOTH_Y0 = 1, CLOTH_Y1 = 3.4; // raised cloth hit volume around the mast axis (cheap approximation)
 const FURL = .04, FURL_Z = .3, ROLL_AT = .3, ROLL_R = .07, BASE_FLOW_Z = .22, ITEM_MARGIN = 26, ROPE_DOWN = 3.4, ROPE_UP = .07, GROUND_CLEAR = 2.5, OP_GAP = 250, SNAP2 = 36;
 const CLOTH_NAMES = new Set(['sailCloth', 'sailSeams', 'sailPatch', 'sailStitches']);
@@ -147,10 +147,12 @@ export function createSailing(T, ctx) {
       sails.push({ group: c, cloth, py: cloth.map(m => m.position.y), pz: cloth.map(m => m.position.z), top, zp, roll: r,
         flag, flagRot: flag ? flag.rotation.y : 0, h: state.heading, s: state.raised ? 1 : FURL, bz: state.raised ? 1 : FURL_Z });
     }
+    // Every raft has its anchor (new games, old saves and guests alike: it is derived from the tiles, never saved).
+    // It stands on the front-left corner tile, in view of the spawn look (-z), its hook hanging over the open -z side.
     let best = null;
-    for (const t of tiles) if (Array.isArray(t) && (!best || t[1] > best[1] || (t[1] === best[1] && t[0] < best[0]))) best = t;
+    for (const t of tiles) if (Array.isArray(t) && (!best || t[1] < best[1] || (t[1] === best[1] && t[0] < best[0]))) best = t;
     anchorPos.ok = !!best; anchorRoot.visible = !!best;
-    if (best) { anchorPos.x = best[0] * 2 - .7; anchorPos.z = best[1] * 2 + .7; anchorRoot.position.set(anchorPos.x, .2, anchorPos.z); }
+    if (best) { anchorPos.x = best[0] * 2 - .7; anchorPos.z = best[1] * 2 - .7; anchorRoot.position.set(anchorPos.x, .2, anchorPos.z); anchorRoot.rotation.y = Math.PI; }
     if (grabLost()) steering = false; // a wheel grab survives a raft with no sail, and the other way round
   }
   function restoreSails() {
@@ -219,11 +221,12 @@ export function createSailing(T, ctx) {
       const hit = (y >= 0 && y <= MAST_H && d2 < MAST_R * MAST_R) || (raised && y >= CLOTH_Y0 && y <= CLOTH_Y1 && d2 < CLOTH_R * CLOTH_R);
       if (hit && t < best) { best = t; aimKind = 1; aimIndex = i; }
     }
-    if (anchorPos.ok) {
-      raft.localToWorld(vA.set(anchorPos.x, 1.15, anchorPos.z)); vA.sub(vO);
-      const t = Math.min(REACH, Math.max(0, vA.dot(vD)));
-      const dx = vD.x * t - vA.x, dy = vD.y * t - vA.y, dz = vD.z * t - vA.z;
-      if (dx * dx + dy * dy + dz * dz < ANCHOR_R * ANCHOR_R && t < best) { best = t; aimKind = 2; aimIndex = -1; }
+    if (anchorPos.ok) { // the whole post (deck to drum), like a mast, not just the drum
+      raft.localToWorld(vA.set(anchorPos.x, DECK_Y, anchorPos.z));
+      let t = hh > 1e-6 ? ((vA.x - vO.x) * vD.x + (vA.z - vO.z) * vD.z) / hh : 0;
+      t = Math.min(REACH, Math.max(0, t));
+      const y = vO.y + vD.y * t - vA.y, dx = vO.x + vD.x * t - vA.x, dz = vO.z + vD.z * t - vA.z;
+      if (y >= 0 && y <= ANCHOR_H && dx * dx + dz * dz < ANCHOR_R * ANCHOR_R && t < best) { best = t; aimKind = 2; aimIndex = -1; }
     }
     const wheels = ctx.steerTargets?.() || []; // engine: steering wheels (raft-local x,z), a second hold-R grab point
     for (let i = 0; i < wheels.length; i++) {

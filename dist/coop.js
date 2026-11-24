@@ -4,6 +4,7 @@
 //
 // ctx (getters into game.js, see coopContext() there):
 //   T, scene, camera, canvas, ocean, friend, role(), conn(), ready(), blocked(), local(), aim(), deckY(),
+//   rideOffset?(dt, x, eyeY, z, swimming, out) (deck tilt offset for the remote avatar; optional),
 //   reconnect() (new Peer + connect to the same room, keep world/bag on screen), giveUp() (old behaviour: back to own raft)
 //
 // Wire protocol (only once the other side said `hello`; older clients keep the legacy messages untouched):
@@ -52,6 +53,7 @@ export function createCoop(ctx, saved = null) {
   // The remote body (name-tag canvas + draw-call bake, 100-400 ms on software GL) is built on the first peer hello,
   // so a solo game never pays for it. Everything below treats `avatar` as optional until then.
   let avatar = null;
+  const rideOut = {x:0, y:0, z:0}, ZERO = Object.freeze({x:0, y:0, z:0});
   function ensureAvatar() {
     if (avatar) return avatar;
     avatar = createRemoteAvatar(T, {color:'#70a7e4', name:peerName, look:peerLook});
@@ -175,7 +177,8 @@ export function createCoop(ctx, saved = null) {
     if (L.stage === 'flying' && lastHook !== 'flying') throwAt = t;
     lastHook = L.stage ?? null;
     const em = emote && (t - emote.at) / 1000 < EMOTE_S ? {kind:emote.kind, age:(t - emote.at) / 1000} : null;
-    avatar.update(dt, {x:s.x, y:s.y - 1.6, z:s.z, yaw:s.yaw, pitch:s.pitch, speed:s.speed ?? 0, swimming:L.swimming, grounded:L.grounded,
+    const ro = ctx.rideOffset?.(dt, s.x, s.y, s.z, L.swimming, rideOut) ?? ZERO; // on the deck: ride its pitch and roll like the local camera
+    avatar.update(dt, {x:s.x + ro.x, y:s.y - 1.6 + ro.y, z:s.z + ro.z, yaw:s.yaw, pitch:s.pitch, speed:s.speed ?? 0, swimming:L.swimming, grounded:L.grounded,
       held:L.held, charge:L.charge, reeling:L.reeling, seated:L.seated, riding:L.riding, /* [sit] [zipline] */ hookOut:!!L.hook, stage:L.stage, emote:em, throwAge:throwAt >= 0 ? (t - throwAt) / 1000 : null}, time, ctx.camera);
     avatar.handWorld(hand);
     if (s.hook) s.hook.stage = L.stage; // s.hook is the buffer's reusable sample object

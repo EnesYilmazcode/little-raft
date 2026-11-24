@@ -62,12 +62,14 @@ test('statePrompt: built-in providers', () => {
   assert.equal(s({heldKind:'hook', me:{pitch:-0.9}}), null);
   assert.equal(s({heldKind:'hook', hookStage:'floating'})[0].label, 'Reel in');
   assert.equal(s({heldKind:'hammer', build:{hover:{x:1, z:0}, affordable:true}})[0].label, 'Build floor');
-  assert.deepEqual(s({heldKind:'hammer', build:{hover:{x:1, z:0}, affordable:true}})[1], {key:'', label:'2 wood · 2 plastic', hold:false, muted:true});
+  assert.deepEqual(s({heldKind:'hammer', build:{hover:{x:1, z:0}, affordable:true}})[1], {key:'', label:'2 wood · 2 plastic', hold:false, muted:true, cost:[{kind:'wood', need:2}, {kind:'plastic', need:2}]});
+  // Short on materials: one muted row of have/need count + icon chips (the label is the text fallback and aria-label).
   const need = s({heldKind:'hammer', stock:{wood:1}, build:{hover:{x:1, z:0}, affordable:false}});
-  assert.equal(need[0].label, 'Needs 2 wood · 2 plastic'); assert.ok(need[0].muted && need[1].muted);
-  assert.equal(need[1].label, 'Missing 1 wood · 2 plastic');
-  assert.equal(s({heldKind:'hammer', stock:{}, build:{hover:{x:1, z:0}, affordable:false}}).length, 1); // missing == cost: no duplicate line
-  assert.equal(s({heldKind:'hammer', stock:{wood:5, plastic:5}, build:{hover:{x:1, z:0}, affordable:false}}).length, 1); // nothing computably missing
+  assert.equal(need.length, 1); assert.ok(need[0].muted);
+  assert.equal(need[0].label, 'Needs 2 wood · 2 plastic');
+  assert.deepEqual(need[0].cost, [{kind:'wood', need:2, have:1}, {kind:'plastic', need:2, have:0}]);
+  assert.equal(s({heldKind:'hammer', stock:{}, build:{hover:{x:1, z:0}, affordable:false}}).length, 1);
+  assert.notEqual(P.signature(need), P.signature(s({heldKind:'hammer', stock:{wood:2}, build:{hover:{x:1, z:0}, affordable:false}})), 'a count change repaints the chips');
   assert.deepEqual(s({heldKind:'hammer', build:{hover:null}}), [{key:'', label:'Aim at the raft edge', hold:false, muted:true}]);
   assert.equal(s({heldKind:'fishingrod'})[0].label, 'Cast line');
   assert.deepEqual(s({heldKind:'fishingrod', hookStage:'fishing', fishWait:3})[0], {key:'', label:'Waiting for a bite…', hold:false, muted:true});

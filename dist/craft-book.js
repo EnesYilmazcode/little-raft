@@ -109,7 +109,7 @@ export const ITEM_TEXT = Object.freeze({
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
   spear:      { desc: 'A driftwood pole with a lashed flint point.', use: 'Click to jab: 5 damage, wears only when it lands.' },
   metalspear: { desc: 'A sturdy shaft with a steel point.', use: 'Click to jab: 10 damage, lasts twice as long.' },
-  paddle:     { desc: 'A plank blade lashed to a driftwood shaft.', use: 'At the raft edge, click to push the raft the way you face (60 strokes).' },
+  paddle:     { desc: 'A plank blade lashed to a driftwood shaft.', use: 'At the raft edge, click to push the raft the way you face (250 strokes).' },
   axe:        { desc: 'A chipped stone head lashed to a wooden handle.', use: 'Click an island palm to chop: 5 chops fell it for 5 planks and 2 leaves.' },
   coconut:    { desc: 'A hairy nut from an island palm.', use: 'Eat it for a little food and a good drink (+5 food, +20 water), or blend it in a juicer.' }, // [axe] [juicer]
   binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold right click to zoom in; also points to the nearest barrel.' }, // [spyglass]
@@ -618,5 +618,60 @@ export function tipFacts(kind, recipes, nameOf = k => k, max = 4) {
     const cost = (made.reqs || []).map(q => `${q.count} ${nameOf(q.kind)}`).join(' + ');
     get = `Make it at the ${nameOf(made.station)}${cost ? ` from ${cost}` : ''}.`;
   }
+  // Crafted items also carry the recipe as rows, so a tooltip can draw count + icon chips instead of the sentence.
+  if (made && !ITEM_SOURCE[kind] && (made.reqs || []).length) {
+    return { get, uses, from: { station: made.station || null, reqs: made.reqs.map(q => ({ kind: q.kind, need: q.count })) } };
+  }
   return { get, uses };
+}
+
+// ---- requirement chips: a count and the item's icon, the name only on hover ----
+// The flat item icon (survival-ui registers it) so the build wheel and item tooltips draw the
+// same pictures as the bag without importing the bag's DOM module.
+let glyphFn = null;
+/** Register (kind) -> icon HTML. Non-functions clear it. */
+export function setItemGlyph(fn) { glyphFn = typeof fn === 'function' ? fn : null; }
+/** Icon HTML for `kind`, or '' when none is registered or it throws. */
+export function itemGlyph(kind) {
+  if (!glyphFn) return '';
+  try { return String(glyphFn(kind) ?? ''); } catch { return ''; }
+}
+const escAttr = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const whole = v => Math.max(0, Math.floor(Number(v) || 0));
+
+/** Chip number: 'have/need' when the count is known, else the needed count ('1', never 'one').
+ *  mode 'need' always gives the needed count, 'short' how many are still missing. */
+export function reqAmount(row, mode = 'have') {
+  const need = whole(row?.need);
+  if (mode === 'need' || row?.have == null) return String(need);
+  if (mode === 'short') return String(Math.max(0, need - whole(row.have)));
+  return `${Math.min(whole(row.have), 999)}/${need}`;
+}
+
+/**
+ * Requirement chips, one per row ({kind, need, have?, enough?}): '<span class=cls><b>count</b>icon</span>'.
+ * The item name is only the chip's title (hover; title:false where an item tooltip covers it) and aria-label, never inline text.
+ */
+export function reqChips(rows, { glyph = itemGlyph, nameOf = k => k, cls = 'rq', mode = 'have', title = true } = {}) {
+  return (rows || []).filter(r => r && r.kind != null).map(r => {
+    let name = r.kind; try { name = nameOf(r.kind) || r.kind; } catch {}
+    const short = r.have != null && !(r.enough ?? r.have >= r.need);
+    const aria = r.have != null ? `${name}: have ${r.have}, need ${r.need}` : `${name}: need ${r.need}`;
+    let icon = ''; try { icon = glyph(r.kind) || ''; } catch {}
+    return `<span class="${cls}${short ? ' ' + cls + '-short' : ''}"${title ? ` title="${escAttr(name)}"` : ''} aria-label="${escAttr(aria)}" data-kind="${escAttr(r.kind)}"><b>${reqAmount(r, mode)}</b>${icon}</span>`;
+  }).join('');
+}
+
+/**
+ * What the craft button shows: an icon and at most a short number, no words.
+ * icon 'hammer' (ready, missing, full), 'lock' (research-locked) or 'check' (just crafted);
+ * text '2/4' while a hold runs, '+12' right after it (items made), '×3' when a hold could make several.
+ */
+export function craftButtonView(state, { holding = false, done = 0, cap = 0, out = 1, times = 0, flash = false } = {}) {
+  const d = whole(done), per = Math.max(1, whole(out));
+  if (holding) { const c = Math.max(d, whole(cap)); return { icon: 'hammer', text: c > 1 ? `${d}/${c}` : '' }; }
+  if (flash && d > 0) return { icon: 'check', text: `+${d * per}` };
+  if (state === 'gated') return { icon: 'lock', text: '' };
+  const n = Math.min(Number.isFinite(times) ? Math.floor(times) : HOLD.max, HOLD.max);
+  return { icon: 'hammer', text: state === 'ready' && n > 1 ? `×${n}` : '' };
 }

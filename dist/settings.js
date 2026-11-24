@@ -35,7 +35,7 @@ const KEYS = Object.keys(SPEC);
 const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio']];
 // Bag keys use the same phrasing as hud.js BAG_OPEN_KEYS / BAG_CLOSE_KEYS (checked by tests/ux-layout.test.mjs).
 const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
-  ['1 - 0 / Wheel', 'Pick hotbar slot'], ['Q / Right-click', 'Build wheel (hammer)'], ['Tab, I or E', 'Open the bag'], ['Tab, E, I or Esc', 'Close the bag'], ['E', 'Interact'], ['R', 'Rotate piece / repair hook'], ['Shift + wheel', 'Fine rotate piece'], ['X', 'Remove piece (Hammer)'], ['L', 'Logbook'], ['G', 'Place grill'], ['J', 'Fish journal'], ['C', 'Crouch'], ['Esc', 'Back / pause']];
+  ['1 - 0 / Wheel', 'Pick hotbar slot'], ['Q / Right-click', 'Build wheel (hammer)'], ['Tab, I or E', 'Open the bag'], ['Tab, E, I or Esc', 'Close the bag'], ['E', 'Interact'], ['Q', 'Drop one item'], ['Ctrl + Q', 'Drop the stack (or the hammer)'], ['R', 'Rotate piece / repair hook'], ['Shift + wheel', 'Fine rotate piece'], ['X', 'Remove piece (Hammer)'], ['L', 'Logbook'], ['G', 'Place grill'], ['J', 'Fish journal'], ['C', 'Crouch'], ['Esc', 'Back / pause']];
 
 export function validateSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};

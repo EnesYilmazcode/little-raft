@@ -29,6 +29,8 @@ dialog{max-height:calc(100dvh - 30px);overflow:auto;overscroll-behavior:contain}
 .pf-row b{font-weight:700;letter-spacing:.2px}
 .pf-note{min-height:28px;padding-left:12px;font-weight:500;font-size:13px;line-height:1.3;color:#efe4cb;white-space:normal}
 .pf-note i{flex:none;width:6px;height:6px;transform:rotate(45deg);background:var(--amber,#e9a640)}
+.pf-need i{background:#e06a4a}.pf-need>span{display:flex;flex-wrap:wrap;gap:4px 10px}.pf-chip{display:inline-flex;align-items:center;gap:3px;font-weight:800;color:#ff9f86;font-variant-numeric:tabular-nums}
+.pf-chip>*:not(b){width:26px;height:26px;display:block;object-fit:contain;filter:drop-shadow(0 1px 1px #000a)}
 .pf-info i{background:#8fd3e8}.pf-join i{background:#7ee08a}.pf-leave i{background:#f0a868}.pf-ping i{background:#ffd75e}.pf-emote i{background:#e79ef0}.pf-warn i{background:#ff7a6b} /* coop lines (coop-feed.js) */
 @keyframes pf-in{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
 @keyframes pf-bump{40%{transform:scale(1.18)}}@keyframes pf-bump2{40%{transform:scale(1.18)}}
