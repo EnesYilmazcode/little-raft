@@ -136,3 +136,14 @@ test('statePrompt: place mode shows icons (mouse, R rotate), no words, and stack
   const won = P.pickPrompt([{prompts:P.statePrompt({...base, heldKind:'crate', build:{hover:{x:0, z:0}}, aimPrompt:'<kbd>E</kbd>Open crate'}), priority:0}]);
   assert.equal(won[0].key, 'LMB');
 });
+
+test('screenRows drops key-less coaching text but keeps keys, cost chips and station status', () => {
+  const n = p => P.normalizePrompt(p);
+  assert.equal(P.screenRows(n({label:'Aim at the raft edge', muted:true})), null);
+  assert.equal(P.screenRows(n({label:'Waiting for a bite…', muted:true})), null);
+  assert.equal(P.screenRows(n({label:'Swim to the raft edge', muted:true})), null);
+  assert.deepEqual(P.screenRows(n({key:'E', label:'Open crate'})), n({key:'E', label:'Open crate'}));
+  assert.equal(P.screenRows(n({label:'Purifying… 12s', muted:true})).length, 1);
+  assert.equal(P.screenRows(n({label:'Needs 2 wood', muted:true, cost:[{kind:'wood', need:2}]})).length, 1);
+  assert.equal(P.screenRows(n({label:'Waiting for your brother’s raft…', muted:true})).length, 1);
+});
