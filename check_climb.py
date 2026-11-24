@@ -11,7 +11,14 @@ plus every placeable decor / station the game knows, enumerated from the code at
     in-page; nothing under dist/ is edited),
   * compares the collision shapes with the visible mesh bounds (THREE.Box3.setFromObject, raft-local frame).
 Prints a table, writes JSON, and with --no-shots skipped takes first-person screenshots with the normal HUD.
-Exit code is 0 unless --strict is given and an object that should be standable was not landed on."""
+Expected rules (decided in dist/decor-collision.js and dist/building-pieces.js):
+  * every building piece top is standable (floors, roofs, hatches, stairs, walls, half walls, windows, door tops at
+    the jambs, railings, gates, pillars); a full wall or a floor edge one storey up is reached with the ledge clamber,
+  * decor with a standable collider (crates, tables, beds, stations, planters...) must be landed on,
+  * thin or tall decor (lamps, poles, flags, signs) blocks with its true height: the body may never be inside its
+    collider while the feet are below its top,
+  * flat decor (rug) has no collider.
+Exit code is 0 unless --strict is given and an object broke its rule."""
 import os, sys, json, math, re, threading, functools, http.server, socketserver, argparse, time
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -49,10 +56,11 @@ def piece_specs(ci, cj):
     pillars = [{'t': 'pillar', 'i': a, 'j': b, 'l': 0} for a, b in corners]
     room = [{'t': 'wall', 'i': ci, 'j': cj, 'l': 0, 'r': 0}, {'t': 'wall', 'i': ci, 'j': cj + 1, 'l': 0, 'r': 0},
             {'t': 'wall', 'i': ci, 'j': cj, 'l': 0, 'r': 1}, {'t': 'wall', 'i': ci + 1, 'j': cj, 'l': 0, 'r': 1}]
-    edge = lambda t: {'main': [{'t': t, 'i': ci, 'j': cj, 'l': 0, 'r': 0}], 'support': [], 'ax': 2 * ci}
+    edge = lambda t, dx=0: {'main': [{'t': t, 'i': ci, 'j': cj, 'l': 0, 'r': 0}], 'support': [], 'ax': 2 * ci + dx}
     return {
         'piece:wall': edge('wall'), 'piece:halfwall': edge('halfwall'), 'piece:window': edge('window'),
-        'piece:door': edge('door'), 'piece:railing': edge('railing'), 'piece:gate': edge('gate'),
+        'piece:door': edge('door', -0.8),  # at the jamb: over the opening the lintel bumps the head (you walk through)
+        'piece:railing': edge('railing'), 'piece:gate': edge('gate'),
         'piece:pillar': {'main': [{'t': 'pillar', 'i': ci, 'j': cj, 'l': 0}], 'support': [], 'ax': 2 * ci - 1},
         'piece:stairs': {'main': [{'t': 'stairs', 'i': ci, 'j': cj, 'l': 0, 'r': 2}], 'support': [], 'ax': 2 * ci, 'ramp': True},
         'piece:ladder': {'main': [{'t': 'ladder', 'i': ci, 'j': cj, 'l': 0, 'r': 2}], 'support': [], 'ax': 2 * ci, 'climb': True},
@@ -115,7 +123,9 @@ PROBE_JS = r"""
     const ok = oProp.call(this, blocked);
     if (!ok && this === P.phys && P.rec) {
       for (const b of blocked) { if (!b || !Number.isFinite(b.x)) continue; const gn = PP.blockerGap(b, this._nx, this._nz), go = PP.blockerGap(b, this.x, this.z);
-        if (gn < R && !(go < R && gn > go)) { ev('decorBlock', {b:Number.isFinite(b.hx) ? {x:b.x, z:b.z, hx:b.hx, hz:b.hz, rot:b.rot} : {x:b.x, z:b.z, r:b.r}}); break; } }
+        const feet = this.y - EYE, top = Number.isFinite(b.top) ? this._baseY + b.top : Infinity, C = PP.PLAYER_CONSTANTS;
+        if (feet >= top - (this.grounded ? (C.DECOR_STEP ?? 0) : (C.PASS_TOL ?? 0))) continue;
+        if (gn < R && !(go < R && gn > go)) { ev('decorBlock', {b:Number.isFinite(b.hx) ? {x:b.x, z:b.z, hx:b.hx, hz:b.hz, rot:b.rot, top:b.top} : {x:b.x, z:b.z, r:b.r, top:b.top}}); break; } }
     }
     return ok;
   };
@@ -126,6 +136,12 @@ PROBE_JS = r"""
     const r = oPost.call(this, phys, deckY);
     if (phys !== P.phys) return r;
     P.frames++;
+    const au = P.auto; // screenshot driver: let go of the keys once on top (until) or freeze the clock mid pull-up (freeze)
+    if (au) {
+      const feet = phys.y - EYE - deckY, lp = typeof phys.ledgeProgress === 'function' ? phys.ledgeProgress() : -1;
+      if (au.freeze != null && lp >= au.freeze) { window.__vt.step = 0; P.auto = null; kd('keyup', 'KeyW'); kd('keyup', 'Space'); }
+      else if (au.until != null && phys.grounded && feet >= au.until) { kd('keyup', 'KeyW'); kd('keyup', 'Space'); P.auto = null; }
+    }
     const rec = P.rec;
     if (rec) {
       rec.n++;
@@ -271,8 +287,10 @@ def layout(names):
         objs.append(o)
     return decor, pieces, objs
 
+JUMP = {'v': 9.89, 'g': 20.0}  # replaced by the live PLAYER_CONSTANTS at enumerate time
+
 def rise_time(h):
-    v, g = 9.89, 20.0
+    v, g = JUMP['v'], JUMP['g']
     h = min(h, v * v / (2 * g) - 1e-3)
     return (v - math.sqrt(max(0.0, v * v - 2 * g * h))) / g
 
@@ -295,7 +313,8 @@ def analyse(page, o, mode, trial):
     if 'decorBlock' in kinds:
         b = kinds['decorBlock'][0]['b']; hf = max(e['feet'] for e in kinds['decorBlock'])
         shape = f"rect {2*b['hx']:.2f}x{2*b['hz']:.2f} m" if 'hx' in b else f"circle r={b['r']:.2f} m"
-        reasons.append(f"side push: decor blocker ({shape}, no height: blocks at every feet height, seen up to feet {hf:.2f} m)")
+        hgt = f"top {b['top']:.2f} m" if b.get('top') is not None else 'no height: blocks at every feet height'
+        reasons.append(f"side push: decor blocker ({shape}, {hgt}, seen up to feet {hf:.2f} m)")
     if 'headBump' in kinds:
         reasons.append(f"head bump x{len(kinds['headBump'])} ({kinds['headBump'][0]['tag']} underside)")
     if 'sidePush' in kinds:
@@ -323,7 +342,9 @@ def run_trial(page, o, mode):
     wait_frames(page, 6)
     page.evaluate('__P.rec = {n:0, s:[], ev:[]}; __P.trig = null')
     if mode == 'standing':
-        page.keyboard.down('KeyW'); page.keyboard.down('Space'); wait_frames(page, 3); page.keyboard.up('Space')
+        low = o['target'] < 0.3  # a cushion-high top is walked onto (PlayerPhysics DECOR_STEP), a jump flies over it
+        page.keyboard.down('KeyW')
+        if not low: page.keyboard.down('Space'); wait_frames(page, 3); page.keyboard.up('Space')
         wait_frames(page, 30); page.keyboard.up('KeyW')
     else:
         page.evaluate(f"__P.trig = {{front:{front}, rise:{rise_time(o['target'] + 0.12):.4f}, fired:0}}")
@@ -357,7 +378,9 @@ def prep_objects(page, objs, decor):
                     ex, ez = b['hx'] * c + b['hz'] * s_, b['hx'] * s_ + b['hz'] * c
                 else:
                     ex = ez = b['r']
-                o['collision'].append({'kind': 'decor-blocker(2D)', 'min': [b['x'] - ex, None, b['z'] - ez], 'max': [b['x'] + ex, None, b['z'] + ez], 'shape': b})
+                has_h = b.get('top') is not None
+                o['collision'].append({'kind': ('decor-collider stand' if b.get('stand') else 'decor-collider block') if has_h else 'decor-blocker(2D)',
+                                       'min': [b['x'] - ex, b.get('y0', 0) if has_h else None, b['z'] - ez], 'max': [b['x'] + ex, b['top'] if has_h else None, b['z'] + ez], 'shape': b})
             md = meas['decor'].get(o['type'])
             mb = md['mesh'] if md else None
             o['placed'] = md is not None
@@ -368,6 +391,10 @@ def prep_objects(page, objs, decor):
         if o['kind'] == 'piece' and o['name'].startswith('piece:stairs'): top = 0.3
         elif o['kind'] == 'piece' and o['name'].startswith('piece:roof'): top = 2.2
         elif o['kind'] == 'piece' and (o['name'].startswith('piece:floor') or o['name'].startswith('piece:hatch')): top = 2.2
+        if o['kind'] == 'decor':
+            st = [b['top'] for b in o.get('blockers', []) if b.get('stand') and b.get('top') is not None]
+            o['stand'] = bool(st)
+            if st: top = max(st)  # land on the collider's top (palm planter, hammock cloth), not the leaves / posts
         o['target'] = round(top, 3)
         # front face (the +z face the player runs at): collision when there is any, else mesh
         fz = [c['max'][2] for c in o['collision'] if c['max'][2] is not None]
@@ -380,6 +407,7 @@ def prep_objects(page, objs, decor):
         else: top_q = max(top, 0.0)
         o['surface'] = page.evaluate(f'__P.surfaceAt({cx}, {cz}, {top_q})')
         o['surface'] = o['surface'] is not None and o['surface'] > 0.05
+        if o['kind'] == 'decor': o['surface'] = o['stand']  # decor tops are PlayerPhysics surfaces, not BuildGrid ones
         # bounds mismatch, raft-local, y relative to deck
         mism = []
         if mb and o['collision']:
@@ -399,16 +427,31 @@ def prep_objects(page, objs, decor):
 
 def expected_standable(o):
     if o['kind'] == 'piece':
-        return not o['climb'] and o['name'] not in ('piece:pillar', 'piece:door', 'piece:gate')
-    mm = o['mesh']
-    if not mm or mm['max'][1] < 0.15: return False  # flat (rug): walked over, nothing to land on
-    w, d, top = mm['max'][0] - mm['min'][0], mm['max'][2] - mm['min'][2], mm['max'][1]
-    return top <= 2.35 and min(w, d) >= 0.12 and w * d >= 0.05
+        return not o['climb']  # every piece top is walkable now (walls, rails, pillars, door tops at the jambs)
+    return bool(o.get('stand'))  # decor: the collider table decides (dist/decor-collision.js)
+
+def gap(b, x, z):  # PlayerPhysics.blockerGap
+    dx, dz = x - b['x'], z - b['z']
+    if b.get('hx') is None: return math.hypot(dx, dz) - b['r']
+    c, s_ = math.cos(b.get('rot') or 0), math.sin(b.get('rot') or 0)
+    qx, qz = abs(dx * c - dz * s_) - b['hx'], abs(dx * s_ + dz * c) - b['hz']
+    return math.hypot(max(qx, 0), max(qz, 0)) if qx > 0 or qz > 0 else max(qx, qz)
+
+def penetration(o, s):
+    # Deepest overlap of the body circle with a decor collider while the feet are below that collider's top.
+    worst = 0.0
+    for b in o.get('blockers', []):
+        top = b.get('top')
+        for r in s:
+            if top is not None and r[1] >= top - 0.06: continue
+            worst = max(worst, 0.25 - gap(b, r[0], r[2]))
+    return round(worst, 3)
 
 def main():
     report = {'url': URL, 'errors': [], 'objects': [], 'shots': [], 'notes': [
         'Feet heights are metres above the deck plane (deckY). Mesh bounds come from THREE.Box3.setFromObject in the raft-local frame.',
-        'Decor collision is a 2D circle/rectangle (PlayerPhysics blocked list): it has no height, so it blocks the body at every feet height.',
+        'Decor collision: PlayerPhysics blocked list entries; with a top (dist/decor-collision.js) they block only below it and standable tops are surfaces, without one (old build) they are full-height columns.',
+        'penetration: deepest overlap (m) of the body circle with a decor collider while the feet were below its top (blocking decor must stay at 0).',
         'Start spots are set directly (in front of the object, on the deck, facing it); every move and jump after that is a key event through input.js/controls.js.',
         'Running jump: Shift+W from 4 m back; Space fires when the body front is speed*t_rise(target+0.12) from the object face (an ideally timed take-off).',
     ]}
@@ -424,6 +467,8 @@ def main():
         # enumerate decor from the live modules
         ctx, page, errs = boot(b, save_for([], []))
         decor_types = page.evaluate('__P.enumerate()')
+        jc = page.evaluate('({v:__P.PP.PLAYER_CONSTANTS.JUMP_IMPULSE, g:__P.PP.PLAYER_CONSTANTS.GRAVITY})')
+        JUMP.update(jc); report['jump'] = {'impulse': jc['v'], 'gravity': jc['g'], 'apex': round(jc['v'] ** 2 / (2 * jc['g']), 3)}
         report['enumerated'] = {'decorTypes': decor_types, 'pieces': PIECE_NAMES, 'baseDecorFromGameJs': BASE_DECOR}
         report['fps'] = page.evaluate("new Promise(r=>{let n=0,t0=performance.now();function f(){if(++n<30)requestAnimationFrame(f);else r(n/((performance.now()-t0)/1000))}requestAnimationFrame(f)})")
         ctx.close()
@@ -442,6 +487,7 @@ def main():
                     for mode in ('standing', 'running'):
                         tr = run_trial(page, o, mode)
                         o[mode] = analyse(page, o, mode, tr)
+                        if o['kind'] == 'decor': o[mode]['penetration'] = penetration(o, tr['s'])
                 o['shouldStand'] = expected_standable(o)
                 row = {k: o.get(k) for k in ('name', 'kind', 'target', 'front', 'surface', 'mesh', 'collision', 'collisionBounds', 'mismatch', 'standing', 'running', 'shouldStand', 'placed')}
                 report['objects'].append(row)
@@ -462,6 +508,7 @@ def shoot(b, report):
     save = {'tiles': tiles, 'decor': decor, 'pieces': pieces, 'stock': {}, 'fish': 0, 'collected': 1,
             'hostInventory': {'slots': inv + [None] * 23, 'selected': 0}}
     ctx = b.new_context(viewport={'width': 1536, 'height': 864})
+    if args.shot_prefix != 'before-': ctx.add_init_script(VCLOCK_JS)
     ctx.add_init_script('localStorage.setItem("little-raft-v1",%s);localStorage.setItem("little-raft-hints",%s);window.__BASE_DECOR=[];'
                         % (json.dumps(json.dumps(save)), json.dumps(json.dumps(['look', 'walk', 'throw', 'pickup', 'build', 'inventory']))))
     page = ctx.new_page()
@@ -469,6 +516,8 @@ def shoot(b, report):
     page.evaluate(PROBE_JS)
     page.evaluate("document.querySelector('#solo').click()"); page.wait_for_function('raftDebug.state.running', timeout=30000)
     page.wait_for_function('window.__P.phys && window.__P.frames > 5', timeout=30000); page.wait_for_timeout(800)
+    if args.shot_prefix != 'before-':
+        shoot_after(page, report); ctx.close(); return
     # wall edge (0,-1,0) sits at z = -3; one tile (2 m) back from it is z = -1. Crate at x=-2.8 m, map table at x=+2.8 m.
     views = [('before-wall', 0.0, -1.0 + 0.0, 0.0, -0.05), ('before-chest', -2.8, 1.2, 0.0, -0.45), ('before-table', 2.8, 1.25, 0.0, -0.4)]
     for name, x, z, yaw, pitch in views:
@@ -477,6 +526,34 @@ def shoot(b, report):
         page.wait_for_timeout(900)
         path = shots_dir / f'{name}.png'; page.screenshot(path=str(path)); report['shots'].append(os.path.relpath(path, ROOT))
     ctx.close()
+
+def shoot_after(page, report):
+    # Get there through the real key path (W + Space from the deck in front of it), then look around and shoot.
+    # Wall line z = -3 (face z = -2.93); crate at x = -2.8 (front z = 0.42); map table at x = 2.8 (front z = 0.40).
+    page.evaluate('__vt.start()')
+    views = [  # name, start x, z, yaw, until feet / freeze progress, view pitch, view yaw
+        ('wall', 0.0, -2.62, 0.0, {'until': 2.0}, -0.55, 0.9),
+        ('chest', -2.8, 0.75, 0.0, {'until': 0.6}, -0.6, 0.35),
+        ('table', 2.8, 0.75, 0.0, {'until': 0.6}, -0.6, -0.35),
+        ('clamber', -1.2, -2.62, 0.0, {'freeze': 0.45}, None, None),
+    ]
+    for name, x, z, yaw, auto, pitch, vyaw in views:
+        page.evaluate(f'__vt.step = 50; __P.start({x}, {z}, {yaw}); raftDebug.aim(-0.1, {yaw})')
+        wait_frames(page, 6)
+        page.evaluate(f'__P.auto = {json.dumps(auto)}')
+        page.keyboard.down('KeyW'); page.keyboard.down('Space')
+        wait_frames(page, 2); page.keyboard.up('Space')
+        page.wait_for_function('__P.auto === null', polling=100, timeout=300000)
+        page.keyboard.up('KeyW')
+        if pitch is not None:
+            wait_frames(page, 4)
+            page.evaluate(f'raftDebug.aim({pitch}, {vyaw})')
+        page.wait_for_timeout(1500)
+        p = page.evaluate('({feet:+(__P.phys.y - 1.6 - __P.deckY).toFixed(3), grounded:__P.phys.grounded, climbing:__P.phys.climbing})')
+        path = shots_dir / f'{args.shot_prefix}{name}.png'; page.screenshot(path=str(path))
+        report['shots'].append({'file': os.path.relpath(path, ROOT), **p})
+        print('  shot', name, p, flush=True)
+    page.evaluate('__vt.step = 50')
 
 def write(report):
     objs = report['objects']
@@ -494,11 +571,16 @@ def write(report):
     for o in objs:
         if o['mismatch']: print(f"  {o['name']:<26} " + '; '.join(o['mismatch']))
     fails = [o['name'] for o in objs if o['shouldStand'] and not any((o.get(m) or {}).get('outcome') == 'landed' for m in ('standing', 'running'))]
+    # Blocking decor: the body circle never inside its collider (2 cm slack for the push-out) below its top.
+    inside = [o['name'] for o in objs if o['kind'] == 'decor' and not o['shouldStand'] and o['collision']
+              and any(((o.get(m) or {}).get('penetration') or 0) > 0.02 for m in ('standing', 'running'))]
+    print('\nBlocking decor the body got inside below its top:', inside or 'none')
     report['summary'] = {'objects': len(objs), 'shouldStand': sum(1 for o in objs if o['shouldStand']),
                          'landedAny': [o['name'] for o in objs if any((o.get(m) or {}).get('outcome') == 'landed' for m in ('standing', 'running'))],
-                         'shouldStandButNotLanded': fails}
+                         'shouldStandButNotLanded': fails, 'blockerPenetrated': inside}
+    fails = fails + inside
     out_json.write_text(json.dumps(report, indent=1, default=str))
-    print(f"\n{len(fails)} of {report['summary']['shouldStand']} objects that should be standable were not landed on. JSON: {out_json}")
+    print(f"\n{len(report['summary']['shouldStandButNotLanded'])} of {report['summary']['shouldStand']} objects that should be standable were not landed on. JSON: {out_json}")
     if report['errors']: print('page errors:', report['errors'][:5])
     sys.exit(1 if args.strict and fails else 0)
 
