@@ -224,6 +224,21 @@ export class BuildGrid {
     return ok ? '' : 'Something rests on this';
   }
 
+  // Why foundation tile (i, j) can't go: '' when every piece still stands without it (tiles hold up level-0 pieces only).
+  canRemoveTile(i, j) {
+    if (!isInt(i) || !isInt(j)) return 'Nothing to remove';
+    const key = tileKey(i, j);
+    if (!this._tiles.has(key)) return 'Nothing to remove';
+    this._tiles.delete(key);
+    let ok = true;
+    for (let k = 0; k < this.list.length && ok; k++) {
+      const q = this.list[k];
+      if (q.l === 0 && !this._supported(q.t, q.i, q.j, q.l, q.r)) ok = false;
+    }
+    this._tiles.add(key);
+    return ok ? '' : 'Something rests on this';
+  }
+
   // Open/close a stateful piece in place. Support never reads `o`, so removal answers are unchanged.
   toggle(rec) {
     if (!rec || !STATEFUL[rec.t] || this.find(rec) !== rec) return false;
