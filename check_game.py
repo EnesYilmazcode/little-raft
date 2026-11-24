@@ -14,7 +14,7 @@ with sync_playwright() as p:
  page.goto(URL);page.wait_for_function('!!window.raftDebug')
  page.locator('.ob-item[data-act="new"]:visible, #solo:visible').first.click();page.wait_for_timeout(300)
  initial=page.evaluate('window.raftDebug.state')
- assert initial['camera']['fov']>=65 and initial['camera']['y']<3,initial
+ assert initial['camera']['fov']>=50 and initial['camera']['y']<3,initial
  page.keyboard.down('w');page.wait_for_timeout(400);page.keyboard.up('w')
  moved=page.evaluate('window.raftDebug.state')
  assert moved['me']['z']<initial['me']['z']-.25,(initial,moved)

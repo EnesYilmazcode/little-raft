@@ -35,7 +35,7 @@ sys.path.insert(0, str(HERE.parent.parent / 'tools'))
 TOOL = 'playbot'
 LOOK_K = .0022            # game.js LOOK_SENSITIVITY (options.sensitivity defaults to 1)
 PITCH_LIMIT = 1.35        # game.js PITCH_LIMIT
-FOV_RANGE = (60, 100)     # settings.js fov min/max while running (95 before the onboarding build, 100 since)
+FOV_RANGE = (50, 100)     # settings.js fov min/max while running (60..95 before the onboarding build, 60..100 until the scale build)
 # Game seconds a hook may legitimately sit in a stage (hook-physics MAX_FLIGHT_TIME = 8; 'done' is ended next frame).
 HOOK_STUCK_SIM_S = {'flying': 12, 'done': 2}
 HOOK_STAGES = {'idle', 'flying', 'floating', 'reeling', 'done', 'fishing'}
