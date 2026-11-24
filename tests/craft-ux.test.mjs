@@ -40,8 +40,9 @@ test('sortCraftableFirst: ready, then full, then closest-to-done missing', () =>
   assert.deepEqual(CB.sortCraftableFirst([{ id: 'x' }, { id: 'y', state: 'ready' }]).map(v => v.id), ['y', 'x']);
 });
 
-test('sortCraftableFirst: the building tab puts what wood alone makes above the sail', () => {
-  const recipes = CB.groupRecipes(normRecipes(), ITEM_INFO).find(g => g.id === 'building').recipes;
+test('sortCraftableFirst: what wood alone makes goes above the sail', () => {
+  // Raft's tabs file these three apart (navigation, decorations, other); the sort is checked over them as one list.
+  const recipes = ['sail', 'bench', 'crate'].map(id => normRecipes().find(r => r.id === id));
   assert.equal(recipes[0].id, 'sail', 'book order starts with the sail');
   const bag = bagWith({ wood: 9, scrap: 1, leaf: 7, rope: 2 });
   const ids = CB.sortCraftableFirst(viewsFor(bag, recipes)).map(v => v.id);

@@ -2,13 +2,24 @@
 // Category grouping, item descriptions, needed-vs-owned rows, the hold-to-craft repeat schedule
 // and tooltip anchoring maths all live here so they can be unit-tested in node.
 
-// Tabs, in display order. `icon` is a symbol id in icons.svg.
-export const CATEGORIES = Object.freeze([
-  Object.freeze({ id: 'tools',     name: 'Tools',     icon: 'hammer' }),
-  Object.freeze({ id: 'materials', name: 'Materials', icon: 'wood' }),
-  Object.freeze({ id: 'survival',  name: 'Survival',  icon: 'net' }),
-  Object.freeze({ id: 'building',  name: 'Building',  icon: 'floor' }),
-]);
+import { CRAFT_TABS, craftTabOf, ITEM_TEXT_EXTRA, ITEM_SOURCE_EXTRA } from './items.js?build=v3-survival-ae77fa84ac2b'; // pure data, no DOM
+
+// Raft's 8 crafting tabs, in display order (items.js CRAFT_TABS). `icon` is an item kind drawn by
+// the bag's icon set; the name is only the tab's tooltip and aria label (the tabs are icons).
+const TAB_META = Object.freeze({
+  food:        { name: 'Food and Water', icon: 'freshcup' },
+  other:       { name: 'Other',          icon: 'research' },
+  tools:       { name: 'Tools',          icon: 'hammer' },
+  weapons:     { name: 'Weapons',        icon: 'spear' },
+  equipment:   { name: 'Equipment',      icon: 'fins' },
+  resources:   { name: 'Resources',      icon: 'rope' },
+  navigation:  { name: 'Navigation',     icon: 'sail' },
+  decorations: { name: 'Decorations',    icon: 'lantern' },
+});
+export const CATEGORIES = Object.freeze((Array.isArray(CRAFT_TABS) && CRAFT_TABS.length ? CRAFT_TABS : Object.keys(TAB_META))
+  .map(id => Object.freeze({ id, name: TAB_META[id]?.name || String(id).replace(/^\w/, c => c.toUpperCase()), icon: TAB_META[id]?.icon || 'wood' })));
+// Older four-group names (categoryOf) -> the Raft tab used when items.js has no tab for a recipe.
+const LEGACY_TAB = Object.freeze({ tools: 'tools', materials: 'resources', survival: 'other', building: 'other' });
 
 // Recipe output kind -> category id. Unknown kinds fall back by shape (see categoryOf).
 const CATEGORY_OF = Object.freeze({
@@ -55,7 +66,7 @@ const CATEGORY_OF = Object.freeze({
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
-export const ITEM_TEXT = Object.freeze({
+const OWN_TEXT = Object.freeze({
   wood:       { desc: 'Driftwood planks fished from the sea.', use: 'Raft floors, tools and almost every build.' },
   leaf:       { desc: 'A tough, fibrous palm frond.', use: 'Twist into rope; thatch for sails and planters.' },
   plastic:    { desc: 'An old floating jug, still watertight.', use: 'Hooks and new raft floors (with the hammer).' },
@@ -209,6 +220,9 @@ export const ITEM_TEXT = Object.freeze({
   gametable:  { desc: 'A low driftwood table with a board inlay.', use: 'Press E to play draughts or noughts and crosses.' },
 });
 
+// Item text from items.js (kinds added after this book) sits under the rows above; the rows above win.
+export const ITEM_TEXT = Object.freeze({ ...(ITEM_TEXT_EXTRA || {}), ...OWN_TEXT });
+
 const TOOLISH = new Set(['hook', 'hammer', 'fishingrod', 'rod', 'axe', 'spear', 'paddle']);
 
 export function categoryOf(kind, info = null) {
@@ -216,6 +230,19 @@ export function categoryOf(kind, info = null) {
   if (Object.prototype.hasOwnProperty.call(CATEGORY_OF, k)) return CATEGORY_OF[k];
   if ((info && info.tool) || TOOLISH.has(k)) return 'tools';
   return 'building';
+}
+
+/**
+ * Raft crafting tab (a CATEGORIES id) of a recipe: items.js craftTabOf by recipe id, then by output
+ * kind, else the legacy group mapped onto a Raft tab. Always one of CATEGORIES.
+ */
+export function tabOf(id, kind = id, info = null) {
+  for (const k of [id, kind]) {
+    let t; try { t = craftTabOf(String(k ?? '')); } catch { t = undefined; }
+    if (t && CATEGORIES.some(c => c.id === t)) return t;
+  }
+  const t = LEGACY_TAB[categoryOf(kind, info)];
+  return CATEGORIES.some(c => c.id === t) ? t : CATEGORIES[0]?.id;
 }
 
 /**
@@ -228,7 +255,7 @@ export function groupRecipes(recipes, infoMap = null) {
   for (const r of recipes || []) {
     if (!r) continue;
     const kind = r.out?.kind ?? r.id;
-    buckets.get(categoryOf(kind, infoMap && infoMap[kind]))?.push(r);
+    buckets.get(tabOf(r.id, kind, infoMap && infoMap[kind]))?.push(r);
   }
   return CATEGORIES.filter(c => buckets.get(c.id).length).map(c => ({ ...c, recipes: buckets.get(c.id) }));
 }
@@ -432,7 +459,7 @@ export function sortCraftableFirst(views) {
 
 // ---- where items come from ----
 // `tag` is the short text beside a missing ingredient; `how` is the tooltip line.
-export const ITEM_SOURCE = Object.freeze({
+const OWN_SOURCE = Object.freeze({
   flowerseed: Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop flower seeds.' }),
   honey:   Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then press E on it to collect honeycomb.' }),
   wax:     Object.freeze({ tag: 'beehive', how: 'Collected with honey from a full beehive (E).' }),
@@ -494,6 +521,9 @@ export const ITEM_SOURCE = Object.freeze({
   tincan:      Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }),
   seajar:      Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }),
 });
+
+// Source hints from items.js (ITEM_SOURCE_EXTRA, same shape) sit under the rows above; the rows above win.
+export const ITEM_SOURCE = Object.freeze({ ...(ITEM_SOURCE_EXTRA || {}), ...OWN_SOURCE });
 
 /**
  * Where to get `kind`: {tag, how, recipe}. `recipe` is the id of a recipe that makes it, or null.

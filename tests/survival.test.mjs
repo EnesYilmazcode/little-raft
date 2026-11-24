@@ -539,8 +539,14 @@ test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES orde
   assert.equal(seen.length, recipes.length);
   assert.deepEqual([...seen].sort(), recipes.map(r => r.id).sort());
   for (const g of groups) assert.ok(g.recipes.length > 0, `${g.id} not empty`);
-  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'driftboard', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'metalaxe', 'machete', 'binoculars', 'spyglass', 'drum', 'pipes', 'bells', 'finder', 'spade', 'camera', 'glidehandle']); // [instruments] [treasure] [camera] [zipline] [spyglass]
-  assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'nail', 'bolt', 'hinge']);
+  // Raft's 8 tabs, in Raft's order, from items.js CRAFT_TABS / craftTabOf.
+  assert.deepEqual(CB.CATEGORIES.map(c => c.id), ['food', 'other', 'tools', 'weapons', 'equipment', 'resources', 'navigation', 'decorations']);
+  for (const c of CB.CATEGORIES) assert.ok(c.name && c.icon, c.id + ' has a name (tooltip) and an icon');
+  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'bucket', 'metalhook', 'axe', 'metalaxe', 'binoculars', 'spyglass', 'finder', 'spade', 'camera', 'glidehandle']);
+  assert.deepEqual(groups.find(g => g.id === 'weapons').recipes.map(r => r.id), ['spear', 'metalspear', 'machete']);
+  assert.deepEqual(groups.find(g => g.id === 'equipment').recipes.map(r => r.id), ['fins', 'airjug', 'goggles', 'scraper', 'headlamp', 'driftboard']);
+  assert.deepEqual(groups.find(g => g.id === 'resources').recipes.map(r => r.id), ['rope', 'nail', 'bolt', 'hinge']);
+  for (const r of recipes) assert.equal(CB.tabOf(r.id, r.out.kind), groups.find(g => g.recipes.includes(r)).id, r.id);
 });
 
 test('CraftBook: unknown outputs fall back to tools (tool flag) or building', () => {
@@ -549,7 +555,9 @@ test('CraftBook: unknown outputs fall back to tools (tool flag) or building', ()
   assert.equal(CB.categoryOf('mystery'), 'building');
   assert.deepEqual(CB.groupRecipes([]), []);
   const g = CB.groupRecipes([{ id: 'x', out: { kind: 'x' } }, null]);
-  assert.deepEqual(g.map(c => c.id), ['building']);
+  assert.deepEqual(g.map(c => c.id), ['other'], 'unknown recipes land in Other');
+  assert.equal(CB.tabOf('mystery', 'mystery', { tool: true }), 'tools');
+  assert.equal(CB.tabOf('coursekit', 'courseflag'), 'other', 'a recipe id with a tab wins over its output kind');
 });
 
 test('CraftBook: every item kind has description and use text', async () => {

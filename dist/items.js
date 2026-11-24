@@ -113,6 +113,8 @@ export const ITEM_TEXT_EXTRA = deepFreeze({
   headlamp: { desc: 'A little lamp on a strap.', use: 'Keep it in your bag: lights up the water so you see farther when diving.' },
 });
 
+export const ITEM_SOURCE_EXTRA = {};
+
 /**
  * Raft crafting tab of a recipe id or item kind: one of CRAFT_TABS ('food', 'other', 'tools', 'weapons',
  * 'equipment', 'resources', 'navigation', 'decorations'), or undefined when it has none (gathered items,
