@@ -2616,7 +2616,8 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput, observe:(ev, actor) => content?.observe(ev, actor), pastLearned:() => content?.pastLearned?.() ?? null}); // [tasks] observe // [progression-hook] pastLearned: old desk research stays learned
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput, observe:(ev, actor) => content?.observe(ev, actor), pastLearned:() => content?.pastLearned?.() ?? null, actorPose:a => (a === 'guest' ? (other ? {x:other.x, z:other.z, slack:GUEST_REACH_SLACK} : null) : {x:physics.x, z:physics.z, slack:0})}); // [tasks] observe // [progression-hook] pastLearned: old desk research stays learned; actorPose: research needs a table in reach
+    if (freshSave && !X?.world) prog.reset(); // [progression-hook] no stored raft (first run or title New Game): research starts fresh too
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
     settingsController = createSettings({initial:{sound}, onChange:next => { applyOptions(next); if (next.sound !== sound) setSound(next.sound); sfx.setAmbience(next.ambience); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});

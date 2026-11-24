@@ -131,6 +131,16 @@ export function attachProgression(ctx) {
     return v;
   }
 
+  // Host check for 'prog:research': a placed table (or old desk) within reach of that actor. Runs per action, never per frame.
+  const RESEARCH_REACH = REACH + 0.8;
+  function tableInReach(actor) {
+    const me = ctx.actorPose ? ctx.actorPose(actor) : actor === 'guest' ? null : ctx.pose();
+    if (!me) return false; // no guest pose yet: we cannot tell where they stand
+    const max = RESEARCH_REACH + (me.slack || 0);
+    for (const d of decor()) if (isTable(d.type) && Math.hypot(d.x * 2 - me.x, d.z * 2 - me.z) <= max) return true;
+    return false;
+  }
+
   // ---------- host-side actions ----------
   function apply(a, actor) {
     if (a.kind === 'craft' && typeof a.recipe === 'string' && Object.hasOwn(CATALOG, a.recipe) && CATALOG[a.recipe].recipe) {
@@ -142,6 +152,7 @@ export function attachProgression(ctx) {
     const bag = ctx.bag(actor), p = progs[actor] ?? progs.host;
     if (a.kind === 'prog:research') {
       const kind = String(a.item);
+      if (!tableInReach(actor)) { say(`Stand at ${p.stations.has(TABLE) ? 'your' : 'a'} Research Table to research`, actor); return true; }
       if (!p.researched.has(kind) && p.stations.has(TABLE) && bag?.count(kind) > 0 && !p.blueprints().some((bp) => bp.missing.includes(kind))) { say(`${nameOf(kind)} does not teach anything new`, actor); return true; }
       const r = p.research(kind, { has: bag });
       if (r.ok) {
@@ -360,8 +371,8 @@ export function attachProgression(ctx) {
     tooltips = installItemTooltips({ getBag: () => ctx.localBag(), getProgression: () => myProg(), items: CATALOG });
   }
 
-  // Recipes this save learned at the old Tinker's Desk (storage-research.js slice, or every recipe for a save
-  // it grandfathered) stay learned. ctx.pastLearned() returns the same array until the world reloads, so this
+  // Content recipes (outside items.js) the old Tinker's Desk build offered this save stay learned
+  // (storage-research.js pastOffered). ctx.pastLearned() returns the same array until the world reloads, so this
   // is one reference check per NOTE_EVERY tick.
   function adoptPast() {
     const past = isHost() ? ctx.pastLearned?.() : null;
@@ -369,7 +380,8 @@ export function attachProgression(ctx) {
     pastSeen = past;
     let any = false;
     for (const id of past) {
-      if (!Object.hasOwn(CATALOG, id) || !CATALOG[id].recipe || isRetired(id)) continue;
+      // items.js recipes: the old progression.js already decided those (its learned list is sticky in PROGRESSION_KEY)
+      if (!Object.hasOwn(CATALOG, id) || !CATALOG[id].recipe || isRetired(id) || Object.hasOwn(ITEMS, id)) continue;
       for (const p of Object.values(progs)) if (!p.learned.has(id)) { p.learned.add(id); any = true; }
     }
     if (any) { gateCache = null; dirty = true; }
