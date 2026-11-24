@@ -39,7 +39,7 @@ export const PLAYER_CONSTANTS = Object.freeze({
   LAND_TOL: 0.06,            // a falling body lands on a surface its feet just dipped below (out of water)
   PASS_TOL: 0.04,            // an airborne body passes over a decor top its feet are this close below
   DROP: 0.35,                // grounded feet this far above the surface: walked off a raised top, fall
-  SURF_MARGIN: 0.15,         // body centre may hang this far past a decor top and still stand
+  SURF_MARGIN: 0.2,          // body centre may hang this far past a decor top and still stand (thin piece tops: 0.2)
   // Ledge clamber: airborne after a jump, pushing forward, near the apex, hands reach a ledge in front.
   LEDGE_REACH: 1.3,          // m, ledge top above the feet the hands can still pull the body onto
   LEDGE_VY: 2.5,             // m/s, only once the rise has slowed to this (near the apex) or while falling
@@ -106,6 +106,8 @@ export class PlayerPhysics {
     this.decorTop = NaN;
     // Reused result of _nearest() (consumed immediately by its callers; never escapes).
     this._dt = 0.01; this._deckY = 0.2; this._nx = 0.5; this._nz = 0.5; // per-update scratch (see _moveHorizontal)
+    this._ox = 1; this._oz = 0; // _outward result
+    this._touch = false; // a standable top within the step band is near this update's move
     this._near = {tx: 0, tz: 0, px: 0.5, pz: 0.5, cx: 0.5, cz: 0.5, dist: 0.5};
     // First update decides grounded: if standing exactly at deck height over a tile we snap to it.
     this._fresh = true;
@@ -205,7 +207,12 @@ export class PlayerPhysics {
       }
     }
 
+    this._touch = false;
     this._moveHorizontal(blocked);
+    // Walked into the side of a step-up top this step (_propOk saw it): up onto it now, not a frame later from inside it.
+    if (this._touch && this.grounded && !this.swimming && this._decorSurface(blocked, deckY)) {
+      deckY = this._deckY = this._surfY; tiles = this._surfOne;
+    }
 
     // Raft hull sides are solid below deck level (swimming or falling past an edge).
     if (this.y - C.EYE_OFFSET < deckY - 0.05) this._pushOutOfTiles(tiles);
@@ -403,7 +410,10 @@ export class PlayerPhysics {
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
       // Only a standable top is stepped onto (DECOR_STEP); a low lamp or candle stays solid until jumped over.
       if (far(b, nx, nz)) continue;
-      if (!solidFor(b, feet, head, this._baseY, b.stand === true ? step : C.PASS_TOL)) continue;
+      if (!solidFor(b, feet, head, this._baseY, b.stand === true ? step : C.PASS_TOL)) {
+        if (b.stand === true && !this._touch && feet < this._baseY + b.top && blockerGap(b, nx, nz) < C.BODY_RADIUS) this._touch = true; // into a step-up top (see update)
+        continue;
+      }
       const gn = blockerGap(b, nx, nz);
       if (gn >= C.BODY_RADIUS) continue;
       const go = blockerGap(b, ox, oz);
@@ -455,11 +465,13 @@ export class PlayerPhysics {
   }
 
   // Highest standable decor top the body can use now: at or just under the feet with the centre within its margin,
-  // or (grounded) a step of up to DECOR_STEP with the centre over it. Only tops above the caller's surface deckY.
-  // Sets this._surfY / this._surfOne[0] and returns true when one is found.
+  // or (grounded) a step of up to DECOR_STEP the body touches: it steps up at once (never stands inside the side of a
+  // cushion or a kiln beside a rail top) and its centre is moved in to the edge margin. Only tops above the caller's
+  // surface deckY. Sets this._surfY / this._surfOne[0] and returns true when one is found.
   _decorSurface(blocked, deckY) {
     const feet = this.y - C.EYE_OFFSET, up = this.grounded ? C.DECOR_STEP : C.LAND_TOL, base = this._baseY;
-    let best = -Infinity, bi = -1;
+    const reach = this.grounded ? C.BODY_RADIUS - 0.005 : 0;
+    let best = -Infinity, bi = -1, bg = 0;
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || b.stand !== true || !Number.isFinite(b.top) || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
@@ -467,12 +479,33 @@ export class PlayerPhysics {
       if (!(top > deckY + 1e-6) || top <= best || top > feet + up) continue;
       if (far(b, this.x, this.z)) continue;
       const g = blockerGap(b, this.x, this.z);
-      if (g > (top > feet + 0.04 ? 0 : C.SURF_MARGIN)) continue; // stepping up: centre over the top
-      best = top; bi = i;
+      if (g > (top > feet + 0.04 ? reach : C.SURF_MARGIN)) continue; // stepping up: touching it (grounded) or over it
+      best = top; bi = i; bg = g;
     }
     if (bi < 0) return false;
+    if (bg > C.SURF_MARGIN) { // stepped up at the edge: in to the margin, if there is room
+      const b = blocked[bi], d = bg - C.SURF_MARGIN;
+      this._outward(b, this.x, this.z);
+      const x = this.x - this._ox * d, z = this.z - this._oz * d;
+      if (!this._propFree(x, z, blocked, best)) return false;
+      this.x = x; this.z = z;
+    }
     this._surfY = best; this._surfOne[0] = blocked[bi];
     return true;
+  }
+
+  // Outward unit normal of blocker b at (x, z) (from its nearest edge point; centre inside: the nearest side) into
+  // this._ox / this._oz.
+  _outward(b, x, z) {
+    const dx = x - b.x, dz = z - b.z;
+    if (!Number.isFinite(b.hx)) { const d = len2(dx, dz); this._ox = d > 1e-6 ? dx / d : 1; this._oz = d > 1e-6 ? dz / d : 0; return; }
+    const rot = fin(b.rot, 0), c = Math.cos(rot), s = Math.sin(rot), hx = Math.max(0, b.hx), hz = Math.max(0, fin(b.hz, 0));
+    const lx = dx * c - dz * s, lz = dx * s + dz * c, ex = lx - clamp(lx, -hx, hx), ez = lz - clamp(lz, -hz, hz), e = len2(ex, ez);
+    let ux, uz;
+    if (e > 1e-6) { ux = ex / e; uz = ez / e; }
+    else if (hx - Math.abs(lx) <= hz - Math.abs(lz)) { ux = lx < 0 ? -1 : 1; uz = 0; }
+    else { ux = 0; uz = lz < 0 ? -1 : 1; }
+    this._ox = ux * c + uz * s; this._oz = -ux * s + uz * c;
   }
 
   // Ledge clamber trigger. Probe in front of the body (facing yaw) for the highest walkable top within reach of the
