@@ -691,6 +691,23 @@ export class BuildGrid {
     return false;
   }
 
+  // Ledge clamber through a floor opening: an open hatch (no ladder under it) over the body centre whose floor plane
+  // lies between the feet (above lo) and the landing height hi. Raft climbs out through a hatch on its ladder only.
+  hatchHole(x, z, lo, hi, deckY) {
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return false;
+    const i = Math.round(x / 2), j = Math.round(z / 2);
+    for (let l = 1; l <= MAX_L; l++) {
+      const y = deckY + l * LEVEL_H;
+      if (y > hi) break;
+      if (y <= lo) continue;
+      const p = this._get(0, i, j, l, 0);
+      if (!p || p.t !== 'hatch' || !p.o) continue;
+      const lad = this._get(1, i, j, l - 1, 0);
+      if (!lad || lad.t !== 'ladder') return true;
+    }
+    return false;
+  }
+
   // A long frame (lag spike: several physics substeps before one postStep) can carry the body more than its
   // radius in one go, so the push-out below could pop it through a thin rail or wall to the far side. Sweep the
   // frame's XZ move against the solids it vertically meets and stop just before the first one it enters.

@@ -500,6 +500,8 @@ export class PlayerPhysics {
       (!L.clearAt(this.x, this.z, this.y + C.HEAD, headTop, base, r) || !L.clearAt(tx, tz, top + 0.03, headTop, base, r)
        || !L.clearAt((this.x + tx) / 2, (this.z + tz) / 2, top + 0.03, headTop, base, r))) return false;
     if (!this._propFree(tx, tz, blocked, top, r) || !this._propFree((this.x + tx) / 2, (this.z + tz) / 2, blocked, top, r)) return false;
+    // Up through an open hatch: only by its ladder.
+    if (L && typeof L.hatchHole === 'function' && L.hatchHole(this.x, this.z, feet + 0.05, top + 0.05, base)) return false;
     const rise = top - feet;
     // Heights relative to the deck plane (base): the raft heaves during the pull-up and the ledge rides with it.
     this._climb = {t: 0, sx: this.x, sy: this.y - base, sz: this.z, tx, tz, ty: top + C.EYE_OFFSET - base,
