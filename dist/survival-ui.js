@@ -719,7 +719,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     });
     const ready = v.state === 'ready';
     // Why it cannot be made, in full (the list row only has room for two lines).
-    const why = v.state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') : v.state === 'full' ? 'No room in your bag for it' : '';
+    const why = v.state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') : v.state === 'full' ? 'No room in your bag for it'
+      : v.state === 'missing' ? 'Missing ' + v.rows.filter(x => !x.enough).map(x => `${x.short} ${itemName(x.kind)}`).join(', ') : ''; // a greyed Craft button always says why
     if (D.state && D.state.textContent !== why) D.state.textContent = why;
     if (D.state) D.state.hidden = !why;
     D.btn.setAttribute('aria-disabled', String(!ready));
