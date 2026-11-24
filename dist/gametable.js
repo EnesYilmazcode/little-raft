@@ -128,7 +128,7 @@ export function createGameTable(ctx) {
     if (!raft) return;
     for (let c = 0; c < raft.children.length && shown < MAX_SHOWN; c++) {
       const g = raft.children[c]; if (g.name !== 'game_table' || !g.userData.gt) continue;
-      groups[shown] = g; gKeys[shown] = keyOf(Math.round(g.position.x / 2), Math.round(g.position.z / 2)); gN[shown] = -1; gRound[shown] = -1; gG[shown] = null; slideT[shown] = -1; shown++;
+      groups[shown] = g; gKeys[shown] = keyOf(Math.round(g.position.x * 500) / 1000, Math.round(g.position.z * 500) / 1000); gN[shown] = -1; gRound[shown] = -1; gG[shown] = null; slideT[shown] = -1; shown++;
     }
     for (let i = shown; i < MAX_SHOWN; i++) { groups[i] = null; gKeys[i] = null; }
   }

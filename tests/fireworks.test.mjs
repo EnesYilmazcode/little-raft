@@ -57,7 +57,8 @@ test('fwRoll: deterministic, c 0..5, s uint32; all colours and shapes appear; he
 
 test('cleanFwMsg: validates x, z, c, s and ignores extra fields', () => {
   assert.deepEqual(cleanFwMsg({ kind: 'fw', x: 1, z: -2, c: 5, s: 4294967295, text: 'hi', sound: 'none' }), { x: 1, z: -2, c: 5, s: 4294967295 });
-  for (const e of [null, undefined, 'fw', [], { x: 1.5, z: 0, c: 0, s: 1 }, { x: 0, z: '0', c: 0, s: 1 }, { x: 65, z: 0, c: 0, s: 1 },
+  assert.deepEqual(cleanFwMsg({ x: 1.5, z: 0, c: 0, s: 1 }), { x: 1.5, z: 0, c: 0, s: 1 }); // free placement: fractional spots
+  for (const e of [null, undefined, 'fw', [], { x: NaN, z: 0, c: 0, s: 1 }, { x: 0, z: '0', c: 0, s: 1 }, { x: 65, z: 0, c: 0, s: 1 },
     { x: 0, z: 0, c: 6, s: 1 }, { x: 0, z: 0, c: -1, s: 1 }, { x: 0, z: 0, c: 0, s: -1 }, { x: 0, z: 0, c: 0, s: 1.5 }, { x: 0, z: 0, c: 0, s: 2 ** 32 }]) {
     assert.equal(cleanFwMsg(e), null, JSON.stringify(e));
   }

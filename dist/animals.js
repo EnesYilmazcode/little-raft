@@ -454,7 +454,7 @@ export function createAnimals(ctx) {
     if (!a || typeof a.kind !== 'string' || a.kind.slice(0, 8) !== 'animals.') return false;
     if (!isHost()) return true;
     const verb = a.kind.slice(8), t = st.t;
-    const tileOk = isInt(a.x) && isInt(a.z) && Math.abs(a.x) <= 25 && Math.abs(a.z) <= 25;
+    const tileOk = Number.isFinite(a.x) && Number.isFinite(a.z) && Math.abs(a.x) <= 25 && Math.abs(a.z) <= 25;
     const idOk = typeof a.id === 'string' && a.id.length <= 8;
     let res;
     if (verb === 'lure' || verb === 'collect') {

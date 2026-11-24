@@ -147,7 +147,7 @@ export function createDecorPack(ctx) {
     let changed = false, nRot = Object.keys(st.rot).length;
     const me = ctx.physics, other = ctx.other;
     for (const d of decor) {
-      if (!d || !isInt(d.x) || !isInt(d.z)) continue;
+      if (!d || !Number.isFinite(d.x) || !Number.isFinite(d.z)) continue;
       const k = keyOf(d.x, d.z); types.set(k, d.type);
       if (!PACK.includes(d.type) || st.rot[k] !== undefined || nRot >= MAX_ROT) continue;
       const cx = d.x * 2, cz = d.z * 2;
@@ -216,7 +216,7 @@ export function createDecorPack(ctx) {
       return '<kbd>E</kbd>Turn ' + (ITEM_INFO[d.type]?.name ?? d.type);
     },
     decorModel(type, d) {
-      if (!PACK.includes(type) || !T || !d || !isInt(d.x) || !isInt(d.z)) return null;
+      if (!PACK.includes(type) || !T || !d || !Number.isFinite(d.x) || !Number.isFinite(d.z)) return null;
       models ??= buildDecorPack(T);
       const k = keyOf(d.x, d.z), g = models.instance(type);
       g.rotation.y = (st.rot[k] ?? 0) * Math.PI / 2;

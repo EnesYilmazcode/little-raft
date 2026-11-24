@@ -48,7 +48,7 @@ export function cleanSlice(data, decor) {
   let types = null;
   if (Array.isArray(decor)) {
     types = new Map();
-    for (const d of decor) if (d && isInt(d.x) && isInt(d.z)) types.set(keyOf(d.x, d.z), d.type);
+    for (const d of decor) if (d && Number.isFinite(d.x) && Number.isFinite(d.z)) types.set(keyOf(d.x, d.z), d.type);
   }
   if (isObj(data.rot)) {
     let n = 0;
@@ -82,7 +82,7 @@ export function applyDecorAction(st, a, actor, env) {
   if (!st || !a || typeof a !== 'object' || typeof a.kind !== 'string') return no('bad');
   const verb = a.kind === 'decor.turn' ? 'turn' : a.kind === 'decor.write' ? 'write' : null;
   if (!verb) return no('bad');
-  if (!isInt(a.x) || !isInt(a.z)) return no('notarget');
+  if (!Number.isFinite(a.x) || !Number.isFinite(a.z)) return no('notarget');
   let type = null;
   try { type = env?.decorAt?.(a.x, a.z) ?? null; } catch { type = null; }
   if (verb === 'turn' ? !PACK.includes(type) : type !== 'sign') return no('notarget');

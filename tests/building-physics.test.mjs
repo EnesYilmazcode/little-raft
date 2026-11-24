@@ -104,7 +104,9 @@ test('sprinting and bunny-hopping on stairs never sinks into the ramp and ends o
   for (const v of VARIANTS) {
     const g = grid(tilesSq(3), [P('stairs', 0, 0, 0, 0), P('floor', 0, 1, 1), P('wall', 0, 2, 1, 0)]);
     const ph = new PlayerPhysics({ x: 0, y: eyeAt(0), z: -2.5 }), st = { t: 0 };
-    const tr = run(g, ph, 2.5, (p, n) => ({ forward: 1, yaw: yawTo(0, 1), sprint: true, jump: n % 9 < 3 }), v, st);
+    // Hops stop before the top of the ramp: a jump from the top step or the landing clears the one-storey wall
+    // upstairs (by design; the apex is above LEVEL_H).
+    const tr = run(g, ph, 2.5, (p, n) => ({ forward: 1, yaw: yawTo(0, 1), sprint: true, jump: n % 9 < 3 && p.z < 0.5 }), v, st);
     const sink = maxOf(tr.filter(s => Math.abs(s.x) < 1 && s.z > -1 && s.z < 1), s => rampAt(0, 0, 0, 0, s.x, s.z) - s.feet);
     assert.ok(sink < 0.3, `${tag(v)}: feet below the ramp by ${sink}`);
     run(g, ph, 1, {}, v, st);
@@ -157,7 +159,7 @@ test('a wall under the top edge of the stairs does not block the last steps', ()
 
 // ============================================================ walls
 
-test('doorway lets you through (walking, sprint-jumping, slightly off centre); wall, window and half wall do not', () => {
+test('doorway lets you through (walking, sprint-jumping, slightly off centre); wall, window and half wall block walking', () => {
   for (const v of VARIANTS) {
     for (const t of ['door', 'window', 'wall', 'halfwall']) {
       const g = grid(tilesSq(2), [P(t, 1, 0, 0, 1)]); // edge at x = 1, z in [-1, 1]
@@ -168,7 +170,8 @@ test('doorway lets you through (walking, sprint-jumping, slightly off centre); w
           const msg = `${t} z=${z0} ${mode} ${tag(v)}`;
           noPen(tr, msg);
           if (t === 'door') assert.ok(ph.x > 2, `${msg}: passed (x ${ph.x})`);
-          else assert.ok(maxOf(tr, s => s.x) <= 1 - 0.07 - R + 1e-6, `${msg}: blocked (x ${maxOf(tr, s => s.x)})`);
+          else if (mode === 'walk') assert.ok(maxOf(tr, s => s.x) <= 1 - 0.07 - R + 1e-6, `${msg}: blocked (x ${maxOf(tr, s => s.x)})`);
+          // A running jump may clear a one-storey edge piece (the jump apex is above LEVEL_H); noPen covers it.
         }
       }
     }
@@ -213,12 +216,16 @@ test('diagonal sliding along a wall run keeps moving; corners and pillars hold w
   }
 });
 
-test('half wall blocks walking and running jumps (it cannot be jumped over)', () => {
+test('half wall blocks walking; a running jump clears it cleanly', () => {
   for (const v of VARIANTS) {
     const g = grid(tilesSq(2), [P('halfwall', 1, -1, 0, 1), P('halfwall', 1, 0, 0, 1), P('halfwall', 1, 1, 0, 1)]);
+    const w = new PlayerPhysics({ x: -1.5, y: eyeAt(0), z: 0 });
+    const tw = run(g, w, 2, { forward: 1, yaw: yawTo(1, 0), sprint: true }, v);
+    assert.ok(maxOf(tw, s => s.x) <= 1 - 0.07 - R + 1e-6, `${tag(v)}: blocked`);
+    noPen(tw, tag(v));
     const ph = new PlayerPhysics({ x: -1.5, y: eyeAt(0), z: 0 });
     const tr = run(g, ph, 2, (p, n) => ({ forward: 1, yaw: yawTo(1, 0), sprint: true, jump: n % 50 < 25 }), v);
-    assert.ok(maxOf(tr, s => s.x) <= 1 - 0.07 - R + 1e-6, `${tag(v)}: blocked`);
+    assert.ok(ph.x > 1 + 0.07 + R, `${tag(v)}: jumped over (x ${ph.x})`);
     noPen(tr, tag(v));
   }
 });
@@ -267,7 +274,9 @@ test('walking off an upper floor edge falls and lands; standing under a floor ed
     // Running jump into the slab edge from the open: no head poking through the floor.
     const ph = new PlayerPhysics({ x: -3, y: eyeAt(0), z: 0 });
     const tr = run(g, ph, 2.5, { forward: 1, yaw: yawTo(1, 0), jump: true, sprint: true }, v);
-    const under = tr.filter(s => Math.abs(s.x) < 1 + R && Math.abs(s.z) < 1 + R);
+    // The jump now rises past the slab, so its edge may be met from the side with the feet within the 0.55 m
+    // slab step-up (ledge contact, pushed out or lifted on top); lower than that the head stays under it.
+    const under = tr.filter(s => Math.abs(s.x) < 1 + R && Math.abs(s.z) < 1 + R && s.feet < LEVEL_H - 0.55);
     assert.ok(maxOf(under, s => s.y + 0.15 - s.deckY) <= LEVEL_H - FLOOR_THICK + 1e-6, `${tag(v)}: head stayed under the floor`);
   }
 });
@@ -280,7 +289,8 @@ test('roof: walk up from an upper floor, off the high end and off the side (fall
     const ta = run(g, a, 2.5, { forward: 1, yaw: yawTo(0, 1) }, v, st);
     assert.ok(maxOf(ta, s => s.feet) > LEVEL_H + 0.9, `${tag(v)}: climbed the roof`);
     assert.ok(a.grounded && Math.abs(a.y - EYE - st.deck) < 1e-6 && a.z > 1, `${tag(v)}: fell off the high end onto the deck`);
-    assert.ok(maxOf(ta, s => Math.abs(s.dy)) < 0.6, `${tag(v)}: no teleport`);
+    // Per-frame drop of a ~3.2 m fall under FALL_GRAVITY is up to ~0.7 m at 20 fps; a teleport is a multi-metre snap.
+    assert.ok(maxOf(ta, s => Math.abs(s.dy)) < Math.max(0.6, 16 * v.dt), `${tag(v)}: no teleport (${maxOf(ta, s => Math.abs(s.dy))})`);
     noPen(ta, tag(v));
     const b = new PlayerPhysics({ x: 0, y: eyeAt(LEVEL_H), z: -2 }), sb = { t: 0 };
     run(g, b, 1.1, { forward: 1, yaw: yawTo(0, 1) }, v, sb);

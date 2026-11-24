@@ -14,18 +14,18 @@ export const NOT_EDGE = 'Fish trap: it needs open water beside it';
 export const TEXT = Object.freeze({ full: 'Your bag is full', empty: 'No fish in the trap yet', notarget: 'Nothing to collect' });
 const SIDES = [[0, 1], [1, 0], [0, -1], [-1, 0]];
 
-const KEY_RE = /^-?\d+,-?\d+$/;
+const KEY_RE = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/; // free placement: decor x/z may be fractional
 const isInt = Number.isInteger;
 export const tileKey = (x, z) => x + ',' + z;
 const isKey = k => typeof k === 'string' && k.length <= 24 && KEY_RE.test(k) && (() => { const [x, z] = k.split(',').map(Number); return tileKey(x, z) === k; })();
 const clampInt = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.floor(v))) : lo);
 const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
-const hasTile = (tiles, x, z) => { if (Array.isArray(tiles)) for (const t of tiles) if (t && t[0] === x && t[1] === z) return true; return false; };
+const hasTile = (tiles, x, z) => { x = Math.round(x); z = Math.round(z); if (Array.isArray(tiles)) for (const t of tiles) if (t && t[0] === x && t[1] === z) return true; return false; };
 
 function trapList(decor) { // fishtrap decor in decor order, one per tile
   const out = [], seen = new Set();
   if (Array.isArray(decor)) for (const d of decor) {
-    if (!d || d.type !== 'fishtrap' || !isInt(d.x) || !isInt(d.z)) continue;
+    if (!d || d.type !== 'fishtrap' || !Number.isFinite(d.x) || !Number.isFinite(d.z)) continue;
     const k = tileKey(d.x, d.z); if (seen.has(k)) continue;
     seen.add(k); out.push({ k, x: d.x, z: d.z, rot: d.rot });
   }
@@ -93,7 +93,7 @@ export function cleanTrap(v, decor) {
 }
 
 const tileSet = tiles => { const s = new Set(); if (Array.isArray(tiles)) for (const t of tiles) if (t) s.add(tileKey(t[0], t[1])); return s; };
-const edgeIn = (set, x, z) => set.has(tileKey(x, z)) && SIDES.some(([dx, dz]) => !set.has(tileKey(x + dx, z + dz)));
+const edgeIn = (set, x, z) => { x = Math.round(x); z = Math.round(z); return set.has(tileKey(x, z)) && SIDES.some(([dx, dz]) => !set.has(tileKey(x + dx, z + dz))); }; // free placement: the tile under the trap
 
 /** Host tick: whole seconds (dt floored, clamped 0..MAX_TICK), traps in decor order. Bumps st.r on any change. */
 export function tickTraps(st, tiles, decor, dt) {
@@ -205,7 +205,7 @@ export function createFishTrap(ctx) {
     traps.length = 0;
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i]; if (g.name !== 'craft_fishtrap') continue;
-      const x = Math.round(g.position.x / 2), z = Math.round(g.position.z / 2), d = trapAt(decor(), x, z);
+      const x = Math.round(g.position.x * 500) / 1000, z = Math.round(g.position.z * 500) / 1000, d = trapAt(decor(), x, z);
       const s = openSide(tiles(), x, z, d?.rot ?? 0);
       g.rotation.y = s ? Math.atan2(s[0], s[1]) : (d?.rot || 0);
       traps.push({ g, k: tileKey(x, z), x, z, phase: (x * 7 + z * 13) % 6.28 });
@@ -293,7 +293,7 @@ export function createFishTrap(ctx) {
     },
     action(a, actor, bag) {
       if (!a || typeof a.kind !== 'string' || !a.kind.startsWith('fishtrap.')) return false;
-      if (!isInt(a.x) || !isInt(a.z)) return true;
+      if (!Number.isFinite(a.x) || !Number.isFinite(a.z)) return true;
       const d = trapAt(decor(), a.x, a.z); if (!d) return true;
       const pose = actor === 'guest' ? ctx.other : ctx.physics;
       spot(d); const cx = spotX, cz = spotZ;

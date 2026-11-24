@@ -182,7 +182,7 @@ test('guards: missing, reach, bad kind/coords/bag; every success bumps r', () =>
   assert.equal(act(st, { kind: 'kiln.fuel', x: 2 }, bag).reason, 'missing');
   assert.equal(act(st, { kind: 'kiln.fuel' }, bag, env(kilnAt, { x: 12, z: 0 })).reason, 'reach');
   assert.equal(act(st, { kind: 'kiln.burn' }, bag).reason, 'bad');
-  assert.equal(act(st, { kind: 'kiln.fuel', x: 1.5 }, bag).reason, 'bad');
+  assert.equal(act(st, { kind: 'kiln.fuel', x: NaN }, bag).reason, 'bad'); // free placement: fractional x is a valid spot
   assert.equal(act(st, { kind: 'kiln.fuel', x: 30 }, bag).reason, 'bad');
   assert.equal(act(st, { kind: 'kiln.fuel' }, { slots: [] }).reason, 'bad');
   assert.equal(applyKilnAction(st, null, 'host', bag, env()).reason, 'bad');

@@ -38,7 +38,7 @@ const hasPerch = (decor, x, z) => { if (Array.isArray(decor)) for (const d of de
 export function firstPerch(decor) {
   let best = null;
   if (Array.isArray(decor)) for (const d of decor) {
-    if (!d || d.type !== 'perch' || !isInt(d.x) || !isInt(d.z)) continue;
+    if (!d || d.type !== 'perch' || !Number.isFinite(d.x) || !Number.isFinite(d.z)) continue;
     if (!best || d.x < best[0] || (d.x === best[0] && d.z < best[1])) best = [d.x, d.z];
   }
   return best;
@@ -348,7 +348,7 @@ export function createGull(ctx) {
     perches.clear();
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i]; if (g.name !== 'craft_perch') continue;
-      perches.set(tileKey(Math.round(g.position.x / 2), Math.round(g.position.z / 2)), g);
+      perches.set(tileKey(Math.round(g.position.x * 500) / 1000, Math.round(g.position.z * 500) / 1000), g);
     }
   }
 
@@ -370,7 +370,7 @@ export function createGull(ctx) {
     const hx = tgt && st.moved ? tgt[0] : NaN, hz = tgt && st.moved ? tgt[1] : NaN;
     if (paintSt === st && paintR === st.r && Object.is(paintHx, hx) && Object.is(paintHz, hz) && paintScan === scanGen) return;
     paintSt = st; paintR = st.r; paintHx = hx; paintHz = hz; paintScan = scanGen;
-    perches.forEach(g => paintPerch(g, Math.round(g.position.x / 2) === hx && Math.round(g.position.z / 2) === hz ? st.finds : null));
+    perches.forEach(g => paintPerch(g, Math.round(g.position.x * 500) / 1000 === hx && Math.round(g.position.z * 500) / 1000 === hz ? st.finds : null));
   }
   function render(dt) {
     scanPerches();
@@ -560,7 +560,7 @@ export function createGull(ctx) {
     if (!['treat', 'pet', 'collect', 'name'].includes(verb)) return true;
     const d = decor(), tgt = target(st, d);
     if (verb === 'name') { if (!st.moved || typeof a.name !== 'string' || a.name.length > 64) return true; }
-    else if (!isInt(a.x) || !isInt(a.z)) return true;
+    else if (!Number.isFinite(a.x) || !Number.isFinite(a.z)) return true;
     if (!tgt) return fail(actor, 'There is no gull perch');
     if (verb !== 'name' && (a.x !== tgt[0] || a.z !== tgt[1])) return fail(actor, TEXT.other);
     const w = toWorld(tgt[0] * 2, FLOOR_Y, tgt[1] * 2);

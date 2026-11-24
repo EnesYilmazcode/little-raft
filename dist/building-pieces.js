@@ -32,12 +32,15 @@ export const PIECES = Object.freeze({
 export const PIECE_ORDER = Object.freeze(['foundation', 'floor', 'wall', 'halfwall', 'window', 'door', 'pillar', 'stairs', 'roof', 'railing', 'hatch', 'ladder', 'gate']);
 // Stateful pieces carry `o: 1` only while open; a closed record is the plain {t,i,j,l,r}.
 export const STATEFUL = Object.freeze(Object.assign(Object.create(null), {hatch: 1, gate: 1}));
-// Railing/gate height (above the 0.88 m jump), gate opening, open hatch leaf height, ladder box (u from the
+// Railing/gate height, gate opening, open hatch leaf height, ladder box (u from the
 // cell centre along DIR[r], metres) and its half width.
 export const RAIL_H = 0.95, GATE_GAP = 1.2, LEAF_H = 1.0, LAD_IN = 0.86, LAD_OUT = 0.96, LAD_HALF = 0.45;
-// RAIL_GUARD: railing / gate collision height. A jump from a deck that is bobbing down rises up to ~0.25 m more
-// relative to the deck than the 0.88 m still-deck jump, so the solid box reaches above the visible rail.
-const RAIL_GUARD = RAIL_H + 0.25, LEAF_T = 0.06, LAD_PIN = LAD_IN - BODY_R - 0.02;
+// RAIL_GUARD: railing / gate collision height. It clears the highest jump (PlayerPhysics 2.445 m, x1.3225 with the
+// cookpot jump buff capped at x1.15 velocity) plus ~0.25 m of deck bob, so the solid box reaches far above the
+// visible rail. Where the storey above has a floor (or stairs) next to the edge, the box stops at LEVEL_H instead:
+// that floor is the ceiling for jumps below it, and players walking or jumping up there never touch the box.
+export const RAIL_GUARD = 3.5;
+const LEAF_T = 0.06, LAD_PIN = LAD_IN - BODY_R - 0.02;
 
 // Null-prototype lookups: `t in SLOT_OF` must not accept 'constructor' / '__proto__' / 'toString' from saves or guests.
 const SLOT_OF = Object.assign(Object.create(null), {floor: 0, roof: 0, stairs: 1, wall: 2, halfwall: 2, window: 2, door: 2, pillar: 3,
@@ -291,19 +294,30 @@ export class BuildGrid {
         this._box(this._solid, this._solidN++, x - h, x + h, y0, y0 + LEVEL_H, z - h, z + h, 0);
       } else {
         const a = p.r, u = a ? cz - 1 : cx - 1, c = a ? cx - 1 : cz - 1, h = PIECES[p.t].height;
+        const guard = p.t === 'railing' || p.t === 'gate' ? this._railTop(p) : h;
         this._box(this._pick, this._pickN++, u, u + 2, y0, y0 + h, c - WALL_HALF, c + WALL_HALF, a);
         if (p.t === 'gate' && p.o) {
           const side = (2 - GATE_GAP) / 2;
-          this._box(this._solid, this._solidN++, u, u + side, y0, y0 + RAIL_GUARD, c - WALL_HALF, c + WALL_HALF, a);
-          this._box(this._solid, this._solidN++, u + 2 - side, u + 2, y0, y0 + RAIL_GUARD, c - WALL_HALF, c + WALL_HALF, a);
+          this._box(this._solid, this._solidN++, u, u + side, y0, y0 + guard, c - WALL_HALF, c + WALL_HALF, a);
+          this._box(this._solid, this._solidN++, u + 2 - side, u + 2, y0, y0 + guard, c - WALL_HALF, c + WALL_HALF, a);
         } else if (p.t === 'door') {
           const side = (2 - DOOR_W) / 2;
           this._box(this._solid, this._solidN++, u, u + side, y0, y0 + h, c - WALL_HALF, c + WALL_HALF, a);
           this._box(this._solid, this._solidN++, u + 2 - side, u + 2, y0, y0 + h, c - WALL_HALF, c + WALL_HALF, a);
           this._box(this._solid, this._solidN++, u + side, u + 2 - side, y0 + DOOR_H, y0 + h, c - WALL_HALF, c + WALL_HALF, a);
-        } else this._box(this._solid, this._solidN++, u, u + 2, y0, y0 + (p.t === 'railing' || p.t === 'gate' ? RAIL_GUARD : h), c - WALL_HALF, c + WALL_HALF, a);
+        } else this._box(this._solid, this._solidN++, u, u + 2, y0, y0 + guard, c - WALL_HALF, c + WALL_HALF, a);
       }
     }
+  }
+  // Railing / gate guard height: LEVEL_H when either cell beside the edge has a floor (not an open hatch) or stairs
+  // one storey up, else RAIL_GUARD.
+  _railTop(p) {
+    const l = p.l + 1, i2 = p.r ? p.i - 1 : p.i, j2 = p.r ? p.j : p.j - 1;
+    return this._covers(p.i, p.j, l) || this._covers(i2, j2, l) ? LEVEL_H : RAIL_GUARD;
+  }
+  _covers(i, j, l) {
+    const f = this._get(0, i, j, l, 0);
+    return !!(f && !(f.t === 'hatch' && f.o)) || this._get(1, i, j, l, 0) !== undefined;
   }
   // Box in a cell's local frame: u in [u0,u1] along (dx,dz) from the centre, |w| <= half across.
   _cellBox(arr, n, cx, cz, dx, dz, u0, u1, half, y0, y1) {
@@ -328,6 +342,18 @@ export class BuildGrid {
       if (t >= 0 && t <= best) { best = t; rec = this._pickRec[n]; }
     }
     return rec;
+  }
+
+  // Distance along a unit ray to the nearest piece box within reach, or Infinity (free placement: a wall, stairs or
+  // the floor of a storey hides the deck behind it, so no item is placed through it).
+  hitDist(ox, oy, oz, dx, dy, dz, deckY, reach) {
+    this._rebuild();
+    let best = Infinity;
+    for (let n = 0; n < this._pickN; n++) {
+      const t = rayBox(ox, oy, oz, dx, dy, dz, this._pick, n * 6, deckY);
+      if (t >= 0 && t < best) best = t;
+    }
+    return best <= reach ? best : Infinity;
   }
 
   aim(ox, oy, oz, dx, dy, dz, type, rot, deckY, reach, out = this._aimOut) {
@@ -553,12 +579,15 @@ export class BuildGrid {
       const x = phys.x, z = phys.z;
       if (x < b[k] - R || x > b[k + 3] + R || z < b[k + 2] - R || z > b[k + 5] + R) continue;
       const y0 = b[k + 1] + deckY;
-      if (b[k + 4] + deckY <= lo || y0 >= phys.y + HEAD) continue;
+      if (y0 >= phys.y + HEAD) continue;
+      // Ceiling first, before the `lo` filter: one long rising frame can carry the feet to within the step-up of
+      // a slab top (or past it), and the slab must still stop the head instead of being stepped through.
       if (!phys.grounded && y0 >= this._prevHead - 0.02) {
         const px = clamp(x, b[k], b[k + 3]) - x, pz = clamp(z, b[k + 2], b[k + 5]) - z;
         if (px * px + pz * pz < R * R) { phys.y = y0 - HEAD; if (phys.vy > 0) phys.vy = 0; }
         continue;
       }
+      if (b[k + 4] + deckY <= lo) continue;
       this._push(phys, b[k], b[k + 3], b[k + 2], b[k + 5]);
     }
   }

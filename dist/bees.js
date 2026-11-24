@@ -9,7 +9,7 @@ export const MAX_HIVES = 400; // the raft tile cap
 export const OLD_HOST = 'Your friend’s raft doesn’t have bees yet';
 export const TEXT = Object.freeze({ full: 'Your bag is full', empty: 'No honeycomb yet', notarget: 'Nothing to collect' });
 
-const KEY_RE = /^-?\d+,-?\d+$/;
+const KEY_RE = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/; // free placement: decor x/z may be fractional
 const isInt = Number.isInteger;
 export const tileKey = (x, z) => x + ',' + z;
 const isKey = k => typeof k === 'string' && k.length <= 24 && KEY_RE.test(k) && (() => { const [x, z] = k.split(',').map(Number); return tileKey(x, z) === k; })();
@@ -17,7 +17,7 @@ const clampInt = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) ? M
 
 function hiveKeys(decor) {
   const out = new Set();
-  if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'beehive' && isInt(d.x) && isInt(d.z)) out.add(tileKey(d.x, d.z));
+  if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'beehive' && Number.isFinite(d.x) && Number.isFinite(d.z)) out.add(tileKey(d.x, d.z));
   return out;
 }
 const hasHive = (decor, x, z) => { if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'beehive' && d.x === x && d.z === z) return true; return false; };
@@ -165,7 +165,7 @@ export function createBees(ctx) {
     hives.length = 0;
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i]; if (g.name !== 'craft_beehive') continue;
-      const x = Math.round(g.position.x / 2), z = Math.round(g.position.z / 2);
+      const x = Math.round(g.position.x * 500) / 1000, z = Math.round(g.position.z * 500) / 1000;
       hives.push({ g, k: tileKey(x, z), x, z });
     }
   }
@@ -240,7 +240,7 @@ export function createBees(ctx) {
     },
     action(a, actor, bag) {
       if (!a || typeof a.kind !== 'string' || !a.kind.startsWith('bees.')) return false;
-      if (a.kind !== 'bees.harvest' || !isInt(a.x) || !isInt(a.z)) return true;
+      if (a.kind !== 'bees.harvest' || !Number.isFinite(a.x) || !Number.isFinite(a.z)) return true;
       const pose = actor === 'guest' ? ctx.other : ctx.physics;
       if (!pose || !Number.isFinite(pose.x) || !Number.isFinite(pose.z) || Math.hypot(a.x * 2 - pose.x, a.z * 2 - pose.z) > REACH + HOST_SLACK) return true;
       const r = harvest(st, decor(), tileKey(a.x, a.z), bag);

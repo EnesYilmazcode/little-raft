@@ -45,7 +45,7 @@ export const burstLife = shape => (shape === 2 ? 3.2 : 2.0);
 export function cleanFwMsg(e) {
   if (!e || typeof e !== 'object' || Array.isArray(e)) return null;
   const { x, z, c, s } = e;
-  if (!isInt(x) || !isInt(z) || Math.abs(x) > TILE_MAX || Math.abs(z) > TILE_MAX) return null;
+  if (!Number.isFinite(x) || !Number.isFinite(z) || Math.abs(x) > TILE_MAX || Math.abs(z) > TILE_MAX) return null; // free placement: fractional spots
   if (!isInt(c) || c < 0 || c > 5) return null;
   if (!isInt(s) || s < 0 || s > 0xffffffff) return null;
   return { x, z, c, s };
@@ -246,7 +246,7 @@ export function createFireworks(ctx) {
     },
     action(a, actor) {
       if (!a || a.kind !== 'fw.light') return false;
-      if (!isInt(a.x) || !isInt(a.z)) return true;
+      if (!Number.isFinite(a.x) || !Number.isFinite(a.z)) return true;
       const pose = actor === 'guest' ? ctx.other : ctx.physics;
       if (!pose || !Number.isFinite(pose.x) || !Number.isFinite(pose.z) || Math.hypot(a.x * 2 - pose.x, a.z * 2 - pose.z) > REACH + HOST_SLACK) return true;
       const list = ctx.world?.decor; if (!Array.isArray(list)) return true;

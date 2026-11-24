@@ -80,10 +80,12 @@ export function removeTile(world, x, z) {
   if (i < 0) return false;
   tiles.splice(i, 1);
   const k = tileKey(x, z);
-  if (Array.isArray(world.decor)) world.decor = world.decor.filter(d => !(d && d.x === x && d.z === z));
+  const gone = Array.isArray(world.decor) ? world.decor.filter(d => d && Math.round(d.x) === x && Math.round(d.z) === z) : []; // free placement: everything centred on the tile
+  if (gone.length) world.decor = world.decor.filter(d => !gone.includes(d));
   if (world.tileHp) delete world.tileHp[k];
   if (world.tileArmor && typeof world.tileArmor === 'object' && !Array.isArray(world.tileArmor) && !(world.tileArmor instanceof Set)) delete world.tileArmor[k]; // the armor goes down with its tile
   if (Array.isArray(world.nets)) world.nets = world.nets.filter(n => !(n && n.x === x && n.z === z)); // a net hanging off it sinks with it
+  for (const d of gone) { const dk = tileKey(d.x, d.z); if (world.garden) delete world.garden[dk]; if (world.purifiers) delete world.purifiers[dk]; }
   if (world.garden) delete world.garden[k];
   if (world.purifiers) delete world.purifiers[k];
   if (Array.isArray(world.pieces)) world.pieces = cleanPieces(world.pieces, tiles);

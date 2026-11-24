@@ -125,7 +125,7 @@ export function createSailing(T, ctx) {
     for (const c of raft.children) {
       const ct = c.userData?.craftType;
       if (ct !== undefined && ct !== 'sail') continue;
-      if (!decor.some(d => d?.type === 'sail' && d.x === Math.round(c.position.x / 2) && d.z === Math.round(c.position.z / 2))) continue;
+      if (!decor.some(d => d?.type === 'sail' && Math.abs(d.x * 2 - c.position.x) < 1e-3 && Math.abs(d.z * 2 - c.position.z) < 1e-3)) continue;
       const cloth = []; let main = null, flag = null;
       for (const m of c.children) {
         if (!m.isMesh) continue;

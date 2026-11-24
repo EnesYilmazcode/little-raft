@@ -65,7 +65,7 @@ export function cleanAnimals(v, decor) {
   st.t = num(v.t, 0, T_MAX, 0);
   const t = st.t;
   let boxes = null; // "x,z" -> home decor type
-  if (Array.isArray(decor)) { boxes = new Map(); for (const d of decor) if (d && own(HOME_CODE, d.type) && isInt(d.x) && isInt(d.z)) boxes.set(keyOf(d.x, d.z), d.type); }
+  if (Array.isArray(decor)) { boxes = new Map(); for (const d of decor) if (d && own(HOME_CODE, d.type) && Number.isFinite(d.x) && Number.isFinite(d.z)) boxes.set(keyOf(d.x, d.z), d.type); }
   const ids = new Set(), homes = new Set(), per = { puffhen: 0, goat: 0 };
   let maxId = 0;
   if (Array.isArray(v.list)) for (const e of v.list) {
@@ -119,7 +119,7 @@ const edgeOf = (x, z, d) => (d === 0 ? (x + 1) + ',' + z + ',1' : d === 1 ? x + 
 /** Walkable deck cells: tiles with no decor (or a home: nest box box=1, hay corner box=2), minus grill and level-0 stairs cells. */
 export function buildGraph(tiles, decor, pieces, hasGrill) {
   const held = new Map();
-  if (Array.isArray(decor)) for (const d of decor) if (d && isInt(d.x) && isInt(d.z)) held.set(keyOf(d.x, d.z), d.type);
+  if (Array.isArray(decor)) for (const d of decor) if (d && Number.isFinite(d.x) && Number.isFinite(d.z)) { const k = keyOf(Math.round(d.x), Math.round(d.z)); if (!held.has(k) || own(HOME_CODE, d.type)) held.set(k, d.type); } // free placement: the tile under each item
   const stairs = new Set(), walls = new Set();
   if (Array.isArray(pieces)) for (const p of pieces) {
     if (!p || p.l !== 0 || !isInt(p.i) || !isInt(p.j)) continue;

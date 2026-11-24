@@ -36,7 +36,11 @@ test('sprint is a clear step up from walking', () => {
 });
 
 test('air control is reduced but present', () => {
-  for (const f of FPS) assert.ok(M[f].airLateral > 0.3 && M[f].airLateral < 0.85, `${f}fps air lateral ${M[f].airLateral}`);
+  // Sideways distance by landing, as a share of walking for the same airtime (the jump tuning sets the airtime).
+  for (const f of FPS) {
+    const share = M[f].airLateral / (PC.WALK_SPEED * M[f].airTime);
+    assert.ok(share > 0.15 && share < 0.5, `${f}fps air lateral ${M[f].airLateral} m in ${M[f].airTime} s (share ${share})`);
+  }
 });
 
 test('jump height matches v^2/2g and is the same at any frame rate', () => {

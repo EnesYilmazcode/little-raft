@@ -74,8 +74,8 @@ export function bedPose(x, z, deck, out = {}) {
 /** Where to stand after getting up: a free neighbour tile centre, else just beside the bed. */
 export function getUpSpot(world, x, z, out = {}) {
   const tiles = Array.isArray(world?.tiles) ? world.tiles : [], decor = Array.isArray(world?.decor) ? world.decor : [];
-  const hasTile = (a, b) => tiles.some(t => t && t[0] === a && t[1] === b);
-  const blocked = (a, b) => decor.some(d => d && d.x === a && d.z === b && d.type !== 'net');
+  const hasTile = (a, b) => { const i = Math.round(a), j = Math.round(b); return tiles.some(t => t && t[0] === i && t[1] === j); }; // free placement: the bed may sit off a tile centre
+  const blocked = (a, b) => decor.some(d => d && Math.abs(d.x - a) < .3 && Math.abs(d.z - b) < .3 && d.type !== 'net');
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const a = x + dx, b = z + dz;
     if (hasTile(a, b) && !blocked(a, b)) { out.x = a * 2; out.z = b * 2; return out; }
@@ -142,7 +142,7 @@ export function createSleep(ctx, opts = {}) {
   // ---- host side
   function refuse(text, actor) { ctx.emit?.({ kind: 'notice', text }, actor); }
   function lie(a, actor) {
-    if (!isInt(a.x) || !isInt(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return;
+    if (!Number.isFinite(a.x) || !Number.isFinite(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return;
     if (decorAt(a.x, a.z) !== 'bed') { refuse(TEXT.noBed, actor); return; }
     const p = posOf(actor);
     if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z) || Math.hypot(p.x - a.x * 2, p.z - a.z * 2) > REACH) { refuse(TEXT.reach, actor); return; }

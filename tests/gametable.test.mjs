@@ -186,7 +186,7 @@ test('actions: start, turn, seat, stale, reach, missing, nocrew, busy, bad', () 
   assert.equal(act(st, { kind: 'gt.start', g: 'd', vs: 'easy', x: 2 }).reason, 'missing');
   assert.equal(act(st, { kind: 'gt.start', g: 'd', vs: 'easy' }, 'host', env({ pos: { x: 9, z: 0 } })).reason, 'reach');
   assert.equal(act(st, { kind: 'gt.start', g: 'd', vs: 'easy' }, 'host', env({ pos: null })).reason, 'reach');
-  assert.equal(act(st, { kind: 'gt.start', g: 'd', vs: 'easy', x: 1.5 }).reason, 'bad');
+  assert.equal(act(st, { kind: 'gt.start', g: 'd', vs: 'easy', x: NaN }).reason, 'bad'); // free placement: fractional x is a valid spot
   assert.equal(act(st, { kind: 'gt.start', g: 'd', vs: 'easy', x: 30 }).reason, 'bad');
   assert.equal(act(st, { kind: 'gt.fly', g: 'd' }).reason, 'bad');
   assert.equal(act(st, { kind: 'gt.start', g: 'd', vs: 'easy' }, 'ai').reason, 'bad');
