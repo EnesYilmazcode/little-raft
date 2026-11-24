@@ -397,11 +397,13 @@ export class PlayerPhysics {
   // Is moving from (this.x, this.z) to (this._nx, this._nz) allowed?
   _propOk(blocked) {
     const ox = this.x, oz = this.z, nx = this._nx, nz = this._nz;
-    const feet = this.y - C.EYE_OFFSET, head = this.y + C.HEAD, tol = this.grounded ? C.DECOR_STEP : C.PASS_TOL;
+    const feet = this.y - C.EYE_OFFSET, head = this.y + C.HEAD, step = this.grounded ? C.DECOR_STEP : C.PASS_TOL;
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
-      if (far(b, nx, nz) || !solidFor(b, feet, head, this._baseY, tol)) continue;
+      // Only a standable top is stepped onto (DECOR_STEP); a low lamp or candle stays solid until jumped over.
+      if (far(b, nx, nz)) continue;
+      if (!solidFor(b, feet, head, this._baseY, b.stand === true ? step : C.PASS_TOL)) continue;
       const gn = blockerGap(b, nx, nz);
       if (gn >= C.BODY_RADIUS) continue;
       const go = blockerGap(b, ox, oz);
