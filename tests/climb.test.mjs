@@ -65,9 +65,10 @@ test('decor colliders: every placeable type has a decided collider (standable bo
     const cs = DC.decorColliders({ type: t, x: 1, z: -1 }, RADII);
     if (DC.isFlatDecor(t)) { assert.equal(cs.length, 0, `${t}: flat, walk over`); continue; }
     assert.ok(cs.length >= 1, t);
+    assert.ok(cs.some(c => c.y0 === 0), `${t}: stands on the deck`);
     for (const c of cs) {
       assert.ok(Number.isFinite(c.top) && c.top > 0.1 && c.top < 4, `${t}: top ${c.top}`);
-      assert.equal(c.y0, 0, `${t}: stands on the deck`);
+      assert.ok(c.y0 >= 0 && c.y0 < c.top, `${t}: y0 ${c.y0} below its top`);
       assert.equal(typeof c.stand, 'boolean');
     }
   }

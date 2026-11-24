@@ -41,7 +41,7 @@ import { cleanWatering, copyWatering, plantStage, tick as tickWatering, tileKey,
 import { createPurifier, paintPurifier, preparePlanter, paintPlanter } from './purifier-model.js?build=v3-survival-ae77fa84ac2b';
 import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAIN_ACTIONS } from './rain.js?build=v3-survival-ae77fa84ac2b'; import { createRainBarrel, paintRainBarrel, createSprinkler, paintSprinkler } from './rain-model.js?build=v3-survival-ae77fa84ac2b'; // rain-sprinkler (docs/specs/rain-sprinkler.md)
 import { lootFits, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot, castHookGone } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
-import { decorColliders } from './decor-collision.js?build=v3-survival-ae77fa84ac2b'; // decor bodies with a height (stand on crates, tables, stations)
+import { decorColliders, followModels } from './decor-collision.js?build=v3-survival-ae77fa84ac2b'; // decor bodies with a height (stand on crates, tables, stations)
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
@@ -348,7 +348,7 @@ export function mount(transfer = null) {
   let viewZoom = 1; // [spyglass] content.zoom() this frame: FOV, look speed and camera motion divide by it
   const chargeMeter = $('#chargeMeter'); // thin ring around the crosshair, filled by --c
   let crossUsable = false, lastDraw = 0;
-  let blockList = [];
+  let blockList = [], decorFollow = []; // decorFollow: [colliders, model group, ...] (followModels)
   let controls = null; // controls lane: set in the Input section
   const debrisBank = {budget:0}; // [debris-budget] whole items allowed to respawn upstream
   let sailing = null; const scenery = [], sailFlow = {x:0, z:0, b:.22}, aimNdc = {x:0, y:0}; // [sailing]
@@ -664,7 +664,7 @@ export function mount(transfer = null) {
       if (d.type === 'crate') { box(.8, .8, .8, '#a97d4c', 0, .4, 0, g); }
       g.userData.tileKey = tileKey(d.x, d.z); decorGroups.push(g); raft.add(g); // [undecor] tag every decor
     }
-    blockList = world.decor.flatMap(d => decorColliders(d, BLOCK_RADIUS)); // 3D: blocks below its top, standable tops (host and guest alike)
+    blockList = []; decorFollow = []; world.decor.forEach((d, i) => { const cs = decorColliders(d, BLOCK_RADIUS, 2, world.tiles), g = decorGroups[i]; blockList.push(...cs); if (cs.length && g && g.position.x === d.x * 2 && g.position.z === d.z * 2) decorFollow.push(cs, g); }); // 3D: blocks below its top, standable tops (host and guest alike); colliders turn with their model
     netView?.sync(world.nets); // [nets]
     building?.sync(world); // building-pieces lane hook
     content?.afterRebuild(); // content hook (paint): re-tint the new deck planks
@@ -1651,6 +1651,7 @@ export function mount(transfer = null) {
     // Real frame time in equal substeps (<= .05 s) so walking speed holds at low fps. Jump stays held on every
     // substep: PlayerPhysics fires the impulse only on the press edge, i.e. the first substep, never again.
     let ev = null;
+    followModels(decorFollow); // decor colliders follow model turns (sail to the wind, decor-pack turns, fish trap facing the water)
     if (!dive && !ride) for (let i = 0; i < steps.n; i++) { // [zipline] [sit] && !ride
       const e = physics.update(steps.step, {forward:fwd, strafe:side, yaw, jump:ci ? ci.jump : input && held('Space'), sprint:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'),
         tiles:surf ? surf.tiles : world.tiles, deckY:surf ? surf.deckY : deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList, baseY:deckY(), ledge:building?.grid ?? null}); // baseY: decor stands on the deck; ledge: clamber probe

@@ -124,7 +124,8 @@ PROBE_JS = r"""
     if (!ok && this === P.phys && P.rec) {
       for (const b of blocked) { if (!b || !Number.isFinite(b.x)) continue; const gn = PP.blockerGap(b, this._nx, this._nz), go = PP.blockerGap(b, this.x, this.z);
         const feet = this.y - EYE, top = Number.isFinite(b.top) ? this._baseY + b.top : Infinity, C = PP.PLAYER_CONSTANTS;
-        if (feet >= top - (this.grounded ? (C.DECOR_STEP ?? 0) : (C.PASS_TOL ?? 0))) continue;
+        if (feet >= top - (this.grounded && b.stand ? (C.DECOR_STEP ?? 0) : (C.PASS_TOL ?? 0))) continue;
+        if (Number.isFinite(b.y0) && this.y + C.HEAD <= this._baseY + b.y0) continue;
         if (gn < R && !(go < R && gn > go)) { ev('decorBlock', {b:Number.isFinite(b.hx) ? {x:b.x, z:b.z, hx:b.hx, hz:b.hz, rot:b.rot, top:b.top} : {x:b.x, z:b.z, r:b.r, top:b.top}}); break; } }
     }
     return ok;
@@ -444,6 +445,7 @@ def penetration(o, s):
         top = b.get('top')
         for r in s:
             if top is not None and r[1] >= top - 0.06: continue
+            if (b.get('y0') or 0) > 0 and r[1] + 1.75 <= b['y0']: continue  # a raised part (glass box, boom) above the head
             worst = max(worst, 0.25 - gap(b, r[0], r[2]))
     return round(worst, 3)
 
