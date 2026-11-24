@@ -1,0 +1,64 @@
+// Little Raft - removal hints owned by building.js: a corner key-cap hint while a removal tool is held
+// ("[X] Remove" with the hammer, "[Hold click] Dismantle" with the axe) and a thin fill ring around the crosshair
+// while the axe takes a piece apart. DOM writes only happen when the shown state changes, never per frame.
+const STYLE_ID = 'build-hint-css';
+const CSS = `
+.bh-hint{position:fixed;right:16px;bottom:24px;z-index:3;display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none;
+  font:600 13px/1.2 var(--ui-font,system-ui,sans-serif);color:#f5e9ca;text-shadow:0 1px 2px #000a;transition:opacity .15s}
+.bh-hint[hidden]{display:none}
+.bh-row{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 6px;border-radius:8px;background:#1d140ccc;box-shadow:inset 0 0 0 1px #d4b07a33}
+.bh-key{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 6px;box-sizing:border-box;border-radius:6px;
+  font:800 13px/1 var(--ui-font,system-ui,sans-serif);color:#2a1c0e;background:linear-gradient(#fff3d6,#e8cf9c);
+  box-shadow:0 2px 0 #8a6a3c,0 3px 4px #0006}
+.bh-key.bh-wide{font-size:11px;letter-spacing:.2px}
+.bh-hint.bh-on .bh-key{color:#fff;background:linear-gradient(#ff7b6b,#d8402f);box-shadow:0 1px 0 #7c1d12,0 2px 3px #0006;transform:translateY(1px)}
+.bh-why{max-width:260px;padding:3px 8px;border-radius:6px;background:#3a0f0acc;color:#ffd3c9;font-weight:500;font-size:12px}
+.bh-why:empty{display:none}
+.bh-ring{position:fixed;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;pointer-events:none;z-index:4;
+  background:conic-gradient(#ff6b57 calc(var(--p,0) * 360deg),#ffffff33 0);
+  -webkit-mask:radial-gradient(closest-side,transparent calc(100% - 3.5px),#000 calc(100% - 3px));mask:radial-gradient(closest-side,transparent calc(100% - 3.5px),#000 calc(100% - 3px))}
+.bh-ring[hidden]{display:none}
+@media(max-width:760px){.bh-hint{bottom:auto;top:132px;right:10px;font-size:12px}}
+body.bm-wheel-up .bh-hint{opacity:0}
+`;
+
+// mode: '' (hidden) | 'hammer' | 'removing' (X held) | 'axe' | 'chopping'
+const ROWS = {
+  hammer:['X', 'Remove', false], removing:['X', 'Release to remove', false],
+  axe:['Hold click', 'Dismantle', true], chopping:['Hold click', 'Dismantle', true],
+};
+
+export function createBuildHint(root = document.body) {
+  if (!document.getElementById(STYLE_ID)) {
+    const st = document.createElement('style'); st.id = STYLE_ID; st.textContent = CSS; document.head.appendChild(st);
+  }
+  const box = document.createElement('div');
+  box.className = 'bh-hint'; box.hidden = true; box.setAttribute('aria-hidden', 'true');
+  box.innerHTML = '<div class="bh-why"></div><div class="bh-row"><span class="bh-key"></span><span class="bh-label"></span></div>';
+  const key = box.querySelector('.bh-key'), label = box.querySelector('.bh-label'), whyEl = box.querySelector('.bh-why');
+  const ring = document.createElement('div'); ring.className = 'bh-ring'; ring.hidden = true;
+  root.appendChild(box); root.appendChild(ring);
+  let mode = '', why = '', ringP = -1;
+
+  return {
+    // Cheap to call every frame: compares, then touches the DOM only on change.
+    set(m, reason = '') {
+      m = Object.hasOwn(ROWS, m) ? m : '';
+      reason = m === 'removing' || m === 'chopping' ? String(reason || '') : '';
+      if (m !== mode) {
+        mode = m; box.hidden = !m;
+        if (m) { const [k, l, wide] = ROWS[m]; key.textContent = k; key.classList.toggle('bh-wide', wide); label.textContent = l; box.classList.toggle('bh-on', m === 'removing' || m === 'chopping'); }
+      }
+      if (reason !== why) { why = reason; whyEl.textContent = reason; }
+    },
+    // p in [0, 1] shows the ring; a negative p hides it. Quantised so the style is written at most ~40 times per fill.
+    ring(p) {
+      const q = p < 0 ? -1 : Math.round(Math.min(1, p) * 40) / 40;
+      if (q === ringP) return;
+      ringP = q; ring.hidden = q < 0;
+      if (q >= 0) ring.style.setProperty('--p', q);
+    },
+    get mode() { return mode; },
+    dispose() { box.remove(); ring.remove(); },
+  };
+}
