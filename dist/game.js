@@ -1126,7 +1126,7 @@ export function mount(transfer = null) {
     if (why && !BLOCK_TEXT[why]) return null;
     if (!why && !inReach(physics.x, physics.z, x, z)) why = 'reach';
     if (!why && kind !== 'hammer') { // never drop a prop on a player
-      const inWay = playerInWay(decorBlockers({type:kind, x, z, rot:placeRot}, BLOCK_RADIUS), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS + .05);
+      const inWay = playerInWay(decorColliders({type:kind, x, z, rot:placeRot}, BLOCK_RADIUS, 2, world.tiles), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS + .05); // the bodies physics will collide with (height ignored)
       if (inWay >= 0) why = inWay === 0 ? 'self' : 'brother';
     }
     placed.x = x; placed.z = z; placed.blocked = why || null; return placed;
@@ -1345,7 +1345,7 @@ export function mount(transfer = null) {
         if (GRID_DECOR.includes(a.recipe) && (!isInt(a.x) || !isInt(a.z))) return; // animal homes stay on tile centres
         const [px, pz] = cleanDecorPos(a.x, a.z), spot = {type:a.recipe, x:px, z:pz, rot:Number.isFinite(a.rot) ? a.rot : 0}, why = freeWhy(spot, false); // free placement: footprint on deck, clear of decor, grills, walls and pillars (old guests send tile centres, which pass the same test)
         if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
-        const inWay = playerInWay(decorBlockers({type:a.recipe, x:a.x, z:a.z, rot:a.rot}, BLOCK_RADIUS), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS); // host pose, guest pose
+        const inWay = playerInWay(decorColliders({type:a.recipe, x:a.x, z:a.z, rot:a.rot}, BLOCK_RADIUS, 2, world.tiles), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS); // host pose, guest pose; the bodies physics will collide with (height ignored)
         if (inWay >= 0) { emit({kind:'notice', text:BLOCK_TEXT[(inWay === 0) === (actor === 'host') ? 'self' : 'brother']}, actor); return; }
         { const eb = content?.placeBlock(a.recipe, Math.round(px), Math.round(pz)); if (eb) { emit({kind:'notice', text:BLOCK_TEXT[eb] ?? 'Can’t place that here'}, actor); return; } } // [fishtrap]
         if (a.recipe === 'receiver' && world.decor.some(d => d.type === 'receiver')) { emit({kind:'notice', text:'Your raft already has a receiver'}, actor); return; }
