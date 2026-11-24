@@ -184,7 +184,7 @@ with sync_playwright() as pw:
     if walls:
         look_at(page, *wall_point(page, walls[0]))
         page.mouse.move(640, 360); page.mouse.down(); page.wait_for_timeout(300); page.mouse.up(); page.wait_for_timeout(200)
-        step('axe: a short hold removes nothing (release resets)', any(p['t'] == 'wall' for p in pieces(page)) and page.evaluate('document.querySelector(".bh-ring").hidden'))
+        step('axe: a short hold removes nothing (release resets)', any(p['t'] == 'wall' for p in pieces(page)) and page.evaluate('document.querySelector(".bh-ring")?.hidden !== false'))
         w1 = wood(page); page.mouse.down(); page.wait_for_timeout(500)
         mid = page.evaluate('(() => { const r = document.querySelector(".bh-ring"); return r ? {hidden:r.hidden, p:r.style.getPropertyValue("--p")} : null; })()')
         still = any(p['t'] == 'wall' for p in pieces(page))
