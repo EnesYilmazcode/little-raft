@@ -4,14 +4,14 @@
 const STYLE_ID = 'build-hint-css';
 const CSS = `
 .bh-hint{position:fixed;right:16px;bottom:24px;z-index:3;display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none;
-  font:600 13px/1.2 var(--ui-font,system-ui,sans-serif);color:#f5e9ca;text-shadow:0 1px 2px #000a;transition:opacity .15s}
+  font:600 13px/1.2 var(--ui-font,system-ui,sans-serif);color:#fff;text-shadow:0 1px 2px #000a;transition:opacity .15s}
 .bh-hint[hidden]{display:none}
-.bh-row{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 6px;border-radius:8px;background:#1d140ccc;box-shadow:inset 0 0 0 1px #d4b07a33}
+.bh-row{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 6px;border-radius:8px;background:rgba(0,0,0,.5);box-shadow:0 0 0 1px rgba(255,255,255,.16)}
 .bh-key{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 6px;box-sizing:border-box;border-radius:6px;
-  font:800 13px/1 var(--ui-font,system-ui,sans-serif);color:#2a1c0e;background:linear-gradient(#fff3d6,#e8cf9c);
-  box-shadow:0 2px 0 #8a6a3c,0 3px 4px #0006}
+  font:700 13px/1 var(--ui-font,system-ui,sans-serif);color:#fff;background:rgba(0,0,0,.3);text-shadow:none;
+  border:1px solid rgba(255,255,255,.85);border-bottom-width:2px;box-shadow:0 1px 3px rgba(0,0,0,.35)}
 .bh-key.bh-wide{font-size:11px;letter-spacing:.2px}
-.bh-hint.bh-on .bh-key{color:#fff;background:linear-gradient(#ff7b6b,#d8402f);box-shadow:0 1px 0 #7c1d12,0 2px 3px #0006;transform:translateY(1px)}
+.bh-hint.bh-on .bh-key{color:#fff;background:#d8402f;border-color:#ffb3a6;box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translateY(1px)}
 .bh-why{max-width:260px;padding:3px 8px;border-radius:6px;background:#3a0f0acc;color:#ffd3c9;font-weight:500;font-size:12px}
 .bh-why:empty{display:none}
 .bh-ring{position:fixed;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;pointer-events:none;z-index:4;
