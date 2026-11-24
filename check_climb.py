@@ -508,7 +508,7 @@ def shoot(b, report):
     decor = [{'type': 'crate', 'x': -1.4, 'z': 0}, {'type': 'maptable', 'x': 1.4, 'z': 0}]
     pieces = [{'t': 'wall', 'i': 0, 'j': -1, 'l': 0, 'r': 0}, {'t': 'wall', 'i': -1, 'j': -1, 'l': 0, 'r': 0}, {'t': 'wall', 'i': 1, 'j': -1, 'l': 0, 'r': 0}]
     save = {'tiles': tiles, 'decor': decor, 'pieces': pieces, 'stock': {}, 'fish': 0, 'collected': 1,
-            'hostInventory': {'slots': inv + [None] * 23, 'selected': 0}}
+            'hostInventory': {'slots': inv + [None] * 23, 'selected': 0 if args.shot_prefix == 'before-' else 5}}  # after: an empty hand (no throw prompt under the crosshair)
     ctx = b.new_context(viewport={'width': 1536, 'height': 864})
     if args.shot_prefix != 'before-': ctx.add_init_script(VCLOCK_JS)
     ctx.add_init_script('localStorage.setItem("little-raft-v1",%s);localStorage.setItem("little-raft-hints",%s);window.__BASE_DECOR=[];'
@@ -535,9 +535,9 @@ def shoot_after(page, report):
     page.evaluate('__vt.start()')
     views = [  # name, start x, z, yaw, until feet / freeze progress, view pitch, view yaw
         ('wall', 0.0, -2.62, 0.0, {'until': 2.0}, -0.55, 0.9),
-        ('chest', -2.8, 0.75, 0.0, {'until': 0.6}, -0.6, 0.35),
-        ('table', 2.8, 0.75, 0.0, {'until': 0.6}, -0.6, -0.35),
-        ('clamber', -1.2, -2.62, 0.0, {'freeze': 0.45}, None, None),
+        ('chest', -2.8, 0.75, 0.0, {'until': 0.6}, -0.95, 0.8),  # looking down past the feet at the crate top, away from the wall
+        ('table', 2.8, 0.75, 0.0, {'until': 0.6}, -0.95, -0.8),
+        ('clamber', -1.2, -2.62, 0.0, {'freeze': 0.12}, -1.1, 0.0),  # frozen mid pull-up, looking at the wall top
     ]
     for name, x, z, yaw, auto, pitch, vyaw in views:
         page.evaluate(f'__vt.step = 50; __P.start({x}, {z}, {yaw}); raftDebug.aim(-0.1, {yaw})')
@@ -548,7 +548,7 @@ def shoot_after(page, report):
         page.wait_for_function('__P.auto === null', polling=100, timeout=300000)
         page.keyboard.up('KeyW')
         if pitch is not None:
-            wait_frames(page, 4)
+            if 'freeze' not in auto: wait_frames(page, 4)  # a frozen clock steps no physics frames
             page.evaluate(f'raftDebug.aim({pitch}, {vyaw})')
         page.wait_for_timeout(1500)
         p = page.evaluate('({feet:+(__P.phys.y - 1.6 - __P.deckY).toFixed(3), grounded:__P.phys.grounded, climbing:__P.phys.climbing})')
@@ -556,6 +556,13 @@ def shoot_after(page, report):
         report['shots'].append({'file': os.path.relpath(path, ROOT), **p})
         print('  shot', name, p, flush=True)
     page.evaluate('__vt.step = 50')
+    # On the deck one tile (2 m) back from the full wall line (z = -3), facing it, eyes level (same spot as before-wall).
+    page.evaluate('__P.start(0.0, -1.0, 0.0); raftDebug.aim(-0.05, 0.0)')
+    page.wait_for_timeout(1500)
+    p = page.evaluate('({feet:+(__P.phys.y - 1.6 - __P.deckY).toFixed(3), grounded:__P.phys.grounded, climbing:__P.phys.climbing})')
+    path = shots_dir / f'{args.shot_prefix}nextwall.png'; page.screenshot(path=str(path))
+    report['shots'].append({'file': os.path.relpath(path, ROOT), **p})
+    print('  shot nextwall', p, flush=True)
 
 def write(report):
     objs = report['objects']
