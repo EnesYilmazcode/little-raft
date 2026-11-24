@@ -282,3 +282,33 @@ test('no Pim or barge in player-facing strings', () => {
   }
   for (const d of POOL) assert.ok(!/Pim/.test(JSON.stringify(d)));
 });
+
+test('late pool rows (titanium) leave older seeds alone: same rows, same shuffles, same indices', () => {
+  // POOL as of origin/claude/raft-feedback-all, before titanium: rows are append-only.
+  const OLD = ['fish', 'ore', 'plan', 'egg', 'feather', 'brick', 'glass', 'grill', 'copper', 'seeds', 'clay'];
+  assert.deepEqual(POOL.slice(0, OLD.length).map(d => d.id), OLD);
+  assert.ok(POOL.slice(OLD.length).every(d => d.late || d.rare), 'new rows go after the old ones and are late');
+  // offers pinned from origin/claude/raft-feedback-all
+  const pinned = {
+    1: ['fish', 'ore', 'plan', 'clay', 'brick', 'seeds'],
+    7: ['fish', 'ore', 'plan', 'copper', 'clay', 'float'],
+    42: ['fish', 'ore', 'plan', 'clay', 'feather', 'seeds'],
+    1234: ['fish', 'ore', 'plan', 'brick', 'feather', 'float'],
+    99999: ['fish', 'ore', 'plan', 'glass', 'feather', 'brick'],
+  };
+  for (const s in pinned) assert.deepEqual(offersFor(+s).map(o => o.id), pinned[s], `seed ${s}`);
+  // Without late rows the pool is exactly the old one; with them, at most the last pool slot becomes titanium.
+  const legacy = POOL.filter(d => !d.late);
+  let ti = 0;
+  for (let s = 0; s < 2000; s++) {
+    const a = offersFor(s, has, legacy).map(o => o.id), b = offersFor(s, has).map(o => o.id);
+    assert.equal(a.length, b.length);
+    const diff = a.map((x, i) => (x !== b[i] ? i : -1)).filter(i => i >= 0);
+    if (!diff.length) continue;
+    ti++;
+    assert.equal(diff.length, 1, `seed ${s}`);
+    assert.equal(b[diff[0]], 'titanium');
+    assert.equal(diff[0], b.length - 1 - (b.includes('float') ? 1 : 0), 'titanium only takes the last pool slot');
+  }
+  assert.ok(ti > 400 && ti < 800, `titanium on ${ti} of 2000 visits`);
+});

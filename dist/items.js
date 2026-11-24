@@ -566,7 +566,9 @@ export const BARREL_LOOT = deepFreeze([
   { kind: 'sand', min: 1, max: 1, weight: 12, pool: 'treasure' },
   { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
   { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },
-  { kind: 'titaniumore', min: 1, max: 1, weight: 2, pool: 'treasure' }, // rare, no pity: buried bundles and traders top it up
+  // rare, no pity: buried bundles and traders top it up. Inserting a row here is safe: barrels roll with
+  // Math.random (game.js), not a world seed, so no saved world has fixed barrel loot to keep.
+  { kind: 'titaniumore', min: 1, max: 1, weight: 2, pool: 'treasure' },
   { kind: 'flowerseed', min: 1, max: 1, weight: 6, pool: 'treasure' }, // [bees]
   { kind: 'beet', min: 1, max: 2, weight: 5, pool: 'treasure' }, // [crops] a new player can start farming
   { kind: 'potato', min: 1, max: 1, weight: 4, pool: 'treasure' }, // [crops]

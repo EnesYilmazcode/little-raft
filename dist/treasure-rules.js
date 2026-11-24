@@ -51,8 +51,12 @@ export function spotsFor(seed) {
 }
 
 // [kind, min, max, weight]: existing mid-game materials only (about one barrel's worth per island).
-const LOOT = [['rope', 2, 2, 3], ['nail', 3, 3, 3], ['glass', 1, 1, 2], ['copperore', 1, 2, 2], ['metalore', 1, 2, 2], ['clay', 2, 2, 2], ['seaweed', 2, 2, 2], ['titaniumore', 1, 1, 1]];
+const LOOT = [['rope', 2, 2, 3], ['nail', 3, 3, 3], ['glass', 1, 1, 2], ['copperore', 1, 2, 2], ['metalore', 1, 2, 2], ['clay', 2, 2, 2], ['seaweed', 2, 2, 2]];
 const LOOT_TOTAL = LOOT.reduce((s, e) => s + e[3], 0);
+// Kinds added later roll [kind, n, chance] on their own stream, after everything above, so older seeds keep
+// every pick they had and only gain the extra. Append only.
+const LOOT_EXTRA = [['titaniumore', 1, 0.1]];
+const EXTRA_K = 0x71AB0;
 // What a dug spot holds: [[kind, n], ...]. Deterministic per (seed, spot, kind). Same kinds add up.
 export function lootForSpot(seed, i, kind) {
   const r = rng(((seed >>> 0) ^ TREASURE.LOOT_K ^ Math.imul((i | 0) + 1, 0x9E3779B1)) >>> 0);
@@ -64,6 +68,8 @@ export function lootForSpot(seed, i, kind) {
     got.set(e[0], (got.get(e[0]) || 0) + n);
   }
   if (kind === 'keepsake') { const k = r() < 0.5 ? 'copperingot' : 'metalingot'; got.set(k, (got.get(k) || 0) + 1); }
+  const x = rng(((seed >>> 0) ^ EXTRA_K ^ Math.imul((i | 0) + 1, 0x85EBCA6B)) >>> 0);
+  for (const [k, n, p] of LOOT_EXTRA) if (x() < p) got.set(k, (got.get(k) || 0) + n);
   return [...got];
 }
 

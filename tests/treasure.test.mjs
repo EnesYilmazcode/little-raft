@@ -55,11 +55,28 @@ test('lootForSpot: deterministic, existing items, keepsakes add an ingot', () =>
   for (const seed of SEEDS.slice(0, 50)) for (const i of [0, 1]) for (const kind of ['bundle', 'keepsake']) {
     const a = lootForSpot(seed, i, kind);
     assert.deepEqual(a, lootForSpot(seed, i, kind));
-    assert.ok(a.length >= 1 && a.length <= 3);
+    assert.ok(a.length >= 1 && a.length <= 4); // 2 picks, the keepsake ingot, the extra titanium roll
     for (const [k, n] of a) { assert.ok(ITEMS[k], k); assert.ok(Number.isInteger(n) && n >= 1 && n <= 8); }
     const ingots = a.filter(([k]) => k === 'copperingot' || k === 'metalingot').length;
     assert.equal(ingots, kind === 'keepsake' ? 1 : 0);
   }
+});
+
+test('lootForSpot: titanium is an extra roll, so older seeds keep every pick they had', () => {
+  // pinned from origin/claude/raft-feedback-all (before titanium ore existed)
+  const pinned = [
+    [1, 0, 'bundle', [['nail', 3], ['clay', 2]]], [1, 1, 'keepsake', [['seaweed', 2], ['rope', 2], ['copperingot', 1]]],
+    [42, 0, 'bundle', [['clay', 2], ['glass', 1]]], [42, 1, 'keepsake', [['seaweed', 2], ['clay', 2], ['copperingot', 1]]],
+    [1234, 0, 'bundle', [['clay', 2], ['nail', 3]]], [1234, 1, 'keepsake', [['nail', 3], ['glass', 1], ['metalingot', 1]]],
+  ];
+  for (const [seed, i, kind, old] of pinned) {
+    const now = lootForSpot(seed, i, kind);
+    assert.deepEqual(now.slice(0, old.length), old, `${seed}/${i}`);
+    assert.ok(now.length === old.length || (now.length === old.length + 1 && now[old.length][0] === 'titaniumore'));
+  }
+  let ti = 0, n = 0;
+  for (let s = 0; s < 2000; s++) for (const i of [0, 1]) { n++; if (lootForSpot(s, i, 'bundle').some(([k]) => k === 'titaniumore')) ti++; }
+  assert.ok(ti > n * 0.06 && ti < n * 0.14, `titanium in ${ti} of ${n} spots`);
 });
 
 // ---------------------------------------------------------------- finder curve
