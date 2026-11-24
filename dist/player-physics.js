@@ -8,12 +8,14 @@ export const PLAYER_CONSTANTS = Object.freeze({
   WALK_SPEED: 2.6,
   SPRINT_SPEED: 4.3,
   SWIM_SPEED: 2.1,
-  // Jump: apex = JUMP_IMPULSE^2 / (2 * GRAVITY) = 2.445 m, a bit over one wall (building-pieces LEVEL_H 2.2 m),
-  // so a player can hop up onto a one-storey floor. Falling pulls harder than rising (snappy, ~0.9 s airtime).
-  JUMP_IMPULSE: 9.89,
+  // Jump: apex = JUMP_IMPULSE^2 / (2 * GRAVITY) = 1.37 m (Raft about 1.23 m): clears a railing (0.95), a half
+  // wall (1.1), chests, tables, beds and stations with margin. A full wall (2.2) or a one-storey floor edge is
+  // reached with the ledge clamber below (or from a chest beside it). Falling pulls harder than rising (snappy).
+  JUMP_IMPULSE: 7.4,
   GRAVITY: 20,               // rising (vy > 0)
   FALL_GRAVITY: 30,          // falling (vy <= 0)
   EYE_OFFSET: 1.6,
+  HEAD: 0.15,                // head top above the eye
   BODY_RADIUS: 0.25,
   TILE_SIZE: 2,
   MAX_DT: 0.05,
@@ -32,6 +34,18 @@ export const PLAYER_CONSTANTS = Object.freeze({
   CLAMBER_REACH: 0.8,        // body edge distance to a tile
   CLAMBER_TIME: 0.42,
   CLAMBER_INSET: 0.45,
+  // Decor colliders (blockers with a height, dist/decor-collision.js)
+  DECOR_STEP: 0.3,           // a grounded body walks up onto a decor top this far above its feet (cushions)
+  LAND_TOL: 0.06,            // a falling body lands on a surface its feet just dipped below (out of water)
+  PASS_TOL: 0.04,            // an airborne body passes over a decor top its feet are this close below
+  DROP: 0.35,                // grounded feet this far above the surface: walked off a raised top, fall
+  SURF_MARGIN: 0.15,         // body centre may hang this far past a decor top and still stand
+  // Ledge clamber: airborne after a jump, pushing forward, near the apex, hands reach a ledge in front.
+  LEDGE_REACH: 1.3,          // m, ledge top above the feet the hands can still pull the body onto
+  LEDGE_VY: 2.5,             // m/s, only once the rise has slowed to this (near the apex) or while falling
+  LEDGE_FORWARD: 0.25,       // forward input needed (walking past a wall with strafe never grabs it)
+  LEDGE_TIME: 0.34,          // s, pull-up time for a small step; + LEDGE_TIME_M per metre of rise (<= 0.5 s)
+  LEDGE_TIME_M: 0.12,
   // A jump press this long before landing still jumps on landing (s).
   JUMP_BUFFER: 0.12,
   // Walked off a ledge this recently (s): a jump press still jumps and steering stays grounded.
@@ -67,6 +81,11 @@ const isTile = t => Array.isArray(t) && Number.isFinite(t[0]) && Number.isFinite
 // Math.hypot is a varargs builtin that V8 does not lower: it allocates on every call.
 const len2 = (x, z) => Math.sqrt(x * x + z * z);
 const NONE = Object.freeze([]); // shared stand-in for missing tiles/blocked arrays
+const isTop = t => !!t && typeof t === 'object' && !Array.isArray(t) && Number.isFinite(t.x) && Number.isFinite(t.z);
+// Is blocker b (optionally with a height: y0 / top above baseY, see dist/decor-collision.js) solid for a body whose
+// feet are at `feet`? Above its top less `tol` the body passes over it; a blocker without a top is a full column.
+const solidFor = (b, feet, head, baseY, tol) =>
+  !Number.isFinite(b.top) || (feet < baseY + b.top - tol && head > baseY + fin(b.y0, 0));
 
 export class PlayerPhysics {
   constructor({x = 0, y = 1.8, z = 1.2, vx = 0, vy = 0, vz = 0, swimming = false} = {}) {
@@ -80,6 +99,9 @@ export class PlayerPhysics {
     this._prevJump = false;
     this._jumpBuffer = 0;
     this._coyote = 0; // s left to still jump after walking off a ledge
+    this._jumped = false; // airborne because of a jump (the ledge clamber only grabs then)
+    this._baseY = 0.2; this._surfY = 0; this._surfOne = [null]; // decor top chosen this update (see _decorSurface)
+    this.decorTop = NaN;
     // Reused result of _nearest() (consumed immediately by its callers; never escapes).
     this._dt = 0.01; this._deckY = 0.2; this._nx = 0.5; this._nz = 0.5; // per-update scratch (see _moveHorizontal)
     this._near = {tx: 0, tz: 0, px: 0.5, pz: 0.5, cx: 0.5, cz: 0.5, dist: 0.5};
@@ -94,7 +116,7 @@ export class PlayerPhysics {
       grounded: this.grounded, swimming: this.swimming,
       verticalSpeed: this.verticalSpeed,
       climbing: this.climbing,
-      climbProgress: this._climb ? clamp(this._climb.t / C.CLAMBER_TIME, 0, 1) : 0,
+      climbProgress: this._climb ? clamp(this._climb.t / (this._climb.dur || C.CLAMBER_TIME), 0, 1) : 0,
     };
   }
 
@@ -110,9 +132,11 @@ export class PlayerPhysics {
     const yaw = fin(inp.yaw, 0);
     const jump = !!inp.jump;
     const sprint = !!inp.sprint;
-    const tiles = Array.isArray(inp.tiles) ? inp.tiles : NONE;
+    let tiles = Array.isArray(inp.tiles) ? inp.tiles : NONE;
     const blocked = Array.isArray(inp.blocked) ? inp.blocked : NONE;
-    const deckY = fin(inp.deckY, 0.2);
+    let deckY = fin(inp.deckY, 0.2);
+    // baseY: the raft deck plane decor stands on (deckY may be a raised floor the build grid found under the feet).
+    this._baseY = fin(inp.baseY, deckY);
     // Per-update scalars for helpers read from fields: double args to non-inlined calls get boxed.
     this._dt = dt; this._deckY = deckY;
     const waterY = fin(inp.waterY, -0.24);
@@ -122,6 +146,11 @@ export class PlayerPhysics {
     if (this._coyote > 0) this._coyote = Math.max(0, this._coyote - dt);
 
     this._sanitize(tiles);
+
+    // A standable decor top (crate, table, bed, station) above the surface the caller found: stand on it instead.
+    if (blocked.length && !this.swimming && !this._climb && this._decorSurface(blocked, deckY)) {
+      deckY = this._deckY = this._surfY; tiles = this._surfOne;
+    }
 
     if (this._fresh) {
       this._fresh = false;
@@ -181,9 +210,9 @@ export class PlayerPhysics {
 
     // ---- Vertical ----
     if (this.grounded) {
-      if (this._supported(tiles)) {
-        this.y = deckY + C.EYE_OFFSET; this.vy = 0;
-        if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this.grounded = false; }
+      if (this._supported(tiles) && this.y - C.EYE_OFFSET - deckY <= C.DROP) { // DROP: walked off a raised top
+        this.y = deckY + C.EYE_OFFSET; this.vy = 0; this._jumped = false;
+        if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this.grounded = false; this._jumped = true; }
       } else {
         this.grounded = false; // walked off the edge
         this._coyote = C.COYOTE;
@@ -193,7 +222,7 @@ export class PlayerPhysics {
 
     if (!this.grounded) {
       if (this._coyote > 0 && this._jumpBuffer > 0 && !this.swimming) { // just walked off: the jump still counts
-        this._coyote = 0; this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump;
+        this._coyote = 0; this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this._jumped = true;
       }
       const prevFeet = this.y - C.EYE_OFFSET;
       if (this.swimming) {
@@ -208,18 +237,28 @@ export class PlayerPhysics {
       } else this._fall();
       const feet = this.y - C.EYE_OFFSET;
 
-      // Land on deck only when falling and feet cross the deck plane over a tile.
-      if (this.vy <= 0 && prevFeet >= deckY - 0.02 && feet <= deckY && this._supported(tiles)) {
-        this.y = deckY + C.EYE_OFFSET; this.vy = 0; this.grounded = true; out.landed = true; this._coyote = 0;
+      // Land only when falling and feet cross the surface plane over its footprint. Out of the water the feet may
+      // have dipped LAND_TOL under it (a top they passed over at PASS_TOL): they are lifted onto it.
+      if (this.vy <= 0 && prevFeet >= deckY - (this.swimming ? 0.02 : C.LAND_TOL) && feet <= deckY && this._supported(tiles)) {
+        this.y = deckY + C.EYE_OFFSET; this.vy = 0; this.grounded = true; out.landed = true; this._coyote = 0; this._jumped = false;
         if (this.swimming) { this.swimming = false; out.leftWater = true; }
-        if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this.grounded = false; } // buffered jump
+        if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this.grounded = false; this._jumped = true; } // buffered jump
       } else if (!this.swimming && feet < waterY + C.WATER_ENTER) {
-        this.swimming = true; out.splashed = true; this._coyote = 0;
+        this.swimming = true; out.splashed = true; this._coyote = 0; this._jumped = false;
         this.vy *= C.SPLASH_DAMP;
         this.vx *= 0.6; this.vz *= 0.6;
       } else if (this.swimming && feet > waterY + C.WATER_ENTER + C.WATER_EXIT_HYST) {
         this.swimming = false; out.leftWater = true;
       }
+    }
+
+    // ---- Coming down beside a decor top (not on it): slide off its side instead of sinking into it ----
+    if (!this.grounded && !this.swimming && blocked.length) this._pushOutProps(blocked);
+
+    // ---- Ledge clamber: jumped, pushing forward, a ledge within reach of the hands in front ----
+    if (this._jumped && !this.grounded && !this.swimming && !this._climb && forward > C.LEDGE_FORWARD && this.vy < C.LEDGE_VY) {
+      this._tryLedge(inp.ledge, blocked, yaw);
+      if (this._climb) { this.verticalSpeed = this.vy; return out; }
     }
 
     // ---- Friendly auto clamber: hold jump in water near the raft ----
@@ -230,6 +269,8 @@ export class PlayerPhysics {
 
     // ---- Safety: absurd distance from the raft ----
     this._safety(tiles);
+    // Feet height of the decor top stood on (NaN otherwise): BuildGrid.preStep must not call that a walk off its floors.
+    this.decorTop = this.grounded && tiles === this._surfOne ? deckY : NaN;
 
     this.verticalSpeed = this.vy;
     return out;
@@ -277,12 +318,14 @@ export class PlayerPhysics {
     }
   }
 
-  // Feet supported by any tile (footprint expanded by SUPPORT_MARGIN).
+  // Feet supported by any tile (footprint expanded by SUPPORT_MARGIN). An entry may also be a top shape: a
+  // blocker-style circle / rectangle {x, z, r | hx, hz, rot, m} (wall and pillar tops, decor tops), whose own
+  // margin m (default SURF_MARGIN) is how far the body centre may hang past it.
   _supported(tiles, x = this.x, z = this.z) {
     const h = HALF + C.SUPPORT_MARGIN;
     for (let i = 0; i < tiles.length; i++) {
       const t = tiles[i];
-      if (!isTile(t)) continue;
+      if (!isTile(t)) { if (isTop(t) && blockerGap(t, x, z) <= fin(t.m, C.SURF_MARGIN)) return true; continue; }
       if (Math.abs(x - t[0] * C.TILE_SIZE) <= h && Math.abs(z - t[1] * C.TILE_SIZE) <= h) return true;
     }
     return false;
@@ -292,7 +335,7 @@ export class PlayerPhysics {
     const h = HALF - 0.02;
     for (let i = 0; i < tiles.length; i++) {
       const t = tiles[i];
-      if (!isTile(t)) continue;
+      if (!isTile(t)) { if (isTop(t) && blockerGap(t, x, z) < -0.02) return true; continue; }
       if (Math.abs(x - t[0] * C.TILE_SIZE) < h && Math.abs(z - t[1] * C.TILE_SIZE) < h) return true;
     }
     return false;
@@ -352,9 +395,11 @@ export class PlayerPhysics {
   // Is moving from (this.x, this.z) to (this._nx, this._nz) allowed?
   _propOk(blocked) {
     const ox = this.x, oz = this.z, nx = this._nx, nz = this._nz;
+    const feet = this.y - C.EYE_OFFSET, head = this.y + C.HEAD, tol = this.grounded ? C.DECOR_STEP : C.PASS_TOL;
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
+      if (!solidFor(b, feet, head, this._baseY, tol)) continue;
       const gn = blockerGap(b, nx, nz);
       if (gn >= C.BODY_RADIUS) continue;
       const go = blockerGap(b, ox, oz);
@@ -364,14 +409,115 @@ export class PlayerPhysics {
     return true;
   }
 
-  _propFree(x, z, blocked) {
+  // Is the body circle at (x, z) clear of every blocker (feet: only those still solid at that height)?
+  _propFree(x, z, blocked, feet = -Infinity, r = C.BODY_RADIUS) {
+    const head = feet + C.EYE_OFFSET + C.HEAD;
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
-      if (blockerGap(b, x, z) < C.BODY_RADIUS) return false;
+      if (feet > -Infinity && !solidFor(b, feet, head, this._baseY, 0.02)) continue;
+      if (blockerGap(b, x, z) < r) return false;
     }
     return true;
   }
+
+  // Airborne body overlapping a decor collider with a height below its top (it came down past the top beside it, or
+  // over a lamp or post it cannot stand on): push the body circle out sideways and drop the velocity into it.
+  _pushOutProps(blocked) {
+    const R = C.BODY_RADIUS, feet = this.y - C.EYE_OFFSET, head = this.y + C.HEAD;
+    for (let i = 0; i < blocked.length; i++) {
+      const b = blocked[i];
+      if (!b || !Number.isFinite(b.top) || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
+      if (!solidFor(b, feet, head, this._baseY, C.PASS_TOL) || blockerGap(b, this.x, this.z) >= R) continue;
+      const dx = this.x - b.x, dz = this.z - b.z;
+      let nx, nz, ox, oz; // outward normal and the new offset from the blocker centre
+      if (!Number.isFinite(b.hx)) {
+        const d = len2(dx, dz); nx = d > 1e-6 ? dx / d : 1; nz = d > 1e-6 ? dz / d : 0;
+        const r = Math.max(0, fin(b.r, 0)) + R; ox = nx * r; oz = nz * r;
+      } else { // rectangle: local frame as in blockerGap
+        const rot = fin(b.rot, 0), c = Math.cos(rot), s = Math.sin(rot), hx = Math.max(0, b.hx), hz = Math.max(0, fin(b.hz, 0));
+        let lx = dx * c - dz * s, lz = dx * s + dz * c;
+        const px = clamp(lx, -hx, hx), pz = clamp(lz, -hz, hz), ex = lx - px, ez = lz - pz, e = len2(ex, ez);
+        let ux, uz;
+        if (e > 1e-6) { ux = ex / e; uz = ez / e; lx = px + ux * R; lz = pz + uz * R; }
+        else if (hx - Math.abs(lx) <= hz - Math.abs(lz)) { ux = lx < 0 ? -1 : 1; uz = 0; lx = ux * (hx + R); }
+        else { ux = 0; uz = lz < 0 ? -1 : 1; lz = uz * (hz + R); }
+        ox = lx * c + lz * s; oz = -lx * s + lz * c; nx = ux * c + uz * s; nz = -ux * s + uz * c;
+      }
+      this.x = b.x + ox; this.z = b.z + oz;
+      const vn = this.vx * nx + this.vz * nz;
+      if (vn < 0) { this.vx -= vn * nx; this.vz -= vn * nz; }
+    }
+  }
+
+  // Highest standable decor top the body can use now: at or just under the feet with the centre within its margin,
+  // or (grounded) a step of up to DECOR_STEP with the centre over it. Only tops above the caller's surface deckY.
+  // Sets this._surfY / this._surfOne[0] and returns true when one is found.
+  _decorSurface(blocked, deckY) {
+    const feet = this.y - C.EYE_OFFSET, up = this.grounded ? C.DECOR_STEP : C.LAND_TOL, base = this._baseY;
+    let best = -Infinity, bi = -1;
+    for (let i = 0; i < blocked.length; i++) {
+      const b = blocked[i];
+      if (!b || b.stand !== true || !Number.isFinite(b.top) || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
+      const top = base + b.top;
+      if (!(top > deckY + 1e-6) || top <= best || top > feet + up) continue;
+      const g = blockerGap(b, this.x, this.z);
+      if (g > (top > feet + 0.04 ? 0 : C.SURF_MARGIN)) continue; // stepping up: centre over the top
+      best = top; bi = i;
+    }
+    if (bi < 0) return false;
+    this._surfY = best; this._surfOne[0] = blocked[bi];
+    return true;
+  }
+
+  // Ledge clamber trigger. Probe in front of the body (facing yaw) for the highest walkable top within reach of the
+  // hands: ledge.ledgeAt (build pieces: floors, roofs, wall / half wall / railing / pillar tops) and standable decor.
+  // The landing spot needs room for the body (no solid between the top and head height there, ledge.clearAt and
+  // the decor list) and the column above the body must be open up to that head height, so a ceiling stops it.
+  _tryLedge(ledge, blocked, yaw) {
+    const R = C.BODY_RADIUS, feet = this.y - C.EYE_OFFSET, base = this._baseY;
+    const lo = feet + 0.05, hi = feet + C.LEDGE_REACH;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const L = ledge && typeof ledge.ledgeAt === 'function' ? ledge : null;
+    let top = -Infinity, d1 = 0;
+    for (let k = 0; k < 4 && top === -Infinity; k++) { // probe 0.07 .. 0.37 m past the body front
+      d1 = R + 0.07 + 0.1 * k;
+      top = this._ledgeAt(L, blocked, this.x + fx * d1, this.z + fz * d1, lo, hi, base);
+    }
+    if (top === -Infinity) return false;
+    // Stand well on it when it is deep enough (a floor, a crate), else on the thin top itself (wall, rail).
+    let d = d1 + 0.3;
+    const far = this._ledgeAt(L, blocked, this.x + fx * d, this.z + fz * d, top - 0.06, top + 0.06, base);
+    if (!(far > -Infinity)) d = d1;
+    const tx = this.x + fx * d, tz = this.z + fz * d, headTop = top + C.EYE_OFFSET + C.HEAD + 0.05;
+    const r = R - 0.04;
+    if (L && typeof L.clearAt === 'function' &&
+      (!L.clearAt(this.x, this.z, this.y + C.HEAD, headTop, base, r) || !L.clearAt(tx, tz, top + 0.03, headTop, base, r)
+       || !L.clearAt((this.x + tx) / 2, (this.z + tz) / 2, top + 0.03, headTop, base, r))) return false;
+    if (!this._propFree(tx, tz, blocked, top, r) || !this._propFree((this.x + tx) / 2, (this.z + tz) / 2, blocked, top, r)) return false;
+    const rise = top - feet;
+    this._climb = {t: 0, sx: this.x, sy: this.y, sz: this.z, tx, tz, ty: top + C.EYE_OFFSET,
+      dur: Math.min(0.5, C.LEDGE_TIME + C.LEDGE_TIME_M * Math.max(0, rise)), ledge: true};
+    this.climbing = true;
+    this.vx = this.vz = 0; this.vy = 0;
+    return true;
+  }
+
+  _ledgeAt(L, blocked, x, z, lo, hi, base) {
+    let top = L ? L.ledgeAt(x, z, lo, hi, base) : -Infinity;
+    if (!(top > -Infinity)) top = -Infinity;
+    for (let i = 0; i < blocked.length; i++) {
+      const b = blocked[i];
+      if (!b || b.stand !== true || !Number.isFinite(b.top) || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
+      const t = base + b.top;
+      if (t < lo || t > hi || t <= top) continue;
+      if (blockerGap(b, x, z) <= 0) top = t;
+    }
+    return top;
+  }
+
+  // Ledge clamber progress 0..1 (camera dip), or -1 when not pulling up onto a ledge.
+  ledgeProgress() { const c = this._climb; return c && c.ledge ? clamp(c.t / c.dur, 0, 1) : -1; }
 
   _beginClimb(n, deckY, blocked) {
     // Target: just inside the tile edge nearest to the swimmer.
@@ -399,21 +545,25 @@ export class PlayerPhysics {
     const dt = this._dt, deckY = this._deckY;
     const cl = this._climb;
     cl.t += dt;
-    const u = clamp(cl.t / C.CLAMBER_TIME, 0, 1);
-    const ty = deckY + C.EYE_OFFSET;
-    // Rise first (ease out), then roll forward over the edge (ease in-out), with a small arc.
-    const up = 1 - (1 - Math.min(1, u * 1.4)) ** 2;
-    const fwd = u * u * (3 - 2 * u);
+    const u = clamp(cl.t / (cl.dur || C.CLAMBER_TIME), 0, 1);
+    const ty = cl.ledge ? cl.ty : deckY + C.EYE_OFFSET;
+    // Rise first (ease out), then roll forward over the edge (ease in-out), with a small arc. A ledge pull-up
+    // gets the feet over the top before the body moves in (hands on the edge, then a knee over it).
+    let up, fwd;
+    if (cl.ledge) {
+      up = 1 - (1 - Math.min(1, u * 1.6)) ** 2;
+      const v = clamp((u - 0.3) / 0.7, 0, 1); fwd = v * v * (3 - 2 * v);
+    } else { up = 1 - (1 - Math.min(1, u * 1.4)) ** 2; fwd = u * u * (3 - 2 * u); }
     const prevY = this.y;
     this.x = cl.sx + (cl.tx - cl.sx) * fwd;
     this.z = cl.sz + (cl.tz - cl.sz) * fwd;
-    this.y = cl.sy + (ty - cl.sy) * up + Math.sin(u * Math.PI) * 0.12;
+    this.y = cl.sy + (ty - cl.sy) * up + Math.sin(u * Math.PI) * (cl.ledge ? 0.06 : 0.12);
     this.vy = (this.y - prevY) / dt;
     if (this.swimming && u > 0.35) { this.swimming = false; out.leftWater = true; }
     if (u >= 1) {
       this.x = cl.tx; this.z = cl.tz; this.y = ty;
       this.vx = this.vy = this.vz = 0;
-      this.grounded = true; this.climbing = false; this._climb = null;
+      this.grounded = true; this.climbing = false; this._climb = null; this._jumped = false;
       if (this.swimming) { this.swimming = false; out.leftWater = true; }
       out.landed = true;
     }

@@ -28,6 +28,7 @@ export const FEEL = Object.freeze({
   DIP_MIN: 0.04, DIP_MAX: 0.18,
   DIP_MIN_IMPACT: 1.0,    // m/s, softer landings give no dip
   DIP_OMEGA: 15,          // 1/s, dip peaks at 1/omega (~0.07s), ~90% recovered by ~0.35s after landing
+  CLAMBER_DIP: 0.09,      // m, eye dip at the middle of a ledge pull-up (PlayerPhysics.ledgeProgress)
   CLIMB_SPEED: 2,         // m/s on ladders
   LADDER_JUMP_VY: 3,      // m/s upward when jumping off a ladder
   LADDER_PUSH: 3,         // m/s along the ladder normal when jumping off
@@ -141,7 +142,8 @@ export class MoveFeel {
       if (this._dip.t * F.DIP_OMEGA > 12) this._dip = null;
     }
     this._lastVy = grounded ? 0 : vy;
-    const dip = this._dipValue();
+    // Ledge pull-up (clamber 0..1, -1 when not clambering): the view sinks a little as the arms take the weight.
+    const cl = fin(i.clamber, -1), dip = this._dipValue() - (cl >= 0 && cl <= 1 ? F.CLAMBER_DIP * Math.sin(Math.PI * cl) : 0);
 
     const half = Math.PI * this.phase;            // one full sway cycle per two footfalls
     const a = this.bobAmp * m;

@@ -41,6 +41,7 @@ import { cleanWatering, copyWatering, plantStage, tick as tickWatering, tileKey,
 import { createPurifier, paintPurifier, preparePlanter, paintPlanter } from './purifier-model.js?build=v3-survival-ae77fa84ac2b';
 import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAIN_ACTIONS } from './rain.js?build=v3-survival-ae77fa84ac2b'; import { createRainBarrel, paintRainBarrel, createSprinkler, paintSprinkler } from './rain-model.js?build=v3-survival-ae77fa84ac2b'; // rain-sprinkler (docs/specs/rain-sprinkler.md)
 import { lootFits, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot, castHookGone } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
+import { decorColliders } from './decor-collision.js?build=v3-survival-ae77fa84ac2b'; // decor bodies with a height (stand on crates, tables, stations)
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
@@ -663,7 +664,7 @@ export function mount(transfer = null) {
       if (d.type === 'crate') { box(.8, .8, .8, '#a97d4c', 0, .4, 0, g); }
       g.userData.tileKey = tileKey(d.x, d.z); decorGroups.push(g); raft.add(g); // [undecor] tag every decor
     }
-    blockList = world.decor.flatMap(d => decorBlockers(d, BLOCK_RADIUS));
+    blockList = world.decor.flatMap(d => decorColliders(d, BLOCK_RADIUS)); // 3D: blocks below its top, standable tops (host and guest alike)
     netView?.sync(world.nets); // [nets]
     building?.sync(world); // building-pieces lane hook
     content?.afterRebuild(); // content hook (paint): re-tint the new deck planks
@@ -1652,7 +1653,7 @@ export function mount(transfer = null) {
     let ev = null;
     if (!dive && !ride) for (let i = 0; i < steps.n; i++) { // [zipline] [sit] && !ride
       const e = physics.update(steps.step, {forward:fwd, strafe:side, yaw, jump:ci ? ci.jump : input && held('Space'), sprint:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'),
-        tiles:surf ? surf.tiles : world.tiles, deckY:surf ? surf.deckY : deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
+        tiles:surf ? surf.tiles : world.tiles, deckY:surf ? surf.deckY : deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList, baseY:deckY(), ledge:building?.grid ?? null}); // baseY: decor stands on the deck; ledge: clamber probe
       if (e) { if (!ev) ev = e; else for (const k in e) if (e[k] === true) ev[k] = true; } // keep one-shot flags (splashed, landed) from any substep
     }
     controls?.afterMove(laneDt, physics, ev); // controls lane: footstep bob, crouch, landing dip

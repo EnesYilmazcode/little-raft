@@ -89,7 +89,8 @@ export function createControls(g) {
     if (idle && physics.grounded && !physics.swimming) { const k = Math.exp(-STOP_BRAKE * Math.min(dt, .05)); physics.vx *= k; physics.vz *= k; }
     feel.setMotionScale(g.motion?.() ?? 1);
     fx = feel.step(dt, {speed:Math.hypot(physics.vx, physics.vz), grounded:physics.grounded, swimming:physics.swimming,
-      vy:physics.vy, landed:!!ev?.landed, crouch:input.crouching(), onLadder:feel.isOnLadder()});
+      vy:physics.vy, landed:!!ev?.landed, crouch:input.crouching(), onLadder:feel.isOnLadder(),
+      clamber:typeof physics.ledgeProgress === 'function' ? physics.ledgeProgress() : -1}); // ledge pull-up camera dip
     if (fx.footstep) emit('little-raft-footstep', {side:fx.stepSide, sprint:input.sprinting(), crouch:input.crouching()});
     return fx;
   }

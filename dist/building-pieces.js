@@ -35,11 +35,14 @@ export const STATEFUL = Object.freeze(Object.assign(Object.create(null), {hatch:
 // Railing/gate height, gate opening, open hatch leaf height, ladder box (u from the
 // cell centre along DIR[r], metres) and its half width.
 export const RAIL_H = 0.95, GATE_GAP = 1.2, LEAF_H = 1.0, LAD_IN = 0.86, LAD_OUT = 0.96, LAD_HALF = 0.45;
-// RAIL_GUARD: railing / gate collision height. It clears the highest jump (PlayerPhysics 2.445 m, x1.3225 with the
-// cookpot jump buff capped at x1.15 velocity) plus ~0.25 m of deck bob, so the solid box reaches far above the
-// visible rail. Where the storey above has a floor (or stairs) next to the edge, the box stops at LEVEL_H instead:
-// that floor is the ceiling for jumps below it, and players walking or jumping up there never touch the box.
-export const RAIL_GUARD = 3.5;
+// Railing / gate collision height: the visible rail (RAIL_H). Its top is a walkable surface like Raft's railings
+// (jump onto it, balance along it). RAIL_GUARD is kept for old imports; it equals RAIL_H now.
+export const RAIL_GUARD = RAIL_H;
+// Thin tops (walls, half walls, windows, door lintels, railings, closed gates, pillars) are walkable: the body
+// centre may hang TOP_M past the top's edge and still stand, so a 0.14 m wall top holds a 0.25 m radius body
+// until it really leaves it. SLAB_BAND: a rising head this close under a slab edge the body only partly overlaps
+// pushes the body out sideways instead of bumping (a jump beside a floor one storey up rises past the edge).
+const TOP_M = 0.2, SLAB_BAND = 0.3;
 const LEAF_T = 0.06, LAD_PIN = LAD_IN - BODY_R - 0.02;
 
 // Null-prototype lookups: `t in SLOT_OF` must not accept 'constructor' / '__proto__' / 'toString' from saves or guests.
@@ -101,6 +104,7 @@ export class BuildGrid {
     this._prevHead = Infinity; this._px = 0; this._pz = 0; this._pvy = 0;
     this._refused = null; this._rx = 0; this._rz = 0; this._rvy = 0;
     this._pre = {deckY: 0, tiles: this._tileArr};
+    this._tops = []; this._topN = 0; this._te = new Float64Array(4); this._surfArr = []; // thin top shapes handed to PlayerPhysics (reused)
     this._cl = null; this._climbing = false; this._lin = {forward: 0, jump: false, y: 0}; this._clTile = [0, 0]; this._clTiles = [this._clTile];
   }
 
@@ -294,7 +298,7 @@ export class BuildGrid {
         this._box(this._solid, this._solidN++, x - h, x + h, y0, y0 + LEVEL_H, z - h, z + h, 0);
       } else {
         const a = p.r, u = a ? cz - 1 : cx - 1, c = a ? cx - 1 : cz - 1, h = PIECES[p.t].height;
-        const guard = p.t === 'railing' || p.t === 'gate' ? this._railTop(p) : h;
+        const guard = h; // railing / gate: the visible rail height, so its top can be jumped onto
         this._box(this._pick, this._pickN++, u, u + 2, y0, y0 + h, c - WALL_HALF, c + WALL_HALF, a);
         if (p.t === 'gate' && p.o) {
           const side = (2 - GATE_GAP) / 2;
@@ -308,16 +312,6 @@ export class BuildGrid {
         } else this._box(this._solid, this._solidN++, u, u + 2, y0, y0 + guard, c - WALL_HALF, c + WALL_HALF, a);
       }
     }
-  }
-  // Railing / gate guard height: LEVEL_H when either cell beside the edge has a floor (not an open hatch) or stairs
-  // one storey up, else RAIL_GUARD.
-  _railTop(p) {
-    const l = p.l + 1, i2 = p.r ? p.i - 1 : p.i, j2 = p.r ? p.j : p.j - 1;
-    return this._covers(p.i, p.j, l) || this._covers(i2, j2, l) ? LEVEL_H : RAIL_GUARD;
-  }
-  _covers(i, j, l) {
-    const f = this._get(0, i, j, l, 0);
-    return !!(f && !(f.t === 'hatch' && f.o)) || this._get(1, i, j, l, 0) !== undefined;
   }
   // Box in a cell's local frame: u in [u0,u1] along (dx,dz) from the centre, |w| <= half across.
   _cellBox(arr, n, cx, cz, dx, dz, u0, u1, half, y0, y1) {
@@ -454,9 +448,98 @@ export class BuildGrid {
         if (keep) { const c = this._cells[n++]; c[0] = i; c[1] = j; }
       }
     }
+    // Thin tops: collected as shapes (this._tops) next to the cells, or the highest one counts as under the body.
+    const e = this._edgeTops(x, z, feet, deckY, collect ? lo : -Infinity, collect ? best + 1e-9 : limit, collect);
+    if (collect) return n;
+    if (e > top) top = e;
+    if (e > topIn) topIn = e;
     // Prefer the surface under the centre over a ledge-margin one when it is within DROP (no snap when
     // stepping from a floor down onto stairs); keep the margin surface over a real drop (ledge catch).
-    return collect ? n : topIn > -Infinity && top - topIn <= DROP ? topIn : top;
+    return topIn > -Infinity && top - topIn <= DROP ? topIn : top;
+  }
+
+  // Edge piece or pillar k (0-2: edges along x, 3-5: along z, 6: the pillar corner) of level l near the cells
+  // (ei, ej) / corner (ki, kj). Fills this._te = [cx, cz, hx, hz] and returns the record (or undefined).
+  _thin(k, l, ei, ej, ki, kj) {
+    const te = this._te;
+    if (k < 3) { te[0] = 2 * (ei - 1 + k); te[1] = 2 * kj - 1; te[2] = 1; te[3] = WALL_HALF; return this._get(2, ei - 1 + k, kj, l, 0); }
+    if (k < 6) { te[0] = 2 * ki - 1; te[1] = 2 * (ej - 4 + k); te[2] = WALL_HALF; te[3] = 1; return this._get(2, ki, ej - 4 + k, l, 1); }
+    te[0] = 2 * ki - 1; te[1] = 2 * kj - 1; te[2] = te[3] = PILLAR_HALF; return this._get(3, ki, kj, l, 0);
+  }
+
+  // Tops of edge pieces and pillars near (x, z) with heights in [lo, hi] the body can stand on now: at or just
+  // under the feet (PlayerPhysics LAND_TOL) with the centre within TOP_M of the top, or a grounded step up of up
+  // to STEP_UP with the centre over it. collect: store each as a {x, z, hx, hz, rot, m} shape in this._tops
+  // (this._topN of them) and return the count; else return the highest height (or -Infinity).
+  _edgeTops(x, z, feet, deckY, lo, hi, collect) {
+    let best = -Infinity;
+    this._topN = 0;
+    const ei = Math.round(x / 2), ej = Math.round(z / 2), ki = Math.round((x + 1) / 2), kj = Math.round((z + 1) / 2), te = this._te;
+    for (let l = 0; l <= MAX_L; l++) {
+      const base = deckY + l * LEVEL_H;
+      if (base + 0.9 > hi) break;
+      for (let k = 0; k < 7; k++) {
+        const p = this._thin(k, l, ei, ej, ki, kj);
+        if (!p || (p.t === 'gate' && p.o)) continue;
+        const h = base + PIECES[p.t].height;
+        if (h < lo || h > hi || (!collect && h <= best)) continue;
+        const dx = Math.max(0, Math.abs(x - te[0]) - te[2]), dz = Math.max(0, Math.abs(z - te[1]) - te[3]), d2 = dx * dx + dz * dz;
+        if (!((h <= feet + 0.06 && d2 <= TOP_M * TOP_M) || (d2 === 0 && h <= feet + STEP_UP && this._grounded))) continue;
+        if (!collect) { best = h; continue; }
+        let t = this._tops[this._topN];
+        if (!t) this._tops.push(t = {x: 0, z: 0, hx: 0, hz: 0, rot: 0, m: TOP_M});
+        t.x = te[0]; t.z = te[1]; t.hx = te[2]; t.hz = te[3]; this._topN++;
+      }
+    }
+    return collect ? this._topN : best;
+  }
+
+  // Ledge clamber probe (PlayerPhysics._tryLedge): the highest walkable piece surface at the point (x, z) with a
+  // height in [lo, hi]: floors, closed hatches, stairs and roofs (their height at the point) and thin tops (the
+  // point within 3 cm of the top). -Infinity if none. The deck itself is never a ledge.
+  ledgeAt(x, z, lo, hi, deckY) {
+    if (!Number.isFinite(x) || !Number.isFinite(z) || !(hi >= lo)) return -Infinity;
+    let best = -Infinity;
+    const i = Math.round(x / 2), j = Math.round(z / 2), ux = x - 2 * i, uz = z - 2 * j;
+    for (let l = 0; l <= MAX_L; l++) {
+      const y = deckY + l * LEVEL_H;
+      if (y > hi) break;
+      for (let s = 0; s < 2; s++) {
+        const p = this._get(s, i, j, l, 0);
+        if (!p || p.t === 'ladder' || (p.t === 'hatch' && p.o)) continue;
+        let h = y;
+        if (p.t === 'stairs' || p.t === 'roof') h += clamp((ux * DIR[p.r][0] + uz * DIR[p.r][1] + 1) / 2, 0, 1) * (p.t === 'stairs' ? LEVEL_H : ROOF_RISE);
+        if (h >= lo && h <= hi && h > best) best = h;
+      }
+    }
+    const ki = Math.round((x + 1) / 2), kj = Math.round((z + 1) / 2), te = this._te, M = 0.03;
+    for (let l = 0; l <= MAX_L; l++) {
+      const base = deckY + l * LEVEL_H;
+      if (base + 0.9 > hi) break;
+      for (let k = 0; k < 7; k++) {
+        const p = this._thin(k, l, i, j, ki, kj);
+        if (!p || (p.t === 'gate' && p.o)) continue;
+        const h = base + PIECES[p.t].height;
+        if (h < lo || h > hi || h <= best || Math.abs(x - te[0]) > te[2] + M || Math.abs(z - te[1]) > te[3] + M) continue;
+        if (p.t === 'door' && Math.abs(k < 3 ? x - te[0] : z - te[1]) < DOOR_W / 2 + BODY_R) continue; // over the opening: the lintel bumps the head
+        best = h;
+      }
+    }
+    return best;
+  }
+
+  // Is a body circle (radius r) at (x, z) free of every solid and slab box between heights y0 and y1?
+  clearAt(x, z, y0, y1, deckY, r = BODY_R) {
+    this._rebuild();
+    for (let q = 0; q < 2; q++) {
+      const b = q ? this._slabs : this._solid, n = (q ? this._slabN : this._solidN) * 6;
+      for (let k = 0; k < n; k += 6) {
+        if (b[k + 1] + deckY >= y1 || b[k + 4] + deckY <= y0) continue;
+        const px = clamp(x, b[k], b[k + 3]) - x, pz = clamp(z, b[k + 2], b[k + 5]) - z;
+        if (px * px + pz * pz < r * r) return false;
+      }
+    }
+    return true;
   }
 
   // Highest walkable surface under the feet, fed to PlayerPhysics.update as {deckY, tiles}.
@@ -481,15 +564,18 @@ export class BuildGrid {
     const deckH = this._deck && deckY <= feet + STEP_UP ? deckY : -Infinity;
     let ground;
     if (best > deckH + 1e-6) {
-      const n = this._scan(phys.x, phys.z, feet, deckY, best), list = this._lists[n];
-      for (let k = 0; k < n; k++) list[k] = this._cells[k];
+      const n = this._scan(phys.x, phys.z, feet, deckY, best), m = this._topN;
+      let list;
+      if (m === 0) { list = this._lists[n]; for (let k = 0; k < n; k++) list[k] = this._cells[k]; }
+      else { list = this._surfArr; list.length = 0; for (let k = 0; k < n; k++) list.push(this._cells[k]); for (let k = 0; k < m; k++) list.push(this._tops[k]); }
       pre.deckY = ground = best; pre.tiles = list;
     } else {
       pre.deckY = deckY; pre.tiles = this._tileArr; ground = deckY;
     }
     // Walked off a ledge: fall instead of snapping down. Stepping up (stairs a frame behind, raft rising): lift
     // now, so physics never sees grounded feet below its deck (its hull push-out would shove us off the cell).
-    if (phys.grounded && feet - ground > DROP) phys.grounded = false;
+    // Standing on a decor top (PlayerPhysics stands on those itself, phys.decorTop) is not walking off.
+    if (phys.grounded && feet - ground > DROP) { if (!(Math.abs(feet - phys.decorTop) < 0.02)) phys.grounded = false; }
     else if (phys.grounded && ground > feet) phys.y = ground + EYE;
     return pre;
   }
@@ -546,7 +632,7 @@ export class BuildGrid {
   // starts, so the refusal waits one frame (the climb's clock then holds dt) and undoes it, swim speed included.
   _clamber(phys, deckY) {
     const c = phys._climb;
-    if (!c) return;
+    if (!c || c.ledge) return; // a ledge pull-up checked its own path (PlayerPhysics._tryLedge, clearAt)
     if (c === this._refused) {
       if (!(c.t > 0)) return;
       phys.vx = (c.sx - this._rx) / c.t; phys.vz = (c.sz - this._rz) / c.t; phys.vy = this._rvy;
@@ -574,17 +660,21 @@ export class BuildGrid {
   // Push the body circle out of boxes b[0..6n) whose top is above `lo`; boxes that were above the head before
   // this step (slab bottoms, door lintels, walls upstairs) bonk the head of an airborne body instead.
   _solids(phys, deckY, b, count, lo) {
-    const R = BODY_R;
+    const R = BODY_R, slab = b === this._slabs;
     for (let k = 0; k < count * 6; k += 6) {
       const x = phys.x, z = phys.z;
       if (x < b[k] - R || x > b[k + 3] + R || z < b[k + 2] - R || z > b[k + 5] + R) continue;
-      const y0 = b[k + 1] + deckY;
-      if (y0 >= phys.y + HEAD) continue;
+      const y0 = b[k + 1] + deckY, edge = slab && !phys.grounded && phys.vy > 0; // rising toward a slab
+      if (y0 >= phys.y + HEAD + (edge ? SLAB_BAND : 0)) continue;
       // Ceiling first, before the `lo` filter: one long rising frame can carry the feet to within the step-up of
       // a slab top (or past it), and the slab must still stop the head instead of being stepped through.
+      // A slab bumps the head only with the body centre under it; a body only overlapping its edge is pushed out
+      // sideways as the head comes up to it (SLAB_BAND) and rises past the edge (then the ledge clamber can grab it).
       if (!phys.grounded && y0 >= this._prevHead - 0.02) {
-        const px = clamp(x, b[k], b[k + 3]) - x, pz = clamp(z, b[k + 2], b[k + 5]) - z;
-        if (px * px + pz * pz < R * R) { phys.y = y0 - HEAD; if (phys.vy > 0) phys.vy = 0; }
+        const px = clamp(x, b[k], b[k + 3]) - x, pz = clamp(z, b[k + 2], b[k + 5]) - z, d2 = px * px + pz * pz;
+        if (d2 >= R * R) continue;
+        if (slab && d2 > 0) this._push(phys, b[k], b[k + 3], b[k + 2], b[k + 5]);
+        else if (y0 < phys.y + HEAD) { phys.y = y0 - HEAD; if (phys.vy > 0) phys.vy = 0; }
         continue;
       }
       if (b[k + 4] + deckY <= lo) continue;
@@ -629,6 +719,7 @@ export class BuildGrid {
   // Push the body circle out of walls, slab edges and ramp undersides; keep the head under ceilings.
   postStep(phys, deckY) {
     this._rebuild();
+    if (phys._climb && phys._climb.ledge) return; // pulling up onto a ledge: PlayerPhysics._tryLedge checked its path
     this._sweep(phys, deckY);
     for (let pass = 0; pass < 2; pass++) {
       const feet = phys.y - EYE;
