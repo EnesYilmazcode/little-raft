@@ -22,9 +22,12 @@ export const POOL = Object.freeze([
   def('glass', { glass: 2 }, { shell: 3 }, 2),
   def('grill', { cookedfish: 2 }, { shell: 3 }, 2),
   def('copper', { shell: 3 }, { copperore: 1 }, 1),
-  def('titanium', { shell: 8 }, { titaniumore: 1 }, 1), // rare ore: pricier than copper
   def('seeds', { shell: 2 }, { seed: 2 }, 3),
   def('clay', { scrap: 4, rope: 2 }, { clay: 3 }, 1),
+  // late rows (added after release; append only): kept out of the shuffle above so every older seed keeps its offers
+  // and indices (saved visit stock and co-op trades go by index). On `late` of visits, drawn from a separate stream,
+  // one takes the last pool slot instead.
+  def('titanium', { shell: 8 }, { titaniumore: 1 }, 1, { late: .3 }), // rare ore: pricier than copper
   // rare row: the last slot on ~40% of visits
   def('float', { shell: 10 }, { glassfloat: 1 }, 1, { rare: true }),
 ]);
@@ -47,6 +50,7 @@ export function rng(seed) {
 
 const allKinds = () => true;
 let memo = null; // one entry: a pure function of (seed, has, pool), so this is just a cache
+const LATE_K = 0x7a7e5eed;
 /** Frozen offer list for a visit seed: fixed rows, then shuffled pool rows, the rare float last when drawn. */
 export function offersFor(seed, has = allKinds, pool = POOL) {
   const s = seed >>> 0;
@@ -59,10 +63,16 @@ export function offersFor(seed, has = allKinds, pool = POOL) {
   };
   const live = pool.filter(ok), r = rng(s);
   const rare = r() < TRADER.RARE_CHANCE;
-  const fixed = live.filter(d => d.fixed), rows = live.filter(d => !d.fixed && !d.rare), float = live.find(d => d.rare && d.id === 'float');
+  const fixed = live.filter(d => d.fixed), rows = live.filter(d => !d.fixed && !d.rare && !d.late), float = live.find(d => d.rare && d.id === 'float');
   for (let i = rows.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = rows[i]; rows[i] = rows[j]; rows[j] = t; }
   const out = fixed.slice(0, TRADER.OFFERS), room = TRADER.OFFERS - (rare && float ? 1 : 0);
   for (let i = 0; i < rows.length && out.length < room; i++) out.push(rows[i]);
+  const lr = rng((s ^ LATE_K) >>> 0); // late rows never touch the main stream
+  for (const d of live) {
+    if (!d.late || !(lr() < d.late)) continue;
+    if (out.length < room) out.push(d);
+    else if (out.length > fixed.length && !out[out.length - 1].late) out[out.length - 1] = d;
+  }
   if (rare && float && out.length < TRADER.OFFERS) out.push(float);
   const frozen = Object.freeze(out);
   memo = { seed: s, has, pool, out: frozen };
