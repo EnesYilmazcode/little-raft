@@ -212,3 +212,17 @@ test('a grounded body never stands inside the side of a step-up top: it steps on
     assert.ok(t2.some(s => s.grounded && near(s.feet, c.top, 1e-6)), 'stepped onto the cushion');
   }
 });
+
+test('brushing past a step-up top at a grazing angle never drops the body for a frame (no double land sound)', () => {
+  // Walking by with the body edge just touching the top: the step-up moves the centre in to the edge margin, which
+  // must leave it standing there (not a float hair outside the margin, then a frame of walk off and land).
+  for (const type of ['cushion', 'kiln', 'crate']) for (const dt of FRAMES) for (const off of [0.03, 0.08, 0.13, 0.23, 0.38]) {
+    const w = world([], [{ type, x: 0, z: 0 }]), [c] = w.blocked;
+    const ph = new PlayerPhysics({ x: -3, y: D0 + EYE, z: c.hz + off });
+    run(w, ph, 0.2, {}, dt);
+    const tr = run(w, ph, 2, { forward: 1, yaw: yawTo(1, 0) }, dt);
+    const firstOn = tr.findIndex(s => near(s.feet, c.top, 1e-6));
+    const before = firstOn < 0 ? tr : tr.slice(0, firstOn);
+    assert.equal(before.filter(s => !s.grounded).length, 0, `${type} dt ${dt} off ${off}: airborne before stepping up`);
+  }
+});

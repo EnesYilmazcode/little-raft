@@ -484,7 +484,7 @@ export class PlayerPhysics {
     }
     if (bi < 0) return false;
     if (bg > C.SURF_MARGIN) { // stepped up at the edge: in to the margin, if there is room
-      const b = blocked[bi], d = bg - C.SURF_MARGIN;
+      const b = blocked[bi], d = bg - C.SURF_MARGIN + 0.01; // just inside the margin: exactly on it, float error can fail _supported
       this._outward(b, this.x, this.z);
       const x = this.x - this._ox * d, z = this.z - this._oz * d;
       if (!this._propFree(x, z, blocked, best)) return false;
