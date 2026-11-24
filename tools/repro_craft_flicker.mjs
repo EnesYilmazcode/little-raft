@@ -8,6 +8,8 @@
 // records the panel x inside each mutation batch (a show+hide within one frame never reaches rAF).
 // LIVE_SWAP=1 first hot-swaps the engine to a new build (raftLive), as a deploy mid-session does:
 // that is what breaks the layout (item-tooltips.js dispose() removes the shared tooltip stylesheet).
+// The swap is started by two overlapping raftLive.check() calls (as the poll and a visibilitychange
+// schedule(0) can overlap); each case then counts item-tooltips styles and cards (must be one each).
 // Prints JSON then one FLICKER/STABLE line per case; exit 1 on FLICKER, 2 on errors.
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
@@ -111,7 +113,7 @@ async function runCase(browser, w, h, dpr, target) {
   let swap = null;
   if (process.env.LIVE_SWAP) {
     servedBuild = BAKED + '-swap' + Date.now().toString(36);
-    swap = await page.evaluate(() => window.raftLive.check());
+    swap = await page.evaluate(() => Promise.all([window.raftLive.check(), window.raftLive.check()]));
     await page.waitForTimeout(800);
   }
   await page.keyboard.press('Tab'); await page.waitForFunction('raftDebug.state.inventoryOpen', null, { timeout: 10000 });
@@ -157,6 +159,9 @@ async function runCase(browser, w, h, dpr, target) {
   const jitterLoop = (async () => { let k = 0;
     while (jitter) { await page.mouse.move(cx + (k++ % 2), cy).catch(() => {}); await page.waitForTimeout(16).catch(() => {}); } })();
   const res = await sampling;
+  // One tooltip instance: exactly one item-tooltips sheet, and at most one card (one while a card is showing).
+  const dupes = await page.evaluate(() => ({ styles: document.querySelectorAll('style.item-tooltips-style').length, tips: document.querySelectorAll('.it-tip').length,
+    shown: [...document.querySelectorAll('.it-tip')].filter(t => !t.hidden).length }));
   // A burst of screenshots while the pointer still rests there: each one catches whichever half of the loop was painted.
   const burst = [];
   if (OUT) for (let k = 0; k < 6; k++) {
@@ -183,14 +188,14 @@ async function runCase(browser, w, h, dpr, target) {
   const d = Object.fromEntries(keys.map(k => [k, distinct(k)]));
   const togglesPerFrame = +(res.toggles / rows.length).toFixed(2);
   const inflow = rows.some(r => r.itPos && r.itPos.startsWith('static') && !r.itPos.endsWith(':hidden'));
-  const unstable = (inflow ? ['tooltip-in-flow'] : []).concat(togglesPerFrame > 0.25 ? ['tooltip-toggles-every-frame'] : [], Object.keys(res.wrapXs).length > 1 ? ['panel-x-in-mutations'] : []).concat(['wrap', 'craft', 'detail', 'bag', 'chip', 'vw'].filter(k => d[k].length > 1));
+  const unstable = (inflow ? ['tooltip-in-flow'] : []).concat(dupes.styles !== 1 || dupes.tips > 1 || dupes.shown > 1 ? ['duplicate-tooltips'] : []).concat(togglesPerFrame > 0.25 ? ['tooltip-toggles-every-frame'] : [], Object.keys(res.wrapXs).length > 1 ? ['panel-x-in-mutations'] : []).concat(['wrap', 'craft', 'detail', 'bag', 'chip', 'vw'].filter(k => d[k].length > 1));
   if (OUT) await page.screenshot({ path: join(OUT, `flicker-${w}x${h}-dpr${dpr}-${target}.png`) });
   const layout = await page.evaluate(layoutInfo);
   layout.tips = await page.evaluate(() => [...document.querySelectorAll('.it-tip')].map(t => ({ parent: t.parentElement?.id || t.parentElement?.tagName, hidden: t.hidden })));
-  layout.styles = await page.evaluate(() => [...document.querySelectorAll('style[id]')].map(s => s.id).filter(id => /survival|tooltip/.test(id)));
+  layout.styles = await page.evaluate(() => [...document.querySelectorAll('style[id],style.item-tooltips-style')].map(s => s.id || s.className).filter(id => /survival|tooltip/.test(id)));
   await ctx.close();
   const timeline = rows.map(r => (r.wrap ? r.wrap[0] : '-') + (r.itTip ? '+' : '')).join(' ');
-  return { case: name, swap, frozen, burstPanelX: burst, atPoint, box: b, togglesPerFrame, panelXDuringMutations: res.wrapXs, timeline, recipe: found ? 'palm' : 'first', frames: rows.length, distinct: d, mutationsTotal: rows.at(-1).muts,
+  return { case: name, swap, dupes, frozen, burstPanelX: burst, atPoint, box: b, togglesPerFrame, panelXDuringMutations: res.wrapXs, timeline, recipe: found ? 'palm' : 'first', frames: rows.length, distinct: d, mutationsTotal: rows.at(-1).muts,
     mutTargets: res.mutTargets, layout, errors, verdict: unstable.length ? 'FLICKER' : 'STABLE', unstable };
 }
 
@@ -208,5 +213,6 @@ for (const [w, h, dpr] of VIEWPORTS)
 await browser.close(); srv.close();
 console.log(JSON.stringify(cases, null, 1));
 for (const c of cases) console.log(c.case, c.verdict || (c.skipped ? 'SKIPPED ' + c.skipped : 'ERROR ' + c.error), (c.unstable || []).join(','),
+  c.dupes ? `tooltip styles/cards ${c.dupes.styles}/${c.dupes.tips};` : '',
   c.distinct ? `panel x per rAF ${c.distinct.wrap.map(v => JSON.parse(v)?.[0]).join('/')}; panel x inside mutations ${JSON.stringify(c.panelXDuringMutations)}; tooltip toggles/frame ${c.togglesPerFrame}` : '');
 process.exit(cases.some(c => c.verdict === 'FLICKER') ? 1 : cases.some(c => c.error) ? 2 : 0);
