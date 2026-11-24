@@ -501,7 +501,8 @@ export class PlayerPhysics {
        || !L.clearAt((this.x + tx) / 2, (this.z + tz) / 2, top + 0.03, headTop, base, r))) return false;
     if (!this._propFree(tx, tz, blocked, top, r) || !this._propFree((this.x + tx) / 2, (this.z + tz) / 2, blocked, top, r)) return false;
     const rise = top - feet;
-    this._climb = {t: 0, sx: this.x, sy: this.y, sz: this.z, tx, tz, ty: top + C.EYE_OFFSET,
+    // Heights relative to the deck plane (base): the raft heaves during the pull-up and the ledge rides with it.
+    this._climb = {t: 0, sx: this.x, sy: this.y - base, sz: this.z, tx, tz, ty: top + C.EYE_OFFSET - base,
       dur: Math.min(0.5, C.LEDGE_TIME + C.LEDGE_TIME_M * Math.max(0, rise)), ledge: true};
     this.climbing = true;
     this.vx = this.vz = 0; this.vy = 0;
@@ -551,7 +552,7 @@ export class PlayerPhysics {
     const cl = this._climb;
     cl.t += dt;
     const u = clamp(cl.t / (cl.dur || C.CLAMBER_TIME), 0, 1);
-    const ty = cl.ledge ? cl.ty : deckY + C.EYE_OFFSET;
+    const b = cl.ledge ? this._baseY : 0, ty = cl.ledge ? cl.ty + b : deckY + C.EYE_OFFSET, sy = cl.sy + b;
     // Rise first (ease out), then roll forward over the edge (ease in-out), with a small arc. A ledge pull-up
     // gets the feet over the top before the body moves in (hands on the edge, then a knee over it).
     let up, fwd;
@@ -562,7 +563,7 @@ export class PlayerPhysics {
     const prevY = this.y;
     this.x = cl.sx + (cl.tx - cl.sx) * fwd;
     this.z = cl.sz + (cl.tz - cl.sz) * fwd;
-    this.y = cl.sy + (ty - cl.sy) * up + Math.sin(u * Math.PI) * (cl.ledge ? 0.06 : 0.12);
+    this.y = sy + (ty - sy) * up + Math.sin(u * Math.PI) * (cl.ledge ? 0.06 : 0.12);
     this.vy = (this.y - prevY) / dt;
     if (this.swimming && u > 0.35) { this.swimming = false; out.leftWater = true; }
     if (u >= 1) {
