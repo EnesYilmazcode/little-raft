@@ -54,7 +54,7 @@ export const HOLD = Object.freeze({
   paddle:     { hand: 'right', pose: 'grip', rx: -1.3, ry: 0, rz: 1.3, arm: [-0.02, 0.03, 0] }, // [paddle] shaft across the view, blade out front-left (the stroke dips it)
   axe:        { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.05, 0], tilt: 0.5 }, // [axe] held like the hammer, blade leaning forward
   metalaxe:   { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.05, 0], tilt: 0.5 },
-  machete:    { hand: 'right', pose: 'grip', rx: -1.1, rz: 0.2 }, // blade forward and a little up, ready to jab like the spears
+  machete:    { hand: 'right', pose: 'grip', rx: -0.55, ry: 1.1, rz: 0.3, arm: [0.01, -0.01, 0] }, // blade up and forward, flat side to the eye, ready to jab
   brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
   leaf:       { hand: 'right', pose: 'grip', rx: -0.35, ry: 0.4, rz: 0.35 },
@@ -277,7 +277,7 @@ export function buildItemModel(T, kind, factory = null) {
     root.userData.grip = [gp.x, gp.y, gp.z];
     root.userData.model = m;
   } else if (kind === 'machete') { // spear-repair-hooks.js slides userData.model along +Y to jab (userData.jab metres)
-    const m = createMachete(T), s = 0.62;
+    const m = createMachete(T), s = 0.72;
     m.scale.setScalar(s); m.userData.jab = 0.12;
     root = new T.Group(); root.add(m);
     const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size;
