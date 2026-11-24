@@ -18,7 +18,7 @@ These gaps sit in files the HUD lane does not own.
 
 ## Other lanes
 
-- sailing-ui.js: compass chip "No sail — craft one" is text under the compass and has an em dash.
+- sailing-ui.js: compass chip "No sail, craft one" (written with an em dash in the UI) is text under the compass.
   Suggest an icon (sail glyph, crossed or dimmed) or drop the chip; the Notes tracker already says "Raise a sail".
 - fishing-cooking.js: bottom-left "Fish 0/8 · J" chip uses an emoji and text. Suggest a small fish icon + count only,
   or show it only in the fish journal.
