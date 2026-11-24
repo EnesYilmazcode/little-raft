@@ -1372,6 +1372,14 @@ export function mount(transfer = null) {
       if (r.ok) emit({kind:'build', text:r.text}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor);
       return;
     }
+    if (a.kind === 'untile' && building) { // building-pieces lane hook: hammer X / axe on a foundation tile (host-checked, full refund)
+      if (!isInt(a.x) || !isInt(a.z)) return;
+      const who = actor === 'guest' ? other : physics;
+      if (who && !inReach(who.x, who.z, a.x, a.z, PIECE_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+      const r = building.applyTile(a, bag, world);
+      if (r.ok) { rebuildRaft(); fitShadow(); emit({kind:'build', text:r.text}, 'all'); } else if (r.text) emit({kind:'notice', text:r.text}, actor);
+      return;
+    }
     if (a.kind === 'undecor') { // [undecor] pick up a placed item: item + contents back, all or nothing (docs/specs/decor-pickup.md §5)
       if (!cleanDecorPos(a.x, a.z)) return; const i = undecorIndex(world.decor, a.x, a.z); if (i < 0 || (a.t !== undefined && a.t !== world.decor[i].type)) return; // second remover (or a stale aim at a since re-placed item): silent
       const who = actor === 'guest' ? other : physics;
@@ -1507,6 +1515,7 @@ export function mount(transfer = null) {
     if (instruments?.use(kind)) { swing = .7; return; } // [instruments]
     if (kind === 'paddle' && paddle?.use()) return; // [paddle] stroke at the raft edge
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' ? spearRep?.useHammer() : kind === 'armor' && spearRep?.useArmor()) return; // [spear-repair] thrust / repair a damaged tile; [armor] fit armor
+    if (kind === 'axe' && building?.chopStart(aim, camera?.position, deckY())) { swing = 1; return; } // building-pieces lane hook: hold click on a piece / foundation
     if (content?.use(aim, kind)) { swing = 1; return; } // content hook, before eating: [crops] plant / water a crop plot slot; paint brush
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
@@ -1846,11 +1855,12 @@ export function mount(transfer = null) {
     hookStage = hook.stage;
     if (hook.stage === 'done') endHook();
   }
-  function updateGhost() {
+  function updateGhost(dt = 0) {
     const kind = heldKind();
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
     if (undecorPreview && kind === 'hammer' && !building?.removing) building?.key('KeyX', true, true); // [undecor] QA preview holds X
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
+    const chopA = building?.chop(running && kind === 'axe' && !uiBlocked(), frameAim, camera.position, deckY(), dt); if (chopA) { swing = 1; action(chopA); } // building-pieces lane hook: axe hold-click dismantle
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
     const undecorEx = building?.removing ? building.removeExtra : null; // [undecor] red see-through ghost of the aimed decor
     if (undecorEx?.d) { const d = undecorEx.d; hover = null; ghostHold = null; ghosts.show(d.type, d.x * 2, .22, d.z * 2, d.rot || 0, false, elapsed); return; }
@@ -1897,7 +1907,7 @@ export function mount(transfer = null) {
     if (vitalsUI) { vitalsUI.update(vitals, running && !disposed && fainted < 0); }
     if (!promptOff && window.raftPrompts?.provide) { try { promptOff = window.raftPrompts.provide({id:'game-context', priority:0, prompt:promptTip}); } catch { promptOff = () => {}; } } // [vitals] eat/drink + watering prompts
     netView?.update(elapsed); // [nets]
-    updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
+    updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost(realDt);
     const simDt = running ? dt : 0; // the title screen freezes the world: no day clock, no grill fuel or cooking
     content?.update(simDt); // content hook
     if (shark) { try { shark.update(dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
@@ -2068,7 +2078,7 @@ export function mount(transfer = null) {
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
       menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard
       useDown:() => { if (fc?.pointerDown()) return; if (reelCast('click')) return; if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
-      useUp:() => { reeling = false; if (fc?.pointerUp()) return; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; fc?.releaseInput(); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
+      useUp:() => { reeling = false; building?.chopStop(); /* building-pieces lane hook */ if (fc?.pointerUp()) return; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; fc?.releaseInput(); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
     signal.addEventListener('abort', () => controls?.dispose());
   } catch (e) { console.error('controls lane failed to start', e); controls = null; }
   on(document, 'visibilitychange', () => { quality?.reset(); });
