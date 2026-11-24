@@ -18,7 +18,7 @@ const CSS = `
   background:conic-gradient(#ff6b57 calc(var(--p,0) * 360deg),#ffffff33 0);
   -webkit-mask:radial-gradient(closest-side,transparent calc(100% - 3.5px),#000 calc(100% - 3px));mask:radial-gradient(closest-side,transparent calc(100% - 3.5px),#000 calc(100% - 3px))}
 .bh-ring[hidden]{display:none}
-@media(max-width:760px){.bh-hint{bottom:auto;top:132px;right:10px;font-size:12px}}
+@media(max-width:760px){.bh-hint{bottom:96px;right:10px;font-size:12px}} /* above the hotbar, clear of the Notes tracker (top right) */
 body.bm-wheel-up .bh-hint{opacity:0}
 `;
 
