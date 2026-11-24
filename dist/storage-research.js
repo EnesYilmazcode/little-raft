@@ -135,10 +135,23 @@ export function stateFrom(data, from, world) {
   return st;
 }
 
+/**
+ * Recipe ids the old desk build really offered this save: the learned list it saved (every recipe for a save it
+ * grandfathered), plus its STARTER recipes for a slice an old build wrote (v < 2). A fresh world, or a slice this
+ * build wrote, adds nothing. progression-hooks.js keeps only the ids outside items.js (its own progression covered those).
+ */
+export function pastOffered(data, st) {
+  const c = cleanSlice(data), v = data && typeof data === 'object' && Number.isInteger(data.v) ? data.v : 0;
+  const learned = c.learned ?? (st.legacy ? st.learned : []);
+  const old = c.learned !== null ? v < SLICE_V : st.legacy;
+  return old ? sortedUnique([...learned, ...STARTER]) : learned.slice();
+}
+const SLICE_V = 2; // 2: written by the build where the one research tree replaced the desk
+
 export function sliceOf(st) {
   const chests = {};
   for (const k of Object.keys(st.chests)) chests[k] = st.chests[k].map(s => (s ? { ...s } : null));
-  const out = { v: 1, chests, seen: st.seen.slice(), learned: st.learned.slice(), r: st.r, s: st.s };
+  const out = { v: SLICE_V, chests, seen: st.seen.slice(), learned: st.learned.slice(), r: st.r, s: st.s };
   if (st.legacy) out.legacy = true;
   return out;
 }
@@ -367,7 +380,7 @@ export function createStorage(ctx) {
     netR = -1; netS = null; netUndef = false; hostHasStorage = true;
     st = stateFrom(data, from, ctx.world);
     st.s = session; bump();
-    past = st.learned.slice(); // a new array per load: progression-hooks.js adopts it once
+    past = pastOffered(data, st); // a new array per load: progression-hooks.js adopts it once
   }
 
   function serialize() {

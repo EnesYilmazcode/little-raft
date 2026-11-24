@@ -136,7 +136,10 @@ test('module: load(undefined,"save") on an old progressed world learns all; garb
   assert.deepEqual(mod.serialize().learned, ['bench', 'flyingcarpet']);
   assert.equal(mod.craftLocked('bench'), null);
   assert.equal(mod.craftLocked('lantern'), null, 'the desk gates nothing: research-tree.js owns every lock');
-  assert.deepEqual(mod.pastLearned(), ['bench', 'flyingcarpet'], 'what the save learned is handed to progression');
+  assert.deepEqual(mod.pastLearned(), [...new Set(['bench', 'flyingcarpet', ...STARTER])].sort(), 'an old (v1) slice: what it learned plus the desk starters');
+  mod.load({ v: 2, chests: {}, seen: [], learned: ['bench'], r: 1 }, 'save');
+  assert.deepEqual(mod.pastLearned(), ['bench'], 'a slice this build wrote adds no starters');
+  assert.equal(mod.serialize().v, 2);
   mod.load({ v: 1, chests: {}, seen: [], learned: [], r: 2 }, 'net');
   assert.equal(mod.pastLearned(), null, 'a host raft never adopts into our own research');
 });
