@@ -11,6 +11,7 @@
 import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS, FUEL_VALUE, toolRole, stationExtraRecipes } from './items.js?build=v3-survival-ae77fa84ac2b';
 import { Progression } from './progression.js?build=v3-survival-ae77fa84ac2b';
+import { CATALOG, FEATURED, TABLE, isTable, isRetired } from './research-tree.js?build=v3-survival-ae77fa84ac2b';
 import { StationModel } from './smelter.js?build=v3-survival-ae77fa84ac2b';
 import { createStationPanel } from './smelter-ui.js?build=v3-survival-ae77fa84ac2b';
 import { createSmelterModel, createResearchTableModel, createGrillModel, setSmelterGlow } from './smelter-model.js?build=v3-survival-ae77fa84ac2b';
@@ -32,10 +33,11 @@ export function aimMiss(aim, sx, sz, me) {
 }
 const COOKERS = new Set([...Object.values(ITEMS).map((it) => it.recipe?.station).filter(Boolean),
   ...Object.keys(ITEMS).filter((id) => stationExtraRecipes(id))]); // [recycler] + fuel-free stations
-const STATIONS = new Set(Object.keys(ITEMS).filter((id) => ITEMS[id].category === 'station'));
+const STATIONS = new Set([...Object.keys(ITEMS).filter((id) => ITEMS[id].category === 'station'), 'research']); // 'research': an old Tinker's Desk works as a Research Table
+const stationType = (type) => (isTable(type) ? TABLE : type);
 const MODELS = { smelter: createSmelterModel, researchtable: createResearchTableModel, grill: createGrillModel, recycler: createRecyclerModel };
-const nameOf = (k) => ITEMS[k]?.name ?? k;
-const isHand = (id) => !!ITEMS[id]?.recipe && ITEMS[id].recipe.station == null;
+const nameOf = (k) => CATALOG[k]?.name ?? k;
+const newProg = (snap) => new Progression(snap, { items: CATALOG }); // the one research tree: items.js + every other recipe (research-tree.js)
 const keyOf = (d) => d.x + ',' + d.z;
 const joinAnd = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -61,7 +63,7 @@ export function attachProgression(ctx) {
   const prevOwner = globalThis[OWNER];
   try { prevOwner?.flush?.(); } catch {} // hot reload: the old engine's latest state, not its last autosave
   const saved = load();
-  const progs = { host: new Progression(saved.host), guest: new Progression(saved.guest) };
+  const progs = { host: newProg(saved.host), guest: newProg(saved.guest) };
   // Per-world barrel bad-luck counters; rollBarrel(rand, barrelLuck) mutates them in place.
   const barrelLuck = { misses: {} };
   if (saved.barrelLuck?.misses && typeof saved.barrelLuck.misses === 'object') {
@@ -76,15 +78,15 @@ export function attachProgression(ctx) {
   const glow = new Map();
   let noteClock = NOTE_EVERY, saveClock = 0, syncClock = 0, time = 0, dirty = false, nearKey = null;
   let savedLuckSig = JSON.stringify(barrelLuck.misses);
-  let panel = null, research = null, tooltips = null, hud = null, gateCache = null;
+  let panel = null, research = null, tooltips = null, hud = null, gateCache = null, remoteSig = '', pastSeen = null;
 
   const isRemote = () => ctx.role() === 'guest' && !!ctx.ready();
   const isHost = () => ctx.role() !== 'guest';
-  const myProg = () => (isRemote() ? (remote.prog ??= new Progression()) : progs.host);
+  const myProg = () => (isRemote() ? (remote.prog ??= newProg()) : progs.host);
   const decor = () => (Array.isArray(ctx.world()?.decor) ? ctx.world().decor : []);
   const say = (text, actor) => ctx.emit({ kind: 'notice', text }, actor);
   const announce = (ids, actor) => {
-    const names = ids.filter((id) => ITEMS[id]).map(nameOf);
+    const names = ids.filter((id) => CATALOG[id]?.recipe).map(nameOf);
     if (names.length) { ctx.emit({ kind: 'unlock', text: `New recipe${names.length > 1 ? 's' : ''}: ${joinAnd(names)}!` }, actor); gateCache = null; dirty = true; }
   };
 
@@ -93,7 +95,8 @@ export function attachProgression(ctx) {
     const live = new Set();
     for (const d of decor()) {
       if (!STATIONS.has(d.type)) continue;
-      for (const actor of ['host', 'guest']) if (!progs[actor].stations.has(d.type)) announce(progs[actor].notePlaced(d.type), actor);
+      const type = stationType(d.type);
+      for (const actor of ['host', 'guest']) if (!progs[actor].stations.has(type)) announce(progs[actor].notePlaced(type), actor);
       if (!COOKERS.has(d.type)) continue;
       const key = keyOf(d); live.add(key);
       const cur = stations.get(key);
@@ -130,17 +133,21 @@ export function attachProgression(ctx) {
 
   // ---------- host-side actions ----------
   function apply(a, actor) {
-    if (a.kind === 'craft' && typeof a.recipe === 'string' && ITEMS[a.recipe]) {
+    if (a.kind === 'craft' && typeof a.recipe === 'string' && Object.hasOwn(CATALOG, a.recipe) && CATALOG[a.recipe].recipe) {
       const p = progs[actor] ?? progs.host;
       if (p.isUnlocked(a.recipe)) return false;
-      say(`${nameOf(a.recipe)} is locked: ${p.whyLocked(a.recipe)}`, actor); return true;
+      say(isRetired(a.recipe) ? `${nameOf(a.recipe)} is no longer made` : `${nameOf(a.recipe)} is locked: ${p.whyLocked(a.recipe)}`, actor); return true;
     }
     if (typeof a.kind !== 'string' || !a.kind.startsWith('prog:')) return false;
     const bag = ctx.bag(actor), p = progs[actor] ?? progs.host;
     if (a.kind === 'prog:research') {
-      const r = p.research(String(a.item), { has: bag });
-      if (r.ok) { ctx.emit({ kind: 'craft', text: `Researched ${nameOf(a.item)}` }, actor); announce(r.unlocked, actor); dirty = true; gateCache = null; }
-      else say(r.reason, actor);
+      const kind = String(a.item);
+      if (!p.researched.has(kind) && p.stations.has(TABLE) && bag?.count(kind) > 0 && !p.blueprints().some((bp) => bp.missing.includes(kind))) { say(`${nameOf(kind)} does not teach anything new`, actor); return true; }
+      const r = p.research(kind, { has: bag });
+      if (r.ok) {
+        bag.remove(kind, 1); // Raft: researching uses up one of that material
+        ctx.emit({ kind: 'craft', text: `Researched ${nameOf(kind)}` }, actor); announce(r.unlocked, actor); dirty = true; gateCache = null; syncClock = SYNC_EVERY;
+      } else say(r.reason, actor);
       return true;
     }
     const st = stations.get(String(a.key)); if (!st || !bag) return true;
@@ -166,7 +173,10 @@ export function attachProgression(ctx) {
   function effect(e) {
     if (e.kind !== 'prog:sync') return false;
     if (!isRemote()) return true; // host never adopts snapshots it did not make
-    if (e.prog && typeof e.prog === 'object') { remote.prog = new Progression(e.prog); gateCache = null; }
+    if (e.prog && typeof e.prog === 'object') { // the host sends this every 0.3 s: rebuild only when it changed
+      const sig = JSON.stringify(e.prog);
+      if (sig !== remoteSig || !remote.prog) { remoteSig = sig; remote.prog = newProg(e.prog); gateCache = null; }
+    }
     if (e.stations && typeof e.stations === 'object') remote.stations = e.stations;
     return true;
   }
@@ -204,25 +214,27 @@ export function attachProgression(ctx) {
   function renderResearch(force) {
     if (!research?.open) return;
     const p = myProg(), bag = ctx.localBag();
-    const list = p.researchable(), goals = p.nextGoals(3);
-    const has = (k) => (bag?.count?.(k) ?? 0) > 0;
-    const sig = JSON.stringify([list.map((k) => k + has(k)), goals.map((g) => g + p.whyLocked(g)), [...p.researched]]);
+    const rank = (id) => { const i = FEATURED.indexOf(id); return i < 0 ? FEATURED.length : i; };
+    const list = p.researchable(), prints = p.blueprints().sort((a, b) => rank(a.id) - rank(b.id)).slice(0, 8); // stable: nearest first within a rank
+    const count = (k) => bag?.count?.(k) ?? 0;
+    const sig = JSON.stringify([list.map((k) => k + count(k)), prints.map((b) => b.id + b.missing.join()), [...p.researched]]);
     if (!force && sig === researchSig) return;
     researchSig = sig;
-    const rows = list.map((k) => `<div class="rp-row"><span>${esc(nameOf(k))}<small>${has(k) ? 'Your item stays in your bag' : 'Bring one in your bag'}</small></span>
-      <button type="button" class="rp-go" data-research="${esc(k)}"${has(k) ? '' : ' disabled'}>Research</button></div>`).join('');
-    const goalRows = goals.map((g) => `<div class="rp-row"><span>${esc(nameOf(g))}<small>${esc(p.whyLocked(g))}</small></span></div>`).join('');
+    const rows = list.map((k) => `<div class="rp-row"><span>${esc(nameOf(k))}<small>${count(k) > 0 ? `Uses up 1 (you have ${count(k)})` : 'Bring one in your bag'}</small></span>
+      <button type="button" class="rp-go" data-research="${esc(k)}"${count(k) > 0 ? '' : ' disabled'}>Research</button></div>`).join('');
+    const names = (ks) => ks.map(nameOf).join(', ');
+    const printRows = prints.map((b) => `<div class="rp-row"><span>${esc(nameOf(b.id))}<small>Research ${esc(names(b.missing))}${b.done.length ? ` (done: ${esc(names(b.done))})` : ''}</small></span></div>`).join('');
     const done = [...p.researched].map(nameOf);
     research.querySelector('.rp-body').innerHTML =
-      `<section><p class="rp-sub">Research</p>${rows || '<p class="rp-none">Nothing new to study. Find new things in barrels!</p>'}</section>`
-      + `<section><p class="rp-sub">Next goals</p>${goalRows || '<p class="rp-none">You have learned everything!</p>'}</section>`
+      `<section><p class="rp-sub">Research</p>${rows || '<p class="rp-none">Nothing new to research. Bring a new material in your bag.</p>'}</section>`
+      + `<section><p class="rp-sub">Blueprints</p>${printRows || '<p class="rp-none">You have learned every blueprint!</p>'}</section>`
       + (done.length ? `<section><p class="rp-sub">Researched</p><p class="rp-none">${esc(done.join(', '))}</p></section>` : '');
   }
   function openResearch() {
     if (!research) {
       if (!document.getElementById('research-style')) { const st = document.createElement('style'); st.id = 'research-style'; st.textContent = RCSS; document.head.append(st); }
       research = document.createElement('dialog'); research.id = 'researchPanel';
-      research.innerHTML = `<div class="rp-wrap" tabindex="-1"><div class="rp-head"><h2>${esc(nameOf('researchtable'))}</h2><button type="button" class="rp-x" aria-label="Close">×</button></div><div class="rp-body"></div></div>`;
+      research.innerHTML = `<div class="rp-wrap" tabindex="-1"><div class="rp-head"><h2>${esc(nameOf(TABLE))}</h2><button type="button" class="rp-x" aria-label="Close">×</button></div><div class="rp-body"></div></div>`;
       research.addEventListener('click', (e) => {
         if (e.target === research || e.target.closest('.rp-x')) { research.close(); return; }
         const b = e.target.closest('[data-research]'); if (b && !b.disabled) act({ kind: 'prog:research', item: b.dataset.research });
@@ -251,17 +263,21 @@ export function attachProgression(ctx) {
   }
   function interact(aim) {
     const d = stationNear(aim, !!aim); if (!d) return false; // content hook: aim-aware when game.js passes an aim
-    if (d.type === 'researchtable') openResearch(); else openStation(keyOf(d));
+    if (isTable(d.type)) openResearch(); else openStation(keyOf(d));
     return true;
   }
 
-  // Survival-UI recipe gate: unlocked -> null; the 3 nearest hand-recipe goals -> greyed with reason; rest hidden.
+  // Survival-UI recipe gate: unlocked -> null; retired -> hidden; every other locked recipe stays visible,
+  // greyed, with what to research ("Research Plank, Scrap and Nail at the Research Table").
+  const HIDDEN = Object.freeze({ hidden: true });
   function recipeGate(id) {
-    if (!ITEMS[id]) return null;
+    if (!Object.hasOwn(CATALOG, id)) return null;
+    if (isRetired(id)) return HIDDEN;
     const p = myProg();
-    if (p.isUnlocked(id)) return null;
-    if (!gateCache || gateCache.p !== p) gateCache = { p, goals: new Set(p.nextGoals(99).filter(isHand).slice(0, 3)) };
-    return gateCache.goals.has(id) ? { locked: true, reason: p.whyLocked(id) } : { hidden: true };
+    if (!gateCache || gateCache.p !== p) gateCache = { p, gates: new Map() };
+    let g = gateCache.gates.get(id);
+    if (g === undefined) { g = p.isUnlocked(id) ? null : { locked: true, reason: p.whyLocked(id) }; gateCache.gates.set(id, g); }
+    return g;
   }
 
   // ---------- binoculars HUD ----------
@@ -297,7 +313,12 @@ export function attachProgression(ctx) {
       for (const st of stations.values()) { const was = st.cooking; if (was) dirty = true; st.tick(dt); }
       if ((noteClock += dt) >= NOTE_EVERY) {
         noteClock = 0;
-        for (const actor of ['host', 'guest']) { const bag = ctx.bag(actor); if (bag) announce(progs[actor].noteItems(bag), actor); }
+        for (const actor of ['host', 'guest']) {
+          const bag = ctx.bag(actor); if (!bag) continue;
+          const seen = progs[actor].discovered.size; announce(progs[actor].noteItems(bag), actor);
+          if (progs[actor].discovered.size !== seen) gateCache = null; // "Find X first" reasons change
+        }
+        adoptPast();
       }
       if ((saveClock += dt) >= SAVE_EVERY) {
         saveClock = 0;
@@ -336,7 +357,34 @@ export function attachProgression(ctx) {
 
   function installUI() {
     tooltips?.dispose();
-    tooltips = installItemTooltips({ getBag: () => ctx.localBag(), getProgression: () => myProg(), items: ITEMS });
+    tooltips = installItemTooltips({ getBag: () => ctx.localBag(), getProgression: () => myProg(), items: CATALOG });
+  }
+
+  // Recipes this save learned at the old Tinker's Desk (storage-research.js slice, or every recipe for a save
+  // it grandfathered) stay learned. ctx.pastLearned() returns the same array until the world reloads, so this
+  // is one reference check per NOTE_EVERY tick.
+  function adoptPast() {
+    const past = isHost() ? ctx.pastLearned?.() : null;
+    if (!Array.isArray(past) || past === pastSeen) return;
+    pastSeen = past;
+    let any = false;
+    for (const id of past) {
+      if (!Object.hasOwn(CATALOG, id) || !CATALOG[id].recipe || isRetired(id)) continue;
+      for (const p of Object.values(progs)) if (!p.learned.has(id)) { p.learned.add(id); any = true; }
+    }
+    if (any) { gateCache = null; dirty = true; }
+  }
+
+  // New Game: a fresh raft starts a fresh research tree (like the fishing-cooking reset in game.js newGame).
+  function reset() {
+    if (!isHost()) return;
+    progs.host = newProg(); progs.guest = newProg();
+    stations.clear(); for (const k of Object.keys(pendingStations)) delete pendingStations[k];
+    barrelLuck.misses = {}; savedLuckSig = '{}';
+    gateCache = null; pastSeen = null; researchSig = '';
+    if (research?.open) research.close();
+    if (panel?.isOpen) panel.close();
+    save();
   }
 
   // ---------- debug (window.raftDebug.progression) ----------
@@ -355,7 +403,7 @@ export function attachProgression(ctx) {
     open: (key) => openStation(key),
     advance(sec) { for (const st of stations.values()) st.tick(sec); panel?.update(); },
     state: () => ({ host: progs.host.snapshot(), guest: progs.guest.snapshot(), stations: isRemote() ? remote.stations : stationSnaps(),
-      researchable: myProg().researchable(), nextGoals: myProg().nextGoals(3), panelOpen: !!panel?.isOpen, researchOpen: !!research?.open, hud: hud && !hud.hidden ? hud.textContent : null }),
+      researchable: myProg().researchable(), nextGoals: myProg().nextGoals(3), blueprints: myProg().blueprints(), panelOpen: !!panel?.isOpen, researchOpen: !!research?.open, hud: hud && !hud.hidden ? hud.textContent : null }),
   });
 
   function dispose() {
@@ -373,7 +421,7 @@ export function attachProgression(ctx) {
   if (!saved.host && isHost()) {
     const w = ctx.world();
     if (w && (w.collected > 0 || w.decor?.length > 0 || w.tiles?.length > 9)) {
-      for (const p of Object.values(progs)) for (const id of LEGACY_RECIPES) if (ITEMS[id]) p.learned.add(id);
+      for (const p of Object.values(progs)) for (const id of LEGACY_RECIPES) if (CATALOG[id]) p.learned.add(id);
     }
     save();
   }
@@ -384,7 +432,7 @@ export function attachProgression(ctx) {
   const stationPrompt = () => { const d = ctx.running() && ctx.aim ? stationNear(ctx.aim(), true) : null; return d ? { key: 'E', label: 'Use the ' + nameOf(d.type) } : null; };
   const disposeAll = () => { try { promptOff?.(); } catch {} dispose(); }; // content hook
 
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()), beforeUndecor, undecorLoot, afterUndecor }; // [undecor] beforeUndecor/undecorLoot/afterUndecor
+  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, reset, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()), beforeUndecor, undecorLoot, afterUndecor }; // [undecor] beforeUndecor/undecorLoot/afterUndecor
 }
 
 export default attachProgression;

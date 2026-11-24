@@ -12,6 +12,7 @@ const I = await import(new URL('items.js', base));
 const { ITEMS, ITEM_IDS, TOOL_IDS, STATION_IDS, PLACEABLE_IDS, BLOCK_RADII, LEGACY_ALIASES, BARREL_LOOT, FUEL_VALUE,
   migrateSnapshot, infoTable, recipeTable, rollBarrel, repairCost, wearPerUse, toolRole, fuelValue, stationRecipeFor } = I;
 const { Progression, canCraft, craft } = await import(new URL('progression.js', base));
+const { CATALOG } = await import(new URL('research-tree.js', base));
 const { StationModel, FUEL_CAP } = await import(new URL('smelter.js', base));
 const Inv = await import(new URL('inventory-state.js', base));
 const { Bag, SLOT_COUNT, HOTBAR_SIZE } = Inv;
@@ -499,7 +500,7 @@ test('migrate fuzz: 2000 junk snapshots never throw and always yield Bag-valid o
 test('progression: start state unlocks only start items; snapshot junk is sanitized', () => {
   const p = new Progression();
   for (const id of ITEM_IDS) assert.equal(p.isUnlocked(id), ITEMS[id].unlock.type === 'start', id);
-  assert.ok(p.whyLocked('nail').length > 0);
+  assert.ok(p.whyLocked('net').length > 0);
   assert.equal(p.whyLocked('rope'), '');
   assert.equal(p.isUnlocked('constructor'), false);
   assert.equal(p.isUnlocked('__proto__'), false);
@@ -512,7 +513,7 @@ test('progression: start state unlocks only start items; snapshot junk is saniti
   a.noteItems({ scrap: 2, fish: 0, nope: 3, rope: '1' });
   const b = new Progression(JSON.parse(JSON.stringify(a.snapshot())));
   assert.deepEqual(b.snapshot(), a.snapshot());
-  assert.ok(b.isUnlocked('nail') && !b.isUnlocked('grill'));
+  assert.ok(b.isUnlocked('nail') && !b.isUnlocked('net'));
 });
 
 test('progression: locked recipes are never reachable through craft()', () => {
@@ -555,7 +556,7 @@ test('progression: station recipes need the station; research never consumes ite
 });
 
 test('progression: full unlock chain with the real catalogue (start -> metal hook)', () => {
-  const p = new Progression();
+  const p = new Progression(null, { items: CATALOG });
   const bag = new ChainBag(migrateSnapshot({ slots: [{ kind: 'hook', count: 1 }], selected: 0 }));
   const give = (k, n) => { assert.equal(bag.add(k, n), 0, `bag full adding ${k}`); return p.noteItems({ [k]: n }); };
   const make = (id, opts) => {
@@ -563,6 +564,8 @@ test('progression: full unlock chain with the real catalogue (start -> metal hoo
     assert.ok(res.ok, `${id}: ${res.reason}`);
     return res;
   };
+  // Raft's Research Table: researching uses up one of the material (progression-hooks.js does the remove).
+  const study = (k) => { const r = p.research(k, bag); assert.ok(r.ok, `${k}: ${r.reason}`); assert.ok(bag.remove(k, 1)); return r.unlocked; };
   const station = (id, input, n, fuelKind, fuelN) => {
     const s = new StationModel(id);
     assert.ok(bag.remove(input, n));
@@ -578,57 +581,58 @@ test('progression: full unlock chain with the real catalogue (start -> metal hoo
     return out;
   };
 
-  assert.equal(p.isUnlocked('nail'), false);
-  give('wood', 20); give('leaf', 20); give('plastic', 6);
-  assert.ok(p.isUnlocked('rope') && !p.isUnlocked('nail'));
-  const fresh = give('scrap', 20);
-  assert.ok(fresh.includes('nail') && fresh.includes('lantern') && fresh.includes('crate'));
-  assert.equal(p.isUnlocked('researchtable'), false, 'table needs a nail first');
-  make('nail'); make('nail');
-  assert.equal(bag.count('nail'), 6);
-  assert.ok(p.isUnlocked('researchtable') && p.isUnlocked('net'));
-  for (let i = 0; i < 8; i++) make('rope');
-  make('researchtable');
+  // minute one: water, food, tools and the table are all known
+  for (const id of ['rope', 'nail', 'hammer', 'researchtable', 'spear', 'cup', 'purifier', 'grill', 'paddle', 'fishingrod', 'crate']) assert.ok(p.isUnlocked(id), id);
+  assert.equal(p.isUnlocked('net'), false);
+  give('wood', 21); give('leaf', 20); give('plastic', 6); give('scrap', 8); // 14 + 2 table, 1 + 1 + 2 researched, 2 into nails
+  assert.equal(p.isUnlocked('net'), false, 'holding is not enough');
+  make('researchtable'); make('nail');
   assert.equal(p.research('scrap', bag).ok, false, 'table not placed yet');
   assert.ok(bag.remove('researchtable', 1));
   p.notePlaced('researchtable');
+  assert.deepEqual(p.research('stone', bag).ok, false, 'not holding stone');
 
-  // fish -> grill -> bricks
-  assert.equal(p.isUnlocked('grill'), false);
-  give('fish', 2);
-  give('wood', 20);
+  // tier 1: Plank + Scrap + Nail -> Collection Net; + Palm Leaf + Plastic -> Simple Bed
+  study('wood'); study('scrap');
+  assert.ok(study('nail').includes('net'));
+  assert.equal(bag.count('nail'), 2, 'one nail researched, two left for the net');
+  for (let i = 0; i < 8; i++) make('rope');
+  make('net');
+  study('leaf');
+  assert.ok(study('plastic').includes('bed'));
+  assert.equal(p.research('wood', bag).ok, false, 'already researched');
+
+  // tier 2: grill bricks -> smelter
+  give('wood', 20); give('fish', 2); give('leaf', 6); make('rope'); make('rope'); make('rope');
   make('grill');
   assert.ok(bag.remove('grill', 1));
   const placedGrill = p.notePlaced('grill');
   assert.ok(placedGrill.includes('brick') && placedGrill.includes('cookedfish'));
   const smelterCost = ITEMS.smelter.recipe.cost, hookCost = ITEMS.metalhook.recipe.cost;
-  give('clay', smelterCost.brick); give('stone', smelterCost.stone);
+  give('clay', smelterCost.brick + 1);
+  station('grill', 'clay', smelterCost.brick + 1, 'wood', Math.ceil((smelterCost.brick + 1) / 2));
   assert.equal(p.isUnlocked('smelter'), false);
-  assert.equal(p.research('clay', bag).ok, true);
-  assert.equal(p.isUnlocked('smelter'), false, 'needs stone too');
-  assert.deepEqual(p.research('stone', bag).unlocked, ['smelter']);
-  assert.equal(bag.count('clay'), smelterCost.brick, 'research kept the clay');
-  station('grill', 'clay', smelterCost.brick, 'wood', Math.ceil(smelterCost.brick / 2));
-  assert.equal(bag.count('brick'), smelterCost.brick);
+  assert.ok(study('brick').includes('smelter'));
+  assert.equal(bag.count('brick'), smelterCost.brick, 'research used one brick');
 
-  // smelter -> ingots -> bolts -> metal hook
-  make('nail'); make('nail');
+  // tier 3: smelter -> ingots -> bolts -> metal hook
+  give('scrap', 10); make('nail'); make('nail');
   give('wood', 10);
   assert.equal(canCraft(bag, 'metalingot', p, { near: new Set(['smelter']) }).locked, true, 'ingots locked before smelter placed');
   make('smelter');
   assert.ok(bag.remove('smelter', 1));
   assert.ok(p.notePlaced('smelter').includes('metalingot'));
-  const ore = hookCost.metalingot + 1; // + 1 ingot for the bolt craft
+  const ore = hookCost.metalingot + 3; // + 2 ingots for two bolt crafts, + 1 researched
   give('metalore', ore);
   station('smelter', 'metalore', ore, 'wood', ore);
-  assert.equal(bag.count('metalingot'), ore);
   assert.equal(p.isUnlocked('bolt'), false);
   assert.equal(craft(bag, 'metalhook', p).locked, true);
-  assert.ok(p.research('metalingot', bag).unlocked.includes('bolt'));
-  make('bolt');
-  assert.equal(bag.count('bolt'), 2);
+  assert.ok(study('metalingot').includes('bolt'));
+  make('bolt'); make('bolt'); // one bolt gets researched
   assert.equal(p.isUnlocked('metalhook'), false);
-  assert.ok(p.research('bolt', bag).unlocked.includes('metalhook'));
+  give('leaf', 6); make('rope'); make('rope'); make('rope');
+  study('rope');
+  assert.ok(study('bolt').includes('metalhook'));
   const before = { ingot: bag.count('metalingot'), bolt: bag.count('bolt'), rope: bag.count('rope'), wood: bag.count('wood') };
   const res = make('metalhook');
   assert.deepEqual(res.crafted, { kind: 'metalhook', count: 1 });
@@ -638,8 +642,7 @@ test('progression: full unlock chain with the real catalogue (start -> metal hoo
     { ingot: before.ingot - hookCost.metalingot, bolt: before.bolt - hookCost.bolt, rope: before.rope - hookCost.rope, wood: before.wood - hookCost.wood });
   assert.equal(toolRole('metalhook'), 'hook');
   // progression snapshot survives a reload mid-chain
-  assert.ok(new Progression(JSON.parse(JSON.stringify(p.snapshot()))).isUnlocked('metalhook'));
-  // nextGoals points at what is left
+  assert.ok(new Progression(JSON.parse(JSON.stringify(p.snapshot())), { items: CATALOG }).isUnlocked('metalhook'));
   const goals = p.nextGoals(10);
   assert.ok(goals.length > 0 && goals.every((g) => !p.isUnlocked(g)));
 });
@@ -758,18 +761,18 @@ test('hooks: an old raft save keeps every legacy recipe; a fresh raft does not a
   const old = fakeGame({ world: { tiles: [[0, 0]], decor: [{ type: 'lantern', x: 0, z: 0 }], items: [], collected: 30 } });
   const a = H.attachProgression(old.ctx);
   for (const id of ['fishingrod', 'sail', 'lantern', 'net', 'crate']) assert.ok(a.progression('host').isUnlocked(id), id);
-  assert.equal(a.apply({ kind: 'craft', recipe: 'lantern' }, 'host'), false, 'craft not blocked');
+  assert.equal(a.apply({ kind: 'craft', recipe: 'net' }, 'host'), false, 'craft not blocked');
   a.dispose();
 
   fakeStorage();
   const fresh = fakeGame();
   const b = H.attachProgression(fresh.ctx);
-  assert.equal(b.progression('host').isUnlocked('lantern'), false);
-  assert.equal(b.apply({ kind: 'craft', recipe: 'lantern' }, 'host'), true, 'locked craft blocked');
+  assert.equal(b.progression('host').isUnlocked('net'), false);
+  assert.equal(b.apply({ kind: 'craft', recipe: 'net' }, 'host'), true, 'locked craft blocked');
   b.dispose();
   fresh.world.collected = 5; // later sessions of a new raft are not grandfathered
   const c = H.attachProgression(fresh.ctx);
-  assert.equal(c.progression('host').isUnlocked('lantern'), false);
+  assert.equal(c.progression('host').isUnlocked('net'), false);
   c.dispose();
 });
 

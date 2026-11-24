@@ -1,6 +1,8 @@
-// Storage chests and the Research Table (see docs/features/storage-research.md).
-// The placed Crate decor becomes a 12-slot chest; the Research Table decor learns recipes from the
-// ingredient kinds you feed it. Slice: world.ext.storage. Host-authoritative actions 'storage.*'.
+// Storage chests (see docs/features/storage-research.md).
+// The placed Crate decor becomes a 12-slot chest. Slice: world.ext.storage. Host-authoritative actions 'storage.*'.
+// The old research half (the 'research' Tinker's Desk) no longer gates any recipe: research-tree.js and
+// progression-hooks.js run the one Research Table, and a placed desk opens that. This module still loads
+// and saves the desk's seen/learned lists, so recipes a save learned here stay learned (pastLearned()).
 // The top half of this file is pure (no DOM, no THREE) and exported for tests.
 import { Bag, RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { buildResearchTable } from './storage-research-model.js?build=v3-survival-ae77fa84ac2b';
@@ -270,6 +272,7 @@ export function createStorage(ctx) {
   const fresh = new Set(); // learned this session, glow once in the craft list
   const scratch = T ? new T.Vector3() : null;
 
+  let past = null; // learned list of the last save load (pastLearned); null while on a host's raft
   const decorAt = (x, z) => { const d = ctx.world?.decor; if (!Array.isArray(d)) return null; for (let i = 0; i < d.length; i++) if (d[i].x === x && d[i].z === z) return d[i].type; return null; };
   const posOf = actor => { if (actor === 'guest') return ctx.other ?? null; const p = ctx.physics; return p ? { x: p.x, z: p.z } : null; };
   const bump = () => { st.r++; ver++; };
@@ -284,7 +287,7 @@ export function createStorage(ctx) {
     if (aim && aim.dir) { dx = aim.dir.x; dy = aim.dir.y; dz = aim.dir.z; }
     else { cam.getWorldDirection(scratch); dx = scratch.x; dy = scratch.y; dz = scratch.z; }
     for (let i = 0; i < w.decor.length; i++) {
-      const d = w.decor[i]; if (d.type !== 'crate' && d.type !== 'research') continue;
+      const d = w.decor[i]; if (d.type !== 'crate') continue; // a placed desk is a Research Table now (progression-hooks.js)
       const cx = d.x * 2, cz = d.z * 2;
       if (Math.hypot(p.x - cx, p.z - cz) > REACH) continue;
       const cy = (ctx.raft?.position.y ?? 0) + .65;
@@ -339,8 +342,8 @@ export function createStorage(ctx) {
     bag: () => ctx.localBag(),
     send: a => { ctx.action(a); },
     researchable: () => researchableKinds(st),
-    locked: () => lockedRecipes(st),
-    isLearned: id => isLearned(st, id),
+    locked: () => [], // the desk gates nothing any more: no lock badges in the craft list
+    isLearned: () => true,
     hasTable: () => { // a Research Table placed on the raft or carried in the local bag (no allocations)
       const d = ctx.world?.decor; if (Array.isArray(d)) for (let i = 0; i < d.length; i++) if (d[i].type === 'research') return true;
       const s = ctx.localBag()?.slots; if (s) for (let i = 0; i < s.length; i++) if (s[i] && s[i].kind === 'research') return true;
@@ -356,7 +359,7 @@ export function createStorage(ctx) {
       if (data && typeof data === 'object' && data.r === netR && data.s === netS) return; // unchanged host state
       if (data === undefined && netUndef) return; // old host, still no slice: nothing to rebuild
       netUndef = data === undefined; hostHasStorage = data !== undefined;
-      st = stateFrom(data, 'net', ctx.world);
+      st = stateFrom(data, 'net', ctx.world); past = null;
       netR = data && typeof data === 'object' ? data.r : -1; netS = data && typeof data === 'object' ? data.s : null;
       ver++;
       return;
@@ -364,6 +367,7 @@ export function createStorage(ctx) {
     netR = -1; netS = null; netUndef = false; hostHasStorage = true;
     st = stateFrom(data, from, ctx.world);
     st.s = session; bump();
+    past = st.learned.slice(); // a new array per load: progression-hooks.js adopts it once
   }
 
   function serialize() {
@@ -389,10 +393,8 @@ export function createStorage(ctx) {
       return out;
     },
     afterUndecor(d) { if (d?.type !== 'crate') return; const o = ui?.openInfo(); if (o && o.x === d.x && o.z === d.z) ui.close(); dropKey(keyOf(d.x, d.z)); }, // [undecor]
-    craftLocked(recipe) {
-      if (typeof recipe !== 'string' || !hasOwn(RECIPES, recipe)) return null;
-      return isLearned(st, recipe) ? null : LOCK_REASON;
-    },
+    craftLocked() { return null; }, // research-tree.js gates recipes now
+    pastLearned() { return past; }, // recipe ids this save learned at the old desk (all of them for a grandfathered save)
     interact(aim) {
       const d = target(aim); if (!d) return false;
       if (oldHost()) { ctx.notice?.(OLD_HOST, 2400); return true; }
@@ -401,7 +403,7 @@ export function createStorage(ctx) {
     prompt(aim) {
       const d = target(aim); if (!d) return null;
       if (oldHost()) return OLD_HOST;
-      return d.type === 'crate' ? '<kbd>E</kbd>Open crate' : '<kbd>E</kbd>Use tinker\u2019s desk';
+      return '<kbd>E</kbd>Open crate';
     },
     decorModel(type) {
       if (type !== 'research' || !T) return null;

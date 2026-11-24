@@ -18,6 +18,7 @@
 //   claims(kind, aim)         true when use(kind, aim) would consume the click (hides the eat/drink tip)
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
+//   pastLearned()             -> array of recipe ids the loaded save already learned (storage: old desk research), or null
 //   decorModel(type, d)       -> THREE.Object3D for a CONTENT_DECOR type, or null (d = the world.decor entry, read-only)
 //   placeBlock(kind, x, z)    -> BLOCK_TEXT reason a decor kind can't go on that tile, else null // [fishtrap]
 //   sailPush(sailing, out)    write an extra water-relative push (m/s) into out.x/out.z; return true if non-zero.
@@ -163,6 +164,7 @@ export function createContent(ctx, features = FEATURES) {
     respawnSpot: out => first('respawnSpot', out), // [bed]
     ride: (dt, p, inp) => !!first('ride', dt, p, inp), riding: () => !!first('riding'), hanging: () => mods.some(m => m.name === 'zipline' && !!call(m, 'riding')), // [zipline] hanging = glide line only (the driftboard rides standing) [sit] content hook: first module to take over motion wins (glide line, seat, driftboard)
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
+    pastLearned: () => first('pastLearned'), // recipe ids an old save learned at the Tinker's Desk (storage), or null
     placeBlock: (kind, x, z) => first('placeBlock', kind, x, z), // [fishtrap] reason a decor can't go on (x, z), or null
     beforeUndecor: (d, actor) => first('beforeUndecor', d, actor) || (NO_UNDECOR.has(d?.type) ? 'This one can’t be picked up yet' : null), // [undecor] + modules without undecor hooks keep their stored items
     undecorLoot: d => { const out = []; for (const m of mods) { const r = call(m, 'undecorLoot', d); if (Array.isArray(r)) out.push(...r); } return out; }, // [undecor]

@@ -13,10 +13,12 @@ const CB = await import(new URL('craft-book.js', base));
 const { Bag, ITEM_INFO, RECIPES } = await import(new URL('inventory-state.js', base));
 const { ITEMS } = await import(new URL('items.js', base));
 const SR = await import(new URL('storage-research.js', base));
+const RT = await import(new URL('research-tree.js', base));
+const { Progression } = await import(new URL('progression.js', base));
 
-// The same split game.js makes: items.js unlocks own the catalogue, the Tinker's Desk owns the rest.
+// The same split game.js makes: items.js unlocks own the catalogue; the old Tinker's Desk owns nothing now.
 SR.setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(ITEMS, id));
-const STUDY = ['cup', 'purifier', 'rainbarrel', 'sprinkler', 'antenna', 'receiver'];
+const STUDY = ['rainbarrel', 'sprinkler', 'antenna', 'receiver', 'bed', 'motor', 'wheel'];
 
 function newPlayerStorage() {
   const world = { tiles: [[0, 0]], decor: [], stock: { wood: 0, leaf: 0, scrap: 0, plastic: 0 }, fish: 0, collected: 0, items: [],
@@ -30,17 +32,15 @@ function newPlayerStorage() {
 }
 
 // ---------------------------------------------------------------- F1
-test('F1: recipes the host refuses (not studied yet) are locked in the panel, with the host reason', () => {
-  const storage = newPlayerStorage();
+test('F1: non-catalogue recipes are locked by the one research tree, never by the old desk', () => {
+  const storage = newPlayerStorage(), p = new Progression(null, { items: RT.CATALOG });
   for (const id of STUDY) {
     assert.ok(RECIPES[id], id + ' is a hand recipe');
-    const reason = storage.craftLocked(id, 'host');
-    assert.equal(reason, SR.LOCK_REASON, id + ' is refused by the host until studied');
-    // progression has no opinion on these (null): the content lock still wins
-    assert.deepEqual(CB.mergeGate(null, reason), { locked: true, reason: SR.LOCK_REASON }, id);
+    assert.equal(storage.craftLocked(id, 'host'), null, id + ': the desk no longer refuses it');
+    assert.equal(p.isUnlocked(id), false, id + ' waits for research');
+    assert.match(p.whyLocked(id), /^Research .+ at the Research Table$/, id);
   }
-  // starter recipes stay craftable
-  for (const id of SR.STARTER) assert.equal(CB.mergeGate(null, storage.craftLocked(id, 'host')), null, id);
+  for (const id of ['cup', 'purifier']) assert.equal(p.isUnlocked(id), true, id + ' is a start recipe (water from minute one)');
 });
 
 test('F1: mergeGate keeps progression hide/lock, else adds the content lock', () => {

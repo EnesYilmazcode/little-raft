@@ -135,7 +135,10 @@ test('module: load(undefined,"save") on an old progressed world learns all; garb
   mod.load({ v: 1, chests: {}, seen: [], learned: ['bench', 'flyingcarpet'], r: 1 }, 'save');
   assert.deepEqual(mod.serialize().learned, ['bench', 'flyingcarpet']);
   assert.equal(mod.craftLocked('bench'), null);
-  assert.equal(mod.craftLocked('lantern'), LOCK_REASON);
+  assert.equal(mod.craftLocked('lantern'), null, 'the desk gates nothing: research-tree.js owns every lock');
+  assert.deepEqual(mod.pastLearned(), ['bench', 'flyingcarpet'], 'what the save learned is handed to progression');
+  mod.load({ v: 1, chests: {}, seen: [], learned: [], r: 2 }, 'net');
+  assert.equal(mod.pastLearned(), null, 'a host raft never adopts into our own research');
 });
 
 // ---------------------------------------------------------------- put / take
@@ -291,11 +294,11 @@ test('research: recipes join the tree from their cost alone (learnedFrom)', () =
   assert.deepEqual(learnedFrom(['leaf'], ['lantern']), ['lantern']);
 });
 
-test('module: research emits one notice per new recipe to everyone; craftLocked follows', () => {
+test('module: old desk research still records (old guests), but never locks a craft', () => {
   const w = freshWorld(); w.decor.push({ type: 'research', x: 0, z: 1 });
   const { mod, emits, bags } = makeCtx(w);
   mod.load({ v: 1, chests: {}, seen: [], learned: [], r: 0 }, 'save');
-  assert.equal(mod.craftLocked('sail', 'host'), LOCK_REASON);
+  assert.equal(mod.craftLocked('sail', 'host'), null);
   assert.equal(mod.craftLocked('rope', 'host'), null);
   assert.equal(mod.craftLocked('research', 'host'), null);
   assert.equal(mod.craftLocked('not-a-recipe', 'host'), null);
@@ -311,8 +314,9 @@ test('module: research emits one notice per new recipe to everyone; craftLocked 
   assert.deepEqual(emits.map(e => e.e.text).sort(), ['New recipe: Bench!', 'New recipe: Fishing Rod!']); // net also needs nails now
   assert.ok(emits.every(e => e.to === 'all'));
   assert.equal(mod.craftLocked('fishingrod'), null);
-  assert.equal(mod.craftLocked('net'), LOCK_REASON);
-  assert.equal(mod.craftLocked('sail'), LOCK_REASON);
+  assert.equal(mod.craftLocked('net'), null);
+  assert.equal(mod.craftLocked('sail'), null);
+  assert.equal(mod.prompt(null), null, 'E on a desk belongs to the Research Table (progression-hooks.js)');
   emits.length = 0;
   mod.action({ kind: 'storage.research', x: 0, z: 1, slot: slotOf('wood'), expect: { kind: 'wood' } }, 'host', bags.host);
   assert.equal(emits[0].e.text, 'That doesn’t teach anything new');
@@ -477,7 +481,7 @@ test('setOwnedElsewhere: recipes owned by the progression catalogue are never lo
     assert.ok(locked.length > 0);
     for (const id of locked) assert.ok(!ITEMS[id], `${id} is a catalogue recipe`);
     assert.equal(SR.isLearned(st, 'sail'), true);
-    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), ['bowl', 'brush', 'bucket', 'fern', 'flagpole', 'goatpen', 'hammock', 'pennant', 'rug', 'sign', 'wheel']); // content recipes (paint, engine, decor pack, cookpot bowl, flags, goats) are the table's own
+    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), ['bowl', 'brush', 'bucket', 'fern', 'flagpole', 'goatpen', 'hammock', 'pennant', 'rug', 'sign']); // content recipes (paint, engine, decor pack, cookpot bowl, flags, goats) are the table's own
     assert.ok(SR.learnedFrom(['wood', 'leaf', 'plastic', 'nail']).includes('bed')); // [bed] Simple Bed needs plastic and nails
   } finally { SR.setOwnedElsewhere(id => !TABLE_TREE.has(id)); }
 });
