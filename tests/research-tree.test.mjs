@@ -29,7 +29,7 @@ function fakeGame({ decor = [], pastLearned = null } = {}) {
   world.place = () => { world.decor.push(...decor); };
   const bags = { host: new Bag(), guest: new Bag() }, emits = [];
   const ctx = { T: null, role: () => 'solo', ready: () => false, running: () => false, world: () => world, bag: (a) => bags[a],
-    localBag: () => bags.host, action() {}, emit: (e, to) => emits.push({ e, to }), notice() {}, pose: () => ({ x: 50, z: 50, yaw: 0 }), pastLearned: () => pastLearned };
+    localBag: () => bags.host, action() {}, emit: (e, to) => emits.push({ e, to }), notice() {}, pose: () => ({ x: 0, z: 0, yaw: 0 }), pastLearned: () => pastLearned };
   return { world, bags, emits, ctx };
 }
 const fill = (bag, counts) => { for (const [k, n] of Object.entries(counts)) assert.equal(bag.add(k, n), 0, k); };
@@ -192,5 +192,82 @@ test('guest mirror: the host snapshot is rebuilt only when it changes', () => {
   h.effect({ kind: 'prog:sync', prog: JSON.parse(JSON.stringify(snap)), stations: {} });
   assert.equal(h.progression(), first, 'same snapshot, same object (gate cache kept)');
   assert.equal(h.recipeGate('net'), null);
+  h.dispose();
+});
+
+const SR = await import(new URL('storage-research.js', base));
+
+test('New Game: a fresh raft resets research, and the reset is saved', async () => {
+  const store = fakeStorage();
+  const g = fakeGame({ decor: [{ type: 'researchtable', x: 0, z: 0 }] }), h = H.attachProgression(g.ctx);
+  g.world.place(); h.tick(0.6);
+  fill(g.bags.host, { wood: 1 });
+  h.apply({ kind: 'prog:research', item: 'wood' }, 'host');
+  h.save();
+  assert.deepEqual(JSON.parse(store.get(H.PROGRESSION_KEY)).host.researched, ['wood']);
+  h.reset();
+  const saved = JSON.parse(store.get(H.PROGRESSION_KEY));
+  assert.deepEqual(saved.host, { discovered: [], researched: [], learned: [], stations: [] });
+  h.dispose();
+  // game.js resets on both paths: the in-game New Game and a page that starts without a stored raft (title New Game reloads)
+  const src = (await import('node:fs')).readFileSync(new URL('game.js', base), 'utf8');
+  assert.match(src, /if \(freshSave && !X\?\.world\) prog\.reset\(\);/);
+  assert.match(src, /function newGame\(\) \{[\s\S]{0,900}prog\?\.reset\(\)/);
+});
+
+test('old saves: only content recipes the old desk build offered are adopted, never items.js ones', () => {
+  // the desk list may name items.js recipes (it was computed over every recipe): those stay with progression.js
+  fakeStorage();
+  const g = fakeGame({ pastLearned: ['net', 'smelter', 'sail', 'antenna', 'nestbox'] }), h = H.attachProgression(g.ctx);
+  h.tick(0.6);
+  const p = h.progression('host');
+  for (const id of ['net', 'smelter', 'sail']) assert.equal(p.isUnlocked(id), false, `${id} (items.js) not adopted`);
+  for (const id of ['antenna', 'nestbox']) assert.equal(p.isUnlocked(id), true, `${id} kept`);
+  h.dispose();
+  // what the storage slice reports
+  const fresh = SR.pastOffered(undefined, SR.stateFrom(undefined, 'save', { tiles: [[0, 0]], decor: [], collected: 0, hostInventory: new Bag().snapshot() }));
+  assert.deepEqual(fresh, [], 'a fresh world adopts nothing');
+  const mine = SR.pastOffered({ v: 2, chests: {}, seen: [], learned: [] }, SR.stateFrom({ v: 2, chests: {}, seen: [], learned: [] }, 'save', null));
+  assert.deepEqual(mine, [], 'a slice this build wrote adds no desk starters');
+  const oldSlice = { v: 1, chests: {}, seen: ['wood'], learned: ['bowl'] };
+  assert.deepEqual(SR.pastOffered(oldSlice, SR.stateFrom(oldSlice, 'save', null)), [...new Set(['bowl', ...SR.STARTER])].sort());
+  // a grandfathered pre-desk save got every recipe from the old build: adoption keeps only the content ones
+  const w = { tiles: [[0, 0]], decor: [{ type: 'crate', x: 0, z: 0 }], collected: 9 };
+  const legacy = SR.pastOffered(undefined, SR.stateFrom(undefined, 'save', w));
+  fakeStorage();
+  const g2 = fakeGame({ pastLearned: legacy }), h2 = H.attachProgression(g2.ctx);
+  h2.tick(0.6);
+  const q = h2.progression('host');
+  const adopted = [...q.learned].filter((id) => !Object.hasOwn(ITEMS, id));
+  assert.ok(adopted.includes('motor') && adopted.includes('bed'), 'content recipes the old build offered');
+  assert.equal([...q.learned].filter((id) => Object.hasOwn(ITEMS, id) && !['rope', 'hook', 'hammer'].includes(id)).length, 0, 'no items.js recipe adopted');
+  h2.dispose();
+});
+
+test('research is host-checked: a placed table within reach of that player', () => {
+  fakeStorage();
+  const g = fakeGame({ decor: [{ type: 'researchtable', x: 3, z: 0 }] }), h = H.attachProgression(g.ctx);
+  g.world.place(); h.tick(0.6);
+  fill(g.bags.host, { wood: 2 });
+  h.apply({ kind: 'prog:research', item: 'wood' }, 'host'); // table 6 m away
+  assert.equal(g.bags.host.count('wood'), 2);
+  assert.ok(g.emits.some(({ e }) => /Stand at/.test(e.text)));
+  g.world.decor[0].x = 1; // 2 m: in reach
+  h.apply({ kind: 'prog:research', item: 'wood' }, 'host');
+  assert.equal(g.bags.host.count('wood'), 1);
+  // the table is picked up: progression still remembers the station, but research is refused
+  g.world.decor.length = 0;
+  fill(g.bags.host, { scrap: 1 });
+  h.apply({ kind: 'prog:research', item: 'scrap' }, 'host');
+  assert.equal(g.bags.host.count('scrap'), 1);
+  // a guest with no known pose is refused; with a pose in reach (plus slack) it works
+  g.world.decor.push({ type: 'research', x: 1, z: 0 });
+  fill(g.bags.guest, { scrap: 1 });
+  let pose = null; g.ctx.actorPose = (a) => (a === 'guest' ? pose : { x: 0, z: 0, slack: 0 });
+  h.apply({ kind: 'prog:research', item: 'scrap' }, 'guest');
+  assert.equal(g.bags.guest.count('scrap'), 1);
+  pose = { x: 6, z: 0, slack: 2 };
+  h.apply({ kind: 'prog:research', item: 'scrap' }, 'guest');
+  assert.equal(g.bags.guest.count('scrap'), 0);
   h.dispose();
 });
